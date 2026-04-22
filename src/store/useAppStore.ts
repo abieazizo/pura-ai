@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { askAssistant } from '@/api';
+import { palette } from '@/theme';
 import {
   seedRoutine,
   seedMatches,
@@ -277,7 +278,7 @@ export const useAppStore = create<AppState>()(
           id: s.user?.id ?? `u-${Date.now()}`,
           name: safeName,
           initials,
-          avatarColor: s.user?.avatarColor ?? '#C65D48',
+          avatarColor: s.user?.avatarColor ?? palette.clay,
           joinedAt: s.user?.joinedAt ?? new Date().toISOString(),
         };
         set({ user, onboardingComplete: true });

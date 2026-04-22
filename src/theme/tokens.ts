@@ -1,13 +1,19 @@
 /**
- * Pura design tokens — v5 editorial rebuild.
+ * Pura design tokens — v8 cool premium-software rebrand.
  *
- * Warm off-white surfaces. Terracotta brand. Instrument Serif for every hero
- * moment. Inter for functional UI. This file is the ONLY legitimate home for
- * hex color literals.
+ * Cool white surfaces, refined azure brand, slate ink. Instrument Serif
+ * preserved for hero numbers + editorial moments; Inter carries the UI.
+ * This file is the ONLY legitimate home for hex color literals.
  *
  *   grep '#[0-9A-Fa-f]\{3,6\}' src --exclude-dir=theme
  *
  * The result must be empty.
+ *
+ * NOTE on the naming: the legacy material names (`clay`, `sand`, `moss`,
+ * `rust`, `amber`, `coral`) are retained so every existing call site still
+ * resolves, but the HEX values are now cool. `clay` is now the brand azure.
+ * New code should prefer the semantic `brand*` / `success*` / `warning*` /
+ * `danger*` aliases in `colors` below.
  */
 
 import type { TextStyle, ViewStyle } from 'react-native';
@@ -16,63 +22,153 @@ import { Easing } from 'react-native-reanimated';
 type Scheme = 'light' | 'dark';
 
 // ---------- Palette ----------
-// Surfaces, text, brand, semantic. Named for material (clay, sand, moss,
-// rust, amber) not for function (primary/secondary/accent) — the naming is
-// part of the editorial voice.
+// Surfaces, text, brand, semantic. v8 is built on three families: cool
+// neutrals (bg/ink), a single azure brand line (clay → brand), and three
+// restrained semantic families (moss=success, amber=warning, rust=danger).
 
 export const palette = {
-  // Surfaces
-  bg: '#FAF7F4',          // warm off-white — every screen's default
-  bgDeep: '#F4EFEA',      // stepped-down surface for contrast
-  bgInk: '#1A1614',       // inverse surface (scan capture, sheets at night)
-  bgInkElevated: '#2A2420',
+  // Surfaces — cool off-white. Never pure #FFFFFF.
+  bg: '#F8FAFC',          // primary surface, subtle cool tint
+  bgDeep: '#EEF2F7',      // elevated mist gray with blue undertone
+  bgInk: '#0B1220',       // inverse surface (scan capture, sheets at night)
+  bgInkElevated: '#131C2E',
 
-  // Text
-  ink: '#1A1614',
-  inkSecondary: '#5C544E',
-  inkTertiary: '#8E8680',
-  inkInverse: '#FAF7F4',
+  // Text — cool graphite scale
+  ink: '#0B1220',
+  inkSecondary: '#475569',
+  inkTertiary: '#94A3B8',
+  inkInverse: '#F8FAFC',
 
-  // Brand — clay is the primary, coral only highlights
-  clay: '#C65D48',
-  clayDeep: '#A04632',
-  clayLight: '#E8C4B8',
-  clayPaper: '#F5E4DD',
+  // Brand — clay is now refined azure. `clayDeep` is cobalt, used sparingly
+  // for max-contrast surfaces. `clayLight` is an icy blue tint. `clayPaper`
+  // is a near-white blue-tinted surface.
+  clay: '#2B7FFF',
+  clayDeep: '#1560E5',
+  clayLight: '#DCE9FF',
+  clayPaper: '#EEF4FF',
 
-  coral: '#E85A4F',
-  coralGlow: 'rgba(232, 90, 79, 0.28)',
+  // `coral` was a near-sibling to clay; now it's an alias to brand so any
+  // lingering `palette.coral` call sites render the same azure.
+  coral: '#2B7FFF',
+  coralGlow: 'rgba(43, 127, 255, 0.24)',
 
-  sand: '#D4A574',
-  sandLight: '#EADDC8',
-  sandPaper: '#F5EDE0',
+  // `sand` was the secondary warm tint; now it's a cool neutral used for
+  // tabs, tiles, and soft surfaces that need a bit more weight than the
+  // base bg.
+  sand: '#CBD5E1',
+  sandLight: '#E2E8F0',
+  sandPaper: '#F1F5F9',
 
-  // Semantic — warm-toned variants
-  moss: '#6B8E4E',
-  mossLight: '#DDE7CF',
-  mossDeep: '#4A6B32',
-  amber: '#D97706',
-  amberLight: '#FDE6C8',
-  amberDeep: '#9A5308',
-  rust: '#B23A2F',
-  rustLight: '#F5DAD5',
+  // Semantic — harmonized with the cool palette. Success is a forest sage
+  // with cool undertone; warning is muted amber; danger is a clean clinical
+  // red that doesn't scream.
+  moss: '#4C9B7A',
+  mossLight: '#E2EDE7',
+  mossDeep: '#2C7052',
+  amber: '#D4A55E',
+  amberLight: '#F5E8CC',
+  amberDeep: '#997038',
+  rust: '#D64545',
+  rustLight: '#FCE0D9',
 
-  // Structure
-  hairline: '#E5DDD3',
-  divider: '#EADDD2',
-  scrim: 'rgba(26, 22, 20, 0.55)',
-  scrimSoft: 'rgba(26, 22, 20, 0.25)',
+  // Structure — cool hairlines. `hairline` is the visible divider; `divider`
+  // is softer, used as a row-separator that shouldn't compete with content.
+  hairline: '#E2E8F0',
+  divider: '#EEF2F7',
+  scrim: 'rgba(11, 18, 32, 0.55)',
+  scrimSoft: 'rgba(11, 18, 32, 0.25)',
 
   // Utility
-  grainOverlay: 'rgba(26, 22, 20, 0.03)',
-  shadowTint: '#1A1614',
+  grainOverlay: 'rgba(11, 18, 32, 0.02)',
+  shadowTint: '#0B1220',
 } as const;
 
 export type Palette = typeof palette;
 
-// Alias so the hundreds of `colors.bg`-style call sites still resolve. The
-// v5 recommendation is to import `palette` in new code.
-export const colors = {
-  // Surfaces (v5 vocabulary)
+// ---------- Semantic color API ----------
+// `colors` is the semantic layer — code that doesn't care whether brand is
+// "clay" or "azure" should pull from here. Declared as a plain `string`
+// record so the two schemes (`lightColors` / `darkColors`) can freely assign
+// different values to the same keys without literal-type collisions (this
+// was the pre-existing TS regression we're fixing along the way).
+
+export interface ColorPalette {
+  // Surfaces
+  bg: string;
+  bgElevated: string;
+  bgSubtle: string;
+  bgDeep: string;
+  bgInk: string;
+  bgInkElevated: string;
+  surface: string;
+
+  // Text
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  textInverse: string;
+  ink: string;
+  inkSecondary: string;
+  inkTertiary: string;
+  inkInverse: string;
+
+  // Brand (v8 semantic — prefer these in new code)
+  brand: string;
+  brandDeep: string;
+  brandLight: string;
+  brandPaper: string;
+  brandGlow: string;
+  // Legacy brand aliases (warm-era names retained so existing call sites
+  // don't have to move; point to the cool system)
+  accent: string;
+  accentLight: string;
+  accentDark: string;
+  accentPaper: string;
+  accentGlow: string;
+  clay: string;
+  clayDeep: string;
+  clayLight: string;
+  clayPaper: string;
+  coral: string;
+  coralGlow: string;
+  sand: string;
+  sandLight: string;
+  sandPaper: string;
+
+  // Semantic
+  success: string;
+  successLight: string;
+  successDark: string;
+  warning: string;
+  warningLight: string;
+  warningDark: string;
+  danger: string;
+  dangerLight: string;
+  // Legacy semantic aliases
+  moss: string;
+  mossLight: string;
+  amber: string;
+  amberLight: string;
+  rust: string;
+  rustLight: string;
+
+  // Structure
+  border: string;
+  borderLight: string;
+  borderStrong: string;
+  hairline: string;
+  divider: string;
+  scrim: string;
+  scrimLight: string;
+  overlayWeak: string;
+  overlayStrong: string;
+  shimmer: string;
+  shadowTint: string;
+  grainOverlay: string;
+}
+
+export const colors: ColorPalette = {
+  // Surfaces
   bg: palette.bg,
   bgElevated: palette.bgDeep,
   bgSubtle: palette.bgDeep,
@@ -91,8 +187,14 @@ export const colors = {
   inkTertiary: palette.inkTertiary,
   inkInverse: palette.inkInverse,
 
-  // Brand
-  accent: palette.clay,          // v5: "accent" now means clay
+  // Brand (semantic — new canonical names)
+  brand: palette.clay,
+  brandDeep: palette.clayDeep,
+  brandLight: palette.clayLight,
+  brandPaper: palette.clayPaper,
+  brandGlow: palette.coralGlow,
+  // Brand (legacy aliases — pointing to the same cool tokens)
+  accent: palette.clay,
   accentLight: palette.clayLight,
   accentDark: palette.clayDeep,
   accentPaper: palette.clayPaper,
@@ -133,14 +235,12 @@ export const colors = {
   scrimLight: palette.scrimSoft,
   overlayWeak: palette.grainOverlay,
   overlayStrong: palette.scrim,
-  shimmer: 'rgba(255,255,255,0.08)',
+  shimmer: 'rgba(248,250,252,0.08)',
   shadowTint: palette.shadowTint,
   grainOverlay: palette.grainOverlay,
 };
 
-export type ColorPalette = typeof colors;
-
-// Dark palette kept for future flip — v5 ships light-only.
+// Dark palette — retained for a future scheme flip, not shipped.
 export const darkColors: ColorPalette = {
   ...colors,
   bg: palette.bgInk,
@@ -149,17 +249,17 @@ export const darkColors: ColorPalette = {
   bgDeep: palette.bgInkElevated,
   surface: palette.bgInkElevated,
   textPrimary: palette.inkInverse,
-  textSecondary: '#A39890',
-  textTertiary: '#6F6861',
+  textSecondary: '#8E9AAE',
+  textTertiary: '#586073',
   textInverse: palette.ink,
   ink: palette.inkInverse,
-  inkSecondary: '#A39890',
-  inkTertiary: '#6F6861',
+  inkSecondary: '#8E9AAE',
+  inkTertiary: '#586073',
   inkInverse: palette.ink,
-  hairline: '#332D29',
-  border: '#332D29',
-  borderLight: '#2A2420',
-  divider: '#2A2420',
+  hairline: '#1F2A3F',
+  border: '#1F2A3F',
+  borderLight: '#17213A',
+  divider: '#17213A',
 };
 
 export const lightColors = colors;
@@ -355,90 +455,91 @@ export const shadow: {
   none: { shadowOpacity: 0, elevation: 0 },
   subtle: {
     shadowColor: shadowBase,
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.03,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   sm: {
     shadowColor: shadowBase,
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   md: {
     shadowColor: shadowBase,
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
   card: {
     outer: {
       shadowColor: shadowBase,
-      shadowOpacity: 0.06,
-      shadowRadius: 20,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 6,
+      shadowOpacity: 0.04,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 4,
     },
     inner: {
       shadowColor: shadowBase,
-      shadowOpacity: 0.03,
-      shadowRadius: 4,
+      shadowOpacity: 0.02,
+      shadowRadius: 3,
       shadowOffset: { width: 0, height: 1 },
     },
   },
   hero: {
     outer: {
       shadowColor: shadowBase,
-      shadowOpacity: 0.10,
-      shadowRadius: 40,
-      shadowOffset: { width: 0, height: 16 },
-      elevation: 14,
+      shadowOpacity: 0.08,
+      shadowRadius: 32,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 12,
     },
     inner: {
       shadowColor: shadowBase,
-      shadowOpacity: 0.05,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.04,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 3 },
     },
   },
   mark: {
     outer: {
       shadowColor: palette.clay,
-      shadowOpacity: 0.35,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 10,
+      shadowOpacity: 0.20,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 8,
     },
     inner: {
       shadowColor: shadowBase,
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 1 },
     },
   },
   fab: {
     outer: {
       shadowColor: palette.clay,
-      shadowOpacity: 0.35,
-      shadowRadius: 22,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 14,
+      shadowOpacity: 0.22,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 12,
     },
     inner: {
       shadowColor: shadowBase,
-      shadowOpacity: 0.15,
-      shadowRadius: 4,
-      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.10,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 1 },
     },
   },
 };
 
 // Pressed tints (internal to PrimaryButton — keep outside ColorPalette).
+// Darkened values used when a button is held down; match the new cool system.
 export const pressedTints = {
-  primary: '#151110',
+  primary: '#070B14',
   accent: palette.clayDeep,
   success: palette.mossDeep,
 } as const;
@@ -473,14 +574,14 @@ export const spring = {
 };
 
 // ---------- Avatar swatches ----------
-// Warm palette — coral-y reds, amber, moss, sand tones. No pure rainbows.
+// Cool palette — brand azure + moss + amber + slate tones.
 export const avatarSwatches = [
-  palette.clay,        // clay (default)
-  palette.sand,        // sand
-  palette.moss,        // moss
-  '#8A6E52',           // taupe
-  '#7A5E4F',           // warm brown
-  palette.coral,       // coral
+  palette.clay,        // brand azure (default)
+  palette.moss,        // forest sage
+  palette.amber,       // muted amber
+  '#6366F1',           // indigo
+  '#64748B',           // slate
+  '#36A3B3',           // teal
 ] as const;
 
 export type AvatarColor = (typeof avatarSwatches)[number];
@@ -516,26 +617,27 @@ export const fontFamily = {
   sansBold: SANS_BOLD,
 } as const;
 
-// ---------- Scan analysis color tokens (v7.7) ----------
+// ---------- Scan analysis color tokens (v8 cool-system) ----------
 // The cinematic analyzing screen uses two closed palettes — one per finding
 // type (the pulsing detection markers), one per zone status tier (score
-// bubbles). These are additive to `palette` so nothing existing has to move.
+// bubbles). Harmonized to the cool palette while keeping each finding
+// distinguishable by hue.
 
 export const analysisMarkers = {
-  dryness: '#D99E6C',
-  texture: '#C65D48',
-  barrier: '#7A9476',
-  hydration: '#6B8E7F',
-  redness: '#C4705A',
-  clarity: '#A8B896',
+  dryness: '#CA9B65',   // desaturated amber — dryness reads warm
+  texture: '#2B7FFF',   // brand azure — texture is the headline metric
+  barrier: '#4C9B7A',   // sage — a healthy barrier
+  hydration: '#36A3B3', // teal — water-adjacent
+  redness: '#D64545',   // clinical red
+  clarity: '#8B94A8',   // slate — clean / neutral
 } as const;
 
 export type AnalysisMarkerType = keyof typeof analysisMarkers;
 
 export const status = {
-  calm: '#7A9476',
-  monitor: '#D99E6C',
-  active: '#C65D48',
+  calm: '#4C9B7A',      // mirrors palette.moss (success)
+  monitor: '#D4A55E',   // mirrors palette.amber (warning)
+  active: '#D64545',    // mirrors palette.rust (danger)
 } as const;
 
 export type StatusTier = keyof typeof status;

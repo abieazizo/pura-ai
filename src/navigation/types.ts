@@ -32,21 +32,30 @@ export type OnboardingStackParamList = {
 
 export type TabParamList = {
   HomeTab: undefined;
-  ProductsTab: undefined;
-  AssistantTab: undefined;
+  ScanTab: undefined;       // routes to ScanModal via tabPress listener
+  RoutineTab: undefined;
   ProgressTab: undefined;
+  AssistantTab: undefined;
 };
 
 export type HomeStackParamList = {
   Home: undefined;
+  // Products discovery lives inside the Home stack now that Products is no
+  // longer a primary tab — Home's recommendation module and category
+  // destinations push into these routes.
+  Products: undefined;
   ProductDetail: { productId: string; tint?: ProductTint };
   CategoryView: { kind: ProductsRowKind };
 };
 
-export type ProductsStackParamList = {
-  Products: undefined;
-  ProductDetail: { productId: string; tint?: ProductTint };
-  CategoryView: { kind: ProductsRowKind };
+/**
+ * Retained for backward compatibility with screens that imported this name;
+ * the product routes now live inside `HomeStackParamList` instead.
+ */
+export type ProductsStackParamList = HomeStackParamList;
+
+export type RoutineStackParamList = {
+  Routine: undefined;
 };
 
 export type AssistantStackParamList = {

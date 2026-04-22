@@ -53,9 +53,14 @@ export const common = {
  */
 export const tabs = {
   home: 'HOME',
-  products: 'PRODUCTS',
-  assist: 'ASSIST',
+  scan: 'SCAN',
+  routine: 'ROUTINE',
   progress: 'PROGRESS',
+  assist: 'ASSIST',
+  // Retained for any legacy callers that still reference `tabs.products` —
+  // the Products tab was demoted in v8 and discovery now lives through the
+  // home-screen recommendation module.
+  products: 'PRODUCTS',
 };
 
 export const onboarding = {

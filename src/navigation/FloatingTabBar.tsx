@@ -9,30 +9,24 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import type { NavigationProp } from '@react-navigation/native';
-import { useNavigation } from '@react-navigation/native';
 import {
   House,
-  Drop,
-  ChatCircle,
+  ScanSmiley,
+  ListChecks,
   ChartLineUp,
-  Camera,
+  Sparkle,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
-import { LayeredShadow } from '@/components/LayeredShadow';
 import {
   colors,
-  layout,
   motion,
   palette,
-  shadow,
   space,
   spring,
   type as typography,
 } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { tabs as tabsStrings } from '@/copy/strings';
-import type { RootStackParamList } from './types';
 
 type PhosphorIcon = React.FC<PhosphorIconProps>;
 
@@ -40,25 +34,30 @@ const TAB_META: Record<
   string,
   { label: string; Icon: PhosphorIcon }
 > = {
-  HomeTab: { label: tabsStrings.home, Icon: House as PhosphorIcon },
-  ProductsTab: { label: tabsStrings.products, Icon: Drop as PhosphorIcon },
-  AssistantTab: { label: tabsStrings.assist, Icon: ChatCircle as PhosphorIcon },
+  HomeTab:     { label: tabsStrings.home,     Icon: House as PhosphorIcon },
+  ScanTab:     { label: tabsStrings.scan,     Icon: ScanSmiley as PhosphorIcon },
+  RoutineTab:  { label: tabsStrings.routine,  Icon: ListChecks as PhosphorIcon },
   ProgressTab: { label: tabsStrings.progress, Icon: ChartLineUp as PhosphorIcon },
+  AssistantTab:{ label: tabsStrings.assist,   Icon: Sparkle as PhosphorIcon },
 };
 
+const TAB_HEIGHT = 56;
+
 /**
- * 4-slot tab bar + absolutely-positioned FAB overlay.
+ * Five-slot tab bar, no FAB.
  *
- * v5 treatment:
- *   - Backdrop blur on iOS (BlurView intensity 30 over bg-at-92%).
- *   - Android falls back to a solid bg tint.
- *   - Active state: icon Phosphor `duotone` filled, label clay.
- *   - Inactive: icon `regular`, label inkTertiary.
- *   - FAB: 68×68 clay (not coral), 4pt bg ring, Phosphor Camera duotone.
+ * v8 treatment — premium native iOS feel:
+ *   - iOS BlurView over a cool paper tint; Android falls back to the solid
+ *     tint + top hairline.
+ *   - Active: Phosphor duotone + azure label, 2pt top indicator line.
+ *   - Inactive: Phosphor regular + slate label.
+ *   - No chunky FAB — Scan is its own tab slot, pressing it routes to the
+ *     scan modal (see TabNavigator.tsx tabPress listener).
+ *   - Container height follows `TAB_HEIGHT`; safe-area bottom is added by
+ *     the root container, not padded inside each tab.
  */
-export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
 
   const onTabPress = (routeName: string, routeKey: string) => {
     const focused = state.routes[state.index]?.key === routeKey;
@@ -73,20 +72,11 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
     }
   };
 
-  const lastFabPress = useSharedValue(0);
-  const onFabPress = () => {
-    const now = Date.now();
-    if (now - lastFabPress.value < 400) return;
-    lastFabPress.value = now;
-    hapt.tap();
-    rootNav.navigate('ScanModal');
-  };
-
   return (
     <View style={[styles.root, { paddingBottom: insets.bottom }]}>
       {Platform.OS === 'ios' ? (
         <BlurView
-          intensity={30}
+          intensity={32}
           tint="light"
           style={StyleSheet.absoluteFill}
         />
@@ -94,7 +84,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
       <View style={styles.tint} />
       <View style={styles.hairline} />
 
-      <View style={[styles.bar, { height: layout.tabBarHeight }]}>
+      <View style={[styles.bar, { height: TAB_HEIGHT }]}>
         {state.routes.map((route) => {
           const meta = TAB_META[route.name];
           if (!meta) return null;
@@ -109,47 +99,6 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             />
           );
         })}
-      </View>
-
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.fabWrap,
-          {
-            bottom:
-              insets.bottom + layout.tabBarHeight - layout.fabSize / 2,
-          },
-        ]}
-      >
-        <LayeredShadow
-          preset={shadow.fab}
-          borderRadius={layout.fabSize / 2}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Start a scan"
-            accessibilityHint="Opens the camera to scan your skin"
-            onPress={onFabPress}
-            style={({ pressed }) => [
-              styles.fab,
-              {
-                width: layout.fabSize,
-                height: layout.fabSize,
-                borderRadius: layout.fabSize / 2,
-                borderWidth: layout.fabRingWidth,
-                borderColor: colors.bg,
-                backgroundColor: colors.clay,
-              },
-              pressed && styles.fabPressed,
-            ]}
-          >
-            <Camera
-              size={28}
-              color={colors.inkInverse}
-              weight="duotone"
-            />
-          </Pressable>
-        </LayeredShadow>
       </View>
     </View>
   );
@@ -166,17 +115,17 @@ function TabButton({
   focused: boolean;
   onPress: () => void;
 }) {
-  const dotOpacity = useSharedValue(focused ? 1 : 0);
-  const dotScale = useSharedValue(focused ? 1 : 0.4);
+  const indicatorOpacity = useSharedValue(focused ? 1 : 0);
+  const indicatorScale = useSharedValue(focused ? 1 : 0.6);
 
   useEffect(() => {
-    dotOpacity.value = withTiming(focused ? 1 : 0, motion.fast);
-    dotScale.value = withSpring(focused ? 1 : 0.4, spring.default);
-  }, [focused, dotOpacity, dotScale]);
+    indicatorOpacity.value = withTiming(focused ? 1 : 0, motion.fast);
+    indicatorScale.value = withSpring(focused ? 1 : 0.6, spring.default);
+  }, [focused, indicatorOpacity, indicatorScale]);
 
-  const dotStyle = useAnimatedStyle(() => ({
-    opacity: dotOpacity.value,
-    transform: [{ scale: dotScale.value }],
+  const indicatorStyle = useAnimatedStyle(() => ({
+    opacity: indicatorOpacity.value,
+    transform: [{ scaleX: indicatorScale.value }],
   }));
 
   return (
@@ -187,7 +136,7 @@ function TabButton({
       onPress={onPress}
       style={styles.tab}
     >
-      <Animated.View style={[styles.activeDot, dotStyle]} />
+      <Animated.View style={[styles.activeBar, indicatorStyle]} />
       <Icon
         size={22}
         color={focused ? palette.clay : colors.inkTertiary}
@@ -199,8 +148,7 @@ function TabButton({
           { color: focused ? palette.clay : colors.inkTertiary },
         ]}
         numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.85}
+        allowFontScaling
         maxFontSizeMultiplier={1.0}
       >
         {label}
@@ -216,7 +164,7 @@ const styles = StyleSheet.create({
   },
   tint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(250,247,244,0.7)' : colors.bg,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(248,250,252,0.72)' : colors.bg,
   },
   hairline: {
     position: 'absolute',
@@ -229,39 +177,28 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    paddingHorizontal: space.sm,
+    paddingHorizontal: space.xs,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingTop: 6,
+    paddingTop: 8,
     paddingBottom: 8,
-    gap: 2,
+    gap: 3,
   },
-  activeDot: {
+  activeBar: {
     position: 'absolute',
-    top: 4,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    top: 0,
+    width: 18,
+    height: 2,
+    borderRadius: 1,
     backgroundColor: palette.clay,
   },
   label: {
     ...typography.tabLabel,
-    paddingHorizontal: 4,
-  },
-  fabWrap: {
-    position: 'absolute',
-    alignSelf: 'center',
-    zIndex: 20,
-  },
-  fab: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fabPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.96 }],
+    fontSize: 9,
+    letterSpacing: 1.3,
+    paddingHorizontal: 2,
   },
 });
