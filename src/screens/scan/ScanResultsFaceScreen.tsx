@@ -94,9 +94,11 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
 
   if (!scan) return null;
 
+  // v9.1 — bigger, more dominant face. 1.32x aspect gives a near-full-screen
+  // hero on standard phones; the face is the result, not a card in a list.
   const photoSize = {
-    w: width - 40,
-    h: Math.round((width - 40) * 1.18),
+    w: width - 32,
+    h: Math.round((width - 32) * 1.32),
   };
 
   const close = () => {
@@ -113,9 +115,20 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     setExpandedCategory((prev) => (prev === category ? null : category));
   };
 
-  const openTonight = () => {
+  const openPlan = () => {
     hapt.tap();
-    setTonightOpen(true);
+    // v9.1 — the "what should I do now?" flow now opens a full-screen Plan
+    // page instead of a half-sheet. Tonight lives inside Plan as one of
+    // five zones: summary, tonight, best product, alternatives, why.
+    rootNav.goBack(); // dismiss the scan modal first
+    setTimeout(() => {
+      // Give the modal dismiss a tick to finish before pushing the plan.
+      // @ts-expect-error nested stack nav
+      rootNav.navigate?.('Tabs', {
+        screen: 'HomeTab',
+        params: { screen: 'Plan' },
+      });
+    }, 60);
   };
 
   // Only the concerns that need attention get a hotspot on the photo.
@@ -169,7 +182,7 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
         </View>
 
         <Pressable
-          onPress={openTonight}
+          onPress={openPlan}
           style={({ pressed }) => [
             styles.cta,
             pressed && { opacity: 0.94, transform: [{ scale: 0.985 }] },

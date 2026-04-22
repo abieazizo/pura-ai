@@ -12,7 +12,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import {
   House,
   ScanSmiley,
-  ListChecks,
+  Drop,
   ChartLineUp,
   Sparkle,
   type IconProps as PhosphorIconProps,
@@ -36,7 +36,7 @@ const TAB_META: Record<
 > = {
   HomeTab:     { label: tabsStrings.home,     Icon: House as PhosphorIcon },
   ScanTab:     { label: tabsStrings.scan,     Icon: ScanSmiley as PhosphorIcon },
-  RoutineTab:  { label: tabsStrings.routine,  Icon: ListChecks as PhosphorIcon },
+  ProductsTab: { label: tabsStrings.products, Icon: Drop as PhosphorIcon },
   ProgressTab: { label: tabsStrings.progress, Icon: ChartLineUp as PhosphorIcon },
   AssistantTab:{ label: tabsStrings.assist,   Icon: Sparkle as PhosphorIcon },
 };

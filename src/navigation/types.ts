@@ -33,16 +33,20 @@ export type OnboardingStackParamList = {
 export type TabParamList = {
   HomeTab: undefined;
   ScanTab: undefined;       // routes to ScanModal via tabPress listener
-  RoutineTab: undefined;
+  ProductsTab: undefined;   // v9.1 — replaces the RoutineTab slot
   ProgressTab: undefined;
   AssistantTab: undefined;
 };
 
 export type HomeStackParamList = {
   Home: undefined;
-  // Products discovery lives inside the Home stack now that Products is no
-  // longer a primary tab — Home's recommendation module and category
-  // destinations push into these routes.
+  /** Full-screen "What should I do now?" plan (v9.1). */
+  Plan: undefined;
+  /** Routine is an internal destination (not a primary tab) as of v9.1. */
+  Routine: undefined;
+  // Products discovery is ALSO reachable from Home even though it now has
+  // its own primary tab — recommendations from Home should deep-link into
+  // specific products without making the user detour to the Products tab.
   Products: undefined;
   ProductDetail: { productId: string; tint?: ProductTint };
   CategoryView: { kind: ProductsRowKind };

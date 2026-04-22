@@ -12,6 +12,7 @@ import { ProgressScreen } from '@/screens/progress/ProgressScreen';
 import { RoutineScreen } from '@/screens/routine/RoutineScreen';
 import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen';
 import { CategoryView } from '@/screens/products/CategoryView';
+import { PlanScreen } from '@/screens/plan/PlanScreen';
 import type {
   HomeStackParamList,
   RootStackParamList,
@@ -20,16 +21,19 @@ import type {
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
+const ProductsStack = createNativeStackNavigator<HomeStackParamList>();
 
 /**
- * Home stack owns everything reachable from Home — including the demoted
- * Products catalog screens. A user enters Products via the Home rec module
- * or a deep-link, not a dedicated tab.
+ * Home stack — Plan, Routine, and Product destinations are all reachable
+ * from Home. Routine is no longer a primary tab (v9.1); it lives here as
+ * an internal destination linked from the Home command center.
  */
 function HomeStackScreen() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="Home" component={HomeScreen} />
+      <HomeStack.Screen name="Plan" component={PlanScreen} />
+      <HomeStack.Screen name="Routine" component={RoutineScreen} />
       <HomeStack.Screen name="Products" component={ProductsScreen} />
       <HomeStack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <HomeStack.Screen name="CategoryView" component={CategoryView} />
@@ -38,12 +42,20 @@ function HomeStackScreen() {
 }
 
 /**
- * The ScanTab renders nothing — its job is to occupy a slot in the tab bar
- * so the user can aim at it. The tabPress listener below intercepts the
- * gesture and opens the scan modal at the root level. This preserves the
- * modal UX (cancel = close, not pop) while putting Scan where thumbs
- * actually reach.
+ * Dedicated Products tab stack (v9.1) — lets catalog browsing live as a
+ * primary destination while the Home stack still carries its own Products
+ * routes for recommendations flowing out of Home.
  */
+function ProductsStackScreen() {
+  return (
+    <ProductsStack.Navigator screenOptions={{ headerShown: false }}>
+      <ProductsStack.Screen name="Products" component={ProductsScreen} />
+      <ProductsStack.Screen name="ProductDetail" component={ProductDetailScreen} />
+      <ProductsStack.Screen name="CategoryView" component={CategoryView} />
+    </ProductsStack.Navigator>
+  );
+}
+
 function ScanTabPlaceholder() {
   return <View />;
 }
@@ -69,7 +81,7 @@ export function TabNavigator() {
         }}
       />
 
-      <Tab.Screen name="RoutineTab" component={RoutineScreen} />
+      <Tab.Screen name="ProductsTab" component={ProductsStackScreen} />
       <Tab.Screen name="ProgressTab" component={ProgressScreen} />
       <Tab.Screen name="AssistantTab" component={AssistantScreen} />
     </Tab.Navigator>

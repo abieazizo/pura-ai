@@ -129,13 +129,12 @@ export function ProgressScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <Header />
+        <Header day={dayNumber} />
 
-        {/* v8.1 narrative proof block — lives above the visual compare so
-            the first thing a returning user reads is "here's what moved." */}
+        {/* v9.1 — the giant "01 / OF 84" DayCounter was demoted. Proof is
+            now led by the narrative module + the before/after compare. Day
+            number lives as a small pill inside Header. */}
         <ProgressNarrative scans={scans} />
-
-        <DayCounter day={dayNumber} />
 
         {first && selectedScan ? (
           <View style={[styles.fullBleedCompare, { marginHorizontal: -space.lg }]}>
@@ -179,14 +178,22 @@ export function ProgressScreen() {
   );
 }
 
-function Header() {
+function Header({ day }: { day?: number }) {
   return (
     <View style={styles.header}>
-      <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-        {progress.title}
-        <Text style={{ color: palette.clay }}>.</Text>
-      </Text>
-      <Text style={styles.subtitle}>{progress.cycleTooltip}</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title} maxFontSizeMultiplier={1.15}>
+          {progress.title}
+          <Text style={{ color: palette.clay }}>.</Text>
+        </Text>
+        {typeof day === 'number' && day > 0 ? (
+          <View style={styles.headerDayPill}>
+            <Text style={styles.headerDayPillText} maxFontSizeMultiplier={1.1}>
+              {`DAY ${day}`}
+            </Text>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -280,11 +287,31 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: space.lg,
   },
-  header: { marginBottom: space.xl },
+  header: { marginBottom: space.lg },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   title: {
     ...typography.titleSerif,
     color: palette.ink,
     fontSize: 40,
+    letterSpacing: -1.0,
+  },
+  headerDayPill: {
+    paddingHorizontal: 10,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: palette.bgDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerDayPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: palette.inkSecondary,
   },
   subtitle: {
     ...typography.italicLead,
