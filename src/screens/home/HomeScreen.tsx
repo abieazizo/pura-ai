@@ -321,6 +321,19 @@ export function HomeScreen() {
 // ============================================================================
 
 function BrandBar({ initials }: { initials: string | null }) {
+  const nav = useNavigation<any>();
+
+  const openProfile = () => {
+    hapt.select();
+    // ProfileSheet is registered on the RootStack; dispatch there so it
+    // overlays the whole app (not just the Home stack).
+    const parent = nav.getParent?.();
+    // Walk up to the root navigator so we can open the profile sheet
+    // regardless of how deep we are in the nested stacks.
+    const root = parent?.getParent?.() ?? parent ?? nav;
+    root.navigate('ProfileSheet');
+  };
+
   return (
     <View style={styles.brandBar}>
       <View style={styles.brandLeft}>
@@ -331,11 +344,20 @@ function BrandBar({ initials }: { initials: string | null }) {
       </View>
       <View style={{ flex: 1 }} />
       {initials ? (
-        <View style={styles.avatarPill}>
+        <Pressable
+          onPress={openProfile}
+          accessibilityRole="button"
+          accessibilityLabel="Open profile"
+          hitSlop={10}
+          style={({ pressed }) => [
+            styles.avatarPill,
+            pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
+          ]}
+        >
           <Text style={styles.avatarInitials} maxFontSizeMultiplier={1.1}>
             {initials}
           </Text>
-        </View>
+        </Pressable>
       ) : null}
     </View>
   );
