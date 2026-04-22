@@ -123,7 +123,7 @@ export function RevealFooter({
 
       <View style={styles.summaryRow}>
         <Text style={styles.summaryText} maxFontSizeMultiplier={1.2}>
-          {findings.length} findings · 4 zones scored
+          {findings.length} findings
         </Text>
         <View style={styles.summaryDots}>
           {findings.slice(0, 4).map((f, i) => (

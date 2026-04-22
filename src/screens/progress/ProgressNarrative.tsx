@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ArrowUp, ArrowDown, Minus } from 'phosphor-react-native';
-import { palette, statusColor } from '@/theme';
+import { palette } from '@/theme';
 import {
   CATEGORY_LABEL,
   getConcerns,
@@ -10,12 +10,10 @@ import {
 import type { Concern, ConcernCategory, Scan, Severity } from '@/types';
 
 /**
- * ProgressNarrative — v8.1 concern-centric proof module.
- *
- * Takes the user's scan history and renders a per-concern trend summary:
- * what changed, where, and how (severity tier transition). Each row is a
- * human sentence + a tier transition ("needs attention → moderate") so
- * progress reads as narrative, not dashboard numbers.
+ * ProgressNarrative — v8.2 compressed. One overall headline + a single
+ * line per concern showing the tier transition (Day 1 → Today). No prose
+ * sentences, no italic-serif editorial paragraphs. The before/after
+ * compare + MetricBars that live below this do the deeper work.
  */
 
 export interface ProgressNarrativeProps {
@@ -28,83 +26,85 @@ export function ProgressNarrative({ scans }: ProgressNarrativeProps) {
   const first = scans[0];
   const latest = scans[scans.length - 1];
 
-  // Resolve concerns for both endpoints; align by category so we can diff.
-  const firstByCat = byCategory(getConcerns(first));
-  const latestByCat = byCategory(getConcerns(latest, scans[scans.length - 2]));
+  const firstBy = byCategory(getConcerns(first));
+  const latestBy = byCategory(getConcerns(latest, scans[scans.length - 2]));
 
-  const rows: Array<NarrativeRow> = (
+  const rows: Row[] = (
     ['breakouts', 'hydration', 'texture', 'tone'] as ConcernCategory[]
-  ).map((cat) => {
-    const start = firstByCat[cat];
-    const end = latestByCat[cat];
-    return buildRow(cat, start, end);
-  });
+  ).map((cat) => buildRow(cat, firstBy[cat], latestBy[cat]));
+
+  const ups = rows.filter((r) => r.direction === 'up').length;
+  const downs = rows.filter((r) => r.direction === 'down').length;
+
+  const overall =
+    ups >= 3
+      ? 'Gaining ground.'
+      : ups === 2
+      ? 'Two areas improving.'
+      : ups === 1 && downs === 0
+      ? 'One area improving. The rest is holding.'
+      : downs >= 2
+      ? 'A few things moved the wrong way.'
+      : downs === 1
+      ? 'Mostly steady. One to watch.'
+      : 'Holding steady.';
+
+  const days = daysBetween(first.capturedAt, latest.capturedAt);
 
   return (
     <View style={styles.root}>
       <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
-        THE PAST {daysBetween(first.capturedAt, latest.capturedAt)} DAYS
+        {`${days} DAYS IN`}
       </Text>
       <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
-        {buildOverallNarrative(rows)}
+        {overall}
       </Text>
 
       <View style={styles.list}>
-        {rows.map((row) => (
-          <NarrativeRowView key={row.category} row={row} />
+        {rows.map((r) => (
+          <RowView key={r.category} row={r} />
         ))}
       </View>
     </View>
   );
 }
 
-function NarrativeRowView({ row }: { row: NarrativeRow }) {
-  const Icon = row.direction === 'up' ? ArrowUp : row.direction === 'down' ? ArrowDown : Minus;
-  const iconColor =
-    row.direction === 'up'
-      ? palette.moss
-      : row.direction === 'down'
-      ? palette.rust
-      : palette.inkTertiary;
+function RowView({ row }: { row: Row }) {
+  const { Icon, color } = arrowFor(row.direction);
   return (
     <View style={styles.row}>
-      <View style={styles.rowHead}>
-        <View style={[styles.bullet, { backgroundColor: iconColor }]} />
-        <Text style={styles.rowLabel} maxFontSizeMultiplier={1.1}>
-          {CATEGORY_LABEL[row.category]}
-        </Text>
-      </View>
-      <Text style={styles.rowNarrative} maxFontSizeMultiplier={1.2}>
-        {row.sentence}
+      <Text style={styles.rowLabel} maxFontSizeMultiplier={1.1}>
+        {CATEGORY_LABEL[row.category]}
       </Text>
-      <View style={styles.rowFoot}>
-        <Text style={styles.rowTier} maxFontSizeMultiplier={1.1}>
-          Day 1: {severityLabel(row.startSeverity)}
-        </Text>
-        <Icon size={12} color={iconColor} weight="duotone" />
-        <Text
-          style={[styles.rowTier, { color: palette.ink }]}
-          maxFontSizeMultiplier={1.1}
-        >
-          Today: {severityLabel(row.endSeverity)}
-        </Text>
-      </View>
+      <View style={{ flex: 1 }} />
+      <Text
+        style={styles.rowFrom}
+        maxFontSizeMultiplier={1.1}
+      >
+        {severityLabel(row.startSeverity)}
+      </Text>
+      <Icon size={11} color={color} weight="bold" />
+      <Text
+        style={[styles.rowTo, { color: palette.ink }]}
+        maxFontSizeMultiplier={1.1}
+      >
+        {severityLabel(row.endSeverity)}
+      </Text>
     </View>
   );
 }
 
 // ============================================================================
-// Row building + narrative writing
+// Helpers
 // ============================================================================
 
-type NarrativeDirection = 'up' | 'down' | 'flat';
+type Direction = 'up' | 'down' | 'flat';
 
-interface NarrativeRow {
+interface Row {
   category: ConcernCategory;
   startSeverity: Severity;
   endSeverity: Severity;
-  direction: NarrativeDirection;
-  sentence: string;
+  direction: Direction;
 }
 
 function byCategory(concerns: Concern[]): Record<ConcernCategory, Concern> {
@@ -134,96 +134,27 @@ function buildRow(
   cat: ConcernCategory,
   start: Concern | undefined,
   end: Concern | undefined
-): NarrativeRow {
-  const startSeverity = start?.severity ?? 'mild';
-  const endSeverity = end?.severity ?? 'mild';
-  const delta = severityRank(endSeverity) - severityRank(startSeverity);
-  const direction: NarrativeDirection =
+): Row {
+  const startS = start?.severity ?? 'mild';
+  const endS = end?.severity ?? 'mild';
+  const delta = severityRank(endS) - severityRank(startS);
+  const direction: Direction =
     delta < 0 ? 'up' : delta > 0 ? 'down' : 'flat';
-  const sentence = narrativeSentence(cat, startSeverity, endSeverity, direction, end);
-  return { category: cat, startSeverity, endSeverity, direction, sentence };
+  return {
+    category: cat,
+    startSeverity: startS,
+    endSeverity: endS,
+    direction,
+  };
 }
 
-function narrativeSentence(
-  cat: ConcernCategory,
-  startS: Severity,
-  endS: Severity,
-  dir: NarrativeDirection,
-  end: Concern | undefined
-): string {
-  const region = end?.region ?? 'face';
-  switch (cat) {
-    case 'breakouts': {
-      if (dir === 'up') {
-        return `Breakouts on your ${region} have settled since your first scan.`;
-      }
-      if (dir === 'down') {
-        return `More breakouts on your ${region} today than at your first scan.`;
-      }
-      if (endS === 'calm') {
-        return `Your skin has stayed clear through this stretch.`;
-      }
-      return `Breakouts are unchanged \u2014 slow and steady is still progress.`;
-    }
-    case 'hydration': {
-      if (dir === 'up') {
-        return `Hydration is improving, and your ${region} are catching up.`;
-      }
-      if (dir === 'down') {
-        return `Hydration on your ${region} is lower than at day 1.`;
-      }
-      if (endS === 'calm') {
-        return `Hydration has held steady across this window.`;
-      }
-      return `Hydration hasn\u2019t shifted much yet \u2014 give it another week.`;
-    }
-    case 'texture': {
-      if (dir === 'up') {
-        return `Texture on your ${region} is reading smoother.`;
-      }
-      if (dir === 'down') {
-        return `Texture on your ${region} is rougher than at day 1.`;
-      }
-      if (endS === 'calm') {
-        return `Your texture has stayed even across this stretch.`;
-      }
-      return `Texture looks about the same \u2014 consistency will move this.`;
-    }
-    case 'tone': {
-      if (dir === 'up') {
-        return `Dark marks are fading \u2014 slowly, but measurably.`;
-      }
-      if (dir === 'down') {
-        return `A few new dark marks since your first scan.`;
-      }
-      if (endS === 'calm') {
-        return `Your tone is even and holding.`;
-      }
-      return `Dark marks are still visible \u2014 tone takes time.`;
-    }
-  }
-}
-
-function buildOverallNarrative(rows: NarrativeRow[]): string {
-  const ups = rows.filter((r) => r.direction === 'up');
-  const downs = rows.filter((r) => r.direction === 'down');
-
-  if (ups.length >= 3) return 'You\u2019re gaining ground across the board.';
-  if (ups.length === 2) {
-    return `${CATEGORY_LABEL[ups[0].category]} and ${CATEGORY_LABEL[
-      ups[1].category
-    ].toLowerCase()} are improving.`;
-  }
-  if (ups.length === 1 && downs.length === 0) {
-    return `${CATEGORY_LABEL[ups[0].category]} is improving. The rest is holding.`;
-  }
-  if (downs.length >= 2) {
-    return 'A few things moved in the wrong direction this week \u2014 that happens.';
-  }
-  if (downs.length === 1) {
-    return `${CATEGORY_LABEL[downs[0].category]} is the one to watch.`;
-  }
-  return 'Steady across the board. Consistency is the work.';
+function arrowFor(d: Direction): {
+  Icon: typeof ArrowUp;
+  color: string;
+} {
+  if (d === 'up') return { Icon: ArrowUp, color: palette.moss };
+  if (d === 'down') return { Icon: ArrowDown, color: palette.rust };
+  return { Icon: Minus, color: palette.inkTertiary };
 }
 
 function daysBetween(aIso: string, bIso: string): number {
@@ -241,12 +172,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginHorizontal: 20,
     marginBottom: 24,
-    paddingVertical: 22,
-    paddingHorizontal: 22,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    backgroundColor: palette.bg,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
@@ -258,53 +183,35 @@ const styles = StyleSheet.create({
   },
   headline: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.3,
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: -0.5,
     color: palette.ink,
   },
   list: {
-    marginTop: 18,
-    gap: 18,
+    marginTop: 22,
+    gap: 10,
   },
   row: {
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: palette.divider,
-  },
-  rowHead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 6,
-  },
-  bullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    paddingVertical: 8,
   },
   rowLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 1.4,
-    color: palette.inkSecondary,
-    textTransform: 'uppercase',
+    fontSize: 12,
+    letterSpacing: 0.2,
+    color: palette.ink,
   },
-  rowNarrative: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 15,
-    lineHeight: 22,
-    color: palette.inkSecondary,
-  },
-  rowFoot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  rowTier: {
+  rowFrom: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     color: palette.inkTertiary,
+  },
+  rowTo: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: palette.ink,
   },
 });

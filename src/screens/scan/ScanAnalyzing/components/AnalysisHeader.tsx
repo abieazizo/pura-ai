@@ -81,7 +81,7 @@ export function AnalysisHeader({ onClose, mode, topInset }: AnalysisHeaderProps)
           maxFontSizeMultiplier={1.15}
           numberOfLines={1}
         >
-          {mode === 'live' ? 'ANALYZING · READING YOUR SKIN' : 'READING COMPLETE'}
+          {mode === 'live' ? 'ANALYZING' : 'READY'}
         </Text>
         {mode === 'live' ? (
           <Animated.View style={[styles.pulseDot, dotStyle]} />

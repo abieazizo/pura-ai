@@ -1,22 +1,19 @@
 import React, { useRef, useState } from 'react';
 import {
+  LayoutAnimation,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
   View,
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import {
-  X,
-  ArrowRight,
-  ArrowUp,
-  ArrowDown,
-  Minus,
-} from 'phosphor-react-native';
+import { X, ArrowRight, CaretDown } from 'phosphor-react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -26,7 +23,6 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, G } from 'react-native-svg';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@/store/useAppStore';
@@ -37,35 +33,41 @@ import {
   buildSummaryHeadline,
   buildTonightFocus,
   getConcerns,
-  severityDotCount,
   severityLabel,
-  trendLabel,
 } from '@/utils/concerns';
 import type { RootStackParamList } from '@/navigation/types';
-import type {
-  Concern,
-  ConcernTrend,
-  Severity,
-} from '@/types';
+import type { Concern, Severity } from '@/types';
 
 /**
- * ScanResultsFaceScreen — v8.1 rebuild around the concern model.
+ * ScanResultsFaceScreen — v8.2 glanceable rebuild.
  *
- * Information architecture:
- *   1. Header with close + "READING COMPLETE" kicker
- *   2. Hero photo with ranked hotspot markers + overall score chip
- *   3. Summary headline (serif, derived from top concerns)
- *   4. Concern cards (4, ranked 1→4), each carrying finding / interpretation
- *      / next step + severity + trend
- *   5. Tonight's focus (consolidated action plan)
- *   6. Trust note
- *   7. Primary CTA
+ * The product rule: "stop showing the user everything the AI knows."
  *
- * Tapping a hotspot marker on the photo scrolls to the matching concern card
- * and briefly highlights it. Tapping a concern card brightens its marker on
- * the photo. This is the "grounded in the actual face" principle the product
- * critique called out — every concern is visibly tied to a region.
+ * Default view (3-second comprehension):
+ *   • Hero photo with up to 3 subtle hotspot markers (only for concerns
+ *     with severity ≥ moderate — calm/mild findings don't get hotspots).
+ *   • One-sentence headline (serif, short).
+ *   • Three flat rows: category · region · severity. No cards. No trend
+ *     chips. No sub-labels.
+ *   • One CTA: "What should I do now?"
+ *
+ * Tap-to-expand:
+ *   • Tapping a row expands it inline to show the finding line + the
+ *     one next-step sentence. LayoutAnimation handles the height; tap
+ *     anywhere in the row to collapse again.
+ *
+ * "What should I do now?" CTA:
+ *   • Opens the Tonight sheet (bottom half-modal) with the numbered
+ *     action list. That sheet is the *only* place the full plan lives.
  */
+
+// Android needs this toggle for LayoutAnimation to fire.
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export interface ScanResultsFaceScreenProps {
   scanId: string;
@@ -82,18 +84,19 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     : undefined;
 
   const concerns = scan ? getConcerns(scan, previous) : [];
-  const summary = buildSummaryHeadline(concerns);
+  const top3 = concerns.slice(0, 3);
+  const headline = buildHeadline(concerns);
   const tonight = buildTonightFocus(concerns);
 
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [tonightOpen, setTonightOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-  const cardOffsets = useRef<Record<number, number>>({});
-  const [focusedRank, setFocusedRank] = useState<number | null>(null);
 
   if (!scan) return null;
 
   const photoSize = {
     w: width - 40,
-    h: Math.round((width - 40) * 1.15),
+    h: Math.round((width - 40) * 1.18),
   };
 
   const close = () => {
@@ -101,27 +104,25 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     rootNav.goBack();
   };
 
-  const handleHotspotTap = (rank: number) => {
+  const toggleRow = (category: string) => {
     hapt.select();
-    const y = cardOffsets.current[rank];
-    if (typeof y === 'number') {
-      scrollRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: true });
-    }
-    setFocusedRank(rank);
-    setTimeout(() => setFocusedRank(null), 1400);
+    LayoutAnimation.configureNext({
+      duration: 220,
+      update: { type: 'easeInEaseOut' },
+    });
+    setExpandedCategory((prev) => (prev === category ? null : category));
   };
 
-  const handleCardTap = (rank: number) => {
-    hapt.select();
-    setFocusedRank(rank);
-    setTimeout(() => setFocusedRank(null), 1400);
+  const openTonight = () => {
+    hapt.tap();
+    setTonightOpen(true);
   };
 
-  const handleSaveAndClose = () => {
-    hapt.success();
-    // Scan is already persisted — this CTA just returns to Home.
-    rootNav.goBack();
-  };
+  // Only the concerns that need attention get a hotspot on the photo.
+  // Calm / mild findings stay hidden — the photo should read clean.
+  const hotspotConcerns = top3.filter(
+    (c) => c.severity === 'moderate' || c.severity === 'needs-attention'
+  );
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -137,9 +138,6 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
         >
           <X size={18} weight="duotone" color={palette.ink} />
         </Pressable>
-        <Text style={styles.headerKicker} maxFontSizeMultiplier={1.1}>
-          READING COMPLETE
-        </Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -150,81 +148,73 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
       >
         <HeroPhoto
           photoUri={scan.photoUri}
-          overallScore={scan.overallScore}
           size={photoSize}
-          concerns={concerns}
-          focusedRank={focusedRank}
-          onHotspotTap={handleHotspotTap}
+          hotspotConcerns={hotspotConcerns}
         />
 
-        <Text style={styles.summary} maxFontSizeMultiplier={1.15}>
-          {summary}
+        <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
+          {headline}
         </Text>
 
-        <View style={styles.concernStack}>
-          {concerns.map((concern) => (
-            <ConcernCard
+        <View style={styles.findings}>
+          {top3.map((concern, i) => (
+            <FindingRow
               key={concern.category}
               concern={concern}
-              focused={focusedRank === concern.rank}
-              onLayout={(y) => {
-                cardOffsets.current[concern.rank] = y;
-              }}
-              onPress={() => handleCardTap(concern.rank)}
+              expanded={expandedCategory === concern.category}
+              onPress={() => toggleRow(concern.category)}
+              showTopDivider={i > 0}
             />
           ))}
         </View>
 
-        <TonightFocusCard steps={tonight} />
-
-        <Text style={styles.trustNote} maxFontSizeMultiplier={1.2}>
-          Based on visible signals in your scan. Not a medical diagnosis.
-        </Text>
-
-        <View style={{ height: 16 }} />
-
         <Pressable
-          onPress={handleSaveAndClose}
+          onPress={openTonight}
           style={({ pressed }) => [
-            styles.primaryCta,
+            styles.cta,
             pressed && { opacity: 0.94, transform: [{ scale: 0.985 }] },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Save and return"
+          accessibilityLabel="What should I do now?"
         >
-          <Text style={styles.primaryCtaLabel} maxFontSizeMultiplier={1.15}>
-            Save to progress
+          <Text style={styles.ctaLabel} maxFontSizeMultiplier={1.15}>
+            What should I do now?
           </Text>
-          <ArrowRight size={16} color={palette.inkInverse} weight="duotone" />
+          <ArrowRight size={15} color={palette.inkInverse} weight="duotone" />
         </Pressable>
 
-        <View style={{ height: 40 }} />
+        <Text style={styles.trustNote} maxFontSizeMultiplier={1.2}>
+          Based on visible signals. Not a medical diagnosis.
+        </Text>
       </ScrollView>
+
+      <TonightSheet
+        visible={tonightOpen}
+        steps={tonight}
+        onDismiss={() => setTonightOpen(false)}
+        onDone={() => {
+          hapt.success();
+          setTonightOpen(false);
+          rootNav.goBack();
+        }}
+      />
     </SafeAreaView>
   );
 }
 
 // ============================================================================
-// Hero photo + hotspot markers
+// Hero photo + hotspots
 // ============================================================================
 
 function HeroPhoto({
   photoUri,
-  overallScore,
   size,
-  concerns,
-  focusedRank,
-  onHotspotTap,
+  hotspotConcerns,
 }: {
   photoUri: string;
-  overallScore: number;
   size: { w: number; h: number };
-  concerns: Concern[];
-  focusedRank: number | null;
-  onHotspotTap: (rank: number) => void;
+  hotspotConcerns: Concern[];
 }) {
-  // Each marker renders at every hotspot for the concern; rank controls its
-  // pulse intensity + prominence (rank 1 pulses brightest; rank 4 is quiet).
   return (
     <View
       style={[
@@ -238,62 +228,36 @@ function HeroPhoto({
         contentFit="cover"
         transition={200}
       />
-      {/* Soft warm tint to ground the face into the interface */}
-      <View style={styles.heroTint} pointerEvents="none" />
-
-      {/* Hotspot overlay — each concern's hotspots painted as pulsing dots.
-          Pressables for a11y / tap-to-focus. */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {concerns.flatMap((concern) =>
-          concern.hotspots.map((pt, i) => (
-            <HotspotMarker
-              key={`${concern.category}-${i}`}
-              rank={concern.rank}
-              severity={concern.severity}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        {hotspotConcerns.flatMap((c) =>
+          c.hotspots.slice(0, 1).map((pt, i) => (
+            <Hotspot
+              key={`${c.category}-${i}`}
               x={pt.x * size.w}
               y={pt.y * size.h}
-              focused={focusedRank === concern.rank}
-              onPress={() => onHotspotTap(concern.rank)}
+              severity={c.severity}
+              rank={c.rank}
             />
           ))
         )}
-      </View>
-
-      {/* Overall score chip, anchored bottom-right */}
-      <View style={styles.scoreChip}>
-        <Text style={styles.scoreChipKicker} maxFontSizeMultiplier={1.1}>
-          OVERALL
-        </Text>
-        <Text style={styles.scoreChipNumber} maxFontSizeMultiplier={1.15}>
-          {overallScore}
-        </Text>
       </View>
     </View>
   );
 }
 
-function HotspotMarker({
-  rank,
-  severity,
+function Hotspot({
   x,
   y,
-  focused,
-  onPress,
+  severity,
+  rank,
 }: {
-  rank: number;
-  severity: Severity;
   x: number;
   y: number;
-  focused: boolean;
-  onPress: () => void;
+  severity: Severity;
+  rank: number;
 }) {
-  const color = colorForSeverity(severity);
-
-  // Pulse intensity driven by rank — rank 1 pulses brightest, rank 4 is quiet.
-  const intensity = rank === 1 ? 1 : rank === 2 ? 0.7 : rank === 3 ? 0.5 : 0.35;
-
+  const color = colorFor(severity);
   const pulse = useSharedValue(0);
-  const focusGlow = useSharedValue(0);
 
   React.useEffect(() => {
     pulse.value = withDelay(
@@ -309,38 +273,16 @@ function HotspotMarker({
     );
   }, [pulse, rank]);
 
-  React.useEffect(() => {
-    focusGlow.value = withTiming(focused ? 1 : 0, {
-      duration: 300,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [focused, focusGlow]);
-
   const pulseStyle = useAnimatedStyle(() => ({
-    opacity: (1 - pulse.value) * 0.6 * intensity,
-    transform: [{ scale: 0.3 + pulse.value * 2.2 }],
+    opacity: (1 - pulse.value) * 0.55,
+    transform: [{ scale: 0.6 + pulse.value * 1.6 }],
   }));
 
-  const focusStyle = useAnimatedStyle(() => ({
-    opacity: focusGlow.value,
-    transform: [{ scale: 0.6 + focusGlow.value * 0.8 }],
-  }));
-
-  const DOT = 12;
-  const RING = 32;
+  const DOT = 8;
+  const RING = 22;
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Concern rank ${rank}`}
-      hitSlop={10}
-      style={[
-        styles.hotspotTouch,
-        { left: x - 20, top: y - 20 },
-      ]}
-    >
-      {/* Pulsing ring */}
+    <View style={[styles.hotspotWrap, { left: x - 18, top: y - 18 }]}>
       <Animated.View
         style={[
           styles.hotspotRing,
@@ -349,39 +291,10 @@ function HotspotMarker({
             height: RING,
             borderRadius: RING / 2,
             borderColor: color,
-            left: 20 - RING / 2,
-            top: 20 - RING / 2,
+            left: 18 - RING / 2,
+            top: 18 - RING / 2,
           },
           pulseStyle,
-        ]}
-      />
-      {/* Focus glow (brightens when the matching card is tapped) */}
-      <Animated.View
-        style={[
-          styles.hotspotFocus,
-          {
-            width: RING * 1.5,
-            height: RING * 1.5,
-            borderRadius: (RING * 1.5) / 2,
-            backgroundColor: color,
-            left: 20 - (RING * 1.5) / 2,
-            top: 20 - (RING * 1.5) / 2,
-          },
-          focusStyle,
-        ]}
-      />
-      {/* Core dot + outline */}
-      <View
-        style={[
-          styles.hotspotCore,
-          {
-            width: DOT,
-            height: DOT,
-            borderRadius: DOT / 2,
-            backgroundColor: color,
-            left: 20 - DOT / 2,
-            top: 20 - DOT / 2,
-          },
         ]}
       />
       <View
@@ -391,174 +304,180 @@ function HotspotMarker({
             width: DOT + 4,
             height: DOT + 4,
             borderRadius: (DOT + 4) / 2,
-            left: 20 - (DOT + 4) / 2,
-            top: 20 - (DOT + 4) / 2,
+            left: 18 - (DOT + 4) / 2,
+            top: 18 - (DOT + 4) / 2,
           },
         ]}
       />
-    </Pressable>
-  );
-}
-
-// ============================================================================
-// Concern card
-// ============================================================================
-
-function ConcernCard({
-  concern,
-  focused,
-  onLayout,
-  onPress,
-}: {
-  concern: Concern;
-  focused: boolean;
-  onLayout: (y: number) => void;
-  onPress: () => void;
-}) {
-  const color = colorForSeverity(concern.severity);
-  const dots = severityDotCount(concern.severity);
-
-  const borderAnim = useSharedValue(0);
-  React.useEffect(() => {
-    borderAnim.value = withTiming(focused ? 1 : 0, {
-      duration: 300,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [focused, borderAnim]);
-
-  const cardStyle = useAnimatedStyle(() => ({
-    borderColor:
-      borderAnim.value > 0.5
-        ? color
-        : palette.hairline,
-    borderWidth: 1 + borderAnim.value * 0.5,
-  }));
-
-  return (
-    <Pressable
-      onPress={onPress}
-      onLayout={(e) => onLayout(e.nativeEvent.layout.y)}
-      style={({ pressed }) => [pressed && { opacity: 0.98 }]}
-      accessibilityRole="button"
-      accessibilityLabel={`${CATEGORY_LABEL[concern.category]} — ${severityLabel(
-        concern.severity
-      )} — ${concern.region}`}
-    >
-      <Animated.View style={[styles.concernCard, cardStyle]}>
-        <View style={styles.concernHead}>
-          <View style={styles.rankDot}>
-            <Text style={styles.rankDotText} maxFontSizeMultiplier={1.1}>
-              {concern.rank}
-            </Text>
-          </View>
-          <View style={styles.severityDots}>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.severityDot,
-                  {
-                    backgroundColor:
-                      i < dots ? color : palette.bgDeep,
-                  },
-                ]}
-              />
-            ))}
-          </View>
-          <View style={{ flex: 1 }} />
-          <TrendChip trend={concern.trend} />
-        </View>
-
-        <Text
-          style={styles.concernTitle}
-          maxFontSizeMultiplier={1.15}
-          numberOfLines={2}
-          adjustsFontSizeToFit
-          minimumFontScale={0.85}
-        >
-          {`${CATEGORY_LABEL[concern.category]} \u00B7 ${severityLabel(
-            concern.severity
-          )} \u00B7 ${concern.region}`}
-        </Text>
-
-        <Text
-          style={styles.concernFinding}
-          maxFontSizeMultiplier={1.2}
-          numberOfLines={4}
-        >
-          {concern.finding}
-        </Text>
-
-        <View style={styles.concernMeta}>
-          <Text style={styles.concernMetaLabel} maxFontSizeMultiplier={1.1}>
-            WHAT IT MEANS
-          </Text>
-          <Text style={styles.concernMetaBody} maxFontSizeMultiplier={1.2}>
-            {concern.interpretation}
-          </Text>
-        </View>
-
-        <View style={styles.concernMeta}>
-          <Text style={styles.concernMetaLabel} maxFontSizeMultiplier={1.1}>
-            TONIGHT
-          </Text>
-          <Text style={styles.concernMetaBody} maxFontSizeMultiplier={1.2}>
-            {concern.nextStep}
-          </Text>
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-function TrendChip({ trend }: { trend: ConcernTrend }) {
-  const { icon: Icon, label, tint } = trendVisuals(trend);
-  return (
-    <View style={[styles.trendChip, { backgroundColor: tint.bg }]}>
-      <Icon size={11} color={tint.fg} weight="duotone" />
-      <Text
-        style={[styles.trendChipLabel, { color: tint.fg }]}
-        maxFontSizeMultiplier={1.1}
-      >
-        {label}
-      </Text>
+      <View
+        style={[
+          styles.hotspotCore,
+          {
+            width: DOT,
+            height: DOT,
+            borderRadius: DOT / 2,
+            backgroundColor: color,
+            left: 18 - DOT / 2,
+            top: 18 - DOT / 2,
+          },
+        ]}
+      />
     </View>
   );
 }
 
 // ============================================================================
-// Tonight's focus
+// Flat finding row
 // ============================================================================
 
-function TonightFocusCard({ steps }: { steps: string[] }) {
+function FindingRow({
+  concern,
+  expanded,
+  onPress,
+  showTopDivider,
+}: {
+  concern: Concern;
+  expanded: boolean;
+  onPress: () => void;
+  showTopDivider: boolean;
+}) {
+  const color = colorFor(concern.severity);
+
   return (
-    <View style={styles.tonight}>
-      <Text style={styles.tonightKicker} maxFontSizeMultiplier={1.1}>
-        TONIGHT\u2019S FOCUS
-      </Text>
-      <Text style={styles.tonightHeadline} maxFontSizeMultiplier={1.15}>
-        {`A simple plan for tonight${'\u2014'}in order.`}
-      </Text>
-      <View style={styles.tonightList}>
-        {steps.map((step, i) => (
-          <View key={i} style={styles.tonightStep}>
-            <View style={styles.tonightNumber}>
-              <Text
-                style={styles.tonightNumberText}
-                maxFontSizeMultiplier={1.1}
-              >
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${CATEGORY_LABEL[concern.category]}, ${
+        concern.region
+      }, ${severityLabel(concern.severity)}`}
+      accessibilityState={{ expanded }}
+      style={({ pressed }) => [
+        styles.row,
+        showTopDivider && styles.rowDivider,
+        pressed && { opacity: 0.96 },
+      ]}
+    >
+      <View style={styles.rowHead}>
+        <View style={[styles.rowDot, { backgroundColor: color }]} />
+        <Text style={styles.rowTitle} maxFontSizeMultiplier={1.15}>
+          <Text style={styles.rowTitleStrong}>
+            {CATEGORY_LABEL[concern.category]}
+          </Text>
+          <Text style={styles.rowTitleMid}>{`  ·  ${concern.region}`}</Text>
+        </Text>
+        <View style={{ flex: 1 }} />
+        <Text
+          style={[styles.rowSeverity, { color }]}
+          maxFontSizeMultiplier={1.1}
+        >
+          {severityLabel(concern.severity)}
+        </Text>
+        <Animated.View
+          style={[
+            styles.rowCaret,
+            expanded && { transform: [{ rotate: '180deg' }] },
+          ]}
+        >
+          <CaretDown size={13} color={palette.inkTertiary} weight="bold" />
+        </Animated.View>
+      </View>
+
+      {expanded ? (
+        <View style={styles.rowDetail}>
+          <Text style={styles.rowDetailFinding} maxFontSizeMultiplier={1.2}>
+            {concern.finding}
+          </Text>
+          <View style={[styles.rowDetailBullet, { backgroundColor: color }]} />
+          <Text style={styles.rowDetailNext} maxFontSizeMultiplier={1.2}>
+            {concern.nextStep}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+// ============================================================================
+// Tonight sheet
+// ============================================================================
+
+function TonightSheet({
+  visible,
+  steps,
+  onDismiss,
+  onDone,
+}: {
+  visible: boolean;
+  steps: string[];
+  onDismiss: () => void;
+  onDone: () => void;
+}) {
+  const translateY = useSharedValue(1);
+  const backdrop = useSharedValue(0);
+
+  React.useEffect(() => {
+    translateY.value = withTiming(visible ? 0 : 1, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+    backdrop.value = withTiming(visible ? 1 : 0, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [visible, translateY, backdrop]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: `${translateY.value * 100}%` }],
+  }));
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdrop.value,
+  }));
+
+  if (!visible && translateY.value === 1) return null;
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents={visible ? 'auto' : 'none'}>
+      <Animated.View
+        style={[StyleSheet.absoluteFillObject, styles.backdrop, backdropStyle]}
+      >
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={onDismiss} />
+      </Animated.View>
+
+      <Animated.View style={[styles.sheet, sheetStyle]}>
+        <View style={styles.sheetGrabber} />
+        <Text style={styles.sheetKicker} maxFontSizeMultiplier={1.1}>
+          TONIGHT
+        </Text>
+        <View style={styles.sheetSteps}>
+          {steps.map((step, i) => (
+            <View key={i} style={styles.sheetStep}>
+              <Text style={styles.sheetStepNum} maxFontSizeMultiplier={1.15}>
                 {i + 1}
               </Text>
+              <Text
+                style={styles.sheetStepText}
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={2}
+              >
+                {compressStep(step)}
+              </Text>
             </View>
-            <Text
-              style={styles.tonightStepText}
-              maxFontSizeMultiplier={1.2}
-            >
-              {step}
-            </Text>
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+        <Pressable
+          onPress={onDone}
+          accessibilityRole="button"
+          accessibilityLabel="Save and close"
+          style={({ pressed }) => [
+            styles.sheetCta,
+            pressed && { opacity: 0.94 },
+          ]}
+        >
+          <Text style={styles.sheetCtaLabel} maxFontSizeMultiplier={1.15}>
+            Got it
+          </Text>
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }
@@ -567,7 +486,44 @@ function TonightFocusCard({ steps }: { steps: string[] }) {
 // Helpers
 // ============================================================================
 
-function colorForSeverity(s: Severity): string {
+/**
+ * Short, headline-y version of the summary — no "main focus today is…"
+ * setup phrase. Just the fact.
+ */
+function buildHeadline(concerns: Concern[]): string {
+  const top = concerns[0];
+  if (!top || top.severity === 'calm') {
+    return 'Your skin is settled today.';
+  }
+  const label = CATEGORY_LABEL[top.category];
+  return `${label} on your ${top.region}.`;
+}
+
+/**
+ * Rewrite a verbose next-step sentence into a 3-5 word imperative.
+ * The full sentence lives inside the concern card's expanded view; this
+ * is just for the Tonight sheet where the user wants a checklist, not
+ * an essay.
+ */
+function compressStep(step: string): string {
+  const s = step.toLowerCase();
+  if (s.includes('calming gel')) return 'Calming gel on chin.';
+  if (s.includes('skip actives') || s.includes('pause exfoliants'))
+    return 'Skip actives tonight.';
+  if (s.includes('hydrating serum')) return 'Add a hydrating serum.';
+  if (s.includes('humectant')) return 'Layer a hydrating serum.';
+  if (s.includes('moisturizer')) return 'Finish with moisturizer.';
+  if (s.includes('gentle exfoliant')) return 'Gentle exfoliant.';
+  if (s.includes('clay') || s.includes('pha')) return 'Clay or PHA mask once this week.';
+  if (s.includes('brightening')) return 'Brightening serum.';
+  if (s.includes('spf')) return 'SPF in the morning.';
+  if (s.includes('barrier-repair')) return 'Barrier-repair only.';
+  // Fallback: first clause of the sentence.
+  const first = step.split(/[.;]/)[0];
+  return first.length <= 48 ? `${first}.` : `${first.slice(0, 45)}\u2026`;
+}
+
+function colorFor(s: Severity): string {
   switch (s) {
     case 'calm':
       return statusColor.calm;
@@ -577,39 +533,6 @@ function colorForSeverity(s: Severity): string {
       return statusColor.monitor;
     case 'needs-attention':
       return statusColor.active;
-  }
-}
-
-function trendVisuals(trend: ConcernTrend): {
-  icon: typeof ArrowUp;
-  label: string;
-  tint: { bg: string; fg: string };
-} {
-  switch (trend) {
-    case 'new':
-      return {
-        icon: Minus,
-        label: 'NEW',
-        tint: { bg: palette.bgDeep, fg: palette.inkSecondary },
-      };
-    case 'improved':
-      return {
-        icon: ArrowUp,
-        label: trendLabel(trend).toUpperCase(),
-        tint: { bg: palette.mossLight, fg: palette.mossDeep },
-      };
-    case 'unchanged':
-      return {
-        icon: Minus,
-        label: 'UNCHANGED',
-        tint: { bg: palette.bgDeep, fg: palette.inkSecondary },
-      };
-    case 'worsened':
-      return {
-        icon: ArrowDown,
-        label: 'WORTH WATCHING',
-        tint: { bg: palette.rustLight, fg: palette.rust },
-      };
   }
 }
 
@@ -635,257 +558,224 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-    color: palette.clay,
-  },
 
   scroll: {
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 40,
+    paddingTop: 4,
+    paddingBottom: 48,
   },
 
-  // Hero photo
+  // Hero
   hero: {
     alignSelf: 'center',
     borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: palette.bgDeep,
-    shadowColor: palette.ink,
-    shadowOpacity: 0.06,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
   },
-  heroTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(43,127,255,0.04)',
-  },
-  hotspotTouch: {
+  hotspotWrap: {
     position: 'absolute',
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
   },
   hotspotRing: {
     position: 'absolute',
     borderWidth: 1.5,
-  },
-  hotspotFocus: {
-    position: 'absolute',
-    opacity: 0,
   },
   hotspotCore: {
     position: 'absolute',
   },
   hotspotCoreHalo: {
     position: 'absolute',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: 'rgba(248,250,252,0.95)',
   },
-  scoreChip: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-    backgroundColor: 'rgba(248,250,252,0.95)',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    alignItems: 'flex-end',
-  },
-  scoreChipKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: palette.inkTertiary,
-    marginBottom: 1,
-  },
-  scoreChipNumber: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 28,
-    lineHeight: 28,
-    letterSpacing: -0.6,
-    color: palette.clay,
-    fontVariant: ['tabular-nums'],
-  },
 
-  // Summary
-  summary: {
+  // Headline
+  headline: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 26,
-    lineHeight: 32,
-    letterSpacing: -0.4,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.6,
     color: palette.ink,
     marginTop: 28,
-    marginBottom: 20,
-    maxWidth: '94%',
+    marginBottom: 24,
+    maxWidth: '92%',
   },
 
-  // Concern stack
-  concernStack: {
-    gap: 14,
-    marginBottom: 28,
+  // Findings — flat rows, no card containers
+  findings: {
+    marginBottom: 32,
   },
-  concernCard: {
+  row: {
     paddingVertical: 18,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    backgroundColor: palette.bg,
   },
-  concernHead: {
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: palette.hairline,
+  },
+  rowHead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 14,
   },
-  rankDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: palette.ink,
-    alignItems: 'center',
-    justifyContent: 'center',
+  rowDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  rankDotText: {
+  rowTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: palette.ink,
+    letterSpacing: -0.1,
+  },
+  rowTitleStrong: {
+    color: palette.ink,
+  },
+  rowTitleMid: {
+    color: palette.inkTertiary,
+    fontFamily: 'Inter-Regular',
+  },
+  rowSeverity: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
-    color: palette.inkInverse,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
-  severityDots: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  severityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  trendChip: {
-    flexDirection: 'row',
+  rowCaret: {
+    marginLeft: 8,
+    width: 16,
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
   },
-  trendChipLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.0,
+  rowDetail: {
+    marginTop: 12,
+    paddingLeft: 18,
+    position: 'relative',
   },
-  concernTitle: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 20,
-    lineHeight: 24,
-    letterSpacing: -0.3,
-    color: palette.ink,
-    marginBottom: 8,
-  },
-  concernFinding: {
+  rowDetailFinding: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 22,
     color: palette.inkSecondary,
-  },
-  concernMeta: {
-    marginTop: 14,
-  },
-  concernMetaLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: palette.inkTertiary,
-    marginBottom: 4,
-  },
-  concernMetaBody: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: palette.ink,
-  },
-
-  // Tonight's focus
-  tonight: {
-    marginBottom: 24,
-    paddingVertical: 22,
-    paddingHorizontal: 22,
-    borderRadius: 20,
-    backgroundColor: palette.bgInk,
-  },
-  tonightKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: 'rgba(248,250,252,0.55)',
     marginBottom: 10,
   },
-  tonightHeadline: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.3,
-    color: palette.inkInverse,
-    marginBottom: 18,
+  rowDetailBullet: {
+    position: 'absolute',
+    left: 0,
+    top: 40,
+    width: 3,
+    height: 18,
+    borderRadius: 2,
   },
-  tonightList: {
-    gap: 14,
-  },
-  tonightStep: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  tonightNumber: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(248,250,252,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  tonightNumberText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    color: palette.inkInverse,
-  },
-  tonightStepText: {
-    flex: 1,
+  rowDetailNext: {
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: 'rgba(248,250,252,0.92)',
-  },
-
-  // Trust note
-  trustNote: {
-    fontFamily: 'InstrumentSerif-Italic',
     fontSize: 13,
-    lineHeight: 20,
-    color: palette.inkTertiary,
-    textAlign: 'center',
-    marginTop: 6,
-    marginHorizontal: 16,
+    lineHeight: 19,
+    color: palette.ink,
   },
 
-  // Primary CTA
-  primaryCta: {
-    height: 54,
-    borderRadius: 27,
+  // CTA
+  cta: {
+    height: 52,
+    borderRadius: 26,
     backgroundColor: palette.ink,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  primaryCtaLabel: {
+  ctaLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 15,
+    letterSpacing: 0.1,
+    color: palette.inkInverse,
+  },
+
+  // Trust
+  trustNote: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 12,
+    lineHeight: 18,
+    color: palette.inkTertiary,
+    textAlign: 'center',
+    marginTop: 16,
+    marginHorizontal: 24,
+  },
+
+  // Tonight sheet
+  backdrop: {
+    backgroundColor: 'rgba(11,18,32,0.45)',
+  },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: palette.bg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 36,
+    shadowColor: palette.ink,
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 14,
+  },
+  sheetGrabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(11,18,32,0.15)',
+    marginBottom: 18,
+  },
+  sheetKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 16,
+  },
+  sheetSteps: {
+    gap: 16,
+    marginBottom: 22,
+  },
+  sheetStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+  sheetStepNum: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 24,
+    lineHeight: 26,
+    color: palette.clay,
+    width: 26,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  sheetStepText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: palette.ink,
+    letterSpacing: -0.1,
+    paddingTop: 3,
+  },
+  sheetCta: {
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: palette.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCtaLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
     letterSpacing: 0.2,
     color: palette.inkInverse,
   },

@@ -252,21 +252,22 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 };
 
 // ------------------------------------------------------------------
-// Caption copy (v8.1 concern-centric)
+// Caption copy (v8.2 — 4-beat compression)
 //
-// Each caption names what the AI is actually reading at that beat. This is
-// the staged-pipeline storytelling the v8.1 product critique called out —
-// "the app should feel like a real AI system is working." Same beat cadence
-// as v7.7; only the copy layer changes.
+// Four captions, three words each (plus a short noun). No setup phrases,
+// no "we're" or "I'm" — just the work being done. Reads as a rhythm:
+// texture → breakouts → hydration → prepare. Beat cadence preserved; the
+// screen still holds 7 visual beats (arrive / locate / partition / detect
+// / score / settle / reveal) but only four carry text.
 // ------------------------------------------------------------------
 
 export const CAPTION_COPY = {
-  locate: 'Checking lighting and focus.',
-  partition: 'Mapping your face.',
-  detect: 'Looking for breakouts and texture.',
-  score: 'Reading hydration and tone.',
-  waiting: 'Building your summary\u2026',
-  reveal: 'Your reading is ready.',
+  locate: 'Reading skin texture.',
+  partition: 'Checking for breakouts.',
+  detect: 'Measuring hydration.',
+  score: 'Preparing your result.',
+  waiting: 'One moment\u2026',
+  reveal: 'Ready.',
 } as const;
 
 // ------------------------------------------------------------------
@@ -274,10 +275,10 @@ export const CAPTION_COPY = {
 // ------------------------------------------------------------------
 
 export const A11Y_ANNOUNCEMENTS = {
-  locate: 'Checking lighting and focus.',
-  partition: 'Mapping your face.',
-  detect: 'Looking for breakouts and texture across the forehead, chin and cheeks.',
-  score: 'Reading hydration and tone.',
-  waiting: 'Building your summary.',
-  reveal: 'Your reading is ready.',
+  locate: 'Reading skin texture.',
+  partition: 'Checking for breakouts.',
+  detect: 'Measuring hydration.',
+  score: 'Preparing your result.',
+  waiting: 'One moment.',
+  reveal: 'Your result is ready.',
 } as const;
