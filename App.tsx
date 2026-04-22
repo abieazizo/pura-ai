@@ -46,7 +46,7 @@ export default function App() {
   });
 
   const [hydrated, setHydrated] = useState(useAppStore.persist.hasHydrated());
-  const [splashDone, setSplashDone] = useState(false);
+  const [introDone, setIntroDone] = useState(false);
 
   useEffect(() => {
     installDevConsole();
@@ -55,7 +55,10 @@ export default function App() {
     return unsub;
   }, []);
 
-  const ready = hydrated && splashDone && (fontsLoaded || fontsLoaded === undefined);
+  // AppIntro plays on every launch. It holds on its settled frame until BOTH
+  // its own minimum hold has elapsed AND systemReady is true (hydration +
+  // fonts resolved). Once it dismisses, we never show it again this session.
+  const systemReady = hydrated && (fontsLoaded || fontsLoaded === undefined);
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -63,7 +66,7 @@ export default function App() {
         <ThemeProvider>
           <View style={styles.fill}>
             <StatusBar style="dark" />
-            {ready ? (
+            {introDone ? (
               <NavigationContainer theme={navTheme}>
                 <BottomSheetModalProvider>
                   <ContextualProvider>
@@ -72,7 +75,10 @@ export default function App() {
                 </BottomSheetModalProvider>
               </NavigationContainer>
             ) : (
-              <SplashScreen onReady={() => setSplashDone(true)} />
+              <SplashScreen
+                systemReady={systemReady}
+                onReady={() => setIntroDone(true)}
+              />
             )}
           </View>
         </ThemeProvider>

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -11,30 +12,31 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { palette, shadow } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 /**
- * PuraMark — v8 cool-system rebuild.
+ * PuraMark — v9 raster brand mark.
  *
- * A single-weight teardrop silhouette, monochrome, tintable via the `color`
- * prop. No gradients, no glass effects, no multi-color splits — those are
- * all anti-patterns for the "premium, restrained, clinical-luxurious"
- * direction. The mark reads crisply from 14pt (inline bullet) to 160pt
- * (splash hero).
+ * The canonical brand asset is now the approved rendered PNG at
+ * `assets/brand/pura-drop.png`. Previous SVG silhouette redraws are
+ * retired. The image renders through `expo-image` for fast cache + cross-
+ * platform pixel fidelity.
  *
- * API preserved from v7 — every existing call site (HomeHeader, splash,
- * ProductsScreen header, tab bar, etc.) continues to work unchanged.
+ * API contract (preserved for ~20 call sites):
+ *   variant?   — idle / scanning / complete / thinking / achievement
+ *   size?      — MarkSize keyword or explicit pixels (number)
+ *   color?     — deprecated no-op (the PNG carries its own hues; rasters
+ *                can't be tinted meaningfully)
+ *   glow?      — wraps the mark in the warm `shadow.mark` layered shadow
+ *   outlined?  — deprecated no-op (SVG-only concept)
+ *   onPress?   — when present, the whole mark is a Pressable
+ *   style?     — merged onto the outer container
  *
- * Variants
- *   idle        — imperceptible breathing (scale 1 → 1.012 → 1, 4s loop)
- *   scanning    — two concentric rings expand outward, 500ms apart
- *   complete    — one-shot: gentle scale-flash (1 → 1.08 → 1) + brief glow
- *   thinking    — slow tempo-breathing at half speed
- *   achievement — one-shot: soft shimmer sweep left → right
- *
- * Reduce Motion halts every animation and renders the static silhouette.
+ * Variants wrap motion AROUND the raster, never *of* the raster — a raster
+ * is the truth; we never distort it. Ripples use SVG `Circle` in brand
+ * azure; idle/breath/shimmer are overlays.
  */
 
 export type MarkVariant =
@@ -54,30 +56,20 @@ const SIZES: Record<MarkSize, number> = {
   hero: 152,
 };
 
-// Drop silhouette — v8.1 tightened. Authored in a 40×52 viewbox.
-// The path is tuned to match the approved PNG silhouette: sharp tip at
-// (20, 2.5), widest at ~62% down, taper balanced so the shape reads as a
-// water drop at 18pt (tab bar) and 152pt (splash hero).
-const DROP_PATH =
-  'M 20 2.5 C 20 2.5 34.5 20 34.5 33 C 34.5 43.5 28.5 50 20 50 C 11.5 50 5.5 43.5 5.5 33 C 5.5 20 20 2.5 20 2.5 Z';
-
-// Inner highlight — subtle S-curve echoing the water-motion reflection in
-// the source PNG. Rendered at partial opacity on sizes ≥ 60pt; omitted at
-// small sizes where it would muddy. Never shown in `outlined` variant.
-const INNER_HIGHLIGHT_PATH =
-  'M 13.5 40 C 11 32 13 22 19 11';
-
-const VIEWBOX_W = 40;
-const VIEWBOX_H = 52;
+/**
+ * The approved drop asset. Single source of truth — any other mark
+ * elsewhere should be replaced with `<PuraMark />`.
+ */
+const DROP_ASSET = require('../../assets/brand/pura-drop.png');
 
 export interface PuraMarkProps {
   variant?: MarkVariant;
   size?: MarkSize | number;
-  /** Fill color. Defaults to brand azure. */
+  /** @deprecated raster cannot be tinted; retained for API compatibility. */
   color?: string;
-  /** If true, renders an azure glow halo behind the mark. */
+  /** Renders the layered `shadow.mark` glow behind the mark. */
   glow?: boolean;
-  /** Outline variant — 1.5pt stroke, no fill. Handy for header placements. */
+  /** @deprecated SVG-only; raster has no outline variant. */
   outlined?: boolean;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
@@ -86,9 +78,7 @@ export interface PuraMarkProps {
 export function PuraMark({
   variant = 'idle',
   size = 'sm',
-  color = palette.clay,
   glow = false,
-  outlined = false,
   style,
 }: PuraMarkProps) {
   const px = typeof size === 'number' ? size : SIZES[size];
@@ -176,10 +166,13 @@ export function PuraMark({
     transform: [{ translateX: (shimmer.value - 0.5) * px * 1.4 }],
   }));
 
-  // Complete-variant halo — briefly brighter glow behind the drop.
   const haloStyle = useAnimatedStyle(() => ({
     opacity: flashScale.value * 0.6,
   }));
+
+  // The asset is a square drop — `height === width` keeps proportions.
+  const imgW = px;
+  const imgH = px;
 
   return (
     <View
@@ -190,10 +183,10 @@ export function PuraMark({
       {variant === 'scanning' ? (
         <>
           <Animated.View style={[styles.rippleWrap, ripple1Style]}>
-            <RippleRing size={px} color={color} />
+            <RippleRing size={px} />
           </Animated.View>
           <Animated.View style={[styles.rippleWrap, ripple2Style]}>
-            <RippleRing size={px} color={color} />
+            <RippleRing size={px} />
           </Animated.View>
         </>
       ) : null}
@@ -205,21 +198,23 @@ export function PuraMark({
             styles.haloDisc,
             {
               width: px * 1.6,
-              height: px * 1.6 * (VIEWBOX_H / VIEWBOX_W),
-              backgroundColor: color,
-              opacity: 0.25,
+              height: px * 1.6,
+              backgroundColor: palette.clay,
+              opacity: 0.22,
             },
             haloStyle,
           ]}
         />
       ) : null}
 
-      <Animated.View style={[styles.drop, bodyStyle]}>
-        <DropShape
-          size={px}
-          color={color}
-          glow={glow}
-          outlined={outlined}
+      <Animated.View
+        style={[styles.drop, bodyStyle, glow ? shadow.mark.outer : undefined]}
+      >
+        <Image
+          source={DROP_ASSET}
+          style={{ width: imgW, height: imgH }}
+          contentFit="contain"
+          transition={0}
         />
 
         {variant === 'achievement' ? (
@@ -241,73 +236,14 @@ export function PuraMark({
   );
 }
 
-function DropShape({
-  size,
-  color,
-  glow,
-  outlined,
-}: {
-  size: number;
-  color: string;
-  glow: boolean;
-  outlined: boolean;
-}) {
-  const w = size;
-  const h = size * (VIEWBOX_H / VIEWBOX_W);
-  // Render the inner highlight only at display sizes; at list/icon sizes
-  // the extra path muddies the silhouette.
-  const showHighlight = size >= 60 && !outlined;
+function RippleRing({ size }: { size: number }) {
   return (
-    <Svg
-      width={w}
-      height={h}
-      viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`}
-      style={glow ? shadow.mark.outer : undefined}
-    >
-      <Defs>
-        {/* Gentle top-to-bottom tonal shift inside the fill — brings a
-            millimeter of depth at hero sizes without looking like a glass
-            render. */}
-        <LinearGradient id="puraDropFill" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={color} stopOpacity={0.94} />
-          <Stop offset="1" stopColor={color} stopOpacity={1} />
-        </LinearGradient>
-      </Defs>
-
-      <Path
-        d={DROP_PATH}
-        fill={outlined ? 'none' : 'url(#puraDropFill)'}
-        stroke={outlined ? color : 'none'}
-        strokeWidth={outlined ? 1.5 : 0}
-        strokeLinejoin="round"
-      />
-
-      {showHighlight ? (
-        <Path
-          d={INNER_HIGHLIGHT_PATH}
-          stroke={palette.inkInverse}
-          strokeOpacity={0.38}
-          strokeWidth={1.25}
-          fill="none"
-          strokeLinecap="round"
-        />
-      ) : null}
-    </Svg>
-  );
-}
-
-function RippleRing({ size, color }: { size: number; color: string }) {
-  return (
-    <Svg
-      width={size * 2}
-      height={size * 2}
-      viewBox="0 0 100 100"
-    >
+    <Svg width={size * 2} height={size * 2} viewBox="0 0 100 100">
       <Circle
         cx="50"
         cy="52"
         r="42"
-        stroke={color}
+        stroke={palette.clay}
         strokeOpacity={0.38}
         strokeWidth={1.25}
         fill="transparent"
