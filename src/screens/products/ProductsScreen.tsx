@@ -124,6 +124,19 @@ export function ProductsScreen() {
           contentContainerStyle={styles.rowsScroll}
           showsVerticalScrollIndicator={false}
         >
+          {/* v9.2 — Shop by goal. Tight 2×3 chip grid at the top of the
+              catalog. Each chip will deep-link into CategoryView filtered
+              by its goal once the filter engine lands. */}
+          <ShopByGoal
+            onPressGoal={(goal) => {
+              hapt.select();
+              // Hook into existing CategoryView — until filter support
+              // ships, goal simply scopes the destination kind.
+              // eslint-disable-next-line no-console
+              console.log('[products] shop-by-goal:', goal);
+            }}
+          />
+
           <ProductRow
             kind="best-for-you"
             data={rows.bestForYou}
@@ -144,6 +157,112 @@ export function ProductsScreen() {
     </SafeAreaView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// ShopByGoal — v9.2 goal-driven browse. Six outcomes in a 2×3 grid, each a
+// chip with a colored dot + label + nav arrow. Intentionally lives inline
+// so the rest of the catalog composition stays legible.
+// ---------------------------------------------------------------------------
+
+const GOAL_SWATCH: Record<
+  'breakouts' | 'hydration' | 'texture' | 'dark-marks' | 'sensitive' | 'natural',
+  string
+> = {
+  breakouts: palette.rust,
+  hydration: palette.clay,
+  texture: palette.amber,
+  'dark-marks': palette.clayDeep,
+  sensitive: palette.moss,
+  natural: palette.mossDeep,
+};
+
+const GOAL_LABEL: Record<keyof typeof GOAL_SWATCH, string> = {
+  breakouts: 'Breakouts',
+  hydration: 'Hydration',
+  texture: 'Texture',
+  'dark-marks': 'Dark marks',
+  sensitive: 'Sensitive',
+  natural: 'Natural',
+};
+
+function ShopByGoal({
+  onPressGoal,
+}: {
+  onPressGoal: (goal: keyof typeof GOAL_SWATCH) => void;
+}) {
+  const goals = Object.keys(GOAL_SWATCH) as Array<keyof typeof GOAL_SWATCH>;
+  return (
+    <View style={goalStyles.wrap}>
+      <Text style={goalStyles.kicker} maxFontSizeMultiplier={1.1}>
+        SHOP BY GOAL
+      </Text>
+      <View style={goalStyles.grid}>
+        {goals.map((g) => (
+          <Pressable
+            key={g}
+            onPress={() => onPressGoal(g)}
+            accessibilityRole="button"
+            accessibilityLabel={`Shop ${GOAL_LABEL[g]}`}
+            style={({ pressed }) => [
+              goalStyles.chip,
+              pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
+            ]}
+          >
+            <View
+              style={[goalStyles.dot, { backgroundColor: GOAL_SWATCH[g] }]}
+            />
+            <Text style={goalStyles.label} maxFontSizeMultiplier={1.1}>
+              {GOAL_LABEL[g]}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const goalStyles = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 6,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    flexGrow: 1,
+    flexBasis: '30%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: palette.bgDeep,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  label: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: -0.1,
+    color: palette.ink,
+  },
+});
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },

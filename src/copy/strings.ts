@@ -229,15 +229,20 @@ export const assistant = {
   attachHint: 'Attach a product. I\u2019ll read it.',
   composerPlaceholder: 'Write your question\u2026',
   forYouLabel: 'FOR YOU',
+  // v9.2 — concierge-style starter prompts. Tied to Skin Score + scan
+  // flow rather than generic how-to-skincare. Empty state is educational;
+  // post-scan prompts are specific to the user's current reading.
   promptsEmpty: [
-    'What\u2019s a good starter routine?',
-    'How do I know my skin type?',
-    'What ingredients should beginners avoid?',
+    'How does the Skin Score work?',
+    'What should I expect in the first two weeks?',
+    'Show natural product options.',
   ],
   promptsFor: (zone: string) => [
-    `What\u2019s the best routine for my ${zone} breakouts?`,
-    `What ingredients are making my ${zone} better?`,
-    `Why is my T-zone stable but not improving?`,
+    'Why did my Skin Score drop?',
+    `What helps my ${zone} breakout?`,
+    'Compare my last two scans.',
+    'Show natural product options.',
+    'What should I do tonight?',
   ],
   typing: 'Reading\u2026',
   mockResponseIntro: 'Looking at your most recent scan\u2014',

@@ -22,6 +22,12 @@ import {
   buildTonightFocus,
   getConcerns,
 } from '@/utils/concerns';
+import {
+  computeSkinScore,
+  formatDelta,
+  sinceLastPhrase,
+  tierLabel,
+} from '@/utils/skinScore';
 import { seedProducts } from '@/data/seed';
 import type { Concern, ConcernCategory, Product, Severity } from '@/types';
 
@@ -61,6 +67,7 @@ export function PlanScreen() {
 
   const concerns = latest ? getConcerns(latest, previous) : [];
   const tonight = buildTonightFocus(concerns);
+  const score = computeSkinScore(scans);
 
   const primary = concerns.find((c) => c.severity !== 'calm') ?? concerns[0];
   const rec = useMemo(
@@ -142,6 +149,33 @@ export function PlanScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Skin Score strip ── */}
+        <View style={styles.scoreStrip}>
+          <View style={styles.scoreStripLeft}>
+            <Text style={styles.scoreStripKicker} maxFontSizeMultiplier={1.1}>
+              SKIN SCORE
+            </Text>
+            <View style={styles.scoreStripValueRow}>
+              <Text style={styles.scoreStripValue} maxFontSizeMultiplier={1.1}>
+                {score.value}
+              </Text>
+              <Text style={styles.scoreStripTier} maxFontSizeMultiplier={1.1}>
+                {tierLabel(score.tier)}
+              </Text>
+            </View>
+          </View>
+          {score.deltaSinceLast !== null ? (
+            <View style={styles.scoreStripRight}>
+              <Text style={styles.scoreStripDelta} maxFontSizeMultiplier={1.1}>
+                {formatDelta(score.deltaSinceLast)}
+              </Text>
+              <Text style={styles.scoreStripSince} maxFontSizeMultiplier={1.1}>
+                {sinceLastPhrase(score.latestAt, score.scanCount)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
         {/* ── SUMMARY ── */}
         <View style={styles.section}>
           <Text style={styles.summaryKicker} maxFontSizeMultiplier={1.1}>
@@ -537,6 +571,64 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 4,
     paddingBottom: 40,
+  },
+
+  // Score strip — anchors the page in the Skin Score just below the header.
+  scoreStrip: {
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: palette.bgDeep,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  scoreStripLeft: {
+    flex: 1,
+  },
+  scoreStripKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  scoreStripValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  scoreStripValue: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 30,
+    lineHeight: 32,
+    letterSpacing: -0.8,
+    color: palette.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  scoreStripTier: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.2,
+    color: palette.inkSecondary,
+  },
+  scoreStripRight: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  scoreStripDelta: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    letterSpacing: 0.1,
+    color: palette.clay,
+    fontVariant: ['tabular-nums'],
+  },
+  scoreStripSince: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: palette.inkTertiary,
   },
 
   section: {

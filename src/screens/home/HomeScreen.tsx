@@ -26,6 +26,12 @@ import { palette, statusColor } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { CATEGORY_LABEL, getConcerns, severityLabel } from '@/utils/concerns';
+import {
+  computeSkinScore,
+  formatDelta,
+  sinceLastPhrase,
+  tierLabel,
+} from '@/utils/skinScore';
 import { seedProducts } from '@/data/seed';
 import type { Concern, Scan, Severity } from '@/types';
 
@@ -132,12 +138,11 @@ export function HomeScreen() {
   // ---------- Day 1+ ----------
   const concerns = latest ? getConcerns(latest, previous) : [];
   const primary = concerns.find((c) => c.severity !== 'calm') ?? concerns[0];
-  const insightLine = buildInsightLine(concerns);
 
-  const delta =
-    first && latest && latest.id !== first.id
-      ? latest.overallScore - first.overallScore
-      : 0;
+  // Skin Score is the spine — one source of truth across Home / Plan /
+  // Progress. All score language on this page reads from `score`.
+  const score = computeSkinScore(scans);
+  const delta = score.deltaSinceLast ?? score.deltaSinceFirst ?? 0;
   const daysIn =
     first && latest
       ? Math.max(
@@ -165,24 +170,60 @@ export function HomeScreen() {
         contentContainerStyle={{ paddingBottom: bottomClearance }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── A. Hero insight ──────────────────────────────────────────── */}
+        {/* ── A. Hero — Skin Score is the headline ──────────────────── */}
         <View style={styles.heroBlock}>
           <Text style={styles.greeting} maxFontSizeMultiplier={1.2}>
             {greeting}
           </Text>
+
+          <View style={styles.scoreHeroRow}>
+            <Text style={styles.scoreNumber} maxFontSizeMultiplier={1.1}>
+              {score.value}
+            </Text>
+            <View style={styles.scoreMeta}>
+              <View style={styles.scoreKickerRow}>
+                <Text style={styles.scoreKicker} maxFontSizeMultiplier={1.1}>
+                  SKIN SCORE
+                </Text>
+                <View style={styles.scoreTierPill}>
+                  <Text style={styles.scoreTierText} maxFontSizeMultiplier={1.1}>
+                    {tierLabel(score.tier)}
+                  </Text>
+                </View>
+              </View>
+              {score.deltaSinceLast !== null ? (
+                <View style={styles.scoreDeltaRow}>
+                  <ScoreDeltaChip delta={score.deltaSinceLast} />
+                  <Text
+                    style={styles.scoreSinceLabel}
+                    maxFontSizeMultiplier={1.15}
+                    numberOfLines={1}
+                  >
+                    {sinceLastPhrase(score.latestAt, score.scanCount)}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.scoreFirstLabel} maxFontSizeMultiplier={1.15}>
+                  your first reading
+                </Text>
+              )}
+            </View>
+          </View>
+
           <Text
-            style={styles.insight}
+            style={styles.scoreHeadline}
             maxFontSizeMultiplier={1.15}
-            numberOfLines={3}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}
+            numberOfLines={2}
           >
-            {insightLine}
+            {score.headline}
           </Text>
         </View>
 
-        {/* ── B. At a glance ──────────────────────────────────────────── */}
+        {/* ── B. What changed — 3 concise findings max ──────────────── */}
         <View style={styles.glanceBlock}>
+          <Text style={styles.whatChangedKicker} maxFontSizeMultiplier={1.1}>
+            WHAT CHANGED
+          </Text>
           <GlanceStrip concerns={concerns} />
         </View>
 
@@ -234,7 +275,7 @@ export function HomeScreen() {
                 maxFontSizeMultiplier={1.15}
                 numberOfLines={2}
               >
-                {buildProgressLine(delta, concerns, previous, latest)}
+                {buildProgressLine(score.deltaSinceFirst, score.value)}
               </Text>
             </View>
             <ProgressDelta delta={delta} />
@@ -364,20 +405,19 @@ function BrandBar({ initials }: { initials: string | null }) {
 }
 
 function GlanceStrip({ concerns }: { concerns: Concern[] }) {
-  // Render four tight status pills (breakouts / hydration / texture / tone).
-  // Each shows a label + a single-word severity. No numbers, no icons.
-  const byCat = Object.fromEntries(concerns.map((c) => [c.category, c]));
+  // v9.2 — 3 findings max (was 4). Priority: any non-calm concerns first,
+  // ranked by severity; calm-only falls back to the top 3 by rank.
+  const nonCalm = concerns.filter((c) => c.severity !== 'calm');
+  const top = (nonCalm.length > 0 ? nonCalm : concerns).slice(0, 3);
   return (
     <View style={styles.glanceStrip}>
-      {(['breakouts', 'hydration', 'texture', 'tone'] as const).map((cat) => {
-        const c = byCat[cat];
-        if (!c) return null;
+      {top.map((c) => {
         const color = colorFor(c.severity);
         return (
-          <View key={cat} style={styles.glancePill}>
+          <View key={c.category} style={styles.glancePill}>
             <View style={[styles.glanceDot, { backgroundColor: color }]} />
             <Text style={styles.glanceLabel} maxFontSizeMultiplier={1.1}>
-              {CATEGORY_LABEL[cat]}
+              {CATEGORY_LABEL[c.category]}
             </Text>
             <Text
               style={[styles.glanceSeverity, { color }]}
@@ -388,6 +428,37 @@ function GlanceStrip({ concerns }: { concerns: Concern[] }) {
           </View>
         );
       })}
+    </View>
+  );
+}
+
+/**
+ * Tight chip for the delta next to the score hero. Green up / warm down /
+ * neutral flat — visually echoes the Skin Score tier.
+ */
+function ScoreDeltaChip({ delta }: { delta: number }) {
+  const Icon = delta > 0 ? ArrowUp : delta < 0 ? ArrowDown : Minus;
+  const bg =
+    delta > 0
+      ? palette.mossLight
+      : delta < 0
+      ? palette.rustLight
+      : palette.bgDeep;
+  const fg =
+    delta > 0
+      ? palette.mossDeep
+      : delta < 0
+      ? palette.rust
+      : palette.inkSecondary;
+  return (
+    <View style={[styles.scoreDeltaChip, { backgroundColor: bg }]}>
+      <Icon size={12} color={fg} weight="bold" />
+      <Text
+        style={[styles.scoreDeltaChipText, { color: fg }]}
+        maxFontSizeMultiplier={1.1}
+      >
+        {formatDelta(delta)}
+      </Text>
     </View>
   );
 }
@@ -492,38 +563,22 @@ function buildGreeting(firstName: string | null): string {
   return firstName ? `${prefix}, ${firstName}.` : `${prefix}.`;
 }
 
-function buildInsightLine(concerns: Concern[]): string {
-  const nonCalm = concerns.filter((c) => c.severity !== 'calm');
-  if (nonCalm.length === 0) return 'Your skin is settled today.';
-  const top = nonCalm[0];
-  switch (top.category) {
-    case 'breakouts':
-      return `One active breakout on your ${top.region}.`;
-    case 'hydration':
-      return `Your ${top.region} are running a little dry.`;
-    case 'texture':
-      return `Texture is slightly uneven on your ${top.region}.`;
-    case 'tone':
-      return `Dark marks still visible on your ${top.region}.`;
-  }
-}
-
+/**
+ * Progress teaser line — grounded in the Skin Score delta since day 1, not
+ * abstract. "Up 12 since Day 1" is the default; score-specific narrative
+ * is reserved for the Progress screen.
+ */
 function buildProgressLine(
-  delta: number,
-  concerns: Concern[],
-  previous: Scan | undefined,
-  latest: Scan
+  deltaSinceFirst: number | null,
+  scoreValue: number,
 ): string {
-  if (delta > 3) return 'Gaining ground across the board.';
-  if (delta > 0) return 'Slight improvement since day 1.';
-  if (delta < -3) return 'Something shifted. Worth a closer look.';
-  if (delta < 0) return 'Down a touch from your starting point.';
-  // Flat: pick a narrative from concerns
-  const improved = concerns.find(
-    (c) => c.severity === 'mild' || c.severity === 'calm'
-  );
-  if (improved) return `${CATEGORY_LABEL[improved.category]} is holding steady.`;
-  return 'Steady progress, no sudden swings.';
+  if (deltaSinceFirst === null || deltaSinceFirst === 0) {
+    return `Skin Score ${scoreValue} — no change since day 1.`;
+  }
+  if (deltaSinceFirst > 0) {
+    return `Skin Score ${scoreValue} — up ${deltaSinceFirst} since day 1.`;
+  }
+  return `Skin Score ${scoreValue} — down ${Math.abs(deltaSinceFirst)} since day 1.`;
 }
 
 function pickRecProduct(category: Concern['category'] | undefined) {
@@ -614,25 +669,109 @@ const styles = StyleSheet.create({
     color: palette.inkSecondary,
   },
 
-  // A — Hero
+  // A — Hero (Skin Score as the spine)
   heroBlock: {
     paddingHorizontal: 20,
-    paddingTop: 28,
-    paddingBottom: 8,
+    paddingTop: 24,
+    paddingBottom: 4,
   },
   greeting: {
     fontFamily: 'Inter-Medium',
     fontSize: 14,
     letterSpacing: 0.1,
     color: palette.inkSecondary,
-    marginBottom: 14,
+    marginBottom: 18,
   },
-  insight: {
+  scoreHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 16,
+  },
+  scoreNumber: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 38,
-    lineHeight: 42,
-    letterSpacing: -1.0,
+    fontSize: 88,
+    lineHeight: 88,
+    letterSpacing: -3,
     color: palette.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  scoreMeta: {
+    flex: 1,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  scoreKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scoreKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  scoreTierPill: {
+    paddingHorizontal: 8,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: palette.bgDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreTierText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: palette.inkSecondary,
+  },
+  scoreDeltaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scoreDeltaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  scoreDeltaChipText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.1,
+    fontVariant: ['tabular-nums'],
+  },
+  scoreSinceLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: palette.inkTertiary,
+    flexShrink: 1,
+  },
+  scoreFirstLabel: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    color: palette.inkTertiary,
+  },
+  scoreHeadline: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.4,
+    color: palette.ink,
+    marginTop: 16,
+  },
+  whatChangedKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 12,
   },
 
   // B — Glance strip

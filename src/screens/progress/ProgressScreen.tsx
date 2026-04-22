@@ -21,6 +21,8 @@ import { PuraMark } from '@/components/PuraMark';
 import { MetricBar } from './MetricBar';
 import { PhotoTimelineStrip } from './PhotoTimelineStrip';
 import { ProgressNarrative } from './ProgressNarrative';
+import { SkinScoreHero } from './SkinScoreHero';
+import { computeSkinScore } from '@/utils/skinScore';
 import { useAppStore } from '@/store/useAppStore';
 import { useHasScanned, useLatestScan, useFirstScan, useDayNumber, useStreakDays, useProgressPercent } from '@/store/selectors';
 import { useShallow } from 'zustand/react/shallow';
@@ -131,9 +133,13 @@ export function ProgressScreen() {
       >
         <Header day={dayNumber} />
 
-        {/* v9.1 — the giant "01 / OF 84" DayCounter was demoted. Proof is
-            now led by the narrative module + the before/after compare. Day
-            number lives as a small pill inside Header. */}
+        {/* v9.2 — Skin Score is the spine of the whole app. Progress page
+            leads with the score hero: giant tabular value, delta chip,
+            tier pill, and an animated sparkline across every scan in
+            history. ProgressNarrative + compare slider + metric bars
+            continue below as supporting proof. */}
+        <SkinScoreHero score={computeSkinScore(scans)} scans={scans} />
+
         <ProgressNarrative scans={scans} />
 
         {first && selectedScan ? (
