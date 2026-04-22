@@ -252,15 +252,20 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 };
 
 // ------------------------------------------------------------------
-// Caption copy
+// Caption copy (v8.1 concern-centric)
+//
+// Each caption names what the AI is actually reading at that beat. This is
+// the staged-pipeline storytelling the v8.1 product critique called out —
+// "the app should feel like a real AI system is working." Same beat cadence
+// as v7.7; only the copy layer changes.
 // ------------------------------------------------------------------
 
 export const CAPTION_COPY = {
-  locate: 'Mapping your face.',
-  partition: 'Reading four zones.',
-  detect: 'Noticing what I see.',
-  score: 'Scoring each zone.',
-  waiting: 'Finishing your reading\u2026',
+  locate: 'Checking lighting and focus.',
+  partition: 'Mapping your face.',
+  detect: 'Looking for breakouts and texture.',
+  score: 'Reading hydration and tone.',
+  waiting: 'Building your summary\u2026',
   reveal: 'Your reading is ready.',
 } as const;
 
@@ -269,10 +274,10 @@ export const CAPTION_COPY = {
 // ------------------------------------------------------------------
 
 export const A11Y_ANNOUNCEMENTS = {
-  locate: 'Mapping your face.',
-  partition: 'Reading four zones: forehead, T-zone, chin, cheeks.',
-  detect: 'Noticing findings: dryness, texture, barrier, hydration.',
-  score: 'Scoring each zone.',
-  waiting: 'Finishing your reading.',
+  locate: 'Checking lighting and focus.',
+  partition: 'Mapping your face.',
+  detect: 'Looking for breakouts and texture across the forehead, chin and cheeks.',
+  score: 'Reading hydration and tone.',
+  waiting: 'Building your summary.',
   reveal: 'Your reading is ready.',
 } as const;

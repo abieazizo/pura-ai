@@ -9,7 +9,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
-import Svg, { Circle, Line } from 'react-native-svg';
 import {
   ArrowRight,
   ArrowUp,
@@ -24,10 +23,17 @@ import {
   useDayNumber,
 } from '@/store/useAppStore';
 import { seedProducts } from '@/data/seed';
-import { palette } from '@/theme';
+import { palette, statusColor } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
-import type { SkinZoneKey, Scan } from '@/types';
+import type { Scan, Severity, Concern } from '@/types';
+import {
+  CATEGORY_LABEL,
+  buildSummaryHeadline,
+  getConcerns,
+  severityDotCount,
+  severityLabel,
+} from '@/utils/concerns';
 
 /**
  * Home — v8 cool premium-software rebuild.
@@ -51,25 +57,10 @@ import type { SkinZoneKey, Scan } from '@/types';
  *     last scan") — not as commerce.
  */
 
-const ZONE_ORDER: SkinZoneKey[] = ['forehead', 'tZone', 'chin', 'cheeks'];
-const ZONE_LABEL: Record<SkinZoneKey, string> = {
-  forehead: 'Forehead',
-  tZone: 'T-zone',
-  chin: 'Chin',
-  cheeks: 'Cheeks',
-  nose: 'Nose',
-  jawline: 'Jawline',
-};
-
-// Spatial layout for the constellation SVG — normalized coords inside a 280×200 box.
-const CONSTELLATION: Record<SkinZoneKey, { x: number; y: number }> = {
-  forehead: { x: 0.50, y: 0.18 },
-  tZone:    { x: 0.50, y: 0.50 },
-  chin:     { x: 0.50, y: 0.86 },
-  cheeks:   { x: 0.20, y: 0.55 }, // left cheek anchor; right cheek mirrored
-  nose:     { x: 0.50, y: 0.50 },
-  jawline:  { x: 0.50, y: 0.86 },
-};
+// Zone-labeled constellation was removed in v8.1 — the user-facing Home
+// intelligence is now concern-centric ("Today's focus") rather than
+// anatomical. Zones still exist in the data model for overlay geometry on
+// the results screen; the home never surfaces them.
 
 export function HomeScreen() {
   // Composite nav — we push within the HomeStack (Products, ProductDetail,
@@ -381,7 +372,7 @@ function DayNBody({
   }, []);
 
   const recRationale = useMemo(
-    () => buildRecRationale(latest),
+    () => buildRecRationale(latest, previous ?? undefined),
     [latest]
   );
 
@@ -400,7 +391,7 @@ function DayNBody({
         deltaColor={colorForDelta(delta)}
       />
 
-      <SkinReport scan={latest} />
+      <TodayFocus scan={latest} previous={previous ?? undefined} />
 
       {nextStep && morningLen > 0 ? (
         <TodayRoutineRow
@@ -539,148 +530,151 @@ function InsightCard({ kicker, body }: { kicker: string; body: string }) {
   );
 }
 
-// --- Skin report: constellation + zone chips -------------------------------
+// --- Today's Focus (v8.1) --------------------------------------------------
+// Replaces the v8 constellation + zone-chip grid. The module answers the one
+// question a user has on the home page: "what matters for me today?"
+//
+// Render strategy:
+//   - concerns[0] and [1] → full cards with finding + next-step callout
+//   - concerns[2] and [3] → compact one-liners ("also today") so they're
+//     surfaced but don't compete with the top priorities
+//
+// If the top concern is 'calm' (everything's fine), we render a single
+// reassurance card instead of four mostly-empty rows.
 
-function SkinReport({ scan }: { scan: Scan }) {
-  // Extract score by zone key from scan.zones; fallback to overallScore.
-  const scoreFor = (k: SkinZoneKey) =>
-    scan.zones.find((z) => z.key === k)?.score ?? scan.overallScore;
+function TodayFocus({
+  scan,
+  previous,
+}: {
+  scan: Scan;
+  previous: Scan | undefined;
+}) {
+  const concerns = getConcerns(scan, previous);
+  if (concerns.length === 0) return null;
+
+  // All calm → just one reassurance panel, no cards.
+  const allCalm = concerns.every((c) => c.severity === 'calm');
+  if (allCalm) {
+    return (
+      <View style={styles.todayFocus}>
+        <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+          TODAY{'\u2019'}S FOCUS
+        </Text>
+        <View style={styles.todayCalm}>
+          <Text style={styles.todayCalmTitle} maxFontSizeMultiplier={1.15}>
+            Your skin is settled.
+          </Text>
+          <Text style={styles.todayCalmBody} maxFontSizeMultiplier={1.2}>
+            No priority issues in your last scan. Keep your current routine
+            going — consistency is the work.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const primary = concerns.filter((c) => c.severity !== 'calm').slice(0, 2);
+  const secondary = concerns.filter((c) => !primary.includes(c));
 
   return (
-    <View style={styles.skinReport}>
+    <View style={styles.todayFocus}>
       <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-        SKIN INTELLIGENCE
+        TODAY{'\u2019'}S FOCUS
+      </Text>
+      <Text style={styles.todayMeta} maxFontSizeMultiplier={1.2}>
+        From your last scan.
       </Text>
 
-      <Constellation scoreFor={scoreFor} />
+      <View style={styles.todayPrimaryStack}>
+        {primary.map((c) => (
+          <TodayConcernCard key={c.category} concern={c} />
+        ))}
+      </View>
 
-      <View style={styles.zoneChipGrid}>
-        {ZONE_ORDER.map((zone) => {
-          const score = scoreFor(zone);
-          const status = statusFor(score);
-          return (
-            <View key={zone} style={styles.zoneChip}>
-              <View style={styles.zoneChipTop}>
-                <View
-                  style={[styles.zoneChipDot, { backgroundColor: status.color }]}
-                />
-                <Text
-                  style={styles.zoneChipLabel}
-                  maxFontSizeMultiplier={1.1}
-                >
-                  {ZONE_LABEL[zone]}
-                </Text>
-              </View>
-              <View style={styles.zoneChipBottom}>
-                <Text style={styles.zoneChipScore} maxFontSizeMultiplier={1.15}>
-                  {score}
-                </Text>
-                <Text
-                  style={[styles.zoneChipStatus, { color: status.color }]}
-                  maxFontSizeMultiplier={1.1}
-                >
-                  {status.word}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
+      {secondary.length > 0 ? (
+        <View style={styles.todaySecondaryStack}>
+          {secondary.map((c) => (
+            <TodaySecondaryRow key={c.category} concern={c} />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function TodayConcernCard({ concern }: { concern: Concern }) {
+  const color = colorForSeverity(concern.severity);
+  const dots = severityDotCount(concern.severity);
+  return (
+    <View style={styles.todayCard}>
+      <View style={styles.todayCardHead}>
+        <Text style={styles.todayCardLabel} maxFontSizeMultiplier={1.1}>
+          {CATEGORY_LABEL[concern.category].toUpperCase()}
+        </Text>
+        <View style={styles.todayCardSeverity}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.todayCardDot,
+                {
+                  backgroundColor:
+                    i < dots ? color : palette.bgDeep,
+                },
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+      <Text
+        style={styles.todayCardFinding}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={3}
+        adjustsFontSizeToFit
+        minimumFontScale={0.9}
+      >
+        {concern.finding}
+      </Text>
+      <View style={styles.todayCardActionRow}>
+        <View style={[styles.todayCardBullet, { backgroundColor: color }]} />
+        <Text
+          style={styles.todayCardAction}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={2}
+        >
+          {concern.nextStep}
+        </Text>
       </View>
     </View>
   );
 }
 
-/**
- * Abstract constellation: four zone nodes at stable spatial positions,
- * connected by hairlines. Reads as "zones, mapped" without a labeled face
- * overlay. Each node is colored by status.
- */
-function Constellation({ scoreFor }: { scoreFor: (k: SkinZoneKey) => number }) {
-  const W = 280;
-  const H = 200;
-
-  // Fixed positions for the four zones inside the canvas
-  const forehead = { x: 0.50 * W, y: 0.18 * H };
-  const tZone    = { x: 0.50 * W, y: 0.50 * H };
-  const chin     = { x: 0.50 * W, y: 0.86 * H };
-  const leftCheek  = { x: 0.22 * W, y: 0.58 * H };
-  const rightCheek = { x: 0.78 * W, y: 0.58 * H };
-
-  const cheekScore = scoreFor('cheeks');
-  const lineColor = palette.hairline;
-  const lineOpacity = 0.85;
-
+function TodaySecondaryRow({ concern }: { concern: Concern }) {
+  const color = colorForSeverity(concern.severity);
   return (
-    <View style={{ width: W, height: H, alignSelf: 'center' }}>
-      <Svg width={W} height={H}>
-        {/* Connecting hairlines — create the "constellation" */}
-        <Line
-          x1={forehead.x}
-          y1={forehead.y}
-          x2={tZone.x}
-          y2={tZone.y}
-          stroke={lineColor}
-          strokeOpacity={lineOpacity}
-          strokeWidth={1}
-        />
-        <Line
-          x1={tZone.x}
-          y1={tZone.y}
-          x2={chin.x}
-          y2={chin.y}
-          stroke={lineColor}
-          strokeOpacity={lineOpacity}
-          strokeWidth={1}
-        />
-        <Line
-          x1={tZone.x}
-          y1={tZone.y}
-          x2={leftCheek.x}
-          y2={leftCheek.y}
-          stroke={lineColor}
-          strokeOpacity={lineOpacity}
-          strokeWidth={1}
-        />
-        <Line
-          x1={tZone.x}
-          y1={tZone.y}
-          x2={rightCheek.x}
-          y2={rightCheek.y}
-          stroke={lineColor}
-          strokeOpacity={lineOpacity}
-          strokeWidth={1}
-        />
-
-        {/* Outer halo circle at each node */}
-        {[
-          { pt: forehead, score: scoreFor('forehead') },
-          { pt: tZone,    score: scoreFor('tZone')    },
-          { pt: chin,     score: scoreFor('chin')     },
-          { pt: leftCheek,  score: cheekScore },
-          { pt: rightCheek, score: cheekScore },
-        ].map(({ pt, score }, i) => {
-          const status = statusFor(score);
-          return (
-            <React.Fragment key={i}>
-              <Circle
-                cx={pt.x}
-                cy={pt.y}
-                r={10}
-                fill={status.color}
-                fillOpacity={0.12}
-              />
-              <Circle
-                cx={pt.x}
-                cy={pt.y}
-                r={4}
-                fill={status.color}
-              />
-            </React.Fragment>
-          );
-        })}
-      </Svg>
+    <View style={styles.todaySecondary}>
+      <View style={[styles.todaySecondaryDot, { backgroundColor: color }]} />
+      <Text style={styles.todaySecondaryText} maxFontSizeMultiplier={1.2}>
+        <Text style={styles.todaySecondaryLabel}>
+          {CATEGORY_LABEL[concern.category]}
+        </Text>
+        {` \u00B7 ${severityLabel(concern.severity)} \u00B7 ${concern.region}`}
+      </Text>
     </View>
   );
+}
+
+function colorForSeverity(s: Severity): string {
+  switch (s) {
+    case 'calm':
+      return statusColor.calm;
+    case 'mild':
+      return palette.inkTertiary;
+    case 'moderate':
+      return statusColor.monitor;
+    case 'needs-attention':
+      return statusColor.active;
+  }
 }
 
 function TodayRoutineRow({
@@ -918,16 +912,26 @@ function buildInsightHeadline(scan: Scan, delta: number): string {
   return 'Steady today.';
 }
 
-function buildRecRationale(scan: Scan): string {
-  const activeZone = scan.zones.find((z) => z.status === 'active');
-  const monitorZone = scan.zones.find((z) => z.status === 'monitor');
-  if (activeZone) {
-    return `Because your ${activeZone.label.toLowerCase()} flagged active in your last scan.`;
+function buildRecRationale(scan: Scan, previous: Scan | undefined): string {
+  // Prefer the top concern's region + category for a plain-English rationale.
+  // Fall back to a neutral matched-to-profile line if nothing surfaces.
+  const concerns = getConcerns(scan, previous);
+  const top = concerns.find((c) => c.severity !== 'calm') ?? concerns[0];
+  if (!top) return 'Matched to your skin type and routine cadence.';
+  switch (top.category) {
+    case 'breakouts':
+      return `Because your ${top.region} is showing a ${severityLabel(
+        top.severity
+      )} breakout in your last scan.`;
+    case 'hydration':
+      return `Because your ${top.region} are reading low on moisture.`;
+    case 'texture':
+      return `Because texture on your ${top.region} is ${severityLabel(
+        top.severity
+      )} in your last scan.`;
+    case 'tone':
+      return `Because dark marks on your ${top.region} are still visible.`;
   }
-  if (monitorZone) {
-    return `Because your ${monitorZone.label.toLowerCase()} is trending \u2014 worth monitoring.`;
-  }
-  return 'Matched to your skin type and current routine cadence.';
 }
 
 function deltaLabelFor(delta: number): string {
@@ -940,12 +944,6 @@ function colorForDelta(delta: number): string {
   if (delta > 0) return palette.moss;
   if (delta < 0) return palette.rust;
   return palette.inkTertiary;
-}
-
-function statusFor(score: number): { word: string; color: string } {
-  if (score >= 70) return { word: 'Calm', color: palette.moss };
-  if (score >= 40) return { word: 'Monitor', color: palette.amber };
-  return { word: 'Active', color: palette.rust };
 }
 
 function productNameFor(productId: string): string {
@@ -1168,63 +1166,126 @@ const styles = StyleSheet.create({
     color: palette.ink,
   },
 
-  // Skin report
-  skinReport: {
+  // Today's Focus (v8.1)
+  todayFocus: {
     marginTop: 32,
     paddingHorizontal: 20,
   },
-  zoneChipGrid: {
-    marginTop: 20,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  todayMeta: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.inkTertiary,
+    marginTop: 6,
+    marginBottom: 18,
   },
-  zoneChip: {
-    flexGrow: 1,
-    flexBasis: '47%',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
+  todayPrimaryStack: {
+    gap: 12,
+  },
+  todayCard: {
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,
     backgroundColor: palette.bg,
   },
-  zoneChipTop: {
+  todayCardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  todayCardLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkSecondary,
+  },
+  todayCardSeverity: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  todayCardDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  todayCardFinding: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 19,
+    lineHeight: 26,
+    letterSpacing: -0.3,
+    color: palette.ink,
+  },
+  todayCardActionRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: palette.divider,
+  },
+  todayCardBullet: {
+    width: 3,
+    alignSelf: 'stretch',
+    borderRadius: 2,
+    marginTop: 2,
+  },
+  todayCardAction: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: palette.inkSecondary,
+  },
+  todaySecondaryStack: {
+    marginTop: 16,
+    gap: 10,
+  },
+  todaySecondary: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingVertical: 4,
   },
-  zoneChipDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+  todaySecondaryDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  zoneChipLabel: {
+  todaySecondaryText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: palette.inkTertiary,
+  },
+  todaySecondaryLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
     color: palette.inkSecondary,
   },
-  zoneChipBottom: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginTop: 8,
-    gap: 10,
+  todayCalm: {
+    marginTop: 14,
+    paddingVertical: 20,
+    paddingHorizontal: 22,
+    borderRadius: 18,
+    backgroundColor: palette.bgDeep,
   },
-  zoneChipScore: {
+  todayCalmTitle: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 28,
+    fontSize: 22,
     lineHeight: 28,
-    letterSpacing: -0.8,
+    letterSpacing: -0.3,
     color: palette.ink,
-    fontVariant: ['tabular-nums'],
+    marginBottom: 6,
   },
-  zoneChipStatus: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+  todayCalmBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.inkSecondary,
   },
 
   sectionKicker: {

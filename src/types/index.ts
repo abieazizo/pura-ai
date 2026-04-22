@@ -45,6 +45,49 @@ export interface Scan {
   zones: SkinZone[];
   summaryHeadline: string;
   summaryBody: string;
+  /**
+   * Concern-centric surface model (v8.1). Every scan returns exactly 4
+   * concerns ranked 1→4 by what to tackle first. Zones remain for overlay
+   * geometry + backward-compat; the UI surfaces concerns.
+   */
+  concerns?: Concern[];
+}
+
+// ---------- Concern model (v8.1) ----------
+// The scan result is expressed to the user as 4 concerns, not 4 zone scores.
+// Each concern is a complete micro-story: what I see → what it means → what
+// to do tonight. Regions are named in plain English ("chin", "nose and
+// center forehead"). Severity is a closed 4-tier set; there's no raw score
+// surfaced to the user per concern — only tiers.
+
+export type ConcernCategory = 'breakouts' | 'hydration' | 'texture' | 'tone';
+
+export type Severity = 'calm' | 'mild' | 'moderate' | 'needs-attention';
+
+export type ConcernTrend = 'new' | 'improved' | 'unchanged' | 'worsened';
+
+export interface ConcernHotspot {
+  /** Normalized 0-1 within the photo box. */
+  x: number;
+  y: number;
+}
+
+export interface Concern {
+  category: ConcernCategory;
+  severity: Severity;
+  /** 1..4, ordered by priority ("what to tackle first"). */
+  rank: number;
+  /** Plain-English region phrase: "chin", "left cheek", "across the face". */
+  region: string;
+  /** 1-3 hotspots overlaid on the photo. */
+  hotspots: ConcernHotspot[];
+  /** What I see — one sentence. */
+  finding: string;
+  /** What it means — one sentence. */
+  interpretation: string;
+  /** What to do tonight — one actionable sentence. */
+  nextStep: string;
+  trend: ConcernTrend;
 }
 
 // ---------- v7.7 scan analyzing additions (additive, coexists with Scan) ----------

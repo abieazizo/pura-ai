@@ -1,4 +1,5 @@
 import type { Scan, SkinZone } from '@/types';
+import { buildSummaryHeadline, deriveConcerns } from '@/utils/concerns';
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -13,16 +14,25 @@ export async function analyzeFaceScan(args: {
   const id = `scan-${Date.now()}`;
 
   if (!previousScan) {
-    return {
+    const baseScan: Scan = {
       id,
       capturedAt: new Date().toISOString(),
       dayNumber: 1,
       photoUri,
       overallScore: 60,
-      summaryHeadline: 'Here\u2019s where we\u2019re starting.',
-      summaryBody:
-        'Your chin and forehead show early activity. Cheeks look calm. We\u2019ll target the chin first.',
+      summaryHeadline: '',
+      summaryBody: '',
       zones: starterZones(),
+    };
+    const concerns = deriveConcerns(baseScan);
+    return {
+      ...baseScan,
+      concerns,
+      summaryHeadline: buildSummaryHeadline(concerns),
+      summaryBody: concerns
+        .slice(0, 2)
+        .map((c) => c.finding)
+        .join(' '),
     };
   }
 
@@ -32,7 +42,7 @@ export async function analyzeFaceScan(args: {
     return { ...z, score: nextScore };
   });
 
-  return {
+  const baseScan: Scan = {
     id,
     capturedAt: new Date().toISOString(),
     dayNumber,
@@ -40,9 +50,19 @@ export async function analyzeFaceScan(args: {
     overallScore: Math.round(
       zones.reduce((acc, z) => acc + z.score, 0) / Math.max(1, zones.length)
     ),
-    summaryHeadline: previousScan.summaryHeadline,
-    summaryBody: previousScan.summaryBody,
+    summaryHeadline: '',
+    summaryBody: '',
     zones,
+  };
+  const concerns = deriveConcerns(baseScan, previousScan);
+  return {
+    ...baseScan,
+    concerns,
+    summaryHeadline: buildSummaryHeadline(concerns),
+    summaryBody: concerns
+      .slice(0, 2)
+      .map((c) => c.finding)
+      .join(' '),
   };
 }
 
@@ -53,6 +73,9 @@ export async function analyzeProductScan(): Promise<{
   return { matchPercent: 78 };
 }
 
+// Zone labels retained for internal mapping; the user never sees "T-zone"
+// directly — concern copy translates to plain English ("nose and center
+// forehead").
 function starterZones(): SkinZone[] {
   return [
     {
@@ -61,7 +84,7 @@ function starterZones(): SkinZone[] {
       status: 'active',
       trend: 'stable',
       score: 46,
-      shortInsight: 'Active breakouts',
+      shortInsight: 'Active breakout',
       glow: [{ x: 0.5, y: 0.82, radius: 0.26, intensity: 0.5 }],
     },
     {
@@ -70,16 +93,16 @@ function starterZones(): SkinZone[] {
       status: 'monitor',
       trend: 'stable',
       score: 62,
-      shortInsight: 'Some closed comedones',
+      shortInsight: 'Small clogged bumps',
       glow: [{ x: 0.5, y: 0.18, radius: 0.28, intensity: 0.4 }],
     },
     {
       key: 'tZone',
-      label: 'T-zone',
+      label: 'Nose and center forehead',
       status: 'monitor',
       trend: 'stable',
       score: 64,
-      shortInsight: 'Visible pores',
+      shortInsight: 'Pores reading more visible',
       glow: [{ x: 0.5, y: 0.52, radius: 0.22, intensity: 0.32 }],
     },
     {
@@ -87,8 +110,8 @@ function starterZones(): SkinZone[] {
       label: 'Cheeks',
       status: 'calm',
       trend: 'stable',
-      score: 78,
-      shortInsight: 'Slightly reactive',
+      score: 72,
+      shortInsight: 'Slightly low on moisture',
     },
   ];
 }

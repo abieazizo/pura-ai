@@ -20,6 +20,7 @@ import { CompareSlider } from '@/components/CompareSlider';
 import { PuraMark } from '@/components/PuraMark';
 import { MetricBar } from './MetricBar';
 import { PhotoTimelineStrip } from './PhotoTimelineStrip';
+import { ProgressNarrative } from './ProgressNarrative';
 import { useAppStore } from '@/store/useAppStore';
 import { useHasScanned, useLatestScan, useFirstScan, useDayNumber, useStreakDays, useProgressPercent } from '@/store/selectors';
 import { useShallow } from 'zustand/react/shallow';
@@ -129,6 +130,10 @@ export function ProgressScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Header />
+
+        {/* v8.1 narrative proof block — lives above the visual compare so
+            the first thing a returning user reads is "here's what moved." */}
+        <ProgressNarrative scans={scans} />
 
         <DayCounter day={dayNumber} />
 

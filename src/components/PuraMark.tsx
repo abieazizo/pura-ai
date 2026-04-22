@@ -11,7 +11,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { palette, shadow } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
@@ -54,11 +54,18 @@ const SIZES: Record<MarkSize, number> = {
   hero: 152,
 };
 
-// Drop path — authored in a 40×52 viewbox, scales cleanly.
-// Sharp apex at (20, 2), rounded belly between y=34 and y=50.
-// Two cubic curves meet at the top to produce a clean point.
+// Drop silhouette — v8.1 tightened. Authored in a 40×52 viewbox.
+// The path is tuned to match the approved PNG silhouette: sharp tip at
+// (20, 2.5), widest at ~62% down, taper balanced so the shape reads as a
+// water drop at 18pt (tab bar) and 152pt (splash hero).
 const DROP_PATH =
-  'M 20 2 C 20 2 35 22 35 34 C 35 44 28 50 20 50 C 12 50 5 44 5 34 C 5 22 20 2 20 2 Z';
+  'M 20 2.5 C 20 2.5 34.5 20 34.5 33 C 34.5 43.5 28.5 50 20 50 C 11.5 50 5.5 43.5 5.5 33 C 5.5 20 20 2.5 20 2.5 Z';
+
+// Inner highlight — subtle S-curve echoing the water-motion reflection in
+// the source PNG. Rendered at partial opacity on sizes ≥ 60pt; omitted at
+// small sizes where it would muddy. Never shown in `outlined` variant.
+const INNER_HIGHLIGHT_PATH =
+  'M 13.5 40 C 11 32 13 22 19 11';
 
 const VIEWBOX_W = 40;
 const VIEWBOX_H = 52;
@@ -247,6 +254,9 @@ function DropShape({
 }) {
   const w = size;
   const h = size * (VIEWBOX_H / VIEWBOX_W);
+  // Render the inner highlight only at display sizes; at list/icon sizes
+  // the extra path muddies the silhouette.
+  const showHighlight = size >= 60 && !outlined;
   return (
     <Svg
       width={w}
@@ -254,13 +264,34 @@ function DropShape({
       viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`}
       style={glow ? shadow.mark.outer : undefined}
     >
+      <Defs>
+        {/* Gentle top-to-bottom tonal shift inside the fill — brings a
+            millimeter of depth at hero sizes without looking like a glass
+            render. */}
+        <LinearGradient id="puraDropFill" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={color} stopOpacity={0.94} />
+          <Stop offset="1" stopColor={color} stopOpacity={1} />
+        </LinearGradient>
+      </Defs>
+
       <Path
         d={DROP_PATH}
-        fill={outlined ? 'none' : color}
+        fill={outlined ? 'none' : 'url(#puraDropFill)'}
         stroke={outlined ? color : 'none'}
         strokeWidth={outlined ? 1.5 : 0}
         strokeLinejoin="round"
       />
+
+      {showHighlight ? (
+        <Path
+          d={INNER_HIGHLIGHT_PATH}
+          stroke={palette.inkInverse}
+          strokeOpacity={0.38}
+          strokeWidth={1.25}
+          fill="none"
+          strokeLinecap="round"
+        />
+      ) : null}
     </Svg>
   );
 }
