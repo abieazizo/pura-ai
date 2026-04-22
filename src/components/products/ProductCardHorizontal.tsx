@@ -167,17 +167,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // v9.3 — premium green match badge. Solid moss with paper text for
+  // bolder signal than the old paper-on-paper pill. Tighter corners,
+  // tabular-nums so the percentage stays aligned regardless of digits.
   matchPill: {
-    backgroundColor: 'rgba(250,247,244,0.9)',
+    backgroundColor: palette.moss,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   matchText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
-    letterSpacing: 0.4,
-    color: palette.clay,
+    letterSpacing: 0.5,
+    color: palette.inkInverse,
     fontVariant: ['tabular-nums'],
   },
   bottleWrap: {

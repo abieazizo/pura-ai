@@ -8,7 +8,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { SlidersHorizontal } from 'phosphor-react-native';
+import {
+  SlidersHorizontal,
+  Sparkle,
+  Drop,
+  GridNine,
+  Moon,
+  Heart,
+  Leaf,
+  ArrowRight,
+  type IconProps as PhosphorIconProps,
+} from 'phosphor-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useAppStore } from '@/store/useAppStore';
 import { AISearchBar } from '@/components/products/AISearchBar';
 import { ProductRow } from '@/components/products/ProductRow';
 import { SearchResults } from '@/components/products/SearchResults';
@@ -35,6 +47,8 @@ import { palette } from '@/theme';
  * grid and filter UI ship in later PRs (§5).
  */
 export function ProductsScreen() {
+  const nav = useNavigation<any>();
+  const hasScanned = useAppStore((s) => s.scans.length > 0);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -124,24 +138,22 @@ export function ProductsScreen() {
           contentContainerStyle={styles.rowsScroll}
           showsVerticalScrollIndicator={false}
         >
-          {/* v9.2 — Shop by goal. Tight 2×3 chip grid at the top of the
-              catalog. Each chip will deep-link into CategoryView filtered
-              by its goal once the filter engine lands. */}
+          {/* ── Best for you — leads the page ──────────────────────── */}
+          <BestForYouSection
+            hasScanned={hasScanned}
+            data={rows.bestForYou}
+          />
+
+          {/* ── Shop by goal — Phosphor icons, not dots ───────────── */}
           <ShopByGoal
             onPressGoal={(goal) => {
               hapt.select();
-              // Hook into existing CategoryView — until filter support
-              // ships, goal simply scopes the destination kind.
               // eslint-disable-next-line no-console
               console.log('[products] shop-by-goal:', goal);
             }}
           />
 
-          <ProductRow
-            kind="best-for-you"
-            data={rows.bestForYou}
-            isFirstRow
-          />
+          {/* ── Remaining rows ─────────────────────────────────────── */}
           <ProductRow kind="best-overall" data={rows.bestOverall} />
           <ProductRow kind="natural" data={rows.natural} />
           <ProductRow kind="new" data={rows.new} />
@@ -159,73 +171,213 @@ export function ProductsScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// ShopByGoal — v9.2 goal-driven browse. Six outcomes in a 2×3 grid, each a
-// chip with a colored dot + label + nav arrow. Intentionally lives inline
-// so the rest of the catalog composition stays legible.
+// BestForYouSection — v9.3. First major section on the catalog page.
+// If the user has scanned, renders the Best-for-you horizontal row.
+// If not, renders a premium empty state that promotes the scan.
 // ---------------------------------------------------------------------------
 
-const GOAL_SWATCH: Record<
-  'breakouts' | 'hydration' | 'texture' | 'dark-marks' | 'sensitive' | 'natural',
-  string
-> = {
-  breakouts: palette.rust,
-  hydration: palette.clay,
-  texture: palette.amber,
-  'dark-marks': palette.clayDeep,
-  sensitive: palette.moss,
-  natural: palette.mossDeep,
-};
+function BestForYouSection({
+  hasScanned,
+  data,
+}: {
+  hasScanned: boolean;
+  data: Parameters<typeof ProductRow>[0]['data'];
+}) {
+  const nav = useNavigation<any>();
+  if (!hasScanned) {
+    return (
+      <View style={bestStyles.lockedWrap}>
+        <View style={bestStyles.lockedIconWrap}>
+          <Sparkle size={20} color={palette.clay} weight="duotone" />
+        </View>
+        <Text style={bestStyles.lockedKicker} maxFontSizeMultiplier={1.1}>
+          BEST FOR YOU
+        </Text>
+        <Text
+          style={bestStyles.lockedHeadline}
+          maxFontSizeMultiplier={1.15}
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.9}
+        >
+          Scan your face to unlock matched products.
+        </Text>
+        <Text style={bestStyles.lockedBody} maxFontSizeMultiplier={1.2}>
+          Thirty seconds of reading produces a picks list based on your actual skin.
+        </Text>
+        <Pressable
+          onPress={() => {
+            hapt.tap();
+            nav.navigate('ScanModal');
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Take your first scan"
+          style={({ pressed }) => [
+            bestStyles.lockedCta,
+            pressed && { opacity: 0.94, transform: [{ scale: 0.985 }] },
+          ]}
+        >
+          <Text style={bestStyles.lockedCtaLabel} maxFontSizeMultiplier={1.15}>
+            Take a scan
+          </Text>
+          <ArrowRight size={15} color={palette.inkInverse} weight="duotone" />
+        </Pressable>
+      </View>
+    );
+  }
+  return <ProductRow kind="best-for-you" data={data} isFirstRow />;
+}
 
-const GOAL_LABEL: Record<keyof typeof GOAL_SWATCH, string> = {
-  breakouts: 'Breakouts',
-  hydration: 'Hydration',
-  texture: 'Texture',
-  'dark-marks': 'Dark marks',
-  sensitive: 'Sensitive',
-  natural: 'Natural',
+const bestStyles = StyleSheet.create({
+  lockedWrap: {
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+    alignItems: 'flex-start',
+  },
+  lockedIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.clayPaper,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  lockedKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.clay,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  lockedHeadline: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 26,
+    lineHeight: 30,
+    letterSpacing: -0.5,
+    color: palette.ink,
+    marginBottom: 10,
+  },
+  lockedBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: palette.inkSecondary,
+    marginBottom: 18,
+  },
+  lockedCta: {
+    height: 44,
+    paddingHorizontal: 20,
+    borderRadius: 22,
+    backgroundColor: palette.ink,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  lockedCtaLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    letterSpacing: 0.1,
+    color: palette.inkInverse,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// ShopByGoal — v9.3. Six goals, each with a Phosphor duotone icon (not a
+// colored dot). Icons carry more signal-per-pixel and match the rest of
+// the app's iconography system.
+// ---------------------------------------------------------------------------
+
+type GoalKey =
+  | 'breakouts'
+  | 'hydration'
+  | 'texture'
+  | 'dark-marks'
+  | 'sensitive'
+  | 'natural';
+
+const GOAL_META: Record<
+  GoalKey,
+  { label: string; Icon: React.FC<PhosphorIconProps>; accent: string }
+> = {
+  breakouts:   { label: 'Breakouts',  Icon: Sparkle as React.FC<PhosphorIconProps>,   accent: palette.rust },
+  hydration:   { label: 'Hydration',  Icon: Drop as React.FC<PhosphorIconProps>,       accent: palette.clay },
+  texture:     { label: 'Texture',    Icon: GridNine as React.FC<PhosphorIconProps>,   accent: palette.amber },
+  'dark-marks':{ label: 'Dark marks', Icon: Moon as React.FC<PhosphorIconProps>,       accent: palette.clayDeep },
+  sensitive:   { label: 'Sensitive',  Icon: Heart as React.FC<PhosphorIconProps>,      accent: palette.moss },
+  natural:     { label: 'Natural',    Icon: Leaf as React.FC<PhosphorIconProps>,       accent: palette.mossDeep },
 };
 
 function ShopByGoal({
   onPressGoal,
 }: {
-  onPressGoal: (goal: keyof typeof GOAL_SWATCH) => void;
+  onPressGoal: (goal: GoalKey) => void;
 }) {
-  const goals = Object.keys(GOAL_SWATCH) as Array<keyof typeof GOAL_SWATCH>;
+  const goals = Object.keys(GOAL_META) as GoalKey[];
   return (
     <View style={goalStyles.wrap}>
       <Text style={goalStyles.kicker} maxFontSizeMultiplier={1.1}>
         SHOP BY GOAL
       </Text>
       <View style={goalStyles.grid}>
-        {goals.map((g) => (
-          <Pressable
-            key={g}
-            onPress={() => onPressGoal(g)}
-            accessibilityRole="button"
-            accessibilityLabel={`Shop ${GOAL_LABEL[g]}`}
-            style={({ pressed }) => [
-              goalStyles.chip,
-              pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
-            ]}
-          >
-            <View
-              style={[goalStyles.dot, { backgroundColor: GOAL_SWATCH[g] }]}
-            />
-            <Text style={goalStyles.label} maxFontSizeMultiplier={1.1}>
-              {GOAL_LABEL[g]}
-            </Text>
-          </Pressable>
-        ))}
+        {goals.map((g) => {
+          const meta = GOAL_META[g];
+          const Icon = meta.Icon;
+          return (
+            <Pressable
+              key={g}
+              onPress={() => onPressGoal(g)}
+              accessibilityRole="button"
+              accessibilityLabel={`Shop ${meta.label}`}
+              style={({ pressed }) => [
+                goalStyles.chip,
+                pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
+              ]}
+            >
+              <View
+                style={[
+                  goalStyles.iconWrap,
+                  { backgroundColor: withAlpha(meta.accent, 0.12) },
+                ]}
+              >
+                <Icon size={18} color={meta.accent} weight="duotone" />
+              </View>
+              <Text style={goalStyles.label} maxFontSizeMultiplier={1.1}>
+                {meta.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
 }
 
+// Inline color alpha helper — keeps us out of StyleSheet/token juggling
+// for the six goal tints.
+function withAlpha(hex: string, a: number): string {
+  // Accept "#RRGGBB" and produce "rgba(r, g, b, a)".
+  if (hex.length !== 7 || !hex.startsWith('#')) return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
 const goalStyles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 6,
+    paddingTop: 22,
+    paddingBottom: 10,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
@@ -233,30 +385,35 @@ const goalStyles = StyleSheet.create({
     letterSpacing: 1.6,
     color: palette.inkTertiary,
     textTransform: 'uppercase',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
   },
   chip: {
     flexGrow: 1,
     flexBasis: '30%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingHorizontal: 12,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: palette.bgDeep,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  iconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   label: {
+    flex: 1,
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
     letterSpacing: -0.1,

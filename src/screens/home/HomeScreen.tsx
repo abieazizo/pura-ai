@@ -21,6 +21,7 @@ import {
   CaretRight,
 } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
+import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { useAppStore } from '@/store/useAppStore';
 import { palette, statusColor } from '@/theme';
 import { hapt } from '@/utils/haptics';
@@ -30,7 +31,6 @@ import {
   computeSkinScore,
   formatDelta,
   sinceLastPhrase,
-  tierLabel,
 } from '@/utils/skinScore';
 import { seedProducts } from '@/data/seed';
 import type { Concern, Scan, Severity } from '@/types';
@@ -170,44 +170,36 @@ export function HomeScreen() {
         contentContainerStyle={{ paddingBottom: bottomClearance }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── A. Hero — Skin Score is the headline ──────────────────── */}
+        {/* ── A. Hero — Skin Score dial is the iconic object ─────── */}
         <View style={styles.heroBlock}>
           <Text style={styles.greeting} maxFontSizeMultiplier={1.2}>
             {greeting}
           </Text>
 
-          <View style={styles.scoreHeroRow}>
-            <Text style={styles.scoreNumber} maxFontSizeMultiplier={1.1}>
-              {score.value}
+          <View style={styles.dialWrap}>
+            <SkinScoreDial value={score.value} size={196} showTier />
+          </View>
+
+          <View style={styles.scoreKickerBlock}>
+            <Text style={styles.scoreKicker} maxFontSizeMultiplier={1.1}>
+              SKIN SCORE
             </Text>
-            <View style={styles.scoreMeta}>
-              <View style={styles.scoreKickerRow}>
-                <Text style={styles.scoreKicker} maxFontSizeMultiplier={1.1}>
-                  SKIN SCORE
+            {score.deltaSinceLast !== null ? (
+              <View style={styles.scoreDeltaRow}>
+                <ScoreDeltaChip delta={score.deltaSinceLast} />
+                <Text
+                  style={styles.scoreSinceLabel}
+                  maxFontSizeMultiplier={1.15}
+                  numberOfLines={1}
+                >
+                  {sinceLastPhrase(score.latestAt, score.scanCount)}
                 </Text>
-                <View style={styles.scoreTierPill}>
-                  <Text style={styles.scoreTierText} maxFontSizeMultiplier={1.1}>
-                    {tierLabel(score.tier)}
-                  </Text>
-                </View>
               </View>
-              {score.deltaSinceLast !== null ? (
-                <View style={styles.scoreDeltaRow}>
-                  <ScoreDeltaChip delta={score.deltaSinceLast} />
-                  <Text
-                    style={styles.scoreSinceLabel}
-                    maxFontSizeMultiplier={1.15}
-                    numberOfLines={1}
-                  >
-                    {sinceLastPhrase(score.latestAt, score.scanCount)}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.scoreFirstLabel} maxFontSizeMultiplier={1.15}>
-                  your first reading
-                </Text>
-              )}
-            </View>
+            ) : (
+              <Text style={styles.scoreFirstLabel} maxFontSizeMultiplier={1.15}>
+                your first reading
+              </Text>
+            )}
           </View>
 
           <Text
@@ -682,28 +674,14 @@ const styles = StyleSheet.create({
     color: palette.inkSecondary,
     marginBottom: 18,
   },
-  scoreHeroRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 16,
-  },
-  scoreNumber: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 88,
-    lineHeight: 88,
-    letterSpacing: -3,
-    color: palette.ink,
-    fontVariant: ['tabular-nums'],
-  },
-  scoreMeta: {
-    flex: 1,
-    paddingBottom: 10,
-    gap: 10,
-  },
-  scoreKickerRow: {
-    flexDirection: 'row',
+  dialWrap: {
     alignItems: 'center',
-    gap: 8,
+    paddingVertical: 6,
+  },
+  scoreKickerBlock: {
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 10,
   },
   scoreKicker: {
     fontFamily: 'Inter-SemiBold',
@@ -711,21 +689,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.6,
     color: palette.inkTertiary,
     textTransform: 'uppercase',
-  },
-  scoreTierPill: {
-    paddingHorizontal: 8,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: palette.bgDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scoreTierText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: palette.inkSecondary,
   },
   scoreDeltaRow: {
     flexDirection: 'row',
@@ -763,7 +726,9 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.4,
     color: palette.ink,
-    marginTop: 16,
+    marginTop: 20,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   whatChangedKicker: {
     fontFamily: 'Inter-SemiBold',

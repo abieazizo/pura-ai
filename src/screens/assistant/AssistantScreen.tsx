@@ -13,7 +13,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
-import { Plus, Camera, ArrowUp, X, CaretRight } from 'phosphor-react-native';
+import {
+  Plus,
+  Camera,
+  ArrowUp,
+  X,
+  CaretRight,
+  Sparkle,
+  ChartLineUp,
+  MoonStars,
+  Leaf,
+  ShieldCheck,
+  type IconProps as PhosphorIconProps,
+} from 'phosphor-react-native';
 import { ScreenChrome } from '@/components/ScreenChrome';
 import { EditorialRule } from '@/components/EditorialRule';
 import { PuraMark } from '@/components/PuraMark';
@@ -228,6 +240,31 @@ export function AssistantScreen() {
   );
 }
 
+/**
+ * Concierge-style starter chip. A 2-column grid replaces the stacked
+ * list-row treatment. Each chip leads with an icon tinted to the prompt's
+ * theme (score → ChartLineUp, tonight → MoonStars, natural → Leaf, etc.)
+ * so the grid reads as visual-first, not just text.
+ */
+const PROMPT_ICONS: Record<string, React.FC<PhosphorIconProps>> = {
+  score: ChartLineUp as React.FC<PhosphorIconProps>,
+  tonight: MoonStars as React.FC<PhosphorIconProps>,
+  compare: Sparkle as React.FC<PhosphorIconProps>,
+  natural: Leaf as React.FC<PhosphorIconProps>,
+  how: ShieldCheck as React.FC<PhosphorIconProps>,
+  default: Sparkle as React.FC<PhosphorIconProps>,
+};
+
+function iconKeyForPrompt(p: string): keyof typeof PROMPT_ICONS {
+  const s = p.toLowerCase();
+  if (s.includes('score')) return 'score';
+  if (s.includes('tonight')) return 'tonight';
+  if (s.includes('compare') || s.includes('last two')) return 'compare';
+  if (s.includes('natural')) return 'natural';
+  if (s.includes('how') || s.includes('expect') || s.includes('work')) return 'how';
+  return 'default';
+}
+
 function EmptyChatBody({
   suggestions,
   onPick,
@@ -245,34 +282,43 @@ function EmptyChatBody({
       </Text>
       <Text style={emptyStyles.body}>{strings.emptyBody}</Text>
 
-      <View style={emptyStyles.hintRow}>
-        <Text style={emptyStyles.hintText}>{strings.attachHint}</Text>
+      <View style={emptyStyles.kickerRow}>
+        <Text style={emptyStyles.kickerText} maxFontSizeMultiplier={1.1}>
+          SUGGESTED
+        </Text>
+        <View style={emptyStyles.kickerRule} />
       </View>
 
-      <EditorialRule
-        label={strings.forYouLabel}
-        style={{ marginTop: space.xxl, alignSelf: 'stretch' }}
-      />
-      <View style={emptyStyles.suggestionStack}>
-        {suggestions.map((s) => (
-          <Pressable
-            key={s}
-            onPress={() => onPick(s)}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              emptyStyles.suggestion,
-              pressed && { backgroundColor: palette.bgDeep },
-            ]}
-          >
-            <Text style={emptyStyles.suggestionText}>{s}</Text>
-            <CaretRight
-              size={16}
-              color={palette.inkTertiary}
-              weight="regular"
-            />
-          </Pressable>
-        ))}
+      <View style={emptyStyles.promptGrid}>
+        {suggestions.map((s) => {
+          const Icon = PROMPT_ICONS[iconKeyForPrompt(s)];
+          return (
+            <Pressable
+              key={s}
+              onPress={() => onPick(s)}
+              accessibilityRole="button"
+              accessibilityLabel={s}
+              style={({ pressed }) => [
+                emptyStyles.promptChip,
+                pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+              ]}
+            >
+              <View style={emptyStyles.promptIconWrap}>
+                <Icon size={14} color={palette.clay} weight="duotone" />
+              </View>
+              <Text
+                style={emptyStyles.promptText}
+                numberOfLines={2}
+                maxFontSizeMultiplier={1.15}
+              >
+                {s}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
+
+      <Text style={emptyStyles.hintText}>{strings.attachHint}</Text>
     </View>
   );
 }
@@ -430,32 +476,67 @@ const emptyStyles = StyleSheet.create({
     paddingHorizontal: space.lg,
     marginTop: space.sm,
   },
-  hintRow: {
-    marginTop: space.lg,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.md,
-    backgroundColor: palette.bgDeep,
+  // v9.3 — concierge grid
+  kickerRow: {
+    marginTop: space.xxl,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: 4,
+  },
+  kickerText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  kickerRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: palette.hairline,
+  },
+  promptGrid: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: space.md,
+  },
+  promptChip: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: 74,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+    gap: 10,
+  },
+  promptIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: palette.clayPaper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promptText: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+    color: palette.ink,
   },
   hintText: {
     ...typography.caption,
-    color: palette.inkSecondary,
+    color: palette.inkTertiary,
     textAlign: 'center',
+    marginTop: space.xl,
   },
-  suggestionStack: {
-    alignSelf: 'stretch',
-    gap: space.sm,
-    marginTop: space.md,
-  },
-  suggestion: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: space.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: palette.hairline,
-  },
-  suggestionText: { ...typography.body, color: palette.ink, flex: 1 },
 });
 
 const messageStyles = StyleSheet.create({
