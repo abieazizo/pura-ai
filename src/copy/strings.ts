@@ -1,0 +1,283 @@
+/**
+ * Every user-visible string lives here. Screens never embed strings inline.
+ *
+ * Grouped by screen/feature. A few string builders take arguments so that
+ * dynamic copy (day numbers, counts, percentages) stays declarative at the
+ * call site.
+ */
+
+export const app = {
+  name: 'Pura AI',
+  tagline: 'Skincare that knows what it\u2019s looking at.',
+};
+
+export const splash = {
+  loading: '',
+};
+
+export const errors = {
+  genericTitle: 'Something went wrong.',
+  genericBody: 'Try again in a moment.',
+  rehydrateTitle: 'Couldn\u2019t load your data',
+  rehydrateBody: 'We had trouble reading your saved profile. Try again.',
+  scanTitle: 'Couldn\u2019t analyze the photo',
+  scanBody: 'Give it one more try \u2014 lighting can make a big difference.',
+  cameraError: 'Camera error',
+  save: 'Couldn\u2019t save',
+  send: 'Failed \u00b7 tap to retry',
+};
+
+export const camera = {
+  deniedTitle: 'Camera access is off',
+  deniedBody:
+    'Pura needs camera access to scan your skin. Turn it on in Settings.',
+  openSettings: 'Open Settings',
+  notNow: 'Not now',
+};
+
+export const common = {
+  close: 'Close',
+  cancel: 'Cancel',
+  continue: 'Continue',
+  skip: 'Skip',
+  back: 'Back',
+  retry: 'Try again',
+  seeAll: 'See all',
+  loading: 'Loading\u2026',
+  onDevice: 'On-device',
+};
+
+/**
+ * Tab labels. §5.1 mandates "ASSIST" (not "ASSISTANT") because 9-char labels
+ * wrap at iPhone SE widths.
+ */
+export const tabs = {
+  home: 'HOME',
+  products: 'PRODUCTS',
+  assist: 'ASSIST',
+  progress: 'PROGRESS',
+};
+
+export const onboarding = {
+  slides: [
+    {
+      eyebrow: 'MEET PURA',
+      title: 'Skincare that knows what it\u2019s looking at.',
+      body: 'Not guessing. Not quizzing. Seeing.',
+    },
+    {
+      eyebrow: 'WE SEE, WE DON\u2019T GUESS',
+      title: 'A thirty-second reading of your skin.',
+      body: 'Pura reads the zones of your skin \u2014 without ever asking fifteen questions.',
+    },
+    {
+      eyebrow: 'WATCH IT WORK',
+      title: 'Compare your skin, day by day.',
+      body: 'Photos, zones, and measurable change. No hype. Just proof.',
+    },
+  ],
+  getStarted: 'Begin',
+  nameEntryTitle: 'What should we call you?',
+  nameEntrySub: 'Your first name is plenty.',
+  namePlaceholder: 'Your first name',
+  avatarPickerTitle: 'Pick your mark.',
+  avatarPickerSub: 'A color for your corner of the app.',
+  intoTheApp: 'Enter Pura',
+};
+
+export const home = {
+  profileDate: (weekday: string, date: string, day: number, streak: number) =>
+    `${date} · Day ${day} · ${streak}-day streak`,
+  profileDateNoScan: (weekday: string, date: string) => `${date}`,
+
+  // Empty state
+  emptyHero: 'Welcome.',
+  emptySub: 'Let\u2019s see what your skin is telling us.',
+  emptyCta: 'Begin first scan',
+  whyPuraLabel: 'How this works',
+  whyPura: [
+    {
+      title: 'We see, we don\u2019t guess.',
+      body: 'Computer vision reads your skin directly \u2014 no fifteen-question quiz.',
+    },
+    {
+      title: 'On-device privacy.',
+      body: 'Scans are processed on your phone. Photos stay yours.',
+    },
+    {
+      title: 'Tracks what\u2019s changing.',
+      body: 'Compare week to week. Measure progress that\u2019s actually there.',
+    },
+  ],
+
+  // Populated state
+  routineLabel: (done: number, total: number) => `MORNING ROUTINE · ${done}/${total}`,
+  whyThisProduct: 'Why this product?',
+  tonight: 'Tonight',
+  tonightMeta: (steps: number, startsAt: string) => `${steps} steps · Starts at ${startsAt}`,
+  routineAllDone: 'Morning routine complete.',
+  routineAllDoneSub: 'See you tonight at 9:30 PM.',
+  nextStepBadge: (order: number) => `STEP ${order} · NEXT`,
+  markDone: 'Mark done',
+  marked: 'Done',
+  progressCompareLabel: 'YOUR PROGRESS',
+  progressDay1Label: 'Day 1',
+  progressLatestLabel: (day: number) => `Day ${day}`,
+  progressSuccessLine: (label: string, percent: number, days: number) =>
+    `${label} clarity \u2191 ${percent}% \u00b7 ${days} days`,
+};
+
+export const products = {
+  title: 'Products',
+  searchPlaceholder: 'Search cleansers, serums\u2026',
+  wishlist: 'Wishlist',
+  allCategory: 'All',
+  categoryLabels: {
+    cleanser: 'Cleanser',
+    toner: 'Toner',
+    serum: 'Serum',
+    moisturizer: 'Moisturizer',
+    spf: 'SPF',
+    treatment: 'Treatment',
+    mask: 'Mask',
+  },
+  unlockTitle: 'Unlock personalized matches',
+  unlockBody: 'Take a quick skin scan for recommendations made for your skin.',
+  unlockCta: 'Start a scan',
+  forYouLabel: 'FOR YOU',
+  forYouEmptyPreScan: 'Scan first. I\u2019ll match from there.',
+  allLabel: 'ALL PRODUCTS',
+  emptySearch: (q: string) => `No products match \u201C${q}\u201D.`,
+
+  // §4.5 — editorial empty state for the wishlist view
+  wishlistEmptyTitle: 'Nothing saved yet.',
+  wishlistEmptyBody: 'Tap the heart on any product to keep it here.',
+};
+
+export const productDetail = {
+  tabs: {
+    why: 'Why this works',
+    ingredients: 'Ingredients',
+    howToUse: 'How to use',
+    reviews: 'Reviews',
+  },
+  heartAdd: 'Add to wishlist',
+  heartRemove: 'In wishlist',
+  findToBuy: 'Find where to buy',
+  matchLabel: (n: number) => `${n}% match`,
+  matchGoodStatus: 'Great match for your skin.',
+  matchOkStatus: 'Worth considering \u2014 watch how your skin reacts.',
+  matchLowStatus: 'Probably not for you right now.',
+  keyIngredients: 'Key ingredients',
+  howToUseMock: [
+    'Apply to clean skin, morning or evening.',
+    'Start with every other day; work up to daily as tolerated.',
+    'Follow with moisturizer. Always use SPF during the day.',
+  ],
+  reviewsEmpty: 'Reviews roll out in a later release.',
+};
+
+export const scan = {
+  modeFace: 'Face',
+  modeProduct: 'Product',
+  closeLabel: 'Close scan',
+  shutterLabel: 'Capture scan',
+  hintFace: 'Soft light. Steady hand. Thirty seconds.',
+  hintProduct: 'Frame the label or barcode.',
+  analyzing: {
+    // §4.6 — a single quiet line during analysis. The Mark's pulse does the
+    // "something is happening" work. No cycling progress captions.
+    singleFaceLine: 'Reading your skin.',
+    singleProductLine: 'Reading the ingredients.',
+    // Retained so older flows still compile; first entry is the canonical one.
+    faceSteps: [
+      'Reading your skin.',
+      'Measuring clarity\u2026',
+      'Comparing to your Day 1\u2026',
+    ],
+    productSteps: [
+      'Reading the ingredients.',
+      'Checking flags\u2026',
+    ],
+  },
+  resultsFaceTitle: 'Here\u2019s what I see.',
+  resultsFaceCompare: 'Compare to Day 1',
+  resultsProductTitle: 'Match for your skin.',
+  // Italicized portion appears in HeroHeadline — the serif italic rendering
+  // picks the trailing word(s) automatically, no need to mark it up here.
+  whyMatches: 'Why this matches',
+  headsUp: 'Heads up',
+  addWishlist: 'Add to wishlist',
+  findSimilar: 'Find similar',
+  permissionTitle: 'Camera access needed',
+  permissionBody:
+    'Pura uses your camera to see your skin in detail. Your photos stay on this device.',
+  permissionEnable: 'Enable camera',
+};
+
+export const assistant = {
+  title: 'Ask',
+  subtitle: 'I\u2019ve been watching.',
+  emptyTitle: 'Ask me anything.',
+  emptyBody:
+    'I\u2019ve been watching. Ask me anything \u2014 I\u2019ll tailor advice to what I see.',
+  attachHint: 'Attach a product. I\u2019ll read it.',
+  composerPlaceholder: 'Write your question\u2026',
+  forYouLabel: 'FOR YOU',
+  promptsEmpty: [
+    'What\u2019s a good starter routine?',
+    'How do I know my skin type?',
+    'What ingredients should beginners avoid?',
+  ],
+  promptsFor: (zone: string) => [
+    `What\u2019s the best routine for my ${zone} breakouts?`,
+    `What ingredients are making my ${zone} better?`,
+    `Why is my T-zone stable but not improving?`,
+  ],
+  typing: 'Reading\u2026',
+  mockResponseIntro: 'Looking at your most recent scan\u2014',
+};
+
+export const progress = {
+  title: 'Progress',
+  dayBadge: (n: number) => `DAY ${n}`,
+  cyclePercent: (p: number) => `${p}% through your first skin cycle.`,
+  cycleTooltip: 'A skin cycle is eighty-four days.',
+  emptyTitle: 'Your story starts with your first scan.',
+  emptyBody: 'Scan, and you\u2019ll see your skin change, photo by photo.',
+  emptyCta: 'Begin first scan',
+  oneScanTitle: 'One more to unlock side-by-side.',
+  oneScanBody: 'Two scans is enough for measurable change.',
+  oneScanCta: 'Scan again',
+  compareLabel: 'DRAG TO COMPARE',
+  changesHeading: 'Measurable changes since Day 1',
+};
+
+export const profileSheet = {
+  memberSince: (d: string) => `Member since ${d}`,
+  rows: {
+    skinProfile: 'Skin profile',
+    notifications: 'Notifications',
+    privacy: 'Privacy',
+    appearance: 'Appearance',
+    help: 'Help & support',
+    about: 'About Pura AI',
+  },
+  privacyBadge: 'On-device scans only',
+  signOut: 'Sign out',
+  devToggleNewUser: 'Reset to new user',
+  devTogglePopulated: 'Load demo data',
+  devResetAll: 'Wipe all data',
+};
+
+export const zoneStatusLabel = {
+  active: 'ACTIVE',
+  monitor: 'MONITOR',
+  calm: 'CALM',
+} as const;
+
+export const zoneTrendLabel = {
+  improving: 'Improving',
+  stable: 'Stable',
+  worsening: 'Worsening',
+} as const;

@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Pura AI",
+    "slug": "pura-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pura.ai",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Pura AI uses your camera to scan your skin and track progress over time.",
+        "NSPhotoLibraryUsageDescription": "Pura AI needs access to your photos to save and compare skin progress images.",
+        "NSPhotoLibraryAddUsageDescription": "Pura AI needs permission to save your scan results."
+      }
+    },
+    "android": {
+      "package": "com.pura.ai",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Pura AI uses your camera to scan your skin."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pura AI needs photo access to compare your skin progress."
+        }
+      ],
+      "expo-asset",
+      "expo-secure-store"
+    ]
+  }
+}

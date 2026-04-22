@@ -1,0 +1,192 @@
+import type { AvatarColor } from '@/theme';
+
+export interface User {
+  id: string;
+  name: string;
+  initials: string;
+  avatarColor: AvatarColor;
+  joinedAt: string; // ISO
+}
+
+export type SkinZoneKey =
+  | 'chin'
+  | 'forehead'
+  | 'tZone'
+  | 'cheeks'
+  | 'nose'
+  | 'jawline';
+
+export type ZoneStatus = 'active' | 'monitor' | 'calm';
+export type ZoneTrend = 'improving' | 'stable' | 'worsening';
+
+export interface ZoneGlow {
+  x: number; // 0..1 (relative within photo)
+  y: number; // 0..1
+  radius: number; // 0..1 (relative to min(width, height))
+  intensity: number; // 0..1
+}
+
+export interface SkinZone {
+  key: SkinZoneKey;
+  label: string;
+  status: ZoneStatus;
+  trend: ZoneTrend;
+  score: number; // 0..100
+  shortInsight: string;
+  glow?: ZoneGlow[];
+}
+
+export interface Scan {
+  id: string;
+  capturedAt: string;
+  dayNumber: number;
+  photoUri: string;
+  overallScore: number;
+  zones: SkinZone[];
+  summaryHeadline: string;
+  summaryBody: string;
+}
+
+// ---------- v7.7 scan analyzing additions (additive, coexists with Scan) ----------
+// ScanResult is the shape the cinematic analyzing screen renders from. The
+// existing `Scan` type continues to power history + the results screens; a
+// ScanResult is derived from a Scan in `useAppStore.setScanResult`.
+
+export type FindingType =
+  | 'dryness'
+  | 'texture'
+  | 'barrier'
+  | 'hydration'
+  | 'redness'
+  | 'clarity';
+
+export type ScanZoneKey = 'forehead' | 'tZone' | 'chin' | 'cheeks';
+
+export interface ScanFinding {
+  type: FindingType;
+  zone: ScanZoneKey;
+  /** Normalized coordinates inside the photo box, 0-1 each axis. */
+  position: { x: number; y: number };
+  /** Single-word italic label shown in Beat 4. */
+  label: string;
+}
+
+export interface ScanResult {
+  photoUri: string;
+  /** Set after Beat 6 by the view-shot composite capture (optional). */
+  compositePhotoUri?: string;
+  overallScore: number;
+  zoneScores: Record<ScanZoneKey, number>;
+  /** Always exactly 4 in order [dryness, texture, barrier, hydration]. */
+  findings: ScanFinding[];
+  aiReadout: string;
+  timestamp: string;
+  /** 1-indexed; used for beat-timing compression on repeat scans. */
+  scanCount: number;
+  /** Id of the underlying Scan record so results screens can deep-link. */
+  scanId?: string;
+}
+
+export interface InFlightScan {
+  photoUri: string;
+  startedAt: number;
+}
+
+export type ProductCategory =
+  | 'cleanser'
+  | 'toner'
+  | 'serum'
+  | 'moisturizer'
+  | 'spf'
+  | 'treatment'
+  | 'mask';
+
+export type ProductTint = 'sand' | 'clay' | 'moss';
+
+export type ProductTag =
+  | 'natural'
+  | 'sensitive-safe'
+  | 'fragrance-free'
+  | 'clean'
+  | 'dermatologist-tested';
+
+export interface IngredientDetail {
+  name: string;
+  purpose: string;
+}
+
+export interface Product {
+  id: string;
+  brand: string;
+  name: string; // NEVER truncate this in UI
+  category: ProductCategory;
+  imageUri: string;
+  ingredients: string[];
+  keyIngredients: string[];
+  priceUsd?: number;
+  description: string;
+
+  // v7.6 — Products + Product Detail rebuild. All added additively so
+  // screens that read the older fields (e.g. the scan-result mock) keep
+  // compiling.
+  tint: ProductTint; // deterministic hash(id) % 3 of the 3 warm tones
+  rating: number; // 0..5, one decimal
+  reviewCount: number;
+  matchScore: number; // 0..100 vs the signed-in user
+  tags: ProductTag[];
+  addedDate: string; // ISO
+  price: number; // canonical numeric price used by new Products UI
+  /** Optional structured ingredients list used by IngredientsPanel. Falls
+   *  back to `ingredients[]` when absent. */
+  ingredientList?: IngredientDetail[];
+  howToUse?: string;
+  formulation?: string;
+  skinTypes?: string[];
+  goodFor?: string[];
+  /** `'Both'` is remapped to `'Morning & Evening'` at render time. */
+  timeOfUse?: 'Morning' | 'Evening' | 'Both';
+  contraindications?: string;
+  /** Preferred high-res detail image. Falls back to `imageUri` when absent. */
+  imageUrl?: string;
+}
+
+export interface ProductMatch {
+  productId: string;
+  matchPercent: number; // 0..100
+  reasonsWhy: string[]; // max 4
+  flags?: string[]; // warnings
+}
+
+export type RoutineSlot = 'morning' | 'evening';
+export type RoutineStepType =
+  | 'cleanser'
+  | 'toner'
+  | 'serum'
+  | 'moisturizer'
+  | 'spf'
+  | 'treatment';
+
+export interface RoutineStep {
+  id: string;
+  slot: RoutineSlot;
+  order: number;
+  stepType: RoutineStepType;
+  productId: string;
+  instruction: string;
+  completedAt: string | null;
+  whyThisProduct: string[];
+}
+
+export type AssistantRole = 'user' | 'assistant';
+
+export interface AssistantMessage {
+  id: string;
+  role: AssistantRole;
+  text: string;
+  attachedProductIds?: string[];
+  createdAt: string;
+}
+
+// SKIN_CYCLE_DAYS lives in theme/tokens.ts so it sits alongside other
+// layout constants. Re-exported here for backwards compatibility.
+export { SKIN_CYCLE_DAYS } from '@/theme/tokens';

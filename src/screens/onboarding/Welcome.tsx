@@ -1,0 +1,96 @@
+import React, { useEffect } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import { PuraMark } from '@/components/PuraMark';
+import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
+import { hapt } from '@/utils/haptics';
+import { palette } from '@/theme';
+
+export interface WelcomeProps {
+  onTakeFirstScan: () => void;
+}
+
+/**
+ * Welcome (§3.14). No header. Mark scales from 0.5 → 1.0 with a slightly
+ * springier spring than the default (damping 18, stiffness 120), fires a
+ * success haptic on mount. "You're in." in serif, italic subhead, then the
+ * primary CTA that finalises onboarding and routes into the tabs. The scan
+ * tutorial then fires from inside the tabs because `hasSeenScanTutorial`
+ * is still false.
+ */
+export function Welcome({ onTakeFirstScan }: WelcomeProps) {
+  const insets = useSafeAreaInsets();
+  const markOpacity = useSharedValue(0);
+  const markScale = useSharedValue(0.5);
+
+  useEffect(() => {
+    markOpacity.value = withTiming(1, { duration: 400 });
+    markScale.value = withSpring(1, { damping: 18, stiffness: 120, mass: 1 });
+    hapt.success();
+  }, [markOpacity, markScale]);
+
+  const markStyle = useAnimatedStyle(() => ({
+    opacity: markOpacity.value,
+    transform: [{ scale: markScale.value }],
+  }));
+
+  return (
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <StatusBar style="dark" />
+
+      <View style={styles.center}>
+        <Animated.View style={markStyle}>
+          <PuraMark variant="idle" size="lg" glow />
+        </Animated.View>
+
+        <View style={{ height: 32 }} />
+        <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
+          You're in.
+        </Text>
+
+        <View style={{ height: 12 }} />
+        <Text style={styles.sub} maxFontSizeMultiplier={1.2}>
+          Let's take your first scan.
+        </Text>
+      </View>
+
+      <View style={{ paddingBottom: insets.bottom + 40 }}>
+        <OnboardingPrimaryButton
+          label="Take first scan →"
+          onPress={onTakeFirstScan}
+        />
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: palette.bg },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  headline: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 48,
+    lineHeight: 52,
+    color: palette.ink,
+    textAlign: 'center',
+  },
+  sub: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 18,
+    lineHeight: 24,
+    color: 'rgba(26,22,20,0.7)',
+    textAlign: 'center',
+  },
+});
