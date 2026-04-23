@@ -6,6 +6,7 @@ import Svg, {
   LinearGradient,
   Defs,
   Path,
+  Rect,
   Stop,
   Text as SvgText,
 } from 'react-native-svg';
@@ -60,6 +61,22 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
   const chartW = width - 40 - 44; // full minus outer page padding + inset
   const reveal = useSharedValue(0);
 
+  // Peak + low annotations — compute the best and lowest scan scores so
+  // the chart can surface them. Dates format as short MMM DD.
+  const peak = useMemo(() => {
+    if (scans.length === 0) return null;
+    let bestIdx = 0;
+    for (let i = 1; i < scans.length; i++) {
+      if (scans[i].overallScore > scans[bestIdx].overallScore) bestIdx = i;
+    }
+    const s = scans[bestIdx];
+    return {
+      score: s.overallScore,
+      label: formatShortDate(s.capturedAt),
+      index: bestIdx,
+    };
+  }, [scans]);
+
   useEffect(() => {
     reveal.value = 0;
     reveal.value = withDelay(
@@ -102,7 +119,20 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
     <View style={styles.wrap}>
       {/* ── Dial hero ───────────────────────────────────────────── */}
       <View style={styles.dialWrap}>
-        <SkinScoreDial value={score.value} size={212} />
+        <SkinScoreDial
+          value={score.value}
+          size={220}
+          previousValue={
+            scans.length >= 2
+              ? scans[scans.length - 2].overallScore
+              : null
+          }
+          deltaCaption={
+            score.deltaSinceLast !== null
+              ? `${formatDelta(score.deltaSinceLast)} since last scan`
+              : 'first reading'
+          }
+        />
       </View>
 
       {/* ── Kicker + delta chip ─────────────────────────────────── */}
@@ -142,10 +172,16 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
           label={sinceFirstLine}
           firstScore={pts[0]}
           lastScore={pts[pts.length - 1]}
+          peak={peak}
         />
       ) : null}
     </View>
   );
+}
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // ============================================================================
@@ -159,6 +195,7 @@ function ScoreAreaChart({
   label,
   firstScore,
   lastScore,
+  peak,
 }: {
   pts: number[];
   width: number;
@@ -166,6 +203,7 @@ function ScoreAreaChart({
   label: string;
   firstScore: number;
   lastScore: number;
+  peak: { score: number; label: string; index: number } | null;
 }) {
   const H = CHART_H;
   const innerH = H - CHART_V_PAD * 2;
@@ -235,6 +273,30 @@ function ScoreAreaChart({
           </LinearGradient>
         </Defs>
 
+        {/* Tier-zone backdrop bands — very translucent rectangles showing
+            the four tier regions (0-55 / 55-70 / 70-85 / 85-100). Reads
+            as "where am I in the tier landscape" at a glance. */}
+        {[
+          { from: 0,  to: 55, color: palette.rust },
+          { from: 55, to: 70, color: palette.amber },
+          { from: 70, to: 85, color: palette.clay },
+          { from: 85, to: 100, color: palette.moss },
+        ].map((band, i) => {
+          const yTop = CHART_V_PAD + (1 - band.to / 100) * innerH;
+          const yBot = CHART_V_PAD + (1 - band.from / 100) * innerH;
+          return (
+            <Rect
+              key={i}
+              x={leftGutter}
+              y={yTop}
+              width={width - rightPad - leftGutter}
+              height={yBot - yTop}
+              fill={band.color}
+              fillOpacity={0.045}
+            />
+          );
+        })}
+
         {/* Gridlines + y-axis labels at 40 / 60 / 80 */}
         {GRID_VALUES.map((gv) => {
           const gy = CHART_V_PAD + (1 - (gv - Y_MIN) / (Y_MAX - Y_MIN)) * innerH;
@@ -292,6 +354,38 @@ function ScoreAreaChart({
           strokeDasharray={approxLen}
           animatedProps={lineAnimatedProps}
         />
+
+        {/* Peak annotation — small label above the peak scan point. */}
+        {peak &&
+        peak.index !== pts.length - 1 &&
+        peak.index !== 0 ? (
+          <>
+            <Circle
+              cx={points[peak.index].x}
+              cy={points[peak.index].y}
+              r={3}
+              fill={palette.moss}
+            />
+            <Circle
+              cx={points[peak.index].x}
+              cy={points[peak.index].y}
+              r={7}
+              fill={palette.moss}
+              fillOpacity={0.16}
+            />
+            <SvgText
+              x={points[peak.index].x}
+              y={Math.max(10, points[peak.index].y - 12)}
+              fill={palette.mossDeep}
+              fontFamily="Inter-SemiBold"
+              fontSize={9}
+              letterSpacing={0.3}
+              textAnchor="middle"
+            >
+              BEST
+            </SvgText>
+          </>
+        ) : null}
 
         {/* Endpoint dot — pulses in at the end */}
         <AnimatedCircleWrap

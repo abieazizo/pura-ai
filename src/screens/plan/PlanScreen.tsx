@@ -13,7 +13,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, ArrowRight, CaretDown, Plus } from 'phosphor-react-native';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CaretDown,
+  Plus,
+  MoonStars,
+  Sun,
+  Drop,
+  Sparkle,
+  Shield,
+  Leaf,
+  type IconProps as PhosphorIconProps,
+} from 'phosphor-react-native';
 import { useAppStore } from '@/store/useAppStore';
 import { palette, statusColor } from '@/theme';
 import { hapt } from '@/utils/haptics';
@@ -132,10 +144,6 @@ export function PlanScreen() {
     );
   }
 
-  const headlineText = primary
-    ? `${CATEGORY_LABEL[primary.category]} on your ${primary.region}.`
-    : 'Your skin is settled today.';
-
   const secondaryConcern = concerns.find(
     (c) => c.severity !== 'calm' && c.category !== primary?.category
   );
@@ -149,79 +157,53 @@ export function PlanScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Skin Score strip ── */}
-        <View style={styles.scoreStrip}>
-          <View style={styles.scoreStripLeft}>
-            <Text style={styles.scoreStripKicker} maxFontSizeMultiplier={1.1}>
-              SKIN SCORE
+        {/* ── HERO CONCERN CARD ── */}
+        <HeroConcernCard primary={primary} secondary={secondaryConcern} />
+
+        {/* Score chip — small contextual stamp below the hero, not a
+            separate module. Keeps the score visible without stealing
+            focus from the concern. */}
+        <View style={styles.scoreStamp}>
+          <Text style={styles.scoreStampKicker} maxFontSizeMultiplier={1.1}>
+            SKIN SCORE
+          </Text>
+          <View style={styles.scoreStampValueRow}>
+            <Text style={styles.scoreStampValue} maxFontSizeMultiplier={1.1}>
+              {score.value}
             </Text>
-            <View style={styles.scoreStripValueRow}>
-              <Text style={styles.scoreStripValue} maxFontSizeMultiplier={1.1}>
-                {score.value}
-              </Text>
-              <Text style={styles.scoreStripTier} maxFontSizeMultiplier={1.1}>
-                {tierLabel(score.tier)}
-              </Text>
-            </View>
+            <Text style={styles.scoreStampTier} maxFontSizeMultiplier={1.1}>
+              {tierLabel(score.tier)}
+            </Text>
+            {score.deltaSinceLast !== null ? (
+              <>
+                <View style={styles.scoreStampDivider} />
+                <Text
+                  style={styles.scoreStampDelta}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  {`${formatDelta(score.deltaSinceLast)} ${sinceLastPhrase(
+                    score.latestAt,
+                    score.scanCount
+                  )}`}
+                </Text>
+              </>
+            ) : null}
           </View>
-          {score.deltaSinceLast !== null ? (
-            <View style={styles.scoreStripRight}>
-              <Text style={styles.scoreStripDelta} maxFontSizeMultiplier={1.1}>
-                {formatDelta(score.deltaSinceLast)}
-              </Text>
-              <Text style={styles.scoreStripSince} maxFontSizeMultiplier={1.1}>
-                {sinceLastPhrase(score.latestAt, score.scanCount)}
-              </Text>
-            </View>
-          ) : null}
         </View>
 
-        {/* ── SUMMARY ── */}
-        <View style={styles.section}>
-          <Text style={styles.summaryKicker} maxFontSizeMultiplier={1.1}>
-            YOUR PLAN
-          </Text>
-          <Text
-            style={styles.summaryHeadline}
-            maxFontSizeMultiplier={1.15}
-            numberOfLines={3}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}
-          >
-            {headlineText}
-          </Text>
-          {secondaryConcern ? (
-            <Text style={styles.summarySecondary} maxFontSizeMultiplier={1.2}>
-              Also watching {CATEGORY_LABEL[
-                secondaryConcern.category
-              ].toLowerCase()} on your {secondaryConcern.region}.
-            </Text>
-          ) : null}
-        </View>
-
-        {/* ── TONIGHT ── */}
+        {/* ── TONIGHT — action cards with icons ── */}
         {tonight.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
               TONIGHT
             </Text>
-            <View style={styles.tonightSteps}>
+            <View style={styles.actionStack}>
               {tonight.slice(0, 3).map((step, i) => (
-                <View key={i} style={styles.tonightStep}>
-                  <Text
-                    style={styles.tonightStepNum}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    {i + 1}
-                  </Text>
-                  <Text
-                    style={styles.tonightStepText}
-                    maxFontSizeMultiplier={1.2}
-                    numberOfLines={3}
-                  >
-                    {compressStep(step)}
-                  </Text>
-                </View>
+                <ActionCard
+                  key={i}
+                  step={compressStep(step)}
+                  timeOfDay={inferTimeOfDay(step)}
+                />
               ))}
             </View>
           </View>
@@ -413,6 +395,249 @@ export function PlanScreen() {
 }
 
 // ============================================================================
+// HeroConcernCard — the Plan page's dominant object
+// ============================================================================
+
+function HeroConcernCard({
+  primary,
+  secondary,
+}: {
+  primary: Concern | undefined;
+  secondary: Concern | undefined;
+}) {
+  if (!primary) {
+    return (
+      <View style={hero.wrap}>
+        <Text style={hero.kicker} maxFontSizeMultiplier={1.1}>
+          YOUR PLAN
+        </Text>
+        <Text style={hero.headline} maxFontSizeMultiplier={1.15}>
+          Your skin is settled today.
+        </Text>
+        <Text style={hero.interpretation} maxFontSizeMultiplier={1.2}>
+          Keep your current routine going — consistency is the work.
+        </Text>
+      </View>
+    );
+  }
+
+  const color = colorFor(primary.severity);
+  const dots = dotCount(primary.severity);
+
+  return (
+    <View
+      style={[
+        hero.wrap,
+        { backgroundColor: withAlpha(color, 0.06) },
+      ]}
+    >
+      <View style={hero.stampRow}>
+        <View style={[hero.severityPill, { backgroundColor: color }]}>
+          <Text style={hero.severityText} maxFontSizeMultiplier={1.1}>
+            {severityToUpper(primary.severity)}
+          </Text>
+        </View>
+        <View style={hero.dotStack}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                hero.dot,
+                { backgroundColor: i < dots ? color : 'rgba(11,18,32,0.12)' },
+              ]}
+            />
+          ))}
+        </View>
+        <View style={{ flex: 1 }} />
+        <Text style={hero.kicker} maxFontSizeMultiplier={1.1}>
+          YOUR PLAN
+        </Text>
+      </View>
+
+      <Text
+        style={hero.headline}
+        maxFontSizeMultiplier={1.15}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+      >
+        {CATEGORY_LABEL[primary.category]}.
+      </Text>
+      <Text style={hero.region} maxFontSizeMultiplier={1.2}>
+        on your {primary.region}
+      </Text>
+      <Text
+        style={hero.interpretation}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={3}
+      >
+        {primary.interpretation}
+      </Text>
+
+      {secondary ? (
+        <View style={hero.secondaryRow}>
+          <View
+            style={[
+              hero.secondaryDot,
+              { backgroundColor: colorFor(secondary.severity) },
+            ]}
+          />
+          <Text
+            style={hero.secondaryText}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={1}
+          >
+            Also watching {CATEGORY_LABEL[
+              secondary.category
+            ].toLowerCase()} on your {secondary.region}.
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function severityToUpper(s: Severity): string {
+  switch (s) {
+    case 'calm':
+      return 'CALM';
+    case 'mild':
+      return 'MILD';
+    case 'moderate':
+      return 'MODERATE';
+    case 'needs-attention':
+      return 'NEEDS ATTENTION';
+  }
+}
+
+function dotCount(s: Severity): number {
+  switch (s) {
+    case 'calm':
+      return 1;
+    case 'mild':
+      return 1;
+    case 'moderate':
+      return 2;
+    case 'needs-attention':
+      return 3;
+  }
+}
+
+function withAlpha(hex: string, a: number): string {
+  if (hex.length !== 7 || !hex.startsWith('#')) return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+// ============================================================================
+// ActionCard — replaces the numbered tonight list
+// ============================================================================
+
+type TimeOfDay = 'morning' | 'night' | 'week';
+
+function inferTimeOfDay(step: string): TimeOfDay {
+  const s = step.toLowerCase();
+  if (s.includes('spf') || s.includes('morning') || s.includes('am '))
+    return 'morning';
+  if (s.includes('once this week') || s.includes('this week'))
+    return 'week';
+  return 'night';
+}
+
+type ActionIcon = React.FC<PhosphorIconProps>;
+
+function iconForStep(step: string): ActionIcon {
+  const s = step.toLowerCase();
+  if (s.includes('spf')) return Sun as ActionIcon;
+  if (s.includes('calming') || s.includes('gel')) return Shield as ActionIcon;
+  if (s.includes('hydrat') || s.includes('moistur')) return Drop as ActionIcon;
+  if (s.includes('skip') || s.includes('barrier')) return Shield as ActionIcon;
+  if (s.includes('exfoliant') || s.includes('pha') || s.includes('clay'))
+    return Sparkle as ActionIcon;
+  if (s.includes('brightening')) return Sparkle as ActionIcon;
+  if (s.includes('natural') || s.includes('plant')) return Leaf as ActionIcon;
+  return MoonStars as ActionIcon;
+}
+
+function ActionCard({
+  step,
+  timeOfDay,
+}: {
+  step: string;
+  timeOfDay: TimeOfDay;
+}) {
+  const Icon = iconForStep(step);
+  const tod = timeOfDayMeta(timeOfDay);
+  return (
+    <View style={action.card}>
+      <View style={[action.iconWrap, { backgroundColor: tod.iconBg }]}>
+        <Icon size={18} color={tod.iconFg} weight="duotone" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text
+          style={action.title}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={2}
+        >
+          {step}
+        </Text>
+        <View style={[action.todChip, { backgroundColor: tod.chipBg }]}>
+          <tod.ChipIcon size={10} color={tod.chipFg} weight="bold" />
+          <Text
+            style={[action.todChipText, { color: tod.chipFg }]}
+            maxFontSizeMultiplier={1.1}
+          >
+            {tod.label}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function timeOfDayMeta(tod: TimeOfDay): {
+  label: string;
+  chipBg: string;
+  chipFg: string;
+  iconBg: string;
+  iconFg: string;
+  ChipIcon: ActionIcon;
+} {
+  switch (tod) {
+    case 'morning':
+      return {
+        label: 'MORNING',
+        chipBg: 'rgba(212,165,94,0.14)',
+        chipFg: palette.amberDeep,
+        iconBg: 'rgba(212,165,94,0.18)',
+        iconFg: palette.amberDeep,
+        ChipIcon: Sun as ActionIcon,
+      };
+    case 'week':
+      return {
+        label: 'THIS WEEK',
+        chipBg: 'rgba(76,155,122,0.14)',
+        chipFg: palette.mossDeep,
+        iconBg: 'rgba(76,155,122,0.18)',
+        iconFg: palette.mossDeep,
+        ChipIcon: Sparkle as ActionIcon,
+      };
+    case 'night':
+    default:
+      return {
+        label: 'TONIGHT',
+        chipBg: 'rgba(43,127,255,0.12)',
+        chipFg: palette.clayDeep,
+        iconBg: 'rgba(43,127,255,0.14)',
+        iconFg: palette.clay,
+        ChipIcon: MoonStars as ActionIcon,
+      };
+  }
+}
+
+// ============================================================================
 // Header
 // ============================================================================
 
@@ -573,21 +798,12 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  // Score strip — anchors the page in the Skin Score just below the header.
-  scoreStrip: {
-    marginTop: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: palette.bgDeep,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  // Skin Score stamp — small, just-below-hero. Reads as metadata, not a module.
+  scoreStamp: {
+    marginTop: 14,
+    paddingHorizontal: 4,
   },
-  scoreStripLeft: {
-    flex: 1,
-  },
-  scoreStripKicker: {
+  scoreStampKicker: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 9,
     letterSpacing: 1.4,
@@ -595,40 +811,39 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 4,
   },
-  scoreStripValueRow: {
+  scoreStampValueRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 10,
+    alignItems: 'center',
+    gap: 8,
   },
-  scoreStripValue: {
+  scoreStampValue: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 30,
-    lineHeight: 32,
-    letterSpacing: -0.8,
+    fontSize: 22,
+    letterSpacing: -0.5,
     color: palette.ink,
     fontVariant: ['tabular-nums'],
   },
-  scoreStripTier: {
+  scoreStampTier: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
     color: palette.inkSecondary,
   },
-  scoreStripRight: {
-    alignItems: 'flex-end',
-    gap: 2,
+  scoreStampDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: palette.hairline,
   },
-  scoreStripDelta: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
-    letterSpacing: 0.1,
-    color: palette.clay,
-    fontVariant: ['tabular-nums'],
-  },
-  scoreStripSince: {
-    fontFamily: 'Inter-Regular',
+  scoreStampDelta: {
+    fontFamily: 'Inter-Medium',
     fontSize: 11,
     color: palette.inkTertiary,
+    flex: 1,
+  },
+
+  // Action stack
+  actionStack: {
+    gap: 10,
   },
 
   section: {
@@ -667,33 +882,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
-  // TONIGHT
-  tonightSteps: {
-    gap: 14,
-  },
-  tonightStep: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-  },
-  tonightStepNum: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    lineHeight: 26,
-    color: palette.clay,
-    width: 22,
-    letterSpacing: -0.5,
-    fontVariant: ['tabular-nums'],
-  },
-  tonightStepText: {
-    flex: 1,
-    fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: palette.ink,
-    letterSpacing: -0.1,
-    paddingTop: 3,
-  },
 
   // REC
   recCard: {
@@ -897,5 +1085,139 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: 0.1,
     color: palette.inkInverse,
+  },
+});
+
+// ============================================================================
+// Hero concern card + action card styles
+// ============================================================================
+
+const hero = StyleSheet.create({
+  wrap: {
+    marginTop: 12,
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    backgroundColor: palette.bgDeep,
+    overflow: 'hidden',
+  },
+  stampRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 20,
+  },
+  severityPill: {
+    paddingHorizontal: 10,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  severityText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: palette.inkInverse,
+  },
+  dotStack: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  headline: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 48,
+    lineHeight: 50,
+    letterSpacing: -1.6,
+    color: palette.ink,
+  },
+  region: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 18,
+    lineHeight: 22,
+    color: palette.inkSecondary,
+    marginTop: 4,
+  },
+  interpretation: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.ink,
+    marginTop: 18,
+  },
+  secondaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(11,18,32,0.08)',
+  },
+  secondaryDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  secondaryText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: palette.inkSecondary,
+  },
+});
+
+const action = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    color: palette.ink,
+  },
+  todChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 6,
+  },
+  todChipText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.0,
   },
 });

@@ -47,6 +47,12 @@ export interface SkinScoreDialProps {
   showTier?: boolean;
   /** Delay before the fill animation begins, in ms. */
   delay?: number;
+  /** Previous scan's score, rendered as a small notch on the arc so the
+   *  current value visually shows its movement. Null = no notch drawn. */
+  previousValue?: number | null;
+  /** Optional delta caption shown inside the dial under the tier label —
+   *  e.g. "+4 since last scan" / "new reading". */
+  deltaCaption?: string | null;
 }
 
 const GAP_DEG = 120; // opens a 120° gap at the bottom — dial is 240° visible
@@ -56,6 +62,8 @@ export function SkinScoreDial({
   size = 220,
   showTier = true,
   delay = 120,
+  previousValue = null,
+  deltaCaption = null,
 }: SkinScoreDialProps) {
   const strokeWidth = Math.max(6, Math.round(size * 0.042));
   // The rendered SVG viewport uses a padded radius so the stroke doesn't clip.
@@ -146,6 +154,21 @@ export function SkinScoreDial({
           strokeLinecap="round"
           transform={`rotate(${rotation} ${CX} ${CY})`}
         />
+        {/* Tier tick marks — tiny radial ticks at tier boundaries (55, 70,
+            85) along the outside of the arc. Faint; you notice them when
+            looking, they don't dominate the composition. */}
+        {[55, 70, 85].map((boundary) => (
+          <TierTick
+            key={boundary}
+            cx={CX}
+            cy={CY}
+            R={R}
+            strokeWidth={strokeWidth}
+            boundary={boundary}
+            visibleArcDeg={360 - GAP_DEG}
+            startAngleDeg={rotation}
+          />
+        ))}
         {/* Progress — tier-colored, animated fill */}
         <AnimatedCircle
           cx={CX}
@@ -158,6 +181,24 @@ export function SkinScoreDial({
           transform={`rotate(${rotation} ${CX} ${CY})`}
           animatedProps={progressProps}
         />
+        {/* Previous-scan notch — a small dot on the arc showing where you
+            moved from. Only drawn if previousValue is within 0..100 and
+            different from value. */}
+        {previousValue !== null &&
+        previousValue !== undefined &&
+        previousValue >= 0 &&
+        previousValue <= 100 &&
+        Math.abs(previousValue - value) >= 1 ? (
+          <PreviousNotch
+            cx={CX}
+            cy={CY}
+            R={R}
+            value={previousValue}
+            visibleArcDeg={360 - GAP_DEG}
+            startAngleDeg={rotation}
+            strokeWidth={strokeWidth}
+          />
+        ) : null}
       </Svg>
 
       {/* Centered text overlay */}
@@ -190,9 +231,129 @@ export function SkinScoreDial({
               {tierLabel(tier).toUpperCase()}
             </Text>
           ) : null}
+          {deltaCaption ? (
+            <Text
+              style={[
+                styles.deltaCaption,
+                {
+                  fontSize: Math.round(size * 0.048),
+                  marginTop: Math.round(size * 0.018),
+                },
+              ]}
+              maxFontSizeMultiplier={1.15}
+              numberOfLines={1}
+            >
+              {deltaCaption}
+            </Text>
+          ) : null}
         </View>
       </View>
     </View>
+  );
+}
+
+// ============================================================================
+// Arc decorations (tick marks + previous-scan notch)
+// ============================================================================
+
+/**
+ * Converts an SVG "rotate(deg, cx, cy) then parametric t on a circle"
+ * position into absolute (x, y) coordinates. `t` is the visible-arc
+ * fraction [0..1]: 0 = start of arc, 1 = end.
+ */
+function polarOnArc(
+  cx: number,
+  cy: number,
+  R: number,
+  startAngleDeg: number,
+  visibleArcDeg: number,
+  t: number
+) {
+  // After `rotate(startAngleDeg, cx, cy)`, the arc's 0° sits at the rotated
+  // position. Moving along the arc = rotating around (cx, cy) by (t *
+  // visibleArcDeg). Combined angle from the +x axis = startAngleDeg + t *
+  // visibleArcDeg (in rotate's reference where 0° is right, clockwise).
+  // SVG rotate() uses clockwise degrees from +x axis.
+  const angle = startAngleDeg + t * visibleArcDeg;
+  const rad = (angle * Math.PI) / 180;
+  return {
+    x: cx + R * Math.cos(rad),
+    y: cy + R * Math.sin(rad),
+  };
+}
+
+function TierTick({
+  cx,
+  cy,
+  R,
+  strokeWidth,
+  boundary,
+  visibleArcDeg,
+  startAngleDeg,
+}: {
+  cx: number;
+  cy: number;
+  R: number;
+  strokeWidth: number;
+  boundary: number;
+  visibleArcDeg: number;
+  startAngleDeg: number;
+}) {
+  // Translate `boundary` (0..100) to arc fraction.
+  const t = boundary / 100;
+  const inner = polarOnArc(cx, cy, R - strokeWidth * 0.75, startAngleDeg, visibleArcDeg, t);
+  const outer = polarOnArc(cx, cy, R + strokeWidth * 0.55, startAngleDeg, visibleArcDeg, t);
+  return (
+    <Circle
+      cx={outer.x}
+      cy={outer.y}
+      r={2}
+      fill={palette.inkTertiary}
+      fillOpacity={0.4}
+    />
+  );
+  // Using a small dot instead of a line: reads as a premium marker at
+  // small dial sizes where a tick line would visually clutter.
+  // (The `inner` anchor is calculated for future line-variant work.)
+  void inner;
+}
+
+function PreviousNotch({
+  cx,
+  cy,
+  R,
+  value,
+  visibleArcDeg,
+  startAngleDeg,
+  strokeWidth,
+}: {
+  cx: number;
+  cy: number;
+  R: number;
+  value: number;
+  visibleArcDeg: number;
+  startAngleDeg: number;
+  strokeWidth: number;
+}) {
+  const t = Math.max(0, Math.min(1, value / 100));
+  const pt = polarOnArc(cx, cy, R, startAngleDeg, visibleArcDeg, t);
+  // Double-stroked pip: inkInverse halo (so it reads over any tier color)
+  // + ink core.
+  return (
+    <>
+      <Circle
+        cx={pt.x}
+        cy={pt.y}
+        r={strokeWidth * 0.55}
+        fill={palette.inkInverse}
+      />
+      <Circle
+        cx={pt.x}
+        cy={pt.y}
+        r={strokeWidth * 0.26}
+        fill={palette.inkSecondary}
+      />
+    </>
   );
 }
 
@@ -245,5 +406,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     letterSpacing: 1.6,
     color: palette.inkSecondary,
+  },
+  deltaCaption: {
+    fontFamily: 'Inter-Medium',
+    color: palette.inkTertiary,
+    letterSpacing: 0.1,
+    textAlign: 'center',
+    paddingHorizontal: 4,
   },
 });

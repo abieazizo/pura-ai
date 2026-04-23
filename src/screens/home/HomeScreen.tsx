@@ -177,29 +177,25 @@ export function HomeScreen() {
           </Text>
 
           <View style={styles.dialWrap}>
-            <SkinScoreDial value={score.value} size={196} showTier />
+            <SkinScoreDial
+              value={score.value}
+              size={204}
+              showTier
+              previousValue={previous?.overallScore ?? null}
+              deltaCaption={
+                score.deltaSinceLast !== null
+                  ? `${formatDelta(
+                      score.deltaSinceLast
+                    )} since last scan`
+                  : 'new reading'
+              }
+            />
           </View>
 
           <View style={styles.scoreKickerBlock}>
             <Text style={styles.scoreKicker} maxFontSizeMultiplier={1.1}>
               SKIN SCORE
             </Text>
-            {score.deltaSinceLast !== null ? (
-              <View style={styles.scoreDeltaRow}>
-                <ScoreDeltaChip delta={score.deltaSinceLast} />
-                <Text
-                  style={styles.scoreSinceLabel}
-                  maxFontSizeMultiplier={1.15}
-                  numberOfLines={1}
-                >
-                  {sinceLastPhrase(score.latestAt, score.scanCount)}
-                </Text>
-              </View>
-            ) : (
-              <Text style={styles.scoreFirstLabel} maxFontSizeMultiplier={1.15}>
-                your first reading
-              </Text>
-            )}
           </View>
 
           <Text
