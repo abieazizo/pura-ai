@@ -147,7 +147,7 @@ export function FitTagsRow({ product, user }: FitTagsRowProps) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
-        WHY THIS FITS
+        FIT SIGNALS
       </Text>
 
       <FlatList

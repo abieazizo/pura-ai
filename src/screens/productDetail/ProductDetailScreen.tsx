@@ -115,7 +115,11 @@ export function ProductDetailScreen() {
         />
         <FitTagsRow product={product} user={user} />
 
-        <Accordion id="description" title="Description" defaultOpen>
+        {/* v10 — description now collapsed by default. Brand-marketing copy
+            is the weakest information on this screen; users open it only
+            when they need to. Ingredients stay open because they're the
+            concrete health data. */}
+        <Accordion id="description" title="Description">
           <Text style={styles.bodyCopy} maxFontSizeMultiplier={1.2}>
             {product.description || 'No description available.'}
           </Text>
@@ -161,12 +165,14 @@ export function ProductDetailScreen() {
 }
 
 // ============================================================================
-// MatchWhyBlock — v9.7
+// MatchWhyBlock — v10
 //
-// Inline section below the product name. Shows:
-//   • Moss-green "92% MATCH" capsule + stars for rating parity
-//   • A concern-tied rationale sentence:
-//       "Because your chin is tracking as moderate in your last scan."
+// Inline row below the product name. No bordered card, no bullet rail, no
+// separate "WHY THIS MATCHES YOU" kicker that duplicated the FitTagsRow
+// kicker. The moss badge carries the match signal; the italic serif
+// rationale carries the reason. Renders as a caption to the product name,
+// not a competing panel.
+//
 // Hidden if there's no scan-derived concern — never fabricates a match
 // story out of nothing.
 // ============================================================================
@@ -185,29 +191,22 @@ function MatchWhyBlock({
 
   return (
     <View style={matchStyles.wrap}>
-      <View style={matchStyles.badgeRow}>
-        <View style={matchStyles.badge}>
-          <Text style={matchStyles.badgeNum} maxFontSizeMultiplier={1.1}>
-            {matchScore}%
-          </Text>
-          <Text style={matchStyles.badgeLabel} maxFontSizeMultiplier={1.1}>
-            MATCH
-          </Text>
-        </View>
-        <Text style={matchStyles.kicker} maxFontSizeMultiplier={1.1}>
-          WHY THIS MATCHES YOU
+      <View style={matchStyles.badge}>
+        <Text style={matchStyles.badgeNum} maxFontSizeMultiplier={1.1}>
+          {matchScore}
+          <Text style={matchStyles.badgePct}>%</Text>
+        </Text>
+        <Text style={matchStyles.badgeLabel} maxFontSizeMultiplier={1.1}>
+          MATCH
         </Text>
       </View>
-      <View style={matchStyles.reasonRow}>
-        <View style={matchStyles.reasonBullet} />
-        <Text
-          style={matchStyles.reason}
-          maxFontSizeMultiplier={1.2}
-          numberOfLines={3}
-        >
-          {reason}
-        </Text>
-      </View>
+      <Text
+        style={matchStyles.reason}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={3}
+      >
+        {reason}
+      </Text>
     </View>
   );
 }
@@ -242,28 +241,25 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 17,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
   },
+  // v10 — palette.inkSecondary in place of the warm terracotta rgba.
   bodyCopy: {
     fontFamily: 'InstrumentSerif-Regular',
     fontSize: 16,
     lineHeight: 23,
-    color: 'rgba(26,22,20,0.85)',
+    color: palette.inkSecondary,
   },
 });
 
 const matchStyles = StyleSheet.create({
+  // v10 — inline match row. No container box, no second kicker. Just a
+  // compact moss badge and an italic serif rationale sitting as a caption
+  // under the product name. Reads as part of the product identity rather
+  // than a competing info panel.
   wrap: {
     marginHorizontal: 20,
-    marginTop: 18,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    backgroundColor: palette.bg,
-  },
-  badgeRow: {
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -274,7 +270,7 @@ const matchStyles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: palette.moss,
     alignItems: 'center',
-    minWidth: 56,
+    minWidth: 52,
   },
   badgeNum: {
     fontFamily: 'Inter-SemiBold',
@@ -284,6 +280,10 @@ const matchStyles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     letterSpacing: 0.1,
   },
+  badgePct: {
+    fontSize: 10,
+    letterSpacing: 0.2,
+  },
   badgeLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 8,
@@ -292,35 +292,11 @@ const matchStyles = StyleSheet.create({
     color: 'rgba(248,250,252,0.82)',
     marginTop: 1,
   },
-  kicker: {
-    flex: 1,
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-  },
-  reasonRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: palette.divider,
-  },
-  reasonBullet: {
-    width: 3,
-    alignSelf: 'stretch',
-    borderRadius: 2,
-    backgroundColor: palette.clay,
-    marginTop: 2,
-  },
   reason: {
     flex: 1,
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 20,
     color: palette.inkSecondary,
   },
 });
