@@ -98,35 +98,40 @@ export function ProfileSummary({ onNext }: ProfileSummaryProps) {
   );
 }
 
+// v9.9 — Profile summary typography aligned with v9 system. Values ink
+// (not clay) so the screen reads as "this is you" rather than a brand-
+// blue branding moment. Kicker uses tokens.inkTertiary; divider uses
+// palette.divider.
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   flex: { flex: 1 },
   rows: {
-    marginTop: 24,
+    marginTop: 28,
     marginHorizontal: 24,
   },
   row: {
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    lineHeight: 13,
-    letterSpacing: 1.4,
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
   },
   value: {
-    fontFamily: 'InstrumentSerif-Regular',
+    fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 22,
-    lineHeight: 26,
-    color: palette.clay,
-    marginTop: 4,
+    lineHeight: 27,
+    letterSpacing: -0.3,
+    color: palette.ink,
+    marginTop: 6,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(26,22,20,0.1)',
-    marginTop: 12,
+    backgroundColor: palette.divider,
+    marginTop: 14,
   },
   ctaWrap: {
     paddingTop: 12,

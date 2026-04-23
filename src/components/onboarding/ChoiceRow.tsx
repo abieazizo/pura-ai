@@ -79,9 +79,9 @@ export function ChoiceRow({
     >
       {Icon ? (
         <Icon
-          size={24}
-          color={palette.ink}
-          style={{ opacity: 0.7, marginRight: 16 }}
+          size={22}
+          color={selected ? palette.clay : palette.inkSecondary}
+          style={{ marginRight: 14 }}
           weight="duotone"
         />
       ) : null}
@@ -108,23 +108,28 @@ export function ChoiceRow({
   );
 }
 
+// v9.9 — choice row aligned with v9 surface language. Idle state is a
+// paper tile with 1pt hairline border (same as Home concern cards); the
+// hardcoded warm sand @ 40% is gone. Selected state lifts to
+// clayPaper (near-white blue tint) with a 1.5pt clay border — signals
+// selection through tone, not saturation.
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     borderRadius: 16,
   },
-  standard: { height: 64 },
-  tall: { height: 76 },
+  standard: { height: 60 },
+  tall: { height: 74 },
   idle: {
-    backgroundColor: 'rgba(212,165,116,0.4)', // sand @ 40%
-    borderWidth: 2,
-    borderColor: 'transparent',
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
   },
   selected: {
-    backgroundColor: palette.sand,
-    borderWidth: 2,
+    backgroundColor: palette.clayPaper,
+    borderWidth: 1.5,
     borderColor: palette.clay,
   },
   textCol: {
@@ -132,13 +137,14 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 15,
+    letterSpacing: -0.1,
     color: palette.ink,
   },
   helper: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     marginTop: 2,
   },
   checkSpacer: { width: 20 },

@@ -90,22 +90,32 @@ export function OnboardingPrimaryButton({
   );
 }
 
+// v9.9 — onboarding primary aligned with the rest of the app (ink, not
+// clay). Every primary CTA across Home / Plan / Scan / Products / Product
+// Detail / AddToRoutine is `palette.ink` on paper text; onboarding was the
+// last holdout. Tonal variant drops the warm sand tint for a cool paper
+// tile with hairline border (matches Home concern cards).
 const styles = StyleSheet.create({
   btn: {
     marginHorizontal: 40,
-    height: 56,
-    borderRadius: 28,
+    height: 54,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primary: { backgroundColor: palette.clay },
-  tonal: { backgroundColor: 'rgba(212,165,116,0.6)' }, // sand @ 60%
-  disabled: { opacity: 0.25 },
+  primary: { backgroundColor: palette.ink },
+  tonal: {
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+  },
+  disabled: { opacity: 0.28 },
   label: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontSize: 15,
     lineHeight: 20,
+    letterSpacing: 0.1,
   },
-  labelPrimary: { color: palette.bg },
+  labelPrimary: { color: palette.inkInverse },
   labelTonal: { color: palette.ink },
 });

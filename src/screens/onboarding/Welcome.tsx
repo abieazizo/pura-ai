@@ -47,23 +47,28 @@ export function Welcome({ onTakeFirstScan }: WelcomeProps) {
 
       <View style={styles.center}>
         <Animated.View style={markStyle}>
-          <PuraMark variant="idle" size="lg" glow />
+          <PuraMark variant="idle" size={120} glow />
         </Animated.View>
 
-        <View style={{ height: 32 }} />
-        <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
-          You're in.
+        <View style={{ height: 36 }} />
+        <Text style={styles.wordmark} maxFontSizeMultiplier={1.1}>
+          Pura AI
         </Text>
 
-        <View style={{ height: 12 }} />
+        <View style={{ height: 20 }} />
+        <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
+          You{'\u2019'}re in.
+        </Text>
+
+        <View style={{ height: 10 }} />
         <Text style={styles.sub} maxFontSizeMultiplier={1.2}>
-          Let's take your first scan.
+          One scan unlocks your Skin Score, your plan, and your matched products.
         </Text>
       </View>
 
       <View style={{ paddingBottom: insets.bottom + 40 }}>
         <OnboardingPrimaryButton
-          label="Take first scan →"
+          label="Take your first scan"
           onPress={onTakeFirstScan}
         />
       </View>
@@ -71,26 +76,38 @@ export function Welcome({ onTakeFirstScan }: WelcomeProps) {
   );
 }
 
+// v9.9 — Welcome screen aligned with the cinematic intro language. Big
+// Mark with glow, "Pura AI" serif wordmark beneath, then "You're in."
+// headline + concrete value promise (Skin Score / plan / matched products)
+// instead of the prior generic "Let's take your first scan." subhead.
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 32,
+  },
+  wordmark: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    letterSpacing: -0.3,
+    color: palette.ink,
   },
   headline: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 48,
-    lineHeight: 52,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 44,
+    lineHeight: 48,
+    letterSpacing: -0.9,
     color: palette.ink,
     textAlign: 'center',
   },
   sub: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 18,
-    lineHeight: 24,
-    color: 'rgba(26,22,20,0.7)',
+    fontSize: 16,
+    lineHeight: 23,
+    color: palette.inkSecondary,
     textAlign: 'center',
+    maxWidth: 320,
   },
 });
