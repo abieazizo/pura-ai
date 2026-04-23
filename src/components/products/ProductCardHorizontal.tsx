@@ -7,6 +7,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -14,39 +15,56 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { HeartStraight } from 'phosphor-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { HeartStraight, Drop as DropIcon } from 'phosphor-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { hapt } from '@/utils/haptics';
 import { useAppStore } from '@/store/useAppStore';
 import { palette } from '@/theme';
 import type { Product, ProductTint } from '@/types';
-import { BottleSilhouette } from './BottleSilhouette';
 
 export interface ProductCardHorizontalProps {
   product: Product;
-  /** Only true on the "Best for you" row per §2.12. */
+  /** Only true on the "Best for you" row — match badge renders. */
   showMatch?: boolean;
-  /** Override width (used by SearchResults grid). Default 160 per spec. */
+  /** Override width (used by SearchResults grid). Default 164. */
   width?: number;
   style?: StyleProp<ViewStyle>;
 }
 
 /**
- * v7.6 catalog card (§2.8). 160×220 pill-radiused tile tinted by the
- * product's `tint` token. Warm paper variants — the saturated sand/clay/moss
- * are reserved for primary brand touches (see delivery note).
+ * ProductCardHorizontal — v9.6 premium catalog card.
  *
- * Tap: selection haptic, press-scale bloom, then navigate to ProductDetail
- * with the card's tint passed through so the hero matches exactly (§1).
+ * Previous versions (v7.6 → v9.5) shipped a BottleSilhouette on a flat
+ * tinted paper square. Out of step with every other v9 surface. This
+ * rewrite aligns the card with the rest of the app:
+ *
+ *   • Top region: 154pt-tall image area with a subtle tint-gradient
+ *     backdrop and a 1pt hairline border so the card reads as a framed
+ *     object, not a colored block.
+ *   • If the product has an `imageUri`, the actual image fills the area.
+ *     If not, a Drop glyph renders at 36pt, low-opacity, centered — same
+ *     placeholder the brand uses everywhere else.
+ *   • Heart pinned top-left in a paper-bg circle. Taps save to wishlist.
+ *   • Match badge pinned top-right as a moss-green capsule (same treatment
+ *     as the Plan page best-product overlay) — the match signal is now
+ *     visually consistent across the app.
+ *   • Bottom region: 94pt-tall text block with brand / name / price. Name
+ *     is set in Instrument Serif SemiBold to feel premium, not utility.
+ *
+ * Tap: selection haptic, press-scale bloom, navigate to ProductDetail
+ * carrying the product's tint so the hero matches.
  */
-const TINT_MAP: Record<ProductTint, string> = {
-  sand: palette.sandPaper,
-  clay: palette.clayPaper,
-  moss: palette.mossLight,
+
+const TINT_MAP: Record<ProductTint, { from: string; to: string }> = {
+  sand: { from: '#F4F7FC', to: '#E9EEF7' },
+  clay: { from: '#F1F5FD', to: '#E2EBF9' },
+  moss: { from: '#EDF3EF', to: '#DCE8E0' },
 };
 
-const CARD_W = 160;
-const CARD_H = 220;
+const CARD_W = 164;
+const CARD_H = 252;
+const IMAGE_H = 158;
 
 export function ProductCardHorizontal({
   product,
@@ -80,64 +98,95 @@ export function ProductCardHorizontal({
     toggleSave(product.id);
   };
 
-  const tint = TINT_MAP[product.tint];
+  const tint = TINT_MAP[product.tint] ?? TINT_MAP.sand;
   const showPill = !!showMatch && product.matchScore >= 80;
 
+  const priceDisplay = Number.isInteger(product.price)
+    ? `$${product.price}`
+    : `$${product.price.toFixed(2)}`;
+
   return (
-    <Animated.View
-      style={[
-        styles.card,
-        { width, height: CARD_H, backgroundColor: tint },
-        animated,
-        style,
-      ]}
-    >
+    <Animated.View style={[styles.card, { width, height: CARD_H }, animated, style]}>
       <Pressable
         onPress={openDetail}
         accessibilityRole="button"
-        accessibilityLabel={`${product.brand} ${product.name}`}
+        accessibilityLabel={`${product.brand} ${product.name}, ${priceDisplay}`}
         style={styles.pressable}
       >
-        <View style={styles.topRow}>
+        {/* IMAGE AREA ------------------------------------------------- */}
+        <View style={styles.imageArea}>
+          <LinearGradient
+            colors={[tint.from, tint.to]}
+            style={StyleSheet.absoluteFillObject}
+          />
+          {product.imageUri ? (
+            <Image
+              source={{ uri: product.imageUri }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={styles.fallbackWrap} pointerEvents="none">
+              <DropIcon
+                size={36}
+                color={palette.ink}
+                weight="duotone"
+                style={{ opacity: 0.32 }}
+              />
+            </View>
+          )}
+
+          {/* Heart — top-left */}
           <Pressable
             onPress={onHeartPress}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={isSaved ? 'Remove from saved' : 'Save product'}
-            style={styles.heartButton}
+            style={({ pressed }) => [
+              styles.heartButton,
+              pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
+            ]}
           >
             <HeartStraight
-              size={16}
+              size={14}
               weight={isSaved ? 'fill' : 'duotone'}
-              color={isSaved ? palette.clay : 'rgba(26,22,20,0.6)'}
+              color={isSaved ? palette.clay : palette.ink}
             />
           </Pressable>
 
+          {/* Match badge — top-right, moss-green premium pill */}
           {showPill ? (
-            <View style={styles.matchPill}>
-              <Text style={styles.matchText}>{product.matchScore} match</Text>
+            <View style={styles.matchBadge}>
+              <Text style={styles.matchBadgeNum} maxFontSizeMultiplier={1.1}>
+                {product.matchScore}%
+              </Text>
+              <Text style={styles.matchBadgeLabel} maxFontSizeMultiplier={1.1}>
+                MATCH
+              </Text>
             </View>
           ) : null}
+
+          {/* Hairline along the bottom of the image region — reads as the
+              seam between image and copy. */}
+          <View style={styles.imageSeam} pointerEvents="none" />
         </View>
 
-        <View style={styles.bottleWrap}>
-          <BottleSilhouette tint={palette.ink} opacity={0.15} size={60} />
-        </View>
-
-        <View style={styles.bottom}>
-          <Text style={styles.brand} numberOfLines={1}>
+        {/* TEXT AREA -------------------------------------------------- */}
+        <View style={styles.textArea}>
+          <Text style={styles.brand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
             {product.brand.toUpperCase()}
           </Text>
           <Text
             style={styles.productName}
             numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
             maxFontSizeMultiplier={1.15}
           >
             {product.name}
           </Text>
-          <Text style={styles.price}>${product.price}</Text>
+          <Text style={styles.price} maxFontSizeMultiplier={1.1}>
+            {priceDisplay}
+          </Text>
         </View>
       </Pressable>
     </Animated.View>
@@ -146,70 +195,104 @@ export function ProductCardHorizontal({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
   },
   pressable: {
     flex: 1,
-    padding: 14,
   },
-  topRow: {
-    height: 22,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+
+  // IMAGE AREA
+  imageArea: {
+    height: IMAGE_H,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  fallbackWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heartButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(250,247,244,0.9)', // paper @ 90%
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(248,250,252,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // v9.3 — premium green match badge. Solid moss with paper text for
-  // bolder signal than the old paper-on-paper pill. Tighter corners,
-  // tabular-nums so the percentage stays aligned regardless of digits.
-  matchPill: {
-    backgroundColor: palette.moss,
-    borderRadius: 10,
+  matchBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    minWidth: 46,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    flexDirection: 'row',
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: palette.moss,
     alignItems: 'center',
-    gap: 3,
   },
-  matchText: {
+  matchBadgeNum: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 0.5,
+    fontSize: 12,
+    lineHeight: 14,
     color: palette.inkInverse,
     fontVariant: ['tabular-nums'],
+    letterSpacing: 0.1,
   },
-  bottleWrap: {
+  matchBadgeLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 7,
+    lineHeight: 9,
+    letterSpacing: 1.0,
+    color: 'rgba(248,250,252,0.80)',
+    marginTop: 1,
+  },
+  imageSeam: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: palette.hairline,
+  },
+
+  // TEXT AREA
+  textArea: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
+    justifyContent: 'space-between',
   },
-  bottom: {},
   brand: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
+    fontSize: 9,
     letterSpacing: 1.4,
-    color: 'rgba(26,22,20,0.7)',
-    marginBottom: 2,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 3,
   },
   productName: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 15,
-    lineHeight: 15 * 1.15,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    lineHeight: 19,
+    letterSpacing: -0.2,
     color: palette.ink,
-    marginBottom: 6,
+    flex: 1,
   },
   price: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 15,
     color: palette.ink,
     fontVariant: ['tabular-nums'],
+    letterSpacing: -0.2,
+    marginTop: 4,
   },
 });

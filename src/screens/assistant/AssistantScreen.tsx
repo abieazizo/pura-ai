@@ -26,7 +26,6 @@ import {
   ShieldCheck,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
-import { ScreenChrome } from '@/components/ScreenChrome';
 import { EditorialRule } from '@/components/EditorialRule';
 import { PuraMark } from '@/components/PuraMark';
 import { TypingDots } from '@/components/TypingDots';
@@ -110,14 +109,37 @@ export function AssistantScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
-      <ScreenChrome markVariant={typing ? 'thinking' : 'idle'} />
+
+      {/* v9.6 — branded chat header. Replaces the v5 ScreenChrome
+          (absolutely-positioned mark + AI chip). The chat page reads as
+          "Pura, in conversation" — so the brand bar sits cleanly at the
+          top with the Mark animating to `thinking` while the assistant
+          composes. */}
+      <View style={styles.brandBar}>
+        <View style={styles.brandLeft}>
+          <PuraMark size={26} variant={typing ? 'thinking' : 'idle'} />
+          <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
+            Pura AI
+          </Text>
+        </View>
+        <View style={styles.brandStatus}>
+          <View
+            style={[
+              styles.brandStatusDot,
+              { backgroundColor: typing ? palette.clay : palette.moss },
+            ]}
+          />
+          <Text style={styles.brandStatusText} maxFontSizeMultiplier={1.1}>
+            {typing ? 'Thinking' : 'Ready'}
+          </Text>
+        </View>
+      </View>
 
       <View style={styles.header}>
         <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-          {strings.title}
-          <Text style={{ color: palette.clay }}>.</Text>
+          Ask<Text style={{ color: palette.clay }}>.</Text>
         </Text>
-        <Text style={styles.subtitle}>{strings.subtitle}</Text>
+        <Text style={styles.subtitle}>I{'\u2019'}ve been watching your skin.</Text>
       </View>
 
       <KeyboardAvoidingView
@@ -364,8 +386,50 @@ type ListItem =
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
+
+  // v9.6 — branded chat header
+  brandBar: {
+    height: 56,
+    paddingHorizontal: space.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandWord: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 20,
+    letterSpacing: -0.3,
+    color: palette.ink,
+  },
+  brandStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: palette.bgDeep,
+  },
+  brandStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  brandStatusText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.0,
+    color: palette.inkSecondary,
+    textTransform: 'uppercase',
+  },
+
   header: {
-    paddingTop: 60,
+    paddingTop: space.md,
     paddingHorizontal: space.lg,
     paddingBottom: space.md,
   },
@@ -373,6 +437,7 @@ const styles = StyleSheet.create({
     ...typography.titleSerif,
     color: palette.ink,
     fontSize: 40,
+    letterSpacing: -1.0,
   },
   subtitle: {
     ...typography.italicLead,

@@ -37,7 +37,9 @@ const TITLES: Record<ProductRowKind, { title: string; sub?: string }> = {
   essentials: { title: 'Essentials.' },
 };
 
-const CARD_W = 160;
+// v9.6 — card widened from 160 → 164 + 12 gap stays. Keep SNAP in sync
+// so the FlatList snaps cleanly to card boundaries.
+const CARD_W = 164;
 const GAP = 12;
 const SNAP = CARD_W + GAP;
 

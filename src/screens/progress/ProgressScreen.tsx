@@ -135,31 +135,47 @@ export function ProgressScreen() {
         <ProgressNarrative scans={scans} />
 
         {first && selectedScan ? (
-          <View style={[styles.fullBleedCompare, { marginHorizontal: -space.lg }]}>
-            <CompareSlider
-              leftUri={first.photoUri}
-              rightUri={selectedScan.photoUri}
-              leftLabel="DAY 1"
-              rightLabel={`DAY ${selectedScan.dayNumber}`}
-              width={width}
-              height={compareHeight}
-            />
+          <View style={styles.compareBlock}>
+            <View style={styles.compareHead}>
+              <Text style={styles.compareKicker} maxFontSizeMultiplier={1.1}>
+                SIDE BY SIDE
+              </Text>
+              <Text style={styles.compareDates} maxFontSizeMultiplier={1.1}>
+                {`DAY 1 \u2192 DAY ${selectedScan.dayNumber}`}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.fullBleedCompare,
+                { marginHorizontal: -space.lg },
+              ]}
+            >
+              <CompareSlider
+                leftUri={first.photoUri}
+                rightUri={selectedScan.photoUri}
+                leftLabel="DAY 1"
+                rightLabel={`DAY ${selectedScan.dayNumber}`}
+                width={width}
+                height={compareHeight}
+              />
+            </View>
           </View>
         ) : null}
 
-        <View style={{ marginTop: space.lg, marginLeft: -space.lg }}>
-          <PhotoTimelineStrip
-            scans={scans}
-            selectedId={selectedId ?? latest?.id ?? null}
-            onSelect={(s) => setSelectedId(s.id)}
-          />
-        </View>
-
-        {/* v9.5 — "MEASURABLE CHANGES SINCE DAY 1" MetricBars were
-            removed. ProgressNarrative above already shows per-concern
-            tier transitions with the same information in a more premium
-            treatment. The redundancy made Progress read as a report
-            rather than proof. */}
+        {scans.length > 2 ? (
+          <View style={styles.historyBlock}>
+            <Text style={styles.historyKicker} maxFontSizeMultiplier={1.1}>
+              SCAN HISTORY
+            </Text>
+            <View style={{ marginLeft: -space.lg }}>
+              <PhotoTimelineStrip
+                scans={scans}
+                selectedId={selectedId ?? latest?.id ?? null}
+                onSelect={(s) => setSelectedId(s.id)}
+              />
+            </View>
+          </View>
+        ) : null}
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -319,8 +335,44 @@ const styles = StyleSheet.create({
     color: palette.ink,
   },
 
+  // v9.6 — compare block header + full-bleed slider
+  compareBlock: {
+    marginTop: space.xxl,
+  },
+  compareHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.md,
+  },
+  compareKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  compareDates: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: palette.clay,
+    fontVariant: ['tabular-nums'],
+  },
   fullBleedCompare: {
-    marginTop: space.xl,
+    marginTop: 4,
+  },
+
+  historyBlock: {
+    marginTop: space.xxl,
+  },
+  historyKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: space.md,
   },
 
   changesBlock: {
