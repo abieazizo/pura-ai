@@ -109,11 +109,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  // v10.7 — moved from warm v5 rgba to palette.inkSecondary.
   copy: {
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 22,
     lineHeight: 28,
-    color: 'rgba(26,22,20,0.7)',
+    color: palette.inkSecondary,
     textAlign: 'center',
   },
 });

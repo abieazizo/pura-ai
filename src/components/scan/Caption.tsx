@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useAppStore } from '@/store/useAppStore';
 import type { ReticleMode } from './Reticle';
 
 export interface CaptionProps {
@@ -15,14 +16,28 @@ const COPY: Record<ReticleMode, string> = {
 };
 
 /**
- * Italic serif caption 40pt below the reticle (§2.3). White at 90%, max
- * width 80%, centered.
+ * v10.7 — first-scan copy variant. If the user has zero scans yet and
+ * they're in face mode, the caption reads as an arrival beat ("Your
+ * first scan. Thirty seconds.") rather than the generic technique
+ * copy. Every scan after the first reverts to the standard line. This
+ * makes the Tutorial → Scan handoff land as "this is the first real
+ * product moment" instead of dumping the user into a generic camera.
+ */
+const FIRST_FACE_COPY = 'Your first scan. Thirty seconds.';
+
+/**
+ * Italic serif caption 40pt below the reticle. White at 90%, max width
+ * 80%, centered.
  */
 export function Caption({ mode, top }: CaptionProps) {
+  const hasNeverScanned = useAppStore((s) => s.scans.length === 0);
+  const text =
+    mode === 'face' && hasNeverScanned ? FIRST_FACE_COPY : COPY[mode];
+
   return (
     <View style={[styles.wrap, { top }]} pointerEvents="none">
       <Text style={styles.text} maxFontSizeMultiplier={1.2}>
-        {COPY[mode]}
+        {text}
       </Text>
     </View>
   );

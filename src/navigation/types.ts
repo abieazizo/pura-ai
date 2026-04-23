@@ -29,9 +29,9 @@ export type OnboardingStackParamList = {
   NotificationPermission: undefined;
   ReviewAsk: undefined;
   Paywall: undefined;
-  /** v10.6 — 3-page product walkthrough between Paywall and Welcome. */
+  /** v10.7 — 3-page product walkthrough. Final onboarding step; its
+   *  completion routes directly into the Scan modal, not Home. */
   Tutorial: undefined;
-  Welcome: undefined;
 };
 
 export type TabParamList = {

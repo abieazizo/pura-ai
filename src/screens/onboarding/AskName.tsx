@@ -38,9 +38,10 @@ export function AskName({ onNext }: AskNameProps) {
   const [value, setValue] = useState(storedName);
   const focus = useSharedValue(storedName ? 1 : 0);
 
+  // v10.7 — underline tint moved from the v5 terracotta rgba to cool
+  // palette tokens. Focused = clay (brand accent); unfocused = hairline.
   const underlineStyle = useAnimatedStyle(() => ({
-    backgroundColor:
-      focus.value > 0.5 ? palette.clay : 'rgba(198,93,72,0.3)',
+    backgroundColor: focus.value > 0.5 ? palette.clay : palette.hairline,
   }));
 
   const canContinue = value.trim().length >= 2;
@@ -69,7 +70,7 @@ export function AskName({ onNext }: AskNameProps) {
             value={value}
             onChangeText={setValue}
             placeholder="Your name"
-            placeholderTextColor="rgba(26,22,20,0.25)"
+            placeholderTextColor={palette.inkTertiary}
             autoFocus
             autoCapitalize="words"
             autoCorrect={false}

@@ -27,26 +27,34 @@ import { NotificationPrimer } from '@/screens/onboarding/NotificationPrimer';
 import { NotificationPermission } from '@/screens/onboarding/NotificationPermission';
 import { ReviewAsk } from '@/screens/onboarding/ReviewAsk';
 import { Paywall } from '@/screens/onboarding/Paywall';
-import { Welcome } from '@/screens/onboarding/Welcome';
+// v10.7 — Welcome was removed from the onboarding flow. The product
+// tutorial now hands off directly to the ScanModal, because Home has no
+// meaning before a first scan exists. The Welcome screen file is
+// preserved for potential future re-use (e.g., a cinematic "you're back"
+// moment after account switching), but it is no longer a reachable route
+// in OnboardingStackParamList. The import therefore does not appear here.
 import { useAppStore } from '@/store/useAppStore';
 import type { OnboardingStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 
 /**
- * v7 onboarding navigator (§2.3). Seventeen routes. Native-stack with
- * `slide_from_right`, layered with a per-screen Reanimated spring via
- * `<SlideEntry />` so the content gets the custom 40→0 translateX + opacity
- * fade. Back swipe is disabled on Splash, permission resolvers, Processing,
- * ReviewAsk, Paywall, Welcome.
+ * v10.7 onboarding navigator. Native-stack with `slide_from_right`,
+ * layered with a per-screen Reanimated spring via `<SlideEntry />` so
+ * the content gets a 40→0 translateX + opacity fade. Back swipe is
+ * disabled on Splash, permission resolvers, Processing, ReviewAsk,
+ * Paywall, and Tutorial.
  *
- * Completion path: Welcome → `finishOnboarding()` → RootNavigator's
- * `onboardingComplete` gate flips and the user lands on the tabs. The scan
- * tutorial's own gate then surfaces inside the tabs.
+ * Completion path (v10.7):
+ *   Tutorial (complete or skip) → `TutorialHost.handoff()`
+ *     → `finishOnboarding()` flips the root gate
+ *     → `setHasSeenScanTutorial(true)` prevents the legacy 4-page
+ *       camera-technique tutorial from surfacing on top of the product
+ *       tutorial the user just saw
+ *     → `rootNav.reset` to [Tabs, ScanModal] so the user lands
+ *       directly in the camera — Home is never shown before a scan.
  */
 export function OnboardingNavigator() {
-  const finishOnboarding = useAppStore((s) => s.finishOnboarding);
-
   return (
     <Stack.Navigator
       screenOptions={STACK_OPTIONS}
@@ -249,43 +257,56 @@ export function OnboardingNavigator() {
         )}
       </Stack.Screen>
 
-      {/* v10.6 — product walkthrough. Three pages: Scan / Plan / Track.
-          Skippable; skipping or completing both land on Welcome which
-          fires `finishOnboarding()`. */}
+      {/* v10.7 — product walkthrough is the final onboarding step.
+          Skipping or completing both fire `finishOnboarding()`, mark
+          the scan tutorial as seen (so the legacy camera-technique
+          tutorial doesn't also surface on first scan), and route
+          directly into the Scan modal. There is no Home stop
+          in between — Home has no meaning before a scan exists. */}
       <Stack.Screen
         name="Tutorial"
         options={{ gestureEnabled: false, animation: 'slide_from_right' }}
       >
-        {({ navigation }) => (
-          <Tutorial
-            onComplete={() => navigation.replace('Welcome')}
-            onSkip={() => navigation.replace('Welcome')}
-          />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="Welcome" options={{ gestureEnabled: false }}>
-        {() => <WelcomeHost finish={finishOnboarding} />}
+        {() => <TutorialHost />}
       </Stack.Screen>
     </Stack.Navigator>
   );
 }
 
-function WelcomeHost({ finish }: { finish: () => void }) {
+/**
+ * v10.7 — TutorialHost wraps the 3-page product walkthrough and owns
+ * the onboarding-completion flow. Completing OR skipping the tutorial:
+ *
+ *   1. `finishOnboarding()` writes `onboardingComplete: true` → the
+ *      RootNavigator gate flips from OnboardingNavigator to TabNavigator.
+ *   2. `setHasSeenScanTutorial(true)` prevents the legacy 4-page
+ *      camera-technique tutorial from firing on top of the product
+ *      tutorial the user just finished — the product tutorial's "01 ·
+ *      SCAN" page already covers the capture basics.
+ *   3. `rootNav.reset` to Tabs **with ScanModal stacked on top** so the
+ *      user lands directly in the camera. Home is not a meaningful
+ *      destination before a first scan; the Tutorial → Scan transition
+ *      is the real first product moment.
+ *
+ * The previous Welcome screen was removed from the onboarding flow in
+ * v10.7 — it duplicated the Tutorial's final message and created a
+ * redundant extra stop between "I'm ready" and the actual scan.
+ */
+function TutorialHost() {
   const rootNav = useNavigation<NavigationProp<any>>();
-  const handle = useCallback(() => {
-    // `finish()` writes `onboardingComplete: true`. The RootNavigator's
-    // gate flips in response, which remounts into Tabs. We don't push any
-    // route from here — the navigation swap is declarative.
-    finish();
-    rootNav.reset?.({ index: 0, routes: [{ name: 'Tabs' as never }] });
-  }, [finish, rootNav]);
+  const finish = useAppStore((s) => s.finishOnboarding);
+  const markScanTutorialSeen = useAppStore((s) => s.setHasSeenScanTutorial);
 
-  return (
-    <SlideEntry>
-      <Welcome onTakeFirstScan={handle} />
-    </SlideEntry>
-  );
+  const handoff = useCallback(() => {
+    finish();
+    markScanTutorialSeen(true);
+    rootNav.reset?.({
+      index: 1,
+      routes: [{ name: 'Tabs' as never }, { name: 'ScanModal' as never }],
+    });
+  }, [finish, markScanTutorialSeen, rootNav]);
+
+  return <Tutorial onComplete={handoff} onSkip={handoff} />;
 }
 
 const STACK_OPTIONS: NativeStackNavigationOptions = {

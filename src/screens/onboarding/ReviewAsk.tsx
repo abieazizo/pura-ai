@@ -160,9 +160,12 @@ export function ReviewAsk({ onDone }: ReviewAskProps) {
 const styles = StyleSheet.create({
   bgRoot: { flex: 1, backgroundColor: palette.bg },
   root: { flex: 1, backgroundColor: 'transparent' },
+  // v10.7 — scrim moved to cool ink; review-ask body + divider + notNow
+  // button retired their v5 warm-sand / warm-ink rgbas in favor of
+  // palette tokens.
   tint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26,22,20,0.2)', // ink @ 20%
+    backgroundColor: 'rgba(11,18,32,0.22)',
   },
   safe: { flex: 1 },
   center: {
@@ -202,14 +205,14 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkSecondary,
     textAlign: 'center',
   },
   divider: {
     marginTop: 20,
     height: 1,
     alignSelf: 'stretch',
-    backgroundColor: 'rgba(26,22,20,0.1)',
+    backgroundColor: palette.hairline,
   },
   stars: {
     marginTop: 20,
@@ -222,7 +225,9 @@ const styles = StyleSheet.create({
     height: 44,
     alignSelf: 'stretch',
     borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.6)', // sand @ 60%
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },

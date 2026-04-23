@@ -147,7 +147,10 @@ function Timeline({ billingDate }: { billingDate: string }) {
     },
     {
       TitleIcon: Bell,
-      circleColor: 'rgba(198,93,72,0.6)', // clay @ 60%
+      // v10.7 — legacy v5 terracotta rgba retired; the mid-timeline
+      // node uses clayDeep for a confident brand accent that isn't a
+      // hex-coded ghost from the old palette.
+      circleColor: palette.clayDeep,
       iconColor: palette.bg,
       title: 'In 5 days — Reminder',
       body: "I'll remind you before the trial ends so you can decide.",
@@ -366,17 +369,19 @@ const styles = StyleSheet.create({
     color: palette.bg,
   },
   restoreWrap: { alignSelf: 'center', marginTop: 16 },
+  // v10.7 — footer copy (restore link, fine print, legal) moved from
+  // v5 warm-ink rgbas to palette.inkTertiary for cool-palette parity.
   restore: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     textDecorationLine: 'underline',
   },
   fine: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     lineHeight: 18,
-    color: 'rgba(26,22,20,0.5)',
+    color: palette.inkTertiary,
     textAlign: 'center',
     marginHorizontal: 32,
     marginTop: 20,
@@ -390,12 +395,12 @@ const styles = StyleSheet.create({
   legalLink: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    color: 'rgba(26,22,20,0.5)',
+    color: palette.inkTertiary,
   },
   legalDot: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    color: 'rgba(26,22,20,0.5)',
+    color: palette.inkTertiary,
   },
 });
 
@@ -443,7 +448,7 @@ const timeline = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(26,22,20,0.7)',
+    color: palette.inkSecondary,
   },
 });
 
@@ -464,13 +469,17 @@ const planCard = StyleSheet.create({
     padding: 16,
     position: 'relative',
   },
+  // v10.7 — plan-card states aligned to v9+ selected-row language:
+  // idle = transparent with hairline border; selected = clayPaper
+  // (near-white azure tint) with clay border. The prior selected state
+  // was v5 warm sand @ 60% — an orange pill on a cool-palette page.
   idle: {
     backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: 'rgba(26,22,20,0.15)',
+    borderColor: palette.hairline,
   },
   selected: {
-    backgroundColor: 'rgba(212,165,116,0.6)', // sand @ 60%
+    backgroundColor: palette.clayPaper,
     borderWidth: 2,
     borderColor: palette.clay,
   },
@@ -515,7 +524,7 @@ const planCard = StyleSheet.create({
   per: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     marginLeft: 4,
     marginBottom: 3,
   },
@@ -536,7 +545,7 @@ const planCard = StyleSheet.create({
   },
   radioOff: {
     borderWidth: 1.5,
-    borderColor: 'rgba(26,22,20,0.3)',
+    borderColor: palette.inkTertiary,
     backgroundColor: 'transparent',
   },
   badgeText: {

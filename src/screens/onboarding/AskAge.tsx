@@ -143,16 +143,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // v10.7 — picker highlight moved from v5 terracotta rgba to the cool
+  // palette. Uses clayPaper (near-white azure tint) with palette.clay
+  // borders to echo the v9+ selected-row visual language.
   highlight: {
     position: 'absolute',
     top: (ITEM_HEIGHT * (VISIBLE_ITEMS - 1)) / 2,
     left: 0,
     right: 0,
     height: ITEM_HEIGHT,
-    backgroundColor: 'rgba(198,93,72,0.06)',
+    backgroundColor: palette.clayPaper,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: 'rgba(198,93,72,0.15)',
+    borderColor: palette.clay,
   },
   row: {
     height: ITEM_HEIGHT,

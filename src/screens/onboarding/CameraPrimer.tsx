@@ -89,12 +89,16 @@ const styles = StyleSheet.create({
   },
 });
 
+// v10.7 — the permission-mock card + its body / divider / border
+// colors moved from the v5 warm-ink rgba set to palette tokens, so
+// the CameraPrimer preview matches the rest of the cool-palette front
+// door instead of reading as a faintly-sepia iOS sheet.
 const mock = StyleSheet.create({
   card: {
     width: 280,
-    backgroundColor: 'rgba(250,247,244,0.95)', // paper @ 95%
+    backgroundColor: palette.bg,
     borderWidth: 1,
-    borderColor: 'rgba(26,22,20,0.15)', // ink @ 15%
+    borderColor: palette.hairline,
     borderRadius: 14,
     overflow: 'hidden',
   },
@@ -113,13 +117,13 @@ const mock = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 13,
     lineHeight: 18,
-    color: 'rgba(26,22,20,0.7)',
+    color: palette.inkSecondary,
     textAlign: 'center',
     marginTop: 6,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(26,22,20,0.1)',
+    backgroundColor: palette.hairline,
   },
   buttons: {
     flexDirection: 'row',
@@ -132,7 +136,7 @@ const mock = StyleSheet.create({
   },
   buttonSlotRightBorder: {
     borderRightWidth: 1,
-    borderRightColor: 'rgba(26,22,20,0.1)',
+    borderRightColor: palette.hairline,
   },
   dontAllow: {
     fontFamily: 'Inter-Regular',

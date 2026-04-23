@@ -94,11 +94,11 @@ export function Tutorial({ onComplete, onSkip }: TutorialProps) {
     onSkip();
   };
 
-  // Page-3 CTA is "I'm ready" (not "Take your first scan") because the
-  // Welcome screen after Tutorial is the actual cinematic launchpad and
-  // owns that primary action. Keeping the CTAs distinct prevents the
-  // user seeing the same "Take your first scan" button twice in a row.
-  const ctaLabel = page === 2 ? 'I\u2019m ready' : 'Next';
+  // v10.7 — Tutorial is now the final onboarding step. Page-3 CTA is
+  // "Take your first scan" because tapping it hands off directly into
+  // the ScanModal (see TutorialHost in OnboardingNavigator). There is
+  // no separate Welcome stop anymore, so the button speaks plainly.
+  const ctaLabel = page === 2 ? 'Take your first scan' : 'Next';
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
