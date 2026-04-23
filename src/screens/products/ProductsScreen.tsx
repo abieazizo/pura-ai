@@ -24,6 +24,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { AISearchBar } from '@/components/products/AISearchBar';
 import { ProductRow } from '@/components/products/ProductRow';
 import { SearchResults } from '@/components/products/SearchResults';
+import { SearchSuggestions } from '@/components/products/SearchSuggestions';
 import { FiltersStubSheet } from '@/components/products/FiltersStubSheet';
 import { PuraMark } from '@/components/PuraMark';
 import {
@@ -130,6 +131,13 @@ export function ProductsScreen() {
         onChangeText={setQuery}
         onClear={() => setQuery('')}
       />
+
+      {/* v10.3 — intelligent suggestions when empty. Pulls scan + profile
+          state to surface scan-aware chips ("For chin breakouts") plus
+          always-on discovery chips. Kills the "dead search" feeling. */}
+      {!isSearching ? (
+        <SearchSuggestions onPick={(q) => setQuery(q)} />
+      ) : null}
 
       {isSearching ? (
         <ScrollView
@@ -462,10 +470,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // v10.3 — lineHeight widened to 54pt (1.125×) so the "p" descender in
+  // "Products." stops clipping. 48pt serif needs more vertical room
+  // than a 1.02× line can offer.
   title: {
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 48,
-    lineHeight: 48 * 1.02,
+    lineHeight: 54,
     letterSpacing: -1.0,
     color: palette.ink,
     marginHorizontal: 20,

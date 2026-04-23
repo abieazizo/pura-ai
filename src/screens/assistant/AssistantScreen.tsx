@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -11,6 +11,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -32,6 +40,7 @@ import { TypingDots } from '@/components/TypingDots';
 import { ProductCard } from '@/components/ProductCard';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { seedProducts } from '@/data/seed';
 import { colors, palette, radius, space, type as typography } from '@/theme';
 import { assistant as strings } from '@/copy/strings';
@@ -110,11 +119,10 @@ export function AssistantScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
 
-      {/* v9.6 — branded chat header. Replaces the v5 ScreenChrome
-          (absolutely-positioned mark + AI chip). The chat page reads as
-          "Pura, in conversation" — so the brand bar sits cleanly at the
-          top with the Mark animating to `thinking` while the assistant
-          composes. */}
+      {/* v10.3 — branded chat header with a live status dot. The dot
+          gently pulses when the assistant is ready (reads as "listening,
+          alive") and flips to clay with a faster pulse while thinking.
+          Reduce-motion disables the pulse. */}
       <View style={styles.brandBar}>
         <View style={styles.brandLeft}>
           <PuraMark size={26} variant={typing ? 'thinking' : 'idle'} />
@@ -123,14 +131,9 @@ export function AssistantScreen() {
           </Text>
         </View>
         <View style={styles.brandStatus}>
-          <View
-            style={[
-              styles.brandStatusDot,
-              { backgroundColor: typing ? palette.clay : palette.moss },
-            ]}
-          />
+          <LiveStatusDot active={typing} />
           <Text style={styles.brandStatusText} maxFontSizeMultiplier={1.1}>
-            {typing ? 'Thinking' : 'Ready'}
+            {typing ? strings.statusThinking : strings.statusReady}
           </Text>
         </View>
       </View>
@@ -287,6 +290,19 @@ function iconKeyForPrompt(p: string): keyof typeof PROMPT_ICONS {
   return 'default';
 }
 
+/**
+ * v10.3 — EmptyChatBody upgraded to feel alive before the user types.
+ *
+ * Behavior:
+ *   • Pool of 6–10 prompts (contextual when a scan exists, educational
+ *     otherwise). On mount, a Fisher–Yates shuffle produces a fresh
+ *     ordering so each open of the assistant feels considered, not
+ *     memorized.
+ *   • Render 4 chips at a time. Every 7 seconds, the oldest chip swaps
+ *     out for the next in the shuffled queue via a crossfade. Slow enough
+ *     to read without frustration; live enough to feel intelligent.
+ *   • Reduce-motion: skip the rotation; just show the shuffled first 4.
+ */
 function EmptyChatBody({
   suggestions,
   onPick,
@@ -294,6 +310,9 @@ function EmptyChatBody({
   suggestions: string[];
   onPick: (text: string) => void;
 }) {
+  const reduceMotion = useReduceMotion();
+  const visible = useRotatingPrompts(suggestions, 4, 7000, reduceMotion);
+
   return (
     <View style={emptyStyles.root}>
       <View style={emptyStyles.markWrap}>
@@ -306,43 +325,117 @@ function EmptyChatBody({
 
       <View style={emptyStyles.kickerRow}>
         <Text style={emptyStyles.kickerText} maxFontSizeMultiplier={1.1}>
-          SUGGESTED
+          TRY ASKING
         </Text>
         <View style={emptyStyles.kickerRule} />
       </View>
 
       <View style={emptyStyles.promptGrid}>
-        {suggestions.map((s) => {
-          const Icon = PROMPT_ICONS[iconKeyForPrompt(s)];
-          return (
-            <Pressable
-              key={s}
-              onPress={() => onPick(s)}
-              accessibilityRole="button"
-              accessibilityLabel={s}
-              style={({ pressed }) => [
-                emptyStyles.promptChip,
-                pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
-              ]}
-            >
-              <View style={emptyStyles.promptIconWrap}>
-                <Icon size={14} color={palette.clay} weight="duotone" />
-              </View>
-              <Text
-                style={emptyStyles.promptText}
-                numberOfLines={2}
-                maxFontSizeMultiplier={1.15}
-              >
-                {s}
-              </Text>
-            </Pressable>
-          );
-        })}
+        {visible.map((s) => (
+          <PromptChip key={s} text={s} onPick={onPick} />
+        ))}
       </View>
 
       <Text style={emptyStyles.hintText}>{strings.attachHint}</Text>
     </View>
   );
+}
+
+/**
+ * One chip. Renders with a gentle fade-in on mount via Reanimated so the
+ * rotating-prompts swap is visually continuous. No fade-out animation —
+ * the replacement just fades in at the same slot.
+ */
+function PromptChip({
+  text,
+  onPick,
+}: {
+  text: string;
+  onPick: (text: string) => void;
+}) {
+  const Icon = PROMPT_ICONS[iconKeyForPrompt(text)];
+  const opacity = useSharedValue(0);
+
+  React.useEffect(() => {
+    opacity.value = 0;
+    opacity.value = withTiming(1, {
+      duration: 340,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [opacity, text]);
+
+  const chipStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View style={[{ flexGrow: 1, flexBasis: '46%' }, chipStyle]}>
+      <Pressable
+        onPress={() => onPick(text)}
+        accessibilityRole="button"
+        accessibilityLabel={text}
+        style={({ pressed }) => [
+          emptyStyles.promptChip,
+          pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+        ]}
+      >
+        <View style={emptyStyles.promptIconWrap}>
+          <Icon size={14} color={palette.clay} weight="duotone" />
+        </View>
+        <Text
+          style={emptyStyles.promptText}
+          numberOfLines={2}
+          maxFontSizeMultiplier={1.15}
+        >
+          {text}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/**
+ * Rotating-prompts hook. Shuffles the full pool on mount, then rotates the
+ * oldest visible prompt out every `intervalMs` by advancing the queue by
+ * one slot. Returns exactly `windowSize` distinct prompts at a time.
+ *
+ * If the pool is smaller than the window, it just returns the shuffled
+ * pool (no rotation happens — no new prompt to rotate in).
+ */
+function useRotatingPrompts(
+  pool: string[],
+  windowSize: number,
+  intervalMs: number,
+  reduceMotion: boolean
+): string[] {
+  const shuffled = React.useMemo(() => shuffleOnce(pool), [pool]);
+  const [offset, setOffset] = React.useState(0);
+
+  React.useEffect(() => {
+    if (reduceMotion) return;
+    if (shuffled.length <= windowSize) return;
+    const id = setInterval(() => {
+      setOffset((o) => (o + 1) % shuffled.length);
+    }, intervalMs);
+    return () => clearInterval(id);
+  }, [shuffled.length, windowSize, intervalMs, reduceMotion]);
+
+  if (shuffled.length <= windowSize) return shuffled;
+  // Pull `windowSize` consecutive prompts starting at offset, wrapping.
+  const out: string[] = [];
+  for (let i = 0; i < windowSize; i++) {
+    out.push(shuffled[(offset + i) % shuffled.length]);
+  }
+  return out;
+}
+
+function shuffleOnce(items: string[]): string[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 function MessageLine({ message }: { message: AssistantMessage }) {
@@ -376,6 +469,67 @@ function MessageLine({ message }: { message: AssistantMessage }) {
       </View>
       <Text style={messageStyles.assistantText}>{message.text}</Text>
     </View>
+  );
+}
+
+/**
+ * v10.3 — live brand-status dot. The dot breathes with a slow sine
+ * (opacity 0.45 → 1.0) when ready; it pulses faster and stays full
+ * opacity with a tiny scale bounce while the assistant is thinking.
+ * Reduce-motion holds it static at full opacity. Tiny footprint,
+ * huge "alive" cue.
+ */
+function LiveStatusDot({ active }: { active: boolean }) {
+  const reduceMotion = useReduceMotion();
+  const pulse = useSharedValue(1);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      pulse.value = 1;
+      return;
+    }
+    if (active) {
+      // Thinking — quicker, scale bounce
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(1.25, { duration: 520, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1, { duration: 520, easing: Easing.inOut(Easing.sin) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      // Ready — slow breath via opacity
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(0.45, {
+            duration: 1400,
+            easing: Easing.inOut(Easing.sin),
+          }),
+          withTiming(1, {
+            duration: 1400,
+            easing: Easing.inOut(Easing.sin),
+          })
+        ),
+        -1,
+        false
+      );
+    }
+  }, [active, pulse, reduceMotion]);
+
+  const dotStyle = useAnimatedStyle(() => {
+    if (active) return { transform: [{ scale: pulse.value }] };
+    return { opacity: pulse.value };
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.brandStatusDot,
+        { backgroundColor: active ? palette.clay : palette.moss },
+        dotStyle,
+      ]}
+    />
   );
 }
 
@@ -433,10 +587,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     paddingBottom: space.md,
   },
+  // v10.3 — explicit lineHeight so the 40pt serif "Ask." renders without
+  // clipping the tail on the "k". The token's default (36pt) was designed
+  // for 32pt fontSize and can't host a 40pt override.
   title: {
     ...typography.titleSerif,
     color: palette.ink,
     fontSize: 40,
+    lineHeight: 46,
     letterSpacing: -1.0,
   },
   subtitle: {
@@ -569,9 +727,10 @@ const emptyStyles = StyleSheet.create({
     gap: 10,
     marginTop: space.md,
   },
+  // v10.3 — flex props moved to the Animated.View wrapper so each chip
+  // mounts with its own fade-in opacity. The inner chip just renders
+  // content; the wrapper handles layout width.
   promptChip: {
-    flexGrow: 1,
-    flexBasis: '46%',
     minHeight: 74,
     paddingVertical: 12,
     paddingHorizontal: 14,

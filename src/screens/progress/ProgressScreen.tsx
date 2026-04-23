@@ -298,10 +298,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  // v10.3 — explicit lineHeight override so the 40pt serif doesn't clip
+  // the descender on "g". `typography.titleSerif` ships a 36pt line (for
+  // its default 32pt fontSize); when we override to 40pt the line has to
+  // grow proportionally or descenders get cropped.
   title: {
     ...typography.titleSerif,
     color: palette.ink,
     fontSize: 40,
+    lineHeight: 46,
     letterSpacing: -1.0,
   },
   headerDayPill: {

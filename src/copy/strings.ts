@@ -48,15 +48,16 @@ export const common = {
 };
 
 /**
- * Tab labels. §5.1 mandates "ASSIST" (not "ASSISTANT") because 9-char labels
- * wrap at iPhone SE widths.
+ * Tab labels. v10.3 — assist renamed to "AI ASSIST" so the feature reads
+ * as AI at a glance. At 9pt / 1.3 letter-spacing the 9-char label fits
+ * cleanly inside ~78pt tab slots (iPhone SE and up).
  */
 export const tabs = {
   home: 'HOME',
   scan: 'SCAN',
   routine: 'ROUTINE',
   progress: 'PROGRESS',
-  assist: 'ASSIST',
+  assist: 'AI ASSIST',
   // Retained for any legacy callers that still reference `tabs.products` —
   // the Products tab was demoted in v8 and discovery now lives through the
   // home-screen recommendation module.
@@ -232,21 +233,34 @@ export const assistant = {
   attachHint: 'Attach a product. I\u2019ll read the label.',
   composerPlaceholder: 'Write your question\u2026',
   forYouLabel: 'FOR YOU',
-  // v9.2 — concierge-style starter prompts. Tied to Skin Score + scan
-  // flow rather than generic how-to-skincare. Empty state is educational;
-  // post-scan prompts are specific to the user's current reading.
+  // v10.3 — expanded rotating pool. The UI picks 4 at a time (shuffled
+  // per mount, plus a slow rotation) so the assistant feels alive without
+  // demanding attention. Lead prompts are scan-aware when a zone is
+  // known; the always-on pool covers score/plan/product/progress angles.
   promptsEmpty: [
     'How does the Skin Score work?',
     'What should I expect in the first two weeks?',
     'Show natural product options.',
+    'What\u2019s the difference between a serum and a toner?',
+    'Which ingredients calm irritation?',
+    'What would an evening routine look like for me?',
   ],
   promptsFor: (zone: string) => [
-    'Why did my Skin Score drop?',
+    'Why did my Skin Score move?',
     `What helps my ${zone} breakout?`,
     'Compare my last two scans.',
     'Show natural product options.',
     'What should I do tonight?',
+    `What\u2019s causing my ${zone} to flare?`,
+    'Which ingredient should I avoid right now?',
+    'What would a gentler routine look like?',
+    'Show fragrance-free alternatives.',
+    'What\u2019s the one product I should add?',
   ],
+  // v10.3 — active brand-status labels. Live pulse under "Ready" reads
+  // as attentive, not idle; "Thinking" reads as engaged.
+  statusReady: 'Ready',
+  statusThinking: 'Thinking',
   typing: 'Reading\u2026',
   mockResponseIntro: 'Looking at your most recent scan\u2014',
 };
