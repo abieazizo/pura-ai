@@ -66,7 +66,7 @@ export function PinnedCTA({ onAddToRoutine, onWhereToBuy }: PinnedCTAProps) {
         <Text style={styles.label} maxFontSizeMultiplier={1.15}>
           Add to routine
         </Text>
-        <ArrowRight size={18} color={palette.bg} weight="duotone" />
+        <ArrowRight size={16} color={palette.inkInverse} weight="duotone" />
       </AnimatedPressable>
 
       <Pressable
@@ -92,24 +92,29 @@ const styles = StyleSheet.create({
     right: 20,
     alignItems: 'stretch',
   },
+  // v9.7 — primary CTA aligned with the rest of the app (ink-black), not
+  // brand-blue. Every primary action across Home / Plan / Scan / Products
+  // empty state uses `palette.ink` now; the Product Detail CTA had been
+  // the lone clay-filled holdout.
   cta: {
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: palette.clay,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: palette.ink,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
     shadowColor: palette.ink,
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   label: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
-    color: palette.bg,
+    fontSize: 15,
+    letterSpacing: 0.1,
+    color: palette.inkInverse,
   },
   buyWrap: {
     alignSelf: 'center',
@@ -119,7 +124,7 @@ const styles = StyleSheet.create({
   buyLabel: {
     fontFamily: 'Inter-Regular',
     fontSize: 13,
-    color: palette.clay,
+    color: palette.inkTertiary,
     textDecorationLine: 'underline',
   },
 });

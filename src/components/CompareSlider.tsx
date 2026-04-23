@@ -106,6 +106,9 @@ export function CompareSlider({
   );
 }
 
+// v9.7 — chrome aligned with v9 visual language. Label pills use paper bg
+// with ink text (was black-at-65% with light text; harsher, less premium).
+// Handle is a clean paper circle with slim caret chevrons, warm shadow.
 const styles = StyleSheet.create({
   frame: {
     overflow: 'hidden',
@@ -128,8 +131,8 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    width: 2,
-    backgroundColor: colors.surface,
+    width: 1.5,
+    backgroundColor: 'rgba(248,250,252,0.95)',
   },
   handle: {
     width: HANDLE_SIZE,
@@ -139,40 +142,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 3,
     shadowColor: colors.shadowTint,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 6,
   },
   handleArrowLeft: {
     width: 0,
     height: 0,
-    borderTopWidth: 5,
-    borderBottomWidth: 5,
-    borderRightWidth: 6,
+    borderTopWidth: 4,
+    borderBottomWidth: 4,
+    borderRightWidth: 5,
     borderTopColor: 'transparent',
     borderBottomColor: 'transparent',
-    borderRightColor: colors.textPrimary,
+    borderRightColor: colors.ink,
   },
   handleArrowRight: {
     width: 0,
     height: 0,
-    borderTopWidth: 5,
-    borderBottomWidth: 5,
-    borderLeftWidth: 6,
+    borderTopWidth: 4,
+    borderBottomWidth: 4,
+    borderLeftWidth: 5,
     borderTopColor: 'transparent',
     borderBottomColor: 'transparent',
-    borderLeftColor: colors.textPrimary,
+    borderLeftColor: colors.ink,
   },
+  // v9.7 — labels sit as small paper pills with ink text, tighter type
   pillLabel: {
     position: 'absolute',
     top: space.md,
-    paddingHorizontal: space.sm,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(10,10,10,0.65)',
+    backgroundColor: 'rgba(248,250,252,0.92)',
   },
   labelLeft: {
     left: space.md,
@@ -182,6 +186,8 @@ const styles = StyleSheet.create({
   },
   pillLabelText: {
     ...typography.micro,
-    color: colors.surface,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: colors.ink,
   },
 });
