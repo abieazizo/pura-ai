@@ -33,33 +33,30 @@ export function ProgressNarrative({ scans }: ProgressNarrativeProps) {
     ['breakouts', 'hydration', 'texture', 'tone'] as ConcernCategory[]
   ).map((cat) => buildRow(cat, firstBy[cat], latestBy[cat]));
 
-  const ups = rows.filter((r) => r.direction === 'up').length;
-  const downs = rows.filter((r) => r.direction === 'down').length;
-
-  // v9.5 copy — concrete, specific, no "gaining ground across the board".
-  const overall =
-    ups >= 3
-      ? 'Most concerns moved up.'
-      : ups === 2
-      ? 'Two concerns moved up.'
-      : ups === 1 && downs === 0
-      ? 'One concern improving. Rest unchanged.'
-      : downs >= 2
-      ? 'Two concerns slipped since day 1.'
-      : downs === 1
-      ? 'Mostly unchanged. One concern slipped.'
-      : 'No meaningful change since day 1.';
-
+  // v10.2 — celebrate the biggest specific win. The previous aggregate
+  // headline ("Two concerns moved up.") read as a tally. A progress page
+  // should name the winner: "Breakouts · moderate → mild." The headline
+  // falls back gracefully for flat or backwards journeys.
+  const biggestWin = pickBiggestMove(rows);
   const days = daysBetween(first.capturedAt, latest.capturedAt);
+  const headline = buildNarrativeHeadline(biggestWin, rows);
+  const kicker = biggestWin?.direction === 'up' ? 'BIGGEST WIN' : `${days} DAYS IN`;
 
   return (
     <View style={styles.root}>
       <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
-        {`${days} DAYS IN`}
+        {kicker}
       </Text>
       <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
-        {overall}
+        {headline}
       </Text>
+      {biggestWin?.direction === 'up' ? (
+        <Text style={styles.headlineSub} maxFontSizeMultiplier={1.15}>
+          {`${severityLabel(biggestWin.startSeverity)} \u2192 ${severityLabel(
+            biggestWin.endSeverity
+          )} over ${days} days.`}
+        </Text>
+      ) : null}
 
       <View style={styles.list}>
         {rows.map((r) => (
@@ -68,6 +65,40 @@ export function ProgressNarrative({ scans }: ProgressNarrativeProps) {
       </View>
     </View>
   );
+}
+
+/**
+ * Pick the single category that moved up the most (severity-rank delta).
+ * Ties break toward breakouts → hydration → texture → tone for consistency.
+ * Returns null when no category changed.
+ */
+function pickBiggestMove(rows: Row[]): Row | null {
+  const moved = rows.filter((r) => r.direction !== 'flat');
+  if (moved.length === 0) return null;
+  // Rank delta (positive = up, negative = down). Up wins over down.
+  const withDelta = moved.map((r) => ({
+    row: r,
+    delta:
+      (r.direction === 'up' ? 1 : -1) *
+      Math.abs(severityRank(r.startSeverity) - severityRank(r.endSeverity)),
+  }));
+  withDelta.sort((a, b) => b.delta - a.delta);
+  return withDelta[0]?.row ?? null;
+}
+
+/**
+ * Build the hero headline. If a clear winner exists (up direction), name
+ * it. Otherwise fall back to a grounded statement about the overall shape.
+ */
+function buildNarrativeHeadline(win: Row | null, rows: Row[]): string {
+  if (win && win.direction === 'up') {
+    return `${CATEGORY_LABEL[win.category]} improved the most.`;
+  }
+  const downs = rows.filter((r) => r.direction === 'down').length;
+  const ups = rows.filter((r) => r.direction === 'up').length;
+  if (ups > 0 && downs > 0) return 'Mixed picture since day 1.';
+  if (downs >= 1) return `${CATEGORY_LABEL[rows.find((r) => r.direction === 'down')!.category]} needs attention.`;
+  return 'Holding steady since day 1.';
 }
 
 function RowView({ row }: { row: Row }) {
@@ -188,6 +219,15 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.5,
     color: palette.ink,
+  },
+  // v10.2 — subheadline tier transition line sits under the biggest-win
+  // headline in italic serif. Reads as editorial caption, not data.
+  headlineSub: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    lineHeight: 22,
+    color: palette.inkSecondary,
+    marginTop: 6,
   },
   list: {
     marginTop: 22,

@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -51,10 +52,37 @@ export function ProductHero({ tint, imageUrl }: ProductHeroProps) {
     transform: [{ scale: scale.value }],
   }));
 
+  // v10.2 — luminance depth. The tile picks up a subtle radial gradient
+  // from the center (paper white at ~35% opacity) fading to transparent
+  // at the edges. That one addition turns a flat color block into a
+  // lit product tile — the image feels staged, not laid on paper.
+  const gradientId = useMemo(
+    () => `product-hero-${Math.round(Math.random() * 1e6)}`,
+    []
+  );
+
   return (
     <View
       style={[styles.wrap, { backgroundColor: TINT_MAP[tint] }]}
     >
+      <Svg
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
+      >
+        <Defs>
+          <RadialGradient
+            id={gradientId}
+            cx="50%"
+            cy="42%"
+            r="62%"
+          >
+            <Stop offset="0" stopColor={palette.bg} stopOpacity={0.35} />
+            <Stop offset="0.55" stopColor={palette.bg} stopOpacity={0.08} />
+            <Stop offset="1" stopColor={palette.bg} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+      </Svg>
       <Animated.View style={[styles.content, contentStyle]}>
         {imageUrl ? (
           <Image

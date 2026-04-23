@@ -436,60 +436,99 @@ const CONCERN_ICON: Record<Concern['category'], React.FC<PhosphorIconProps>> = {
 };
 
 function GlanceStrip({ concerns }: { concerns: Concern[] }) {
-  // v9.5 — concern cards (was pills). Each card carries:
-  //   • Leading Phosphor glyph in a severity-tinted square
-  //   • Category label + region as a two-line stack
-  //   • Trend chip on the right showing tier transition with arrow
-  // Top 3 concerns prioritized by severity; calm fallback preserved.
+  // v10.2 — editorial recomposition. Three equal concern cards are gone.
+  // The top concern gets a larger treatment (the protagonist); the next
+  // two render as tight hairline rows beneath. Same three items, actual
+  // hierarchy. Reads as "this is the pattern this week, and here's what
+  // else is on the radar."
   const nonCalm = concerns.filter((c) => c.severity !== 'calm');
-  const top = (nonCalm.length > 0 ? nonCalm : concerns).slice(0, 3);
+  const ordered = nonCalm.length > 0 ? nonCalm : concerns;
+  const hero = ordered[0];
+  const secondaries = ordered.slice(1, 3);
+  if (!hero) return null;
+
+  const heroColor = colorFor(hero.severity);
+  const HeroIcon = CONCERN_ICON[hero.category];
+
   return (
-    <View style={styles.glanceStack}>
-      {top.map((c) => {
-        const color = colorFor(c.severity);
-        const Icon = CONCERN_ICON[c.category];
-        return (
-          <View key={c.category} style={styles.concernCard}>
-            <View
-              style={[
-                styles.concernIconWrap,
-                { backgroundColor: withAlpha(color, 0.14) },
-              ]}
-            >
-              <Icon size={16} color={color} weight="duotone" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={styles.concernCardLabel}
-                maxFontSizeMultiplier={1.15}
-                numberOfLines={1}
+    <View>
+      <View
+        style={[
+          styles.concernHero,
+          { backgroundColor: withAlpha(heroColor, 0.1) },
+        ]}
+      >
+        <View
+          style={[styles.concernHeroRail, { backgroundColor: heroColor }]}
+          pointerEvents="none"
+        />
+        <View
+          style={[
+            styles.concernHeroIcon,
+            { backgroundColor: withAlpha(heroColor, 0.18) },
+          ]}
+        >
+          <HeroIcon size={20} color={heroColor} weight="duotone" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.concernHeroLabel} maxFontSizeMultiplier={1.15} numberOfLines={1}>
+            {CATEGORY_LABEL[hero.category]}
+          </Text>
+          <Text style={styles.concernHeroRegion} maxFontSizeMultiplier={1.15} numberOfLines={1}>
+            {`on your ${hero.region}`}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.concernHeroPill,
+            { backgroundColor: heroColor },
+          ]}
+        >
+          <Text style={styles.concernHeroPillText} maxFontSizeMultiplier={1.1}>
+            {severityLabel(hero.severity)}
+          </Text>
+        </View>
+      </View>
+
+      {secondaries.length > 0 ? (
+        <View style={styles.concernSecondaryWrap}>
+          {secondaries.map((c, i) => {
+            const color = colorFor(c.severity);
+            const Icon = CONCERN_ICON[c.category];
+            return (
+              <View
+                key={c.category}
+                style={[
+                  styles.concernSecondaryRow,
+                  i > 0 && styles.concernSecondaryDivider,
+                ]}
               >
-                {CATEGORY_LABEL[c.category]}
-              </Text>
-              <Text
-                style={styles.concernCardRegion}
-                maxFontSizeMultiplier={1.15}
-                numberOfLines={1}
-              >
-                {c.region}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.concernCardPill,
-                { backgroundColor: withAlpha(color, 0.12) },
-              ]}
-            >
-              <Text
-                style={[styles.concernCardPillText, { color }]}
-                maxFontSizeMultiplier={1.1}
-              >
-                {severityLabel(c.severity)}
-              </Text>
-            </View>
-          </View>
-        );
-      })}
+                <View
+                  style={[
+                    styles.concernSecondaryIcon,
+                    { backgroundColor: withAlpha(color, 0.14) },
+                  ]}
+                >
+                  <Icon size={13} color={color} weight="duotone" />
+                </View>
+                <Text style={styles.concernSecondaryLabel} maxFontSizeMultiplier={1.1} numberOfLines={1}>
+                  {CATEGORY_LABEL[c.category]}
+                </Text>
+                <Text style={styles.concernSecondaryRegion} maxFontSizeMultiplier={1.1} numberOfLines={1}>
+                  {`\u00B7 ${c.region}`}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text
+                  style={[styles.concernSecondarySeverity, { color }]}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  {severityLabel(c.severity)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -738,47 +777,98 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 28,
   },
-  glanceStack: {
-    gap: 10,
-  },
-  concernCard: {
+  // v10.2 — hero concern (protagonist) + secondary rows. Three equal
+  // cards was a card stack; this is a pattern with consequence.
+  concernHero: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    backgroundColor: palette.bg,
+    paddingVertical: 16,
+    paddingLeft: 19, // 16 base + 3 for the rail
+    paddingRight: 14,
+    borderRadius: 18,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  concernIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+  concernHeroRail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+  },
+  concernHeroIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  concernCardLabel: {
+  concernHeroLabel: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 17,
-    lineHeight: 20,
-    letterSpacing: -0.3,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.4,
     color: palette.ink,
   },
-  concernCardRegion: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 15,
-    color: palette.inkTertiary,
+  concernHeroRegion: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    lineHeight: 18,
+    color: palette.inkSecondary,
     marginTop: 2,
   },
-  concernCardPill: {
+  concernHeroPill: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,
   },
-  concernCardPillText: {
+  concernHeroPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: palette.inkInverse,
+  },
+  concernSecondaryWrap: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+    overflow: 'hidden',
+  },
+  concernSecondaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  concernSecondaryDivider: {
+    borderTopWidth: 1,
+    borderTopColor: palette.hairline,
+  },
+  concernSecondaryIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  concernSecondaryLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    letterSpacing: -0.1,
+    color: palette.ink,
+  },
+  concernSecondaryRegion: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: palette.inkTertiary,
+    marginLeft: 2,
+  },
+  concernSecondarySeverity: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
     letterSpacing: 0.6,

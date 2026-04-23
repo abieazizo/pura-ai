@@ -9,7 +9,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { palette, space, type as typography } from '@/theme';
+import { palette, space } from '@/theme';
 import type { Scan } from '@/types';
 
 export interface PhotoTimelineStripProps {
@@ -20,8 +20,15 @@ export interface PhotoTimelineStripProps {
 }
 
 /**
- * v5 timeline strip. 72×96 frames with alternating rotation (-2° / +2°)
- * for editorial feel. Selected frame gets a clay hairline ring.
+ * v10.2 — premium flat timeline. Previous version rotated frames ±2°
+ * for "editorial feel" and only showed "DAY N" labels. The rotation read
+ * as gimmicky against the rest of the cool flat system, and the timeline
+ * carried no information beyond the photo.
+ *
+ * Rebuilt: flat frames, slightly larger (80×106), with the DAY kicker
+ * above and the Skin Score below each photo. The selected frame rides a
+ * 1.5pt clay border and the DAY kicker flips to clay. The timeline now
+ * reads as an actual chart of scans, not a scattered polaroid stack.
  */
 export function PhotoTimelineStrip({
   scans,
@@ -37,20 +44,25 @@ export function PhotoTimelineStrip({
       keyExtractor={(s) => s.id}
       contentContainerStyle={styles.list}
       style={style}
-      renderItem={({ item, index }) => {
+      renderItem={({ item }) => {
         const selected = item.id === selectedId;
-        const rotation = index % 2 === 0 ? -2 : 2;
         return (
           <Pressable
             onPress={() => onSelect(item)}
             accessibilityRole="button"
-            accessibilityLabel={`Day ${item.dayNumber}`}
+            accessibilityLabel={`Day ${item.dayNumber}, Skin Score ${item.overallScore}`}
+            accessibilityState={{ selected }}
             style={({ pressed }) => [
               styles.item,
-              { transform: [{ rotate: `${rotation}deg` }] },
-              pressed && { opacity: 0.9 },
+              pressed && { opacity: 0.92 },
             ]}
           >
+            <Text
+              style={[styles.dayKicker, selected && styles.dayKickerSelected]}
+              maxFontSizeMultiplier={1.1}
+            >
+              {`DAY ${item.dayNumber}`}
+            </Text>
             <View style={[styles.frame, selected && styles.frameSelected]}>
               <Image
                 source={item.photoUri}
@@ -58,8 +70,11 @@ export function PhotoTimelineStrip({
                 contentFit="cover"
               />
             </View>
-            <Text style={[styles.label, selected && styles.labelSelected]}>
-              DAY {item.dayNumber}
+            <Text
+              style={[styles.score, selected && styles.scoreSelected]}
+              maxFontSizeMultiplier={1.1}
+            >
+              {item.overallScore}
             </Text>
           </Pressable>
         );
@@ -70,15 +85,28 @@ export function PhotoTimelineStrip({
 
 const styles = StyleSheet.create({
   list: {
-    gap: space.md,
+    gap: 12,
     paddingVertical: space.md,
     paddingHorizontal: space.lg,
   },
-  item: { alignItems: 'center' },
+  item: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  dayKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  dayKickerSelected: {
+    color: palette.clay,
+  },
   frame: {
-    width: 72,
-    height: 96,
-    borderRadius: 2,
+    width: 80,
+    height: 106,
+    borderRadius: 10,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: palette.hairline,
@@ -86,14 +114,16 @@ const styles = StyleSheet.create({
   },
   frameSelected: {
     borderColor: palette.clay,
-    borderWidth: 2,
+    borderWidth: 1.5,
   },
-  label: {
-    ...typography.micro,
+  score: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 18,
+    letterSpacing: -0.4,
     color: palette.inkTertiary,
-    marginTop: 8,
+    fontVariant: ['tabular-nums'],
   },
-  labelSelected: {
-    color: palette.clay,
+  scoreSelected: {
+    color: palette.ink,
   },
 });
