@@ -9,10 +9,9 @@ import {
   View,
 } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { CaretDown } from 'phosphor-react-native';
 import { hapt } from '@/utils/haptics';
@@ -59,10 +58,14 @@ export function Accordion({
   const [open, setOpen] = useState(defaultOpen);
   const chevron = useSharedValue(defaultOpen ? 1 : 0);
 
+  // v10.10 — chevron rotates via spring so the toggle feels tactile,
+  // not timed. Matches the press-spring language used by every other
+  // premium control in the app.
   React.useEffect(() => {
-    chevron.value = withTiming(open ? 1 : 0, {
-      duration: 200,
-      easing: Easing.out(Easing.cubic),
+    chevron.value = withSpring(open ? 1 : 0, {
+      damping: 18,
+      stiffness: 220,
+      mass: 1,
     });
   }, [open, chevron]);
 
@@ -107,21 +110,31 @@ export function Accordion({
   );
 }
 
+// v10.10 — accordion visuals upgraded:
+//   • Title is now InstrumentSerif-SemiBold 22pt (was Regular 20pt) so
+//     each section reads with real weight, not a body-caption register.
+//   • Tap target grows 48 → 56pt — premium controls sit above iOS's
+//     44pt minimum with real breathing room.
+//   • Chevron stays right-aligned; its spring rotation comes from the
+//     hook above.
+//   • Content padding slightly tighter on top to pair with the
+//     wider header.
 const styles = StyleSheet.create({
   wrap: {
     marginHorizontal: 20,
     marginTop: 28,
   },
   header: {
-    height: 48,
+    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   title: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 20,
-    lineHeight: 24,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.3,
     color: palette.ink,
   },
   divider: {
@@ -129,7 +142,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.hairline,
   },
   content: {
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingTop: 14,
+    paddingBottom: 22,
   },
 });

@@ -1,17 +1,12 @@
 import React from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { ArrowRight } from 'phosphor-react-native';
+import { ArrowRight, Storefront } from 'phosphor-react-native';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 
@@ -21,82 +16,106 @@ export interface PinnedCTAProps {
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const PRESS_SPRING = { damping: 15, stiffness: 300, mass: 1 };
 
 /**
- * Pinned primary CTA for Product Detail (§3.13). Absolute-positioned above
- * the tab bar, terracotta filled, success haptic on tap. A secondary
- * "Where to buy" link sits 12pt below, still inside the safe area.
+ * v10.10 — pinned action tray for Product Detail.
  *
- * The button is floating — no wrapper bar — so the ScrollView above it
- * remains uncluttered. The content above uses `paddingBottom: 140` to
- * ensure the last section doesn't hide behind this CTA.
+ * Previous versions shipped a floating ink pill with a tiny underlined
+ * "Where to buy" text link 12pt below — two disconnected actions that
+ * read as primary decision + legal fine print. The new tray groups
+ * both actions as real buttons inside one premium surface:
+ *
+ *   ┌────────────────────────────────────┐
+ *   │        Add to routine   →          │   ← primary ink pill, 54pt
+ *   │                                    │
+ *   │   🏬  Where to buy                 │   ← secondary outlined pill, 46pt
+ *   └────────────────────────────────────┘
+ *
+ * The container carries a subtle top hairline + bg so the pair reads as
+ * an anchored action bar rather than two orphan controls floating over
+ * the scroll. Safe-area-aware; spring press on both buttons.
  */
 export function PinnedCTA({ onAddToRoutine, onWhereToBuy }: PinnedCTAProps) {
   const insets = useSafeAreaInsets();
-  const scale = useSharedValue(1);
 
-  const animated = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+  const primaryScale = useSharedValue(1);
+  const primaryStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: primaryScale.value }],
+  }));
+  const secondaryScale = useSharedValue(1);
+  const secondaryStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: secondaryScale.value }],
   }));
 
-  const onPress = () => {
+  const onPressPrimary = () => {
     hapt.success();
-    scale.value = withSpring(0.98, { damping: 15, stiffness: 300 }, () => {
-      scale.value = withSpring(1, { damping: 15, stiffness: 300 });
+    primaryScale.value = withSpring(0.98, PRESS_SPRING, () => {
+      primaryScale.value = withSpring(1, PRESS_SPRING);
     });
     onAddToRoutine();
   };
 
-  const onBuy = () => {
+  const onPressSecondary = () => {
     hapt.select();
+    secondaryScale.value = withSpring(0.97, PRESS_SPRING, () => {
+      secondaryScale.value = withSpring(1, PRESS_SPRING);
+    });
     onWhereToBuy();
   };
 
   return (
     <View
-      style={[styles.wrap, { bottom: insets.bottom + 12 }]}
-      pointerEvents="box-none"
+      style={[styles.tray, { paddingBottom: insets.bottom + 12 }]}
     >
+      <View style={styles.topHairline} pointerEvents="none" />
+
       <AnimatedPressable
-        onPress={onPress}
+        onPress={onPressPrimary}
         accessibilityRole="button"
         accessibilityLabel="Add to routine"
-        style={[styles.cta, animated]}
+        style={[styles.primary, primaryStyle]}
       >
-        <Text style={styles.label} maxFontSizeMultiplier={1.15}>
+        <Text style={styles.primaryLabel} maxFontSizeMultiplier={1.15}>
           Add to routine
         </Text>
         <ArrowRight size={16} color={palette.inkInverse} weight="duotone" />
       </AnimatedPressable>
 
-      <Pressable
-        onPress={onBuy}
-        hitSlop={8}
-        accessibilityRole="link"
+      <AnimatedPressable
+        onPress={onPressSecondary}
+        accessibilityRole="button"
         accessibilityLabel="Where to buy"
-        style={({ pressed }) => [
-          styles.buyWrap,
-          pressed && { opacity: 0.7 },
-        ]}
+        style={[styles.secondary, secondaryStyle]}
       >
-        <Text style={styles.buyLabel}>Where to buy</Text>
-      </Pressable>
+        <Storefront size={16} color={palette.ink} weight="duotone" />
+        <Text style={styles.secondaryLabel} maxFontSizeMultiplier={1.15}>
+          Where to buy
+        </Text>
+      </AnimatedPressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  tray: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    alignItems: 'stretch',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    backgroundColor: palette.bg,
   },
-  // v9.7 — primary CTA aligned with the rest of the app (ink-black), not
-  // brand-blue. Every primary action across Home / Plan / Scan / Products
-  // empty state uses `palette.ink` now; the Product Detail CTA had been
-  // the lone clay-filled holdout.
-  cta: {
+  topHairline: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: palette.hairline,
+  },
+  primary: {
     height: 54,
     borderRadius: 27,
     backgroundColor: palette.ink,
@@ -105,26 +124,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     shadowColor: palette.ink,
-    shadowOpacity: 0.10,
+    shadowOpacity: 0.1,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
-  label: {
+  primaryLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 15,
     letterSpacing: 0.1,
     color: palette.inkInverse,
   },
-  buyWrap: {
-    alignSelf: 'center',
-    marginTop: 12,
-    paddingVertical: 4,
+  secondary: {
+    marginTop: 10,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  buyLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: palette.inkTertiary,
-    textDecorationLine: 'underline',
+  secondaryLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    letterSpacing: 0.1,
+    color: palette.ink,
   },
 });

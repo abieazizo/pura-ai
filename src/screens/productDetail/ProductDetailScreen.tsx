@@ -17,7 +17,7 @@ import { BrandAndName } from '@/components/products/BrandAndName';
 import { PriceAndRating } from '@/components/products/PriceAndRating';
 import { FitTagsRow } from '@/components/products/FitTagsRow';
 import { Accordion } from '@/components/products/Accordion';
-import { IngredientsPanel } from '@/components/products/IngredientsPanel';
+import { WhyItWorksPanel } from '@/components/products/WhyItWorksPanel';
 import { DetailsPanel } from '@/components/products/DetailsPanel';
 import { PinnedCTA } from '@/components/products/PinnedCTA';
 import {
@@ -106,13 +106,10 @@ export function ProductDetailScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── v10.9 first screenful ────────────────────────────────
-            Image → Brand/Name → Match (+% + one-line reason) → Price
-            → compact Fit chips. Description is no longer a section
-            (it duplicated the match rationale). Ingredients no longer
-            renders open by default — it competed with the match +
-            price for above-the-fold attention. Every deep section is
-            collapsed below. */}
+        {/* ── v10.10 first screenful — identity cluster ─────────
+            Image → Brand/Name → Match (% + one-line reason) → Price
+            → compact Fit chips. Tight 16pt rhythm between these five
+            elements so they read as one product-identity block. */}
         <ProductHero tint={tint} imageUrl={product.imageUrl ?? product.imageUri} />
         <BrandAndName brand={product.brand} name={product.name} />
         <MatchWhyBlock product={product} topConcern={topConcern} />
@@ -123,16 +120,34 @@ export function ProductDetailScreen() {
         />
         <FitTagsRow product={product} user={user} />
 
-        {/* ── v10.9 progressive disclosure ────────────────────────
-            Two sections open by default (the premium AI story + the
-            discovery moment); everything functional is collapsed. */}
-        {topConcern ? (
-          <Accordion id="why" title="Why this matches you" defaultOpen>
-            <Text style={styles.bodyCopy} maxFontSizeMultiplier={1.2}>
-              {buildWhyParagraph(product, topConcern)}
-            </Text>
-          </Accordion>
-        ) : null}
+        {/* ── v10.10 boundary rule ──────────────────────────────
+            A hairline + kicker creates a clear break between the
+            identity cluster above and the progressive-disclosure
+            stack below. Reads as "here's the product — here are
+            the details." */}
+        <View style={styles.boundary}>
+          <View style={styles.boundaryRule} />
+          <Text style={styles.boundaryKicker} maxFontSizeMultiplier={1.1}>
+            THE DETAILS
+          </Text>
+          <View style={styles.boundaryRule} />
+        </View>
+
+        {/* ── v10.10 progressive disclosure (4 sections) ────────
+            The old "Why this matches you" + "Ingredients" split
+            merged into a single premium "Why it works for your
+            skin" section. The formula story, the AI fit note, the
+            curated hero ingredients, and the collapsible full list
+            all live in one place — one answer to "why is this right
+            for me." Alternatives stays open as the discovery moment;
+            How to use + Product details collapsed by default. */}
+        <Accordion id="why" title="Why it works for your skin" defaultOpen>
+          <WhyItWorksPanel
+            product={product}
+            user={user}
+            topConcern={topConcern}
+          />
+        </Accordion>
 
         <Accordion id="alternatives" title="Alternatives" defaultOpen>
           <AlternativesList current={product} />
@@ -146,15 +161,11 @@ export function ProductDetailScreen() {
           ) : null}
         </Accordion>
 
-        <Accordion id="ingredients" title="Ingredients">
-          <IngredientsPanel product={product} user={user} />
-        </Accordion>
-
         <Accordion id="details" title="Product details">
           <DetailsPanel product={product} />
         </Accordion>
 
-        <View style={{ height: 140 }} />
+        <View style={{ height: 180 }} />
       </ScrollView>
 
       <PinnedCTA
@@ -272,26 +283,12 @@ function tintColor(p: Product): string {
   }
 }
 
-/**
- * v10.9 — "Why this matches you" paragraph. Same concern-tied logic as
- * the inline pitch, but with more room to breathe: names the concern +
- * the signal + how the product addresses it. Shown in the
- * default-open Why section below the first screenful.
- */
-function buildWhyParagraph(product: Product, concern: Concern): string {
-  const region = concern.region;
-  const sev = concern.severity.replace('-', ' ');
-  switch (concern.category) {
-    case 'breakouts':
-      return `Your ${region} is reading as breakouts \u00B7 ${sev} in the latest scan. This formula targets the active surface without aggravating the surrounding skin — a direct response to what the scan picked up.`;
-    case 'hydration':
-      return `Your ${region} is reading low on moisture. This product restores hydration to the layer the scan flagged — enough to rebuild the barrier, not so much that it sits heavy on the skin.`;
-    case 'texture':
-      return `Texture on your ${region} is uneven in the last reading. This works on the surface refinement the scan identified — gently enough to use alongside the rest of your routine.`;
-    case 'tone':
-      return `Dark marks on your ${region} are still visible in the scan. This formula works on uneven tone over a real skin cycle — results show up gradually, scan by scan.`;
-  }
-}
+// v10.10 — `buildWhyParagraph` was moved inside `WhyItWorksPanel`
+// (renamed to `buildRationale`) along with the hero-ingredient
+// curation. The Why section now owns its full story end to end —
+// fit note → rationale → key ingredients → full list — instead of
+// splitting it across a separate rationale accordion and an
+// IngredientsPanel.
 
 // ============================================================================
 // MatchWhyBlock — v10
@@ -394,6 +391,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 23,
     color: palette.inkSecondary,
+  },
+  // v10.10 — "THE DETAILS" boundary between the identity cluster and
+  // the progressive-disclosure stack. A full-bleed hairline split by
+  // a centered kicker so the page reads as two intentional halves
+  // rather than one long scroll of sections.
+  boundary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 36,
+    marginHorizontal: 20,
+  },
+  boundaryRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: palette.hairline,
+  },
+  boundaryKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.8,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
   },
 });
 
