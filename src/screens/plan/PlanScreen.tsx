@@ -12,6 +12,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import Svg, {
+  Defs as SvgDefs,
+  RadialGradient as SvgRadialGradient,
+  Rect as SvgRect,
+  Stop as SvgStop,
+} from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import {
   ArrowLeft,
@@ -444,17 +450,21 @@ function HeroConcernCard({
     <View
       style={[
         hero.wrap,
-        { backgroundColor: withAlpha(color, 0.1) },
+        { backgroundColor: withAlpha(color, 0.11) },
       ]}
     >
-      {/* v10.1 — severity accent rail. A 3pt bar in the tier color runs
-          across the top of the card, turning it from "tinted panel" into
-          "flagged object." Works with the bumped 10% tint to give the
-          hero real consequence without shouting. */}
+      {/* v10.4 — upgraded hero treatment. The card now layers a radial
+          tier glow behind the headline (keyed to severity color, 12% at
+          center fading to 0 at the edges) so the card reads with depth
+          rather than as a flat tinted rectangle. The 3pt top accent rail
+          stays. Editorial composition: severity pill | dots | YOUR PLAN
+          kicker sits above; headline + region + interpretation stack
+          below. */}
       <View
         style={[hero.accentRail, { backgroundColor: color }]}
         pointerEvents="none"
       />
+      <HeroTierGlow color={color} />
       <View style={hero.stampRow}>
         <View style={[hero.severityPill, { backgroundColor: color }]}>
           <Text style={hero.severityText} maxFontSizeMultiplier={1.1}>
@@ -518,6 +528,39 @@ function HeroConcernCard({
         </View>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * v10.4 — tier glow. A radial gradient painted behind the card content
+ * so the severity color feels atmospheric, not flat. Positioned toward
+ * the upper-left where the eye reads first; fades fully to transparent
+ * before it reaches the edge of the card.
+ */
+function HeroTierGlow({ color }: { color: string }) {
+  const gradientId = React.useMemo(
+    () => `plan-hero-glow-${Math.round(Math.random() * 1e6)}`,
+    []
+  );
+  return (
+    <Svg
+      style={StyleSheet.absoluteFillObject}
+      pointerEvents="none"
+    >
+      <SvgDefs>
+        <SvgRadialGradient
+          id={gradientId}
+          cx="28%"
+          cy="30%"
+          r="70%"
+        >
+          <SvgStop offset="0" stopColor={color} stopOpacity={0.18} />
+          <SvgStop offset="0.55" stopColor={color} stopOpacity={0.05} />
+          <SvgStop offset="1" stopColor={color} stopOpacity={0} />
+        </SvgRadialGradient>
+      </SvgDefs>
+      <SvgRect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+    </Svg>
   );
 }
 

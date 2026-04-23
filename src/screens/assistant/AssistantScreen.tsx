@@ -72,6 +72,15 @@ export function AssistantScreen() {
     latestScan?.zones.find((z) => z.status === 'active')?.label.toLowerCase() ?? 'chin';
   const suggestions = hasScanned ? strings.promptsFor(suggestedZone) : strings.promptsEmpty;
 
+  // v10.4 — proactive opening. Pura speaks first whenever there's scan
+  // data to reference. Memoized against scan state so the opening line
+  // is stable across renders within a session.
+  const scansForOpening = useAppStore((s) => s.scans);
+  const openingMessage = useMemo(
+    () => buildProactiveOpening(scansForOpening, suggestedZone),
+    [scansForOpening, suggestedZone]
+  );
+
   const canSend = draft.trim().length > 0 && !typing;
 
   const send = useCallback(
@@ -108,6 +117,7 @@ export function AssistantScreen() {
       return (
         <EmptyChatBody
           suggestions={suggestions}
+          opening={openingMessage}
           onPick={(t) => send(t, [])}
         />
       );
@@ -306,9 +316,11 @@ function iconKeyForPrompt(p: string): keyof typeof PROMPT_ICONS {
 function EmptyChatBody({
   suggestions,
   onPick,
+  opening,
 }: {
   suggestions: string[];
   onPick: (text: string) => void;
+  opening: string | null;
 }) {
   const reduceMotion = useReduceMotion();
   const visible = useRotatingPrompts(suggestions, 4, 7000, reduceMotion);
@@ -322,6 +334,12 @@ function EmptyChatBody({
         {strings.emptyTitle}
       </Text>
       <Text style={emptyStyles.body}>{strings.emptyBody}</Text>
+
+      {/* v10.4 — proactive opening. When Pura has scan data in hand, it
+          speaks first. Uses the same Mark xs + raw-ink-text pattern as
+          assistant MessageLine so it reads as an actual Pura message,
+          not a banner. Falls back to silent empty state when no scan. */}
+      {opening ? <ProactiveOpening text={opening} /> : null}
 
       <View style={emptyStyles.kickerRow}>
         <Text style={emptyStyles.kickerText} maxFontSizeMultiplier={1.1}>
@@ -338,6 +356,37 @@ function EmptyChatBody({
 
       <Text style={emptyStyles.hintText}>{strings.attachHint}</Text>
     </View>
+  );
+}
+
+/**
+ * v10.4 — proactive opening. Pura speaks first with a scan-grounded
+ * line so the assistant reads as attentive, not idle. Rendered as the
+ * assistant-voice pattern (Mark xs left, raw ink text right, no
+ * bubble) — visually continuous with real assistant replies.
+ */
+function ProactiveOpening({ text }: { text: string }) {
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(6);
+  useEffect(() => {
+    opacity.value = withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) });
+    translateY.value = withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) });
+  }, [opacity, translateY]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  return (
+    <Animated.View style={[emptyStyles.openingWrap, animatedStyle]}>
+      <View style={emptyStyles.openingMark}>
+        <PuraMark variant="idle" size="xs" />
+      </View>
+      <Text style={emptyStyles.openingText} maxFontSizeMultiplier={1.2}>
+        {text}
+      </Text>
+    </Animated.View>
   );
 }
 
@@ -436,6 +485,46 @@ function shuffleOnce(items: string[]): string[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+/**
+ * v10.4 — proactive opening builder. Pura speaks first whenever it has
+ * scan data to reference. Tone stays plain and grounded — this is the
+ * AI's first line, not marketing copy.
+ *
+ * Branches (priority order):
+ *   • Score dropped ≥3 since last scan → flag the drop + point to the
+ *     top zone as the likely driver
+ *   • Score up ≥3 since last scan → celebrate concisely
+ *   • Fresh scan with a non-calm concern → name the focus for tonight
+ *   • Calm/stable post-scan → steady language, invite a question
+ *   • No scans yet → educational, invites a first scan
+ */
+function buildProactiveOpening(
+  scans: ReturnType<typeof useAppStore.getState>['scans'],
+  zone: string
+): string | null {
+  if (scans.length === 0) {
+    return "I'm grounded in your skin data, not general skincare takes. Once you scan, ask me anything and I'll answer from what I actually see.";
+  }
+  const latest = scans[scans.length - 1];
+  const previous = scans.length >= 2 ? scans[scans.length - 2] : null;
+  const delta = previous ? latest.overallScore - previous.overallScore : null;
+
+  if (delta !== null && delta <= -3) {
+    return `Your Skin Score dropped ${Math.abs(delta)} since your last scan. Your ${zone} is the likely driver — want me to walk through what to do tonight?`;
+  }
+  if (delta !== null && delta >= 3) {
+    return `Skin Score up ${delta} since your last scan. Whatever you\u2019re doing is working — want to lock the routine in?`;
+  }
+  const activeZone = latest.zones.find((z) => z.status === 'active');
+  if (activeZone) {
+    return `Your ${activeZone.label.toLowerCase()} is the focus tonight. Ask me anything — I'll tailor advice to what I see in your scan.`;
+  }
+  if (delta !== null) {
+    return 'Things look steady since your last scan. Ask me what to keep doing, or where to push next.';
+  }
+  return 'Your first reading is in. Ask me anything about what you\u2019re seeing — I\u2019ll answer from your scan, not generalities.';
 }
 
 function MessageLine({ message }: { message: AssistantMessage }) {
@@ -699,9 +788,31 @@ const emptyStyles = StyleSheet.create({
     paddingHorizontal: space.lg,
     marginTop: space.sm,
   },
+  // v10.4 — proactive opening row. Mark xs left, raw-ink text right,
+  // matching the existing assistant MessageLine look so the opening
+  // reads as a real first line from Pura.
+  openingWrap: {
+    marginTop: space.xl,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    paddingHorizontal: 4,
+  },
+  openingMark: {
+    marginTop: 4,
+  },
+  openingText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 15,
+    lineHeight: 22,
+    letterSpacing: -0.1,
+    color: palette.ink,
+  },
   // v9.3 — concierge grid
   kickerRow: {
-    marginTop: space.xxl,
+    marginTop: space.xl,
     alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',

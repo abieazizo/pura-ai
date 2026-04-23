@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +18,7 @@ import {
   Heart,
   Leaf,
   ArrowRight,
+  CaretRight,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -241,8 +243,254 @@ function BestForYouSection({
       </View>
     );
   }
-  return <ProductRow kind="best-for-you" data={data} isFirstRow />;
+  return <BestForYouLead data={data} />;
 }
+
+// ---------------------------------------------------------------------------
+// BestForYouLead — v10.4. The post-scan top pick gets a full-width
+// editorial treatment instead of being the first tile in a row. A large
+// tinted image canvas on the left carries a 94% match badge; the right
+// side stacks brand + serif name + italic "why Pura picked this" + price
+// + See all picks link. Replaces the horizontal row for best-for-you
+// only; all other rows (best-overall, natural, new, essentials) keep
+// their existing row treatment below. No net-new element count — just
+// stronger merchandising for the one pick that matters most.
+// ---------------------------------------------------------------------------
+
+function BestForYouLead({
+  data,
+}: {
+  data: Parameters<typeof ProductRow>[0]['data'];
+}) {
+  const nav = useNavigation<any>();
+  if (data.length === 0) return null;
+  const lead = data[0];
+  const others = data.slice(1, 4);
+
+  const openLead = () => {
+    hapt.select();
+    nav.navigate('ProductDetail', { productId: lead.id, tint: lead.tint });
+  };
+  const openSeeAll = () => {
+    hapt.select();
+    nav.navigate('CategoryView', { kind: 'best-for-you' });
+  };
+
+  return (
+    <View style={leadStyles.wrap}>
+      <View style={leadStyles.headerRow}>
+        <Text style={leadStyles.kicker} maxFontSizeMultiplier={1.1}>
+          BEST FOR YOU
+        </Text>
+        <View style={leadStyles.leader} />
+        {others.length > 0 ? (
+          <Pressable
+            onPress={openSeeAll}
+            hitSlop={8}
+            accessibilityRole="link"
+            accessibilityLabel="See all matched picks"
+          >
+            <Text style={leadStyles.seeAll} maxFontSizeMultiplier={1.1}>
+              All picks {'\u2192'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <Pressable
+        onPress={openLead}
+        accessibilityRole="button"
+        accessibilityLabel={`${lead.brand} ${lead.name} — top match`}
+        style={({ pressed }) => [
+          leadStyles.card,
+          pressed && { opacity: 0.96 },
+        ]}
+      >
+        <View
+          style={[
+            leadStyles.image,
+            { backgroundColor: tintForProduct(lead) },
+          ]}
+        >
+          {lead.imageUri ? (
+            <Image
+              source={{ uri: lead.imageUri }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+          ) : (
+            <Drop size={48} color={palette.ink} weight="duotone" />
+          )}
+          <View style={leadStyles.matchBadge}>
+            <Text style={leadStyles.matchNum} maxFontSizeMultiplier={1.1}>
+              {`${lead.matchScore ?? 94}%`}
+            </Text>
+            <Text style={leadStyles.matchLabel} maxFontSizeMultiplier={1.1}>
+              MATCH
+            </Text>
+          </View>
+        </View>
+        <View style={leadStyles.text}>
+          <Text style={leadStyles.brand} maxFontSizeMultiplier={1.1}>
+            {lead.brand.toUpperCase()}
+          </Text>
+          <Text
+            style={leadStyles.name}
+            numberOfLines={2}
+            maxFontSizeMultiplier={1.15}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
+            {lead.name}
+          </Text>
+          <Text
+            style={leadStyles.why}
+            numberOfLines={2}
+            maxFontSizeMultiplier={1.2}
+          >
+            Matched to your skin — picked from everything we have.
+          </Text>
+          <View style={leadStyles.foot}>
+            <Text style={leadStyles.price} maxFontSizeMultiplier={1.1}>
+              {`$${Number.isInteger(lead.price) ? lead.price : lead.price.toFixed(2)}`}
+            </Text>
+            <CaretRight size={13} color={palette.inkTertiary} weight="bold" />
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+function tintForProduct(p: { tint?: string | null }) {
+  switch (p.tint) {
+    case 'clay':
+      return palette.clayPaper;
+    case 'sand':
+      return palette.sandPaper;
+    case 'moss':
+      return palette.mossLight;
+    default:
+      return palette.bgDeep;
+  }
+}
+
+// v10.4 — Best for you editorial lead. Premium full-width treatment for
+// the user's single top matched pick, with a dotted-leader header that
+// matches the Product Detail match-block language so the catalog and
+// detail views speak the same design vocabulary.
+const leadStyles = StyleSheet.create({
+  wrap: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  leader: {
+    flex: 1,
+    height: 1,
+    borderBottomWidth: 1,
+    borderStyle: 'dashed',
+    borderBottomColor: palette.hairline,
+  },
+  seeAll: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.2,
+    color: palette.clay,
+  },
+  card: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  image: {
+    width: 148,
+    height: 186,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: palette.bgDeep,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  matchBadge: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: palette.moss,
+    alignItems: 'center',
+    minWidth: 56,
+  },
+  matchNum: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    lineHeight: 15,
+    color: palette.inkInverse,
+    letterSpacing: 0.1,
+    fontVariant: ['tabular-nums'],
+  },
+  matchLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 8,
+    letterSpacing: 1.2,
+    color: 'rgba(248,250,252,0.78)',
+    marginTop: 1,
+  },
+  text: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  brand: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: palette.inkTertiary,
+    marginBottom: 4,
+  },
+  name: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+    color: palette.ink,
+    marginBottom: 8,
+  },
+  why: {
+    flex: 1,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    lineHeight: 19,
+    color: palette.inkSecondary,
+    marginBottom: 10,
+  },
+  foot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  price: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 18,
+    letterSpacing: -0.2,
+    color: palette.ink,
+    fontVariant: ['tabular-nums'],
+  },
+});
 
 const bestStyles = StyleSheet.create({
   lockedWrap: {

@@ -115,8 +115,25 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
       ? 'Holding your day-1 score.'
       : 'Your first reading.';
 
+  // v10.4 — celebration banner. When the journey-since-day-1 delta is
+  // positive, the page now leads with the win itself: a big moss-tinted
+  // card showing "+12" in giant serif with "POINTS SINCE DAY 1" kicker
+  // and a "14-day journey" caption. The dial moves below as supporting
+  // context. This flips Progress from "analytics view" to "proof view."
+  const showCelebration =
+    deltaFirst > 0 && scans.length >= 2;
+
   return (
     <View style={styles.wrap}>
+      {showCelebration ? (
+        <CelebrationHero
+          delta={deltaFirst}
+          scanCount={scans.length}
+          firstAt={score.firstAt}
+          latestAt={score.latestAt}
+        />
+      ) : null}
+
       {/* ── Dial hero ───────────────────────────────────────────── */}
       <View style={styles.dialWrap}>
         <SkinScoreDial
@@ -182,6 +199,62 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
 function formatShortDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ============================================================================
+// CelebrationHero — v10.4
+//
+// Promotes a positive day-1 delta from a chart footer caption to a real
+// moment. Moss-tinted card with a 3pt left rail, "POINTS SINCE DAY 1"
+// kicker, a giant serif "+N" in moss-deep, and a journey caption that
+// names the duration. Only renders when deltaFirst > 0 and at least two
+// scans exist — otherwise the dial leads, as before.
+// ============================================================================
+
+function CelebrationHero({
+  delta,
+  scanCount,
+  firstAt,
+  latestAt,
+}: {
+  delta: number;
+  scanCount: number;
+  firstAt: string | null;
+  latestAt: string | null;
+}) {
+  const days = journeyDays(firstAt, latestAt);
+  const sub =
+    days > 0
+      ? `${days}-day journey \u00B7 ${scanCount} scans`
+      : `${scanCount} scans`;
+  return (
+    <View style={celebration.wrap}>
+      <View style={celebration.rail} pointerEvents="none" />
+      <View style={{ flex: 1 }}>
+        <Text style={celebration.kicker} maxFontSizeMultiplier={1.1}>
+          POINTS SINCE DAY 1
+        </Text>
+        <View style={celebration.valueRow}>
+          <Text style={celebration.deltaText} maxFontSizeMultiplier={1.1}>
+            {`+${delta}`}
+          </Text>
+          <Text style={celebration.unit} maxFontSizeMultiplier={1.1}>
+            points
+          </Text>
+        </View>
+        <Text style={celebration.sub} maxFontSizeMultiplier={1.15}>
+          {sub}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function journeyDays(firstAt: string | null, latestAt: string | null): number {
+  if (!firstAt || !latestAt) return 0;
+  const a = new Date(firstAt).getTime();
+  const b = new Date(latestAt).getTime();
+  return Math.max(0, Math.round(Math.abs(b - a) / 86400000));
 }
 
 // ============================================================================
@@ -534,6 +607,68 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: -0.3,
     color: palette.ink,
+  },
+});
+
+// v10.4 — celebration hero styles. Moss-tinted card (palette.mossLight) +
+// 3pt moss rail + giant serif delta in palette.mossDeep. Lives above the
+// dial when deltaFirst > 0.
+const celebration = StyleSheet.create({
+  wrap: {
+    marginTop: -6,
+    marginBottom: 18,
+    paddingVertical: 18,
+    paddingLeft: 19,
+    paddingRight: 16,
+    borderRadius: 18,
+    backgroundColor: palette.mossLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  rail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: palette.moss,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.mossDeep,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  deltaText: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 44,
+    lineHeight: 50,
+    letterSpacing: -1.6,
+    color: palette.mossDeep,
+    fontVariant: ['tabular-nums'],
+  },
+  unit: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 17,
+    color: palette.mossDeep,
+    opacity: 0.75,
+  },
+  sub: {
+    marginTop: 4,
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    letterSpacing: 0.1,
+    color: palette.mossDeep,
+    opacity: 0.85,
   },
 });
 

@@ -177,6 +177,20 @@ export function ProductDetailScreen() {
 // story out of nothing.
 // ============================================================================
 
+/**
+ * v10.4 — match block now reads as the AI's pitch, not a caption.
+ *
+ * Structure:
+ *   MATCHED FOR YOU  ·······································  92%
+ *   "Your chin is reading as breakouts · moderate.
+ *    This targets exactly that."
+ *
+ * The kicker + percentage live on one editorial header row with a
+ * dotted-leader rule between them so the block has premium tension
+ * (like a menu price line). The rationale is a larger italic serif
+ * quote beneath. Moss is used only on the percentage — the rest reads
+ * in ink, so the block belongs to the product page's voice.
+ */
 function MatchWhyBlock({
   product,
   topConcern,
@@ -191,19 +205,19 @@ function MatchWhyBlock({
 
   return (
     <View style={matchStyles.wrap}>
-      <View style={matchStyles.badge}>
-        <Text style={matchStyles.badgeNum} maxFontSizeMultiplier={1.1}>
-          {matchScore}
-          <Text style={matchStyles.badgePct}>%</Text>
+      <View style={matchStyles.headerRow}>
+        <Text style={matchStyles.kicker} maxFontSizeMultiplier={1.1}>
+          MATCHED FOR YOU
         </Text>
-        <Text style={matchStyles.badgeLabel} maxFontSizeMultiplier={1.1}>
-          MATCH
+        <View style={matchStyles.leader} />
+        <Text style={matchStyles.percent} maxFontSizeMultiplier={1.1}>
+          {`${matchScore}%`}
         </Text>
       </View>
       <Text
         style={matchStyles.reason}
         maxFontSizeMultiplier={1.2}
-        numberOfLines={3}
+        numberOfLines={4}
       >
         {reason}
       </Text>
@@ -254,51 +268,51 @@ const styles = StyleSheet.create({
   },
 });
 
+// v10.4 — match block is now the AI's pitch beat.
+//
+// Header row: "MATCHED FOR YOU" kicker + dotted leader + giant "92%" in
+// moss-deep. Below: a larger italic serif rationale in ink-secondary.
+// No bordered card, no badge — the block lives inline but carries real
+// typographic weight so it reads as the product page's signature moment.
 const matchStyles = StyleSheet.create({
-  // v10 — inline match row. No container box, no second kicker. Just a
-  // compact moss badge and an italic serif rationale sitting as a caption
-  // under the product name. Reads as part of the product identity rather
-  // than a competing info panel.
   wrap: {
     marginHorizontal: 20,
-    marginTop: 12,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+    marginBottom: 10,
   },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: palette.moss,
-    alignItems: 'center',
-    minWidth: 52,
-  },
-  badgeNum: {
+  kicker: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-    lineHeight: 15,
-    color: palette.inkInverse,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 0.1,
-  },
-  badgePct: {
     fontSize: 10,
-    letterSpacing: 0.2,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
   },
-  badgeLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
-    lineHeight: 10,
-    letterSpacing: 1.1,
-    color: 'rgba(248,250,252,0.82)',
-    marginTop: 1,
+  leader: {
+    flex: 1,
+    height: 1,
+    borderBottomWidth: 1,
+    borderStyle: 'dashed',
+    borderBottomColor: palette.hairline,
+  },
+  percent: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.6,
+    color: palette.mossDeep,
+    fontVariant: ['tabular-nums'],
   },
   reason: {
-    flex: 1,
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 19,
+    lineHeight: 26,
+    letterSpacing: -0.2,
     color: palette.inkSecondary,
   },
 });

@@ -284,7 +284,12 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        {/* ── E. Product teaser (compact, single row) ─────────────────── */}
+        {/* ── E. Product teaser (v10.4 premium card) ─────────────────── */}
+        {/* Was a flat brand+name+price row; now matches the Plan page's
+            132×164 premium card treatment so Home's one product moment
+            feels like a considered pick, not a list item. Moss match
+            badge overlays the image; brand + serif name + italic "why"
+            stacks to the right. */}
         {recProduct ? (
           <Pressable
             onPress={() => {
@@ -297,41 +302,66 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`${recProduct.brand} ${recProduct.name}`}
             style={({ pressed }) => [
-              styles.recRow,
-              pressed && { opacity: 0.92 },
+              styles.recCard,
+              pressed && { opacity: 0.96 },
             ]}
           >
-            <View
-              style={[
-                styles.recImage,
-                { backgroundColor: tintForProduct(recProduct) },
-              ]}
-            >
-              {recProduct.imageUri ? (
-                <Image
-                  source={{ uri: recProduct.imageUri }}
-                  style={StyleSheet.absoluteFillObject}
-                  resizeMode="cover"
-                />
-              ) : null}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.recKicker} maxFontSizeMultiplier={1.1}>
+            <View style={styles.recCardKickerRow}>
+              <Text style={styles.recCardKicker} maxFontSizeMultiplier={1.1}>
                 PICKED FOR YOU
               </Text>
-              <Text
-                style={styles.recName}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.15}
-                adjustsFontSizeToFit
-                minimumFontScale={0.9}
-              >
-                {recProduct.name}
-              </Text>
             </View>
-            <Text style={styles.recPrice} maxFontSizeMultiplier={1.1}>
-              {`$${Number.isInteger(recProduct.price) ? recProduct.price : recProduct.price.toFixed(2)}`}
-            </Text>
+            <View style={styles.recCardBody}>
+              <View
+                style={[
+                  styles.recCardImage,
+                  { backgroundColor: tintForProduct(recProduct) },
+                ]}
+              >
+                {recProduct.imageUri ? (
+                  <Image
+                    source={{ uri: recProduct.imageUri }}
+                    style={StyleSheet.absoluteFillObject}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                <View style={styles.recCardMatch}>
+                  <Text style={styles.recCardMatchNum} maxFontSizeMultiplier={1.1}>
+                    {`${recProduct.matchScore ?? 90}%`}
+                  </Text>
+                  <Text style={styles.recCardMatchLabel} maxFontSizeMultiplier={1.1}>
+                    MATCH
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.recCardText}>
+                <Text style={styles.recCardBrand} maxFontSizeMultiplier={1.1}>
+                  {recProduct.brand.toUpperCase()}
+                </Text>
+                <Text
+                  style={styles.recCardName}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={1.15}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  {recProduct.name}
+                </Text>
+                <Text
+                  style={styles.recCardReason}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {buildHomeRecReason(primary)}
+                </Text>
+                <View style={styles.recCardFoot}>
+                  <Text style={styles.recCardPrice} maxFontSizeMultiplier={1.1}>
+                    {`$${Number.isInteger(recProduct.price) ? recProduct.price : recProduct.price.toFixed(2)}`}
+                  </Text>
+                  <CaretRight size={13} color={palette.inkTertiary} weight="bold" />
+                </View>
+              </View>
+            </View>
           </Pressable>
         ) : null}
 
@@ -642,6 +672,25 @@ function progressTeaserCaption(delta: number, scoreValue: number): string {
   if (delta > 0) return `Skin Score ${scoreValue} \u00B7 trending up.`;
   if (delta < 0) return `Skin Score ${scoreValue} \u00B7 below day 1.`;
   return `Skin Score ${scoreValue} \u00B7 holding steady.`;
+}
+
+/**
+ * v10.4 — one-line "why" for the Home product pick, tied to the user's
+ * current top concern. Falls back to a generic match line when the user
+ * has no scan-derived concern yet.
+ */
+function buildHomeRecReason(concern: Concern | undefined): string {
+  if (!concern) return 'Matched to your skin profile.';
+  switch (concern.category) {
+    case 'breakouts':
+      return `Targets the breakout on your ${concern.region}.`;
+    case 'hydration':
+      return `Restores moisture to your ${concern.region}.`;
+    case 'texture':
+      return `Smooths the texture on your ${concern.region}.`;
+    case 'tone':
+      return `Works on dark marks across your ${concern.region}.`;
+  }
 }
 
 function pickRecProduct(category: Concern['category'] | undefined) {
@@ -969,39 +1018,95 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
-  // E — Product rec row
-  recRow: {
-    marginTop: 14,
+  // E — Product rec card (v10.4 premium)
+  recCard: {
+    marginTop: 22,
     marginHorizontal: 20,
-    paddingVertical: 10,
+  },
+  recCardKickerRow: {
+    marginBottom: 14,
+  },
+  recCardKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  recCardBody: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
+    gap: 16,
   },
-  recImage: {
-    width: 50,
-    height: 58,
-    borderRadius: 10,
+  recCardImage: {
+    width: 118,
+    height: 148,
+    borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: palette.bgDeep,
+    position: 'relative',
   },
-  recKicker: {
+  recCardMatch: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: palette.moss,
+    alignItems: 'center',
+    minWidth: 52,
+  },
+  recCardMatchNum: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    lineHeight: 14,
+    color: palette.inkInverse,
+    letterSpacing: 0.1,
+    fontVariant: ['tabular-nums'],
+  },
+  recCardMatchLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 8,
+    letterSpacing: 1.2,
+    color: 'rgba(248,250,252,0.78)',
+    marginTop: 1,
+  },
+  recCardText: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  recCardBrand: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
     letterSpacing: 1.4,
-    color: palette.clay,
-    textTransform: 'uppercase',
-    marginBottom: 3,
+    color: palette.inkTertiary,
+    marginBottom: 4,
   },
-  recName: {
+  recCardName: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: -0.2,
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.3,
     color: palette.ink,
+    marginBottom: 8,
   },
-  recPrice: {
-    fontFamily: 'Inter-SemiBold',
+  recCardReason: {
+    flex: 1,
+    fontFamily: 'InstrumentSerif-Italic',
     fontSize: 13,
+    lineHeight: 19,
+    color: palette.inkSecondary,
+    marginBottom: 10,
+  },
+  recCardFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  recCardPrice: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
+    letterSpacing: -0.2,
     color: palette.ink,
     fontVariant: ['tabular-nums'],
   },
