@@ -13,41 +13,41 @@ import {
   SlidersHorizontal,
   Sparkle,
   Drop,
-  GridNine,
-  Moon,
-  Heart,
-  Leaf,
   ArrowRight,
   CaretRight,
-  type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@/store/useAppStore';
 import { AISearchBar } from '@/components/products/AISearchBar';
-import { ProductRow } from '@/components/products/ProductRow';
 import { SearchResults } from '@/components/products/SearchResults';
-import { SearchSuggestions } from '@/components/products/SearchSuggestions';
 import { FiltersStubSheet } from '@/components/products/FiltersStubSheet';
+import { CategoryRail, type GoalKey } from '@/components/products/CategoryRail';
+import { CategoryFeed } from '@/components/products/CategoryFeed';
 import { PuraMark } from '@/components/PuraMark';
-import {
-  getBestForYou,
-  getBestOverall,
-  getEssentials,
-  getNatural,
-  getNew,
-  searchProducts,
-} from '@/store/productSelectors';
+import { getBestForYou, searchProducts } from '@/store/productSelectors';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
+import type { Product } from '@/types';
 
 /**
- * v7.6 Products catalog (§2.3). Header + title + signature search bar
- * above five horizontally snapping rows. Search swaps the rows for a
- * 2-column grid; a "POWERED BY AI" kicker lives with the bar to sell
- * the signature.
+ * ProductsScreen — v10.9.
  *
- * The filter sheet and `See all →` destinations are stubs — real catalog
- * grid and filter UI ship in later PRs (§5).
+ * Rewrite that collapses three redundant category systems (the v10.3
+ * "TRY" smart-chip row, the v9.3 ShopByGoal icon grid, and the four
+ * stacked category rows) into ONE discovery architecture:
+ *
+ *   BrandBar → Title → Search
+ *   ↓
+ *   BestForYouLead (editorial hero, one top-match pick)
+ *   ↓
+ *   CategoryRail (7 chips; "Best for your skin" leads)
+ *   ↓
+ *   CategoryFeed (2-column product grid, content filtered by selection)
+ *
+ * Search typed state still uses the existing SearchResults component.
+ * Pre-scan users: BestForYouLead shows a locked empty state; the
+ * CategoryFeed's "Best for your skin" option shows its own scan-
+ * promotion card. Every other goal is always populated.
  */
 export function ProductsScreen() {
   const nav = useNavigation<any>();
@@ -55,23 +55,13 @@ export function ProductsScreen() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [goal, setGoal] = useState<GoalKey>('best-for-you');
 
-  // 150ms debounce per §2.10.
+  // 150ms debounce on search.
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 150);
     return () => clearTimeout(t);
   }, [query]);
-
-  const rows = useMemo(
-    () => ({
-      bestForYou: getBestForYou(),
-      bestOverall: getBestOverall(),
-      natural: getNatural(),
-      new: getNew(),
-      essentials: getEssentials(),
-    }),
-    []
-  );
 
   const searchResults = useMemo(
     () =>
@@ -81,15 +71,18 @@ export function ProductsScreen() {
     [debouncedQuery]
   );
 
+  const bestForYouLead = useMemo<Product | null>(() => {
+    const picks = getBestForYou();
+    return picks.length > 0 ? picks[0] : null;
+  }, []);
+
   const isSearching = query.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
 
-      {/* v10 — brand bar harmonized with Home (PuraMark 32 + wordmark).
-          Products is a primary tab, so it needs the full brand mark, not
-          the v5 small-only treatment. */}
+      {/* Brand bar — PuraMark + wordmark + filter chip */}
       <View style={styles.headerRow}>
         <View style={styles.brandLeft}>
           <PuraMark size={32} variant="idle" />
@@ -100,8 +93,6 @@ export function ProductsScreen() {
         <Pressable
           onPress={() => {
             hapt.select();
-            // eslint-disable-next-line no-console
-            console.log('[products] TODO: filter sheet');
             setFiltersOpen(true);
           }}
           hitSlop={8}
@@ -112,11 +103,7 @@ export function ProductsScreen() {
             pressed && { opacity: 0.85 },
           ]}
         >
-          <SlidersHorizontal
-            size={18}
-            color={palette.ink}
-            weight="duotone"
-          />
+          <SlidersHorizontal size={18} color={palette.ink} weight="duotone" />
         </Pressable>
       </View>
 
@@ -134,13 +121,6 @@ export function ProductsScreen() {
         onClear={() => setQuery('')}
       />
 
-      {/* v10.3 — intelligent suggestions when empty. Pulls scan + profile
-          state to surface scan-aware chips ("For chin breakouts") plus
-          always-on discovery chips. Kills the "dead search" feeling. */}
-      {!isSearching ? (
-        <SearchSuggestions onPick={(q) => setQuery(q)} />
-      ) : null}
-
       {isSearching ? (
         <ScrollView
           style={styles.flex}
@@ -156,27 +136,20 @@ export function ProductsScreen() {
           contentContainerStyle={styles.rowsScroll}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Best for you — leads the page ──────────────────────── */}
-          <BestForYouSection
-            hasScanned={hasScanned}
-            data={rows.bestForYou}
-          />
+          {/* ── 1. Hero: Best for your skin lead ─────────────────── */}
+          {hasScanned && bestForYouLead ? (
+            <BestForYouLead product={bestForYouLead} />
+          ) : (
+            <BestForYouLockedHero onScan={() => nav.navigate('ScanModal')} />
+          )}
 
-          {/* ── Shop by goal — Phosphor icons, not dots ───────────── */}
-          <ShopByGoal
-            onPressGoal={(goal) => {
-              hapt.select();
-              // eslint-disable-next-line no-console
-              console.log('[products] shop-by-goal:', goal);
-            }}
-          />
+          {/* ── 2. Unified category rail ─────────────────────────── */}
+          <CategoryRail selected={goal} onSelect={setGoal} />
 
-          {/* ── Remaining rows ─────────────────────────────────────── */}
-          <ProductRow kind="best-overall" data={rows.bestOverall} />
-          <ProductRow kind="natural" data={rows.natural} />
-          <ProductRow kind="new" data={rows.new} />
-          <ProductRow kind="essentials" data={rows.essentials} />
-          <View style={{ height: 120 }} />
+          {/* ── 3. Category feed — content changes by selection ──── */}
+          <CategoryFeed goal={goal} />
+
+          <View style={{ height: 140 }} />
         </ScrollView>
       )}
 
@@ -189,93 +162,17 @@ export function ProductsScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// BestForYouSection — v9.3. First major section on the catalog page.
-// If the user has scanned, renders the Best-for-you horizontal row.
-// If not, renders a premium empty state that promotes the scan.
+// BestForYouLead — editorial hero for the single top match (post-scan).
+// Inline-defined so the card stays a thin layer over the shared Category
+// components and keeps its page-specific sizing.
 // ---------------------------------------------------------------------------
 
-function BestForYouSection({
-  hasScanned,
-  data,
-}: {
-  hasScanned: boolean;
-  data: Parameters<typeof ProductRow>[0]['data'];
-}) {
+function BestForYouLead({ product }: { product: Product }) {
   const nav = useNavigation<any>();
-  if (!hasScanned) {
-    return (
-      <View style={bestStyles.lockedWrap}>
-        <View style={bestStyles.lockedIconWrap}>
-          <Sparkle size={20} color={palette.clay} weight="duotone" />
-        </View>
-        <Text style={bestStyles.lockedKicker} maxFontSizeMultiplier={1.1}>
-          BEST FOR YOU
-        </Text>
-        <Text
-          style={bestStyles.lockedHeadline}
-          maxFontSizeMultiplier={1.15}
-          numberOfLines={2}
-          adjustsFontSizeToFit
-          minimumFontScale={0.9}
-        >
-          Scan your face to unlock matched products.
-        </Text>
-        <Text style={bestStyles.lockedBody} maxFontSizeMultiplier={1.2}>
-          One thirty-second scan, and the catalog starts speaking to your skin directly.
-        </Text>
-        <Pressable
-          onPress={() => {
-            hapt.tap();
-            nav.navigate('ScanModal');
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Take your first scan"
-          style={({ pressed }) => [
-            bestStyles.lockedCta,
-            pressed && { opacity: 0.94, transform: [{ scale: 0.985 }] },
-          ]}
-        >
-          <Text style={bestStyles.lockedCtaLabel} maxFontSizeMultiplier={1.15}>
-            Take a scan
-          </Text>
-          <ArrowRight size={15} color={palette.inkInverse} weight="duotone" />
-        </Pressable>
-      </View>
-    );
-  }
-  return <BestForYouLead data={data} />;
-}
-
-// ---------------------------------------------------------------------------
-// BestForYouLead — v10.4. The post-scan top pick gets a full-width
-// editorial treatment instead of being the first tile in a row. A large
-// tinted image canvas on the left carries a 94% match badge; the right
-// side stacks brand + serif name + italic "why Pura picked this" + price
-// + See all picks link. Replaces the horizontal row for best-for-you
-// only; all other rows (best-overall, natural, new, essentials) keep
-// their existing row treatment below. No net-new element count — just
-// stronger merchandising for the one pick that matters most.
-// ---------------------------------------------------------------------------
-
-function BestForYouLead({
-  data,
-}: {
-  data: Parameters<typeof ProductRow>[0]['data'];
-}) {
-  const nav = useNavigation<any>();
-  if (data.length === 0) return null;
-  const lead = data[0];
-  const others = data.slice(1, 4);
-
   const openLead = () => {
     hapt.select();
-    nav.navigate('ProductDetail', { productId: lead.id, tint: lead.tint });
+    nav.navigate('ProductDetail', { productId: product.id, tint: product.tint });
   };
-  const openSeeAll = () => {
-    hapt.select();
-    nav.navigate('CategoryView', { kind: 'best-for-you' });
-  };
-
   return (
     <View style={leadStyles.wrap}>
       <View style={leadStyles.headerRow}>
@@ -283,56 +180,34 @@ function BestForYouLead({
           BEST FOR YOU
         </Text>
         <View style={leadStyles.leader} />
-        {others.length > 0 ? (
-          <Pressable
-            onPress={openSeeAll}
-            hitSlop={8}
-            accessibilityRole="link"
-            accessibilityLabel="See all matched picks"
-          >
-            <Text style={leadStyles.seeAll} maxFontSizeMultiplier={1.1}>
-              All picks {'\u2192'}
-            </Text>
-          </Pressable>
-        ) : null}
+        <Text style={leadStyles.pct} maxFontSizeMultiplier={1.1}>
+          {`${product.matchScore ?? 94}% match`}
+        </Text>
       </View>
 
       <Pressable
         onPress={openLead}
         accessibilityRole="button"
-        accessibilityLabel={`${lead.brand} ${lead.name} — top match`}
+        accessibilityLabel={`${product.brand} ${product.name} — top match`}
         style={({ pressed }) => [
           leadStyles.card,
           pressed && { opacity: 0.96 },
         ]}
       >
-        <View
-          style={[
-            leadStyles.image,
-            { backgroundColor: tintForProduct(lead) },
-          ]}
-        >
-          {lead.imageUri ? (
+        <View style={[leadStyles.image, { backgroundColor: tintFor(product) }]}>
+          {product.imageUri ? (
             <Image
-              source={{ uri: lead.imageUri }}
+              source={{ uri: product.imageUri }}
               style={StyleSheet.absoluteFillObject}
               resizeMode="cover"
             />
           ) : (
             <Drop size={48} color={palette.ink} weight="duotone" />
           )}
-          <View style={leadStyles.matchBadge}>
-            <Text style={leadStyles.matchNum} maxFontSizeMultiplier={1.1}>
-              {`${lead.matchScore ?? 94}%`}
-            </Text>
-            <Text style={leadStyles.matchLabel} maxFontSizeMultiplier={1.1}>
-              MATCH
-            </Text>
-          </View>
         </View>
         <View style={leadStyles.text}>
           <Text style={leadStyles.brand} maxFontSizeMultiplier={1.1}>
-            {lead.brand.toUpperCase()}
+            {product.brand.toUpperCase()}
           </Text>
           <Text
             style={leadStyles.name}
@@ -341,18 +216,18 @@ function BestForYouLead({
             adjustsFontSizeToFit
             minimumFontScale={0.85}
           >
-            {lead.name}
+            {product.name}
           </Text>
           <Text
             style={leadStyles.why}
             numberOfLines={2}
             maxFontSizeMultiplier={1.2}
           >
-            Matched to your skin — picked from everything we have.
+            Matched from your scan — picked from everything we have.
           </Text>
           <View style={leadStyles.foot}>
             <Text style={leadStyles.price} maxFontSizeMultiplier={1.1}>
-              {`$${Number.isInteger(lead.price) ? lead.price : lead.price.toFixed(2)}`}
+              {`$${Number.isInteger(product.price) ? product.price : product.price.toFixed(2)}`}
             </Text>
             <CaretRight size={13} color={palette.inkTertiary} weight="bold" />
           </View>
@@ -362,7 +237,49 @@ function BestForYouLead({
   );
 }
 
-function tintForProduct(p: { tint?: string | null }) {
+function BestForYouLockedHero({ onScan }: { onScan: () => void }) {
+  return (
+    <View style={lockedStyles.wrap}>
+      <View style={lockedStyles.iconWrap}>
+        <Sparkle size={20} color={palette.clay} weight="duotone" />
+      </View>
+      <Text style={lockedStyles.kicker} maxFontSizeMultiplier={1.1}>
+        BEST FOR YOU
+      </Text>
+      <Text
+        style={lockedStyles.headline}
+        maxFontSizeMultiplier={1.15}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.9}
+      >
+        Scan your face to unlock your best matches.
+      </Text>
+      <Text style={lockedStyles.body} maxFontSizeMultiplier={1.2}>
+        One thirty-second scan, and the catalog starts speaking to your skin directly.
+      </Text>
+      <Pressable
+        onPress={() => {
+          hapt.tap();
+          onScan();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Take your first scan"
+        style={({ pressed }) => [
+          lockedStyles.cta,
+          pressed && { opacity: 0.94, transform: [{ scale: 0.985 }] },
+        ]}
+      >
+        <Text style={lockedStyles.ctaLabel} maxFontSizeMultiplier={1.15}>
+          Take a scan
+        </Text>
+        <ArrowRight size={15} color={palette.inkInverse} weight="duotone" />
+      </Pressable>
+    </View>
+  );
+}
+
+function tintFor(p: Product): string {
   switch (p.tint) {
     case 'clay':
       return palette.clayPaper;
@@ -375,15 +292,68 @@ function tintForProduct(p: { tint?: string | null }) {
   }
 }
 
-// v10.4 — Best for you editorial lead. Premium full-width treatment for
-// the user's single top matched pick, with a dotted-leader header that
-// matches the Product Detail match-block language so the catalog and
-// detail views speak the same design vocabulary.
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: palette.bg },
+  flex: { flex: 1 },
+  headerRow: {
+    height: 60,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandWord: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    letterSpacing: -0.3,
+    color: palette.ink,
+  },
+  filterBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 48,
+    lineHeight: 54,
+    letterSpacing: -1.0,
+    color: palette.ink,
+    marginHorizontal: 20,
+    marginTop: 8,
+  },
+  searchKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  rowsScroll: {
+    paddingBottom: 20,
+  },
+  searchScroll: {
+    paddingBottom: 120,
+  },
+});
+
 const leadStyles = StyleSheet.create({
   wrap: {
     marginHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 4,
+    marginTop: 18,
   },
   headerRow: {
     flexDirection: 'row',
@@ -405,11 +375,13 @@ const leadStyles = StyleSheet.create({
     borderStyle: 'dashed',
     borderBottomColor: palette.hairline,
   },
-  seeAll: {
+  pct: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    letterSpacing: 0.2,
-    color: palette.clay,
+    fontSize: 11,
+    letterSpacing: 0.4,
+    color: palette.mossDeep,
+    textTransform: 'uppercase',
+    fontVariant: ['tabular-nums'],
   },
   card: {
     flexDirection: 'row',
@@ -421,35 +393,8 @@ const leadStyles = StyleSheet.create({
     borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: palette.bgDeep,
-    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  matchBadge: {
-    position: 'absolute',
-    left: 10,
-    bottom: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: palette.moss,
-    alignItems: 'center',
-    minWidth: 56,
-  },
-  matchNum: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-    lineHeight: 15,
-    color: palette.inkInverse,
-    letterSpacing: 0.1,
-    fontVariant: ['tabular-nums'],
-  },
-  matchLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: 'rgba(248,250,252,0.78)',
-    marginTop: 1,
   },
   text: {
     flex: 1,
@@ -492,11 +437,10 @@ const leadStyles = StyleSheet.create({
   },
 });
 
-const bestStyles = StyleSheet.create({
-  lockedWrap: {
+const lockedStyles = StyleSheet.create({
+  wrap: {
     marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 18,
     paddingVertical: 28,
     paddingHorizontal: 24,
     borderRadius: 20,
@@ -505,7 +449,7 @@ const bestStyles = StyleSheet.create({
     backgroundColor: palette.bg,
     alignItems: 'flex-start',
   },
-  lockedIconWrap: {
+  iconWrap: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -514,7 +458,7 @@ const bestStyles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
-  lockedKicker: {
+  kicker: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
     letterSpacing: 1.6,
@@ -522,7 +466,7 @@ const bestStyles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 8,
   },
-  lockedHeadline: {
+  headline: {
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 26,
     lineHeight: 30,
@@ -530,14 +474,14 @@ const bestStyles = StyleSheet.create({
     color: palette.ink,
     marginBottom: 10,
   },
-  lockedBody: {
+  body: {
     fontFamily: 'Inter-Regular',
     fontSize: 13,
     lineHeight: 19,
     color: palette.inkSecondary,
     marginBottom: 18,
   },
-  lockedCta: {
+  cta: {
     height: 44,
     paddingHorizontal: 20,
     borderRadius: 22,
@@ -547,203 +491,10 @@ const bestStyles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  lockedCtaLabel: {
+  ctaLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 14,
     letterSpacing: 0.1,
     color: palette.inkInverse,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// ShopByGoal — v9.3. Six goals, each with a Phosphor duotone icon (not a
-// colored dot). Icons carry more signal-per-pixel and match the rest of
-// the app's iconography system.
-// ---------------------------------------------------------------------------
-
-type GoalKey =
-  | 'breakouts'
-  | 'hydration'
-  | 'texture'
-  | 'dark-marks'
-  | 'sensitive'
-  | 'natural';
-
-const GOAL_META: Record<
-  GoalKey,
-  { label: string; Icon: React.FC<PhosphorIconProps>; accent: string }
-> = {
-  breakouts:   { label: 'Breakouts',  Icon: Sparkle as React.FC<PhosphorIconProps>,   accent: palette.rust },
-  hydration:   { label: 'Hydration',  Icon: Drop as React.FC<PhosphorIconProps>,       accent: palette.clay },
-  texture:     { label: 'Texture',    Icon: GridNine as React.FC<PhosphorIconProps>,   accent: palette.amber },
-  'dark-marks':{ label: 'Dark marks', Icon: Moon as React.FC<PhosphorIconProps>,       accent: palette.clayDeep },
-  sensitive:   { label: 'Sensitive',  Icon: Heart as React.FC<PhosphorIconProps>,      accent: palette.moss },
-  natural:     { label: 'Natural',    Icon: Leaf as React.FC<PhosphorIconProps>,       accent: palette.mossDeep },
-};
-
-function ShopByGoal({
-  onPressGoal,
-}: {
-  onPressGoal: (goal: GoalKey) => void;
-}) {
-  const goals = Object.keys(GOAL_META) as GoalKey[];
-  return (
-    <View style={goalStyles.wrap}>
-      <Text style={goalStyles.kicker} maxFontSizeMultiplier={1.1}>
-        SHOP BY GOAL
-      </Text>
-      <View style={goalStyles.grid}>
-        {goals.map((g) => {
-          const meta = GOAL_META[g];
-          const Icon = meta.Icon;
-          return (
-            <Pressable
-              key={g}
-              onPress={() => onPressGoal(g)}
-              accessibilityRole="button"
-              accessibilityLabel={`Shop ${meta.label}`}
-              style={({ pressed }) => [
-                goalStyles.chip,
-                pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
-              ]}
-            >
-              <View
-                style={[
-                  goalStyles.iconWrap,
-                  { backgroundColor: withAlpha(meta.accent, 0.12) },
-                ]}
-              >
-                <Icon size={18} color={meta.accent} weight="duotone" />
-              </View>
-              <Text style={goalStyles.label} maxFontSizeMultiplier={1.1}>
-                {meta.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-// Inline color alpha helper — keeps us out of StyleSheet/token juggling
-// for the six goal tints.
-function withAlpha(hex: string, a: number): string {
-  // Accept "#RRGGBB" and produce "rgba(r, g, b, a)".
-  if (hex.length !== 7 || !hex.startsWith('#')) return hex;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${a})`;
-}
-
-const goalStyles = StyleSheet.create({
-  wrap: {
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 10,
-  },
-  kicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  chip: {
-    flexGrow: 1,
-    flexBasis: '30%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: palette.bg,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-  },
-  iconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  label: {
-    flex: 1,
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    letterSpacing: -0.1,
-    color: palette.ink,
-  },
-});
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.bg },
-  flex: { flex: 1 },
-  headerRow: {
-    height: 60,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  brandLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  brandWord: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    letterSpacing: -0.3,
-    color: palette.ink,
-  },
-  // v10 — cool paper filter chip. Prior warm-sand pill (v5 residual)
-  // was the single most jarring misfit on the catalog page.
-  filterBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: palette.bgDeep,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // v10.3 — lineHeight widened to 54pt (1.125×) so the "p" descender in
-  // "Products." stops clipping. 48pt serif needs more vertical room
-  // than a 1.02× line can offer.
-  title: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 48,
-    lineHeight: 54,
-    letterSpacing: -1.0,
-    color: palette.ink,
-    marginHorizontal: 20,
-    marginTop: 8,
-  },
-  searchKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-    marginHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  rowsScroll: {
-    paddingBottom: 20,
-  },
-  searchScroll: {
-    paddingBottom: 120,
   },
 });

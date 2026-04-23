@@ -67,6 +67,95 @@ export function getEssentials(): Product[] {
   }).filter((p): p is Product => !!p);
 }
 
+// ---------------------------------------------------------------------------
+// v10.9 — goal-specific selectors feeding the unified CategoryRail.
+//
+// Each `getGoalX` selector returns products whose tag / keyIngredient /
+// category maps to the goal. Products that have been hand-tagged with
+// the matching ProductTag win first; when tags are sparse, we fall
+// back to key-ingredient heuristics so the feed is never empty.
+// ---------------------------------------------------------------------------
+
+const BREAKOUT_HINTS = [
+  'salicylic',
+  'niacinamide',
+  'benzoyl',
+  'zinc',
+  'tea tree',
+];
+const HYDRATION_HINTS = [
+  'hyaluronic',
+  'glycerin',
+  'squalane',
+  'ceramide',
+  'panthenol',
+];
+const TEXTURE_HINTS = [
+  'aha',
+  'bha',
+  'pha',
+  'lactic',
+  'glycolic',
+  'mandelic',
+  'retinol',
+];
+const DARK_MARK_HINTS = [
+  'vitamin c',
+  'tranexamic',
+  'niacinamide',
+  'arbutin',
+  'kojic',
+  'azelaic',
+];
+
+function matchesHint(product: Product, hints: string[]): boolean {
+  const haystack = [
+    product.name.toLowerCase(),
+    product.description.toLowerCase(),
+    ...product.keyIngredients.map((k) => k.toLowerCase()),
+  ].join(' ');
+  return hints.some((h) => haystack.includes(h));
+}
+
+export function getGoalBreakouts(): Product[] {
+  return [...seedProducts]
+    .filter((p) => matchesHint(p, BREAKOUT_HINTS))
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, ROW_LIMIT);
+}
+
+export function getGoalHydration(): Product[] {
+  return [...seedProducts]
+    .filter((p) => matchesHint(p, HYDRATION_HINTS))
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, ROW_LIMIT);
+}
+
+export function getGoalTexture(): Product[] {
+  return [...seedProducts]
+    .filter((p) => matchesHint(p, TEXTURE_HINTS))
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, ROW_LIMIT);
+}
+
+export function getGoalDarkMarks(): Product[] {
+  return [...seedProducts]
+    .filter((p) => matchesHint(p, DARK_MARK_HINTS))
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, ROW_LIMIT);
+}
+
+export function getGoalSensitive(): Product[] {
+  return [...seedProducts]
+    .filter(
+      (p) =>
+        p.tags.includes('sensitive-safe') ||
+        p.tags.includes('fragrance-free')
+    )
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, ROW_LIMIT);
+}
+
 /**
  * Debounced fuzzy filter used by the Products search bar. Matches name,
  * brand, category, or key ingredients. Case-insensitive.

@@ -1,9 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import type { RouteProp } from '@react-navigation/native';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { DetailHeader } from '@/components/products/DetailHeader';
 import { ProductHero } from '@/components/products/ProductHero';
 import { BrandAndName } from '@/components/products/BrandAndName';
@@ -22,6 +29,7 @@ import { Toast } from '@/components/contextual/Toast';
 import { seedProducts } from '@/data/seed';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
+import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import { CATEGORY_LABEL, getConcerns } from '@/utils/concerns';
 import type { Concern, Product, ProductTint } from '@/types';
@@ -98,16 +106,16 @@ export function ProductDetailScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── v10.9 first screenful ────────────────────────────────
+            Image → Brand/Name → Match (+% + one-line reason) → Price
+            → compact Fit chips. Description is no longer a section
+            (it duplicated the match rationale). Ingredients no longer
+            renders open by default — it competed with the match +
+            price for above-the-fold attention. Every deep section is
+            collapsed below. */}
         <ProductHero tint={tint} imageUrl={product.imageUrl ?? product.imageUri} />
         <BrandAndName brand={product.brand} name={product.name} />
-
-        {/* v9.7 — match + why. Lives right under the name so the match
-            signal and the concern-tied rationale register before price
-            and fit tags. Only renders when we have a scan-derived top
-            concern; otherwise the section is hidden (no fabricated
-            match talk). */}
         <MatchWhyBlock product={product} topConcern={topConcern} />
-
         <PriceAndRating
           price={product.price}
           rating={product.rating}
@@ -115,21 +123,22 @@ export function ProductDetailScreen() {
         />
         <FitTagsRow product={product} user={user} />
 
-        {/* v10 — description now collapsed by default. Brand-marketing copy
-            is the weakest information on this screen; users open it only
-            when they need to. Ingredients stay open because they're the
-            concrete health data. */}
-        <Accordion id="description" title="Description">
-          <Text style={styles.bodyCopy} maxFontSizeMultiplier={1.2}>
-            {product.description || 'No description available.'}
-          </Text>
+        {/* ── v10.9 progressive disclosure ────────────────────────
+            Two sections open by default (the premium AI story + the
+            discovery moment); everything functional is collapsed. */}
+        {topConcern ? (
+          <Accordion id="why" title="Why this matches you" defaultOpen>
+            <Text style={styles.bodyCopy} maxFontSizeMultiplier={1.2}>
+              {buildWhyParagraph(product, topConcern)}
+            </Text>
+          </Accordion>
+        ) : null}
+
+        <Accordion id="alternatives" title="Alternatives" defaultOpen>
+          <AlternativesList current={product} />
         </Accordion>
 
-        <Accordion id="ingredients" title="Ingredients" defaultOpen>
-          <IngredientsPanel product={product} user={user} />
-        </Accordion>
-
-        <Accordion id="howToUse" title="How to Use">
+        <Accordion id="howToUse" title="How to use">
           {product.howToUse ? (
             <Text style={styles.bodyCopy} maxFontSizeMultiplier={1.2}>
               {product.howToUse}
@@ -137,7 +146,11 @@ export function ProductDetailScreen() {
           ) : null}
         </Accordion>
 
-        <Accordion id="details" title="Details">
+        <Accordion id="ingredients" title="Ingredients">
+          <IngredientsPanel product={product} user={user} />
+        </Accordion>
+
+        <Accordion id="details" title="Product details">
           <DetailsPanel product={product} />
         </Accordion>
 
@@ -162,6 +175,122 @@ export function ProductDetailScreen() {
       ) : null}
     </SafeAreaView>
   );
+}
+
+// ============================================================================
+// AlternativesList — v10.9
+// Three similar products rendered as match-pill rows (same visual
+// vocabulary as Plan's Alternatives from v10.5). Tap a row to open its
+// detail page. Hidden when no alternatives are found.
+// ============================================================================
+
+function AlternativesList({ current }: { current: Product }) {
+  const nav = useNavigation<any>();
+  const alternatives = useMemo(
+    () => pickAlternatives(current),
+    [current]
+  );
+  if (alternatives.length === 0) return null;
+
+  const openProduct = (p: Product) => {
+    hapt.select();
+    nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
+  };
+
+  return (
+    <View style={altStyles.list}>
+      {alternatives.map((p) => (
+        <Pressable
+          key={p.id}
+          onPress={() => openProduct(p)}
+          accessibilityRole="button"
+          accessibilityLabel={`${p.brand} ${p.name}`}
+          style={({ pressed }) => [
+            altStyles.row,
+            pressed && { opacity: 0.92 },
+          ]}
+        >
+          <View
+            style={[
+              altStyles.image,
+              { backgroundColor: tintColor(p) },
+            ]}
+          >
+            {p.imageUri ? (
+              <Image
+                source={{ uri: p.imageUri }}
+                style={StyleSheet.absoluteFillObject}
+                resizeMode="cover"
+              />
+            ) : null}
+          </View>
+          <View style={{ flex: 1, marginRight: 10 }}>
+            <View style={altStyles.brandRow}>
+              <Text style={altStyles.brand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+                {p.brand.toUpperCase()}
+              </Text>
+              <View style={altStyles.matchPill}>
+                <Text style={altStyles.matchPillText} maxFontSizeMultiplier={1.1}>
+                  {`${p.matchScore ?? 84}%`}
+                </Text>
+              </View>
+            </View>
+            <Text
+              style={altStyles.name}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.15}
+            >
+              {p.name}
+            </Text>
+          </View>
+          <Text style={altStyles.price} maxFontSizeMultiplier={1.1}>
+            {`$${Number.isInteger(p.price) ? p.price : p.price.toFixed(2)}`}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function pickAlternatives(current: Product): Product[] {
+  return seedProducts
+    .filter((p) => p.id !== current.id && p.category === current.category)
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 3);
+}
+
+function tintColor(p: Product): string {
+  switch (p.tint) {
+    case 'clay':
+      return palette.clayPaper;
+    case 'sand':
+      return palette.sandPaper;
+    case 'moss':
+      return palette.mossLight;
+    default:
+      return palette.bgDeep;
+  }
+}
+
+/**
+ * v10.9 — "Why this matches you" paragraph. Same concern-tied logic as
+ * the inline pitch, but with more room to breathe: names the concern +
+ * the signal + how the product addresses it. Shown in the
+ * default-open Why section below the first screenful.
+ */
+function buildWhyParagraph(product: Product, concern: Concern): string {
+  const region = concern.region;
+  const sev = concern.severity.replace('-', ' ');
+  switch (concern.category) {
+    case 'breakouts':
+      return `Your ${region} is reading as breakouts \u00B7 ${sev} in the latest scan. This formula targets the active surface without aggravating the surrounding skin — a direct response to what the scan picked up.`;
+    case 'hydration':
+      return `Your ${region} is reading low on moisture. This product restores hydration to the layer the scan flagged — enough to rebuild the barrier, not so much that it sits heavy on the skin.`;
+    case 'texture':
+      return `Texture on your ${region} is uneven in the last reading. This works on the surface refinement the scan identified — gently enough to use alongside the rest of your routine.`;
+    case 'tone':
+      return `Dark marks on your ${region} are still visible in the scan. This formula works on uneven tone over a real skin cycle — results show up gradually, scan by scan.`;
+  }
 }
 
 // ============================================================================
@@ -314,5 +443,67 @@ const matchStyles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: -0.2,
     color: palette.inkSecondary,
+  },
+});
+
+// v10.9 — Alternatives section rows. Same visual vocabulary as the
+// Plan page's alternatives (v10.5): thumbnail + brand + moss match
+// pill + serif name + serif price. One row per product.
+const altStyles = StyleSheet.create({
+  list: {
+    gap: 14,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 6,
+  },
+  image: {
+    width: 54,
+    height: 66,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 3,
+  },
+  brand: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: palette.inkTertiary,
+  },
+  matchPill: {
+    paddingHorizontal: 6,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: palette.mossLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  matchPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 0.4,
+    color: palette.mossDeep,
+    fontVariant: ['tabular-nums'],
+  },
+  name: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
+    lineHeight: 21,
+    letterSpacing: -0.2,
+    color: palette.ink,
+  },
+  price: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    letterSpacing: -0.2,
+    color: palette.ink,
+    fontVariant: ['tabular-nums'],
   },
 });

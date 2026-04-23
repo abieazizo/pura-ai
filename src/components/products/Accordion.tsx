@@ -28,8 +28,10 @@ if (
 
 export type AccordionId =
   | 'description'
+  | 'why'
   | 'ingredients'
   | 'howToUse'
+  | 'alternatives'
   | 'details';
 
 export interface AccordionProps {
