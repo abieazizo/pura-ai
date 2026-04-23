@@ -35,6 +35,8 @@ import {
   getConcerns,
   severityLabel,
 } from '@/utils/concerns';
+import { computeSkinScore, formatDelta } from '@/utils/skinScore';
+import { SkinScoreDial } from '@/components/SkinScoreDial';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Concern, Severity } from '@/types';
 
@@ -137,6 +139,10 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     (c) => c.severity === 'moderate' || c.severity === 'needs-attention'
   );
 
+  const score = computeSkinScore(scans);
+  const previousScoreValue =
+    scans.length >= 2 ? scans[scans.length - 2].overallScore : null;
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
@@ -163,6 +169,13 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           photoUri={scan.photoUri}
           size={photoSize}
           hotspotConcerns={hotspotConcerns}
+          scoreValue={score.value}
+          previousScore={previousScoreValue}
+          deltaCaption={
+            score.deltaSinceLast !== null
+              ? `${formatDelta(score.deltaSinceLast)} since last scan`
+              : 'first reading'
+          }
         />
 
         <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
@@ -223,10 +236,16 @@ function HeroPhoto({
   photoUri,
   size,
   hotspotConcerns,
+  scoreValue,
+  previousScore,
+  deltaCaption,
 }: {
   photoUri: string;
   size: { w: number; h: number };
   hotspotConcerns: Concern[];
+  scoreValue: number;
+  previousScore: number | null;
+  deltaCaption: string;
 }) {
   return (
     <View
@@ -241,6 +260,22 @@ function HeroPhoto({
         contentFit="cover"
         transition={200}
       />
+      {/* v9.5 — score reveal medallion. Bottom-center, floats below the
+          face with a cool-paper backdrop so the dial reads over any photo
+          luminance. The reveal moment now PAIRS the face with the score,
+          not just a tiny paper chip in the corner. */}
+      <View pointerEvents="none" style={styles.scoreRevealWrap}>
+        <View style={styles.scoreRevealBackdrop}>
+          <SkinScoreDial
+            value={scoreValue}
+            size={112}
+            showTier={false}
+            previousValue={previousScore}
+            deltaCaption={deltaCaption}
+            delay={420}
+          />
+        </View>
+      </View>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {hotspotConcerns.flatMap((c) =>
           c.hotspots.slice(0, 1).map((pt, i) => (
@@ -585,6 +620,26 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: palette.bgDeep,
   },
+  scoreRevealWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -46,
+    alignItems: 'center',
+  },
+  scoreRevealBackdrop: {
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.bg,
+    shadowColor: palette.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
   hotspotWrap: {
     position: 'absolute',
     width: 36,
@@ -603,14 +658,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(248,250,252,0.95)',
   },
 
-  // Headline
+  // Headline — extra top margin to clear the floating medallion (-46 bottom)
   headline: {
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 30,
     lineHeight: 34,
     letterSpacing: -0.6,
     color: palette.ink,
-    marginTop: 28,
+    marginTop: 74,
     marginBottom: 24,
     maxWidth: '92%',
   },

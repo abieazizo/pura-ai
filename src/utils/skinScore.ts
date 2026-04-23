@@ -118,37 +118,38 @@ function buildHeadline(
       case 'good':
         return 'Solid starting point.';
       case 'fair':
-        return 'Plenty of room to improve.';
+        return 'Clear room to improve.';
       case 'needs-work':
-        return 'Starting where we are. It only goes up from here.';
+        return 'Starting point set. We build from here.';
     }
   }
 
   const dir: 'upBig' | 'up' | 'flat' | 'down' =
     delta >= 3 ? 'upBig' : delta >= 1 ? 'up' : delta <= -1 ? 'down' : 'flat';
 
+  // v9.5 copy pass — more concrete, less "gaining ground" vagueness.
   if (tier === 'strong') {
-    if (dir === 'upBig') return 'Strongest Skin Score yet.';
-    if (dir === 'up') return 'Strong and rising.';
-    if (dir === 'flat') return 'Strong and holding.';
-    return 'Down a touch. Still in strong range.';
+    if (dir === 'upBig') return 'Highest Skin Score yet.';
+    if (dir === 'up') return 'Up from last scan. Still strong.';
+    if (dir === 'flat') return 'Strong and unchanged.';
+    return 'Down from last scan. Still strong.';
   }
   if (tier === 'good') {
-    if (dir === 'upBig') return 'Measurable improvement.';
-    if (dir === 'up') return 'A small lift since last scan.';
-    if (dir === 'flat') return 'Holding steady in the good range.';
-    return 'Slight dip since last scan.';
+    if (dir === 'upBig') return 'Biggest move since last week.';
+    if (dir === 'up') return 'Up from last scan.';
+    if (dir === 'flat') return 'Unchanged since last scan.';
+    return 'Down from last scan.';
   }
   if (tier === 'fair') {
-    if (dir === 'upBig') return 'Turning a corner.';
-    if (dir === 'up') return 'Small lift since last scan.';
+    if (dir === 'upBig') return 'Clear improvement since last scan.';
+    if (dir === 'up') return 'Up from last scan.';
     if (dir === 'flat') return 'Unchanged since last scan.';
-    return 'Stepped back a bit.';
+    return 'Lost ground since last scan.';
   }
   // needs-work
-  if (dir === 'upBig') return 'Starting to recover.';
-  if (dir === 'up') return 'First signs of progress.';
-  if (dir === 'flat') return 'Rough stretch — still early.';
+  if (dir === 'upBig') return 'First real move up.';
+  if (dir === 'up') return 'Up from last scan.';
+  if (dir === 'flat') return 'No change since last scan.';
   return 'Lower than your last scan.';
 }
 

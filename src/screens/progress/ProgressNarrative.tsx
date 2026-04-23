@@ -36,18 +36,19 @@ export function ProgressNarrative({ scans }: ProgressNarrativeProps) {
   const ups = rows.filter((r) => r.direction === 'up').length;
   const downs = rows.filter((r) => r.direction === 'down').length;
 
+  // v9.5 copy — concrete, specific, no "gaining ground across the board".
   const overall =
     ups >= 3
-      ? 'Gaining ground.'
+      ? 'Most concerns moved up.'
       : ups === 2
-      ? 'Two areas improving.'
+      ? 'Two concerns moved up.'
       : ups === 1 && downs === 0
-      ? 'One area improving. The rest is holding.'
+      ? 'One concern improving. Rest unchanged.'
       : downs >= 2
-      ? 'A few things moved the wrong way.'
+      ? 'Two concerns slipped since day 1.'
       : downs === 1
-      ? 'Mostly steady. One to watch.'
-      : 'Holding steady.';
+      ? 'Mostly unchanged. One concern slipped.'
+      : 'No meaningful change since day 1.';
 
   const days = daysBetween(first.capturedAt, latest.capturedAt);
 

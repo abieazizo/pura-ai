@@ -221,7 +221,7 @@ export function PlanScreen() {
               accessibilityLabel={`${rec.brand} ${rec.name}`}
               style={({ pressed }) => [
                 styles.recCard,
-                pressed && { opacity: 0.96 },
+                pressed && { opacity: 0.97 },
               ]}
             >
               <View
@@ -236,7 +236,20 @@ export function PlanScreen() {
                     style={styles.recImageInner}
                     resizeMode="cover"
                   />
-                ) : null}
+                ) : (
+                  <View style={styles.recImageFallback} pointerEvents="none">
+                    <Drop size={44} color={palette.ink} weight="duotone" />
+                  </View>
+                )}
+                {/* 98% match badge — premium green, bottom-left of image */}
+                <View style={styles.recMatchBadge}>
+                  <Text style={styles.recMatchBadgeNum} maxFontSizeMultiplier={1.1}>
+                    {`${rec.matchScore ?? 90}%`}
+                  </Text>
+                  <Text style={styles.recMatchBadgeLabel} maxFontSizeMultiplier={1.1}>
+                    MATCH
+                  </Text>
+                </View>
               </View>
               <View style={styles.recBody}>
                 <Text style={styles.recBrand} maxFontSizeMultiplier={1.1}>
@@ -251,13 +264,16 @@ export function PlanScreen() {
                 >
                   {rec.name}
                 </Text>
-                <Text
-                  style={styles.recReason}
-                  maxFontSizeMultiplier={1.2}
-                  numberOfLines={2}
-                >
-                  {buildRecReason(primary)}
-                </Text>
+                <View style={styles.recReasonRow}>
+                  <View style={styles.recReasonBullet} />
+                  <Text
+                    style={styles.recReason}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={2}
+                  >
+                    {buildRecReason(primary)}
+                  </Text>
+                </View>
                 <View style={styles.recFoot}>
                   <Text style={styles.recPrice} maxFontSizeMultiplier={1.1}>
                     ${Number.isInteger(rec.price) ? rec.price : rec.price.toFixed(2)}
@@ -412,10 +428,10 @@ function HeroConcernCard({
           YOUR PLAN
         </Text>
         <Text style={hero.headline} maxFontSizeMultiplier={1.15}>
-          Your skin is settled today.
+          Your skin is settled.
         </Text>
         <Text style={hero.interpretation} maxFontSizeMultiplier={1.2}>
-          Keep your current routine going — consistency is the work.
+          Nothing new tonight. Keep your current routine.
         </Text>
       </View>
     );
@@ -883,22 +899,67 @@ const styles = StyleSheet.create({
   },
 
 
-  // REC
+  // REC — v9.5 heroed product card
   recCard: {
     flexDirection: 'row',
     gap: 16,
     paddingTop: 4,
   },
   recImage: {
-    width: 110,
-    height: 140,
-    borderRadius: 14,
+    width: 132,
+    height: 164,
+    borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: palette.bgDeep,
+    position: 'relative',
   },
   recImageInner: {
     width: '100%',
     height: '100%',
+  },
+  recImageFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recMatchBadge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: palette.moss,
+    alignItems: 'center',
+    minWidth: 54,
+  },
+  recMatchBadgeNum: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: palette.inkInverse,
+    letterSpacing: 0.1,
+    lineHeight: 15,
+    fontVariant: ['tabular-nums'],
+  },
+  recMatchBadgeLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 8,
+    letterSpacing: 1.2,
+    color: 'rgba(248,250,252,0.78)',
+    marginTop: 1,
+  },
+  recReasonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 14,
+  },
+  recReasonBullet: {
+    width: 2,
+    alignSelf: 'stretch',
+    borderRadius: 1,
+    backgroundColor: palette.clay,
+    marginTop: 2,
   },
   recBody: {
     flex: 1,
@@ -919,11 +980,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   recReason: {
+    flex: 1,
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 14,
     lineHeight: 20,
     color: palette.inkSecondary,
-    marginBottom: 12,
   },
   recFoot: {
     flexDirection: 'row',

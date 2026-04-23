@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,11 +14,9 @@ import { useNavigation } from '@react-navigation/native';
 import { ArrowRight } from 'phosphor-react-native';
 import { ScreenChrome } from '@/components/ScreenChrome';
 import { PrimaryButton } from '@/components/PrimaryButton';
-import { EditorialRule } from '@/components/EditorialRule';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { CompareSlider } from '@/components/CompareSlider';
 import { PuraMark } from '@/components/PuraMark';
-import { MetricBar } from './MetricBar';
 import { PhotoTimelineStrip } from './PhotoTimelineStrip';
 import { ProgressNarrative } from './ProgressNarrative';
 import { SkinScoreHero } from './SkinScoreHero';
@@ -27,7 +25,6 @@ import { useAppStore } from '@/store/useAppStore';
 import { useHasScanned, useLatestScan, useFirstScan, useDayNumber, useStreakDays, useProgressPercent } from '@/store/selectors';
 import { useShallow } from 'zustand/react/shallow';
 import { colors, palette, space, type as typography } from '@/theme';
-import { computeZoneDeltas } from '@/utils/insights';
 import { progress } from '@/copy/strings';
 import { hapt } from '@/utils/haptics';
 import type { Scan } from '@/types';
@@ -52,11 +49,6 @@ export function ProgressScreen() {
   // §2.4 — scroll content must clear the tab bar (60) + FAB overlap (34) +
   // bottom safe inset, plus breathing room. 120 below the safe inset.
   const bottomClearance = insets.bottom + 120;
-
-  const deltas = useMemo(() => {
-    if (!first || !selectedScan) return [];
-    return computeZoneDeltas(first, selectedScan);
-  }, [first, selectedScan]);
 
   if (!user) return null;
 
@@ -163,20 +155,11 @@ export function ProgressScreen() {
           />
         </View>
 
-        <View style={styles.changesBlock}>
-          <EditorialRule label="MEASURABLE CHANGES SINCE DAY 1" />
-          <View style={{ marginTop: space.md }}>
-            {deltas.map((d, i) => (
-              <MetricBar
-                key={d.key}
-                label={d.label}
-                percent={d.percentChange}
-                direction={d.direction}
-                delay={i * 120}
-              />
-            ))}
-          </View>
-        </View>
+        {/* v9.5 — "MEASURABLE CHANGES SINCE DAY 1" MetricBars were
+            removed. ProgressNarrative above already shows per-concern
+            tier transitions with the same information in a more premium
+            treatment. The redundancy made Progress read as a report
+            rather than proof. */}
 
         <View style={{ height: 120 }} />
       </ScrollView>

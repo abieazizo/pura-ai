@@ -19,6 +19,9 @@ import {
   Drop as DropIcon,
   Sparkle as SparkleIcon,
   CaretRight,
+  Moon as MoonIcon,
+  GridNine as GridNineIcon,
+  type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
 import { SkinScoreDial } from '@/components/SkinScoreDial';
@@ -392,32 +395,78 @@ function BrandBar({ initials }: { initials: string | null }) {
   );
 }
 
+const CONCERN_ICON: Record<Concern['category'], React.FC<PhosphorIconProps>> = {
+  breakouts: SparkleIcon as React.FC<PhosphorIconProps>,
+  hydration: DropIcon as React.FC<PhosphorIconProps>,
+  texture: GridNineIcon as React.FC<PhosphorIconProps>,
+  tone: MoonIcon as React.FC<PhosphorIconProps>,
+};
+
 function GlanceStrip({ concerns }: { concerns: Concern[] }) {
-  // v9.2 — 3 findings max (was 4). Priority: any non-calm concerns first,
-  // ranked by severity; calm-only falls back to the top 3 by rank.
+  // v9.5 — concern cards (was pills). Each card carries:
+  //   • Leading Phosphor glyph in a severity-tinted square
+  //   • Category label + region as a two-line stack
+  //   • Trend chip on the right showing tier transition with arrow
+  // Top 3 concerns prioritized by severity; calm fallback preserved.
   const nonCalm = concerns.filter((c) => c.severity !== 'calm');
   const top = (nonCalm.length > 0 ? nonCalm : concerns).slice(0, 3);
   return (
-    <View style={styles.glanceStrip}>
+    <View style={styles.glanceStack}>
       {top.map((c) => {
         const color = colorFor(c.severity);
+        const Icon = CONCERN_ICON[c.category];
         return (
-          <View key={c.category} style={styles.glancePill}>
-            <View style={[styles.glanceDot, { backgroundColor: color }]} />
-            <Text style={styles.glanceLabel} maxFontSizeMultiplier={1.1}>
-              {CATEGORY_LABEL[c.category]}
-            </Text>
-            <Text
-              style={[styles.glanceSeverity, { color }]}
-              maxFontSizeMultiplier={1.1}
+          <View key={c.category} style={styles.concernCard}>
+            <View
+              style={[
+                styles.concernIconWrap,
+                { backgroundColor: withAlpha(color, 0.14) },
+              ]}
             >
-              {severityLabel(c.severity)}
-            </Text>
+              <Icon size={16} color={color} weight="duotone" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={styles.concernCardLabel}
+                maxFontSizeMultiplier={1.15}
+                numberOfLines={1}
+              >
+                {CATEGORY_LABEL[c.category]}
+              </Text>
+              <Text
+                style={styles.concernCardRegion}
+                maxFontSizeMultiplier={1.15}
+                numberOfLines={1}
+              >
+                {c.region}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.concernCardPill,
+                { backgroundColor: withAlpha(color, 0.12) },
+              ]}
+            >
+              <Text
+                style={[styles.concernCardPillText, { color }]}
+                maxFontSizeMultiplier={1.1}
+              >
+                {severityLabel(c.severity)}
+              </Text>
+            </View>
           </View>
         );
       })}
     </View>
   );
+}
+
+function withAlpha(hex: string, a: number): string {
+  if (hex.length !== 7 || !hex.startsWith('#')) return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
 /**
@@ -740,39 +789,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 28,
   },
-  glanceStrip: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  glanceStack: {
+    gap: 10,
   },
-  glancePill: {
-    flexGrow: 1,
-    flexBasis: '47%',
+  concernCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+  },
+  concernIconWrap: {
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    backgroundColor: palette.bgDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  glanceDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  glanceLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
+  concernCardLabel: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
+    lineHeight: 20,
+    letterSpacing: -0.3,
     color: palette.ink,
-    letterSpacing: -0.1,
   },
-  glanceSeverity: {
-    flex: 1,
-    fontFamily: 'Inter-Medium',
-    fontSize: 11,
-    textAlign: 'right',
-    letterSpacing: 0.2,
+  concernCardRegion: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 15,
+    color: palette.inkTertiary,
+    marginTop: 2,
+  },
+  concernCardPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  concernCardPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
 
   // C — Next action
