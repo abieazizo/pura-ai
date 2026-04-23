@@ -110,30 +110,29 @@ export function Accordion({
   );
 }
 
-// v10.10 — accordion visuals upgraded:
-//   • Title is now InstrumentSerif-SemiBold 22pt (was Regular 20pt) so
-//     each section reads with real weight, not a body-caption register.
-//   • Tap target grows 48 → 56pt — premium controls sit above iOS's
-//     44pt minimum with real breathing room.
-//   • Chevron stays right-aligned; its spring rotation comes from the
-//     hook above.
-//   • Content padding slightly tighter on top to pair with the
-//     wider header.
+// v10.12 — accordion compressed. Same v10.10 language (SemiBold serif
+// title, spring chevron rotation) with tighter vertical cost:
+//   • header 56 → 50pt (still above iOS's 44pt tap minimum)
+//   • title 22pt / line 28 → 20pt / line 24 (still reads as a section
+//     header, not caption)
+//   • marginTop 28 → 20 (section rhythm tighter)
+//   • content paddingTop 14 → 10, paddingBottom 22 → 14
+// Savings compound across four sections (~40pt).
 const styles = StyleSheet.create({
   wrap: {
     marginHorizontal: 20,
-    marginTop: 28,
+    marginTop: 20,
   },
   header: {
-    height: 56,
+    height: 50,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   title: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 24,
     letterSpacing: -0.3,
     color: palette.ink,
   },
@@ -142,7 +141,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.hairline,
   },
   content: {
-    paddingTop: 14,
-    paddingBottom: 22,
+    paddingTop: 10,
+    paddingBottom: 14,
   },
 });

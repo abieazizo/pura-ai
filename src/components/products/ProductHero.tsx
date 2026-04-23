@@ -98,18 +98,23 @@ export function ProductHero({ tint, imageUrl }: ProductHeroProps) {
   );
 }
 
+// v10.12 — hero compressed. aspectRatio 1.1 → 1.3 (short edge down,
+// wide feel preserved), marginTop 12 → 4, borderRadius 28 → 22. The
+// tile stops reading as a poster and starts reading as a premium
+// product shot. Saves ~90pt of vertical cost without losing luminance
+// depth or the tint system.
 const styles = StyleSheet.create({
   wrap: {
     marginHorizontal: 20,
-    marginTop: 12,
-    aspectRatio: 1.1,
-    borderRadius: 28,
+    marginTop: 4,
+    aspectRatio: 1.3,
+    borderRadius: 22,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
   content: {
-    width: '70%',
+    width: '66%',
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',

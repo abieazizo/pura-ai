@@ -19,22 +19,21 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const PRESS_SPRING = { damping: 15, stiffness: 300, mass: 1 };
 
 /**
- * v10.10 — pinned action tray for Product Detail.
+ * v10.12 — pinned action tray compressed to a single row.
  *
- * Previous versions shipped a floating ink pill with a tiny underlined
- * "Where to buy" text link 12pt below — two disconnected actions that
- * read as primary decision + legal fine print. The new tray groups
- * both actions as real buttons inside one premium surface:
+ * Previous v10.10 tray stacked the primary and secondary buttons
+ * vertically (54pt + 10pt gap + 46pt + padding ≈ 110pt content). That
+ * was the right grouping semantically but consumed too much real
+ * estate on a product page whose whole point is compression.
  *
- *   ┌────────────────────────────────────┐
- *   │        Add to routine   →          │   ← primary ink pill, 54pt
- *   │                                    │
- *   │   🏬  Where to buy                 │   ← secondary outlined pill, 46pt
- *   └────────────────────────────────────┘
+ *   ┌────────────────────────────────────────────┐
+ *   │  [ Add to routine → ] [🏬 Where to buy ]   │  ← one 50pt row
+ *   └────────────────────────────────────────────┘
  *
- * The container carries a subtle top hairline + bg so the pair reads as
- * an anchored action bar rather than two orphan controls floating over
- * the scroll. Safe-area-aware; spring press on both buttons.
+ * Primary keeps 70% width (flex: 7) so it stays the clear hero action;
+ * secondary gets 30% (flex: 3) — still a real button with icon + label,
+ * not a fine-print link. Both share the same 50pt height and 25pt
+ * radius. Saves ~55pt per product page. Both still spring-press.
  */
 export function PinnedCTA({ onAddToRoutine, onWhereToBuy }: PinnedCTAProps) {
   const insets = useSafeAreaInsets();
@@ -65,34 +64,34 @@ export function PinnedCTA({ onAddToRoutine, onWhereToBuy }: PinnedCTAProps) {
   };
 
   return (
-    <View
-      style={[styles.tray, { paddingBottom: insets.bottom + 12 }]}
-    >
+    <View style={[styles.tray, { paddingBottom: insets.bottom + 10 }]}>
       <View style={styles.topHairline} pointerEvents="none" />
 
-      <AnimatedPressable
-        onPress={onPressPrimary}
-        accessibilityRole="button"
-        accessibilityLabel="Add to routine"
-        style={[styles.primary, primaryStyle]}
-      >
-        <Text style={styles.primaryLabel} maxFontSizeMultiplier={1.15}>
-          Add to routine
-        </Text>
-        <ArrowRight size={16} color={palette.inkInverse} weight="duotone" />
-      </AnimatedPressable>
+      <View style={styles.row}>
+        <AnimatedPressable
+          onPress={onPressPrimary}
+          accessibilityRole="button"
+          accessibilityLabel="Add to routine"
+          style={[styles.primary, primaryStyle]}
+        >
+          <Text style={styles.primaryLabel} maxFontSizeMultiplier={1.15}>
+            Add to routine
+          </Text>
+          <ArrowRight size={15} color={palette.inkInverse} weight="duotone" />
+        </AnimatedPressable>
 
-      <AnimatedPressable
-        onPress={onPressSecondary}
-        accessibilityRole="button"
-        accessibilityLabel="Where to buy"
-        style={[styles.secondary, secondaryStyle]}
-      >
-        <Storefront size={16} color={palette.ink} weight="duotone" />
-        <Text style={styles.secondaryLabel} maxFontSizeMultiplier={1.15}>
-          Where to buy
-        </Text>
-      </AnimatedPressable>
+        <AnimatedPressable
+          onPress={onPressSecondary}
+          accessibilityRole="button"
+          accessibilityLabel="Where to buy"
+          style={[styles.secondary, secondaryStyle]}
+        >
+          <Storefront size={15} color={palette.ink} weight="duotone" />
+          <Text style={styles.secondaryLabel} maxFontSizeMultiplier={1.15}>
+            Buy
+          </Text>
+        </AnimatedPressable>
+      </View>
     </View>
   );
 }
@@ -104,7 +103,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 20,
-    paddingTop: 14,
+    paddingTop: 10,
     backgroundColor: palette.bg,
   },
   topHairline: {
@@ -115,14 +114,19 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: palette.hairline,
   },
+  row: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   primary: {
-    height: 54,
-    borderRadius: 27,
+    flex: 7,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: palette.ink,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     shadowColor: palette.ink,
     shadowOpacity: 0.1,
     shadowRadius: 20,
@@ -136,16 +140,16 @@ const styles = StyleSheet.create({
     color: palette.inkInverse,
   },
   secondary: {
-    marginTop: 10,
-    height: 46,
-    borderRadius: 23,
+    flex: 3,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: palette.bg,
     borderWidth: 1,
     borderColor: palette.hairline,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
   secondaryLabel: {
     fontFamily: 'Inter-SemiBold',

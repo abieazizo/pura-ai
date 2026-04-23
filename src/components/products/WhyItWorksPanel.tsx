@@ -359,6 +359,14 @@ function buildRationale(product: Product, concern: Concern | null): string {
 // Styles
 // ============================================================================
 
+// v10.12 — Why panel internals compressed across the board:
+//   • fit note padding 10 → 7
+//   • rationale fontSize 16/23 → 15/21, marginBottom 20 → 12
+//   • heroStack marginBottom 18 → 12, kicker marginBottom 10 → 8
+//   • hero row paddingVertical 12 → 10
+//   • full-list header paddingVertical 10 → 8, paddingTop 6 → 4
+// Each alone is small; together they save ~30pt inside a section
+// that opens by default on every product page.
 const styles = StyleSheet.create({
   // 1 — Fit note
   fitNote: {
@@ -366,13 +374,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
-    paddingVertical: 10,
+    paddingVertical: 7,
     paddingHorizontal: 12,
     borderRadius: 12,
     backgroundColor: palette.bgDeep,
     borderWidth: 1,
     borderColor: palette.hairline,
-    marginBottom: 18,
+    marginBottom: 14,
   },
   fitKicker: {
     fontFamily: 'Inter-SemiBold',
@@ -384,7 +392,7 @@ const styles = StyleSheet.create({
   fitBody: {
     flex: 1,
     minWidth: '100%',
-    marginTop: 4,
+    marginTop: 3,
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 14,
     lineHeight: 19,
@@ -394,15 +402,15 @@ const styles = StyleSheet.create({
   // 2 — Rationale paragraph
   rationale: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 16,
-    lineHeight: 23,
+    fontSize: 15,
+    lineHeight: 21,
     color: palette.inkSecondary,
-    marginBottom: 20,
+    marginBottom: 12,
   },
 
   // 3 — Hero ingredient stack
   heroStack: {
-    marginBottom: 18,
+    marginBottom: 12,
   },
   heroKicker: {
     fontFamily: 'Inter-SemiBold',
@@ -410,12 +418,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.6,
     color: palette.inkTertiary,
     textTransform: 'uppercase',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   heroRowDivider: {
     borderBottomWidth: 1,
@@ -429,7 +437,7 @@ const styles = StyleSheet.create({
     color: palette.ink,
   },
   heroRole: {
-    marginTop: 3,
+    marginTop: 2,
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 13,
     lineHeight: 18,
@@ -452,13 +460,13 @@ const styles = StyleSheet.create({
 
   // 4 — Full-list disclosure
   fullList: {
-    paddingTop: 6,
+    paddingTop: 4,
   },
   fullHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
   fullHeaderLabel: {
     fontFamily: 'Inter-SemiBold',

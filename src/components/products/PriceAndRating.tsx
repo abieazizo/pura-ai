@@ -61,18 +61,22 @@ export function PriceAndRating({
   );
 }
 
+// v10.12 — price row compressed. marginTop 16 → 12; price fontSize 32 → 26.
+// With MatchWhyBlock as the heroed AI pitch, the price no longer needs to
+// compete at 32pt serif. 26pt still reads premium (serif + clay) without
+// eating another 10pt of vertical cost.
 const styles = StyleSheet.create({
   row: {
     marginHorizontal: 20,
-    marginTop: 16,
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
   },
   price: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 32,
-    letterSpacing: -0.6,
+    fontSize: 26,
+    letterSpacing: -0.5,
     color: palette.clay,
     fontVariant: ['tabular-nums'],
   },

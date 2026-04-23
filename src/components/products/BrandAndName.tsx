@@ -32,22 +32,26 @@ export function BrandAndName({ brand, name }: BrandAndNameProps) {
   );
 }
 
+// v10.12 — identity block compressed. marginTop 24 → 16, brand marginBottom
+// 6 → 4, name fontSize 32 → 28 with lineHeight tightened to 32 so wrapping
+// takes less vertical cost. Max of 3 lines preserved via the caller's
+// adjustsFontSizeToFit config — the name still never truncates.
 const styles = StyleSheet.create({
   wrap: {
     marginHorizontal: 20,
-    marginTop: 24,
+    marginTop: 16,
   },
   brand: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     letterSpacing: 1.4,
     color: palette.inkTertiary,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   name: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 32,
-    lineHeight: 32 * 1.1,
+    fontSize: 28,
+    lineHeight: 32,
     color: palette.ink,
   },
 });

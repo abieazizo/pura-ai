@@ -165,7 +165,9 @@ export function ProductDetailScreen() {
           <DetailsPanel product={product} />
         </Accordion>
 
-        <View style={{ height: 180 }} />
+        {/* v10.12 — spacer reduced 180 → 120 to match the new
+            single-row PinnedCTA tray (was 2-row ≈ 110pt + paddings). */}
+        <View style={{ height: 120 }} />
       </ScrollView>
 
       <PinnedCTA
@@ -343,7 +345,7 @@ function MatchWhyBlock({
       <Text
         style={matchStyles.reason}
         maxFontSizeMultiplier={1.2}
-        numberOfLines={4}
+        numberOfLines={3}
       >
         {reason}
       </Text>
@@ -393,14 +395,13 @@ const styles = StyleSheet.create({
     color: palette.inkSecondary,
   },
   // v10.10 — "THE DETAILS" boundary between the identity cluster and
-  // the progressive-disclosure stack. A full-bleed hairline split by
-  // a centered kicker so the page reads as two intentional halves
-  // rather than one long scroll of sections.
+  // the progressive-disclosure stack. v10.12: marginTop 36 → 22 to
+  // tighten the transition without losing the visual two-halves cue.
   boundary: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 36,
+    marginTop: 22,
     marginHorizontal: 20,
   },
   boundaryRule: {
@@ -423,17 +424,21 @@ const styles = StyleSheet.create({
 // moss-deep. Below: a larger italic serif rationale in ink-secondary.
 // No bordered card, no badge — the block lives inline but carries real
 // typographic weight so it reads as the product page's signature moment.
+// v10.12 — match block compressed. marginTop 16 → 12, header marginBottom
+// 10 → 8, percent 24→22, reason fontSize 19→17 + lineHeight 26→22. Saves
+// ~25pt without losing the editorial register — the dotted-leader header
+// + moss percent still read as the AI's headline pitch.
 const matchStyles = StyleSheet.create({
   wrap: {
     marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 4,
+    marginTop: 12,
+    marginBottom: 2,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
@@ -451,38 +456,38 @@ const matchStyles = StyleSheet.create({
   },
   percent: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 24,
-    lineHeight: 28,
-    letterSpacing: -0.6,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.5,
     color: palette.mossDeep,
     fontVariant: ['tabular-nums'],
   },
   reason: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 19,
-    lineHeight: 26,
+    fontSize: 17,
+    lineHeight: 22,
     letterSpacing: -0.2,
     color: palette.inkSecondary,
   },
 });
 
-// v10.9 — Alternatives section rows. Same visual vocabulary as the
-// Plan page's alternatives (v10.5): thumbnail + brand + moss match
-// pill + serif name + serif price. One row per product.
+// v10.12 — alternatives compressed. list gap 14 → 10, row paddingVertical
+// 6 → 3, thumbnails 54×66 → 48×58. Three rows of Alternatives save ~25pt
+// while keeping the "same vocabulary as Plan" visual read.
 const altStyles = StyleSheet.create({
   list: {
-    gap: 14,
+    gap: 10,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingVertical: 6,
+    gap: 12,
+    paddingVertical: 3,
   },
   image: {
-    width: 54,
-    height: 66,
-    borderRadius: 12,
+    width: 48,
+    height: 58,
+    borderRadius: 10,
     overflow: 'hidden',
   },
   brandRow: {

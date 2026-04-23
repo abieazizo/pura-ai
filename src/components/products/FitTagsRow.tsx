@@ -203,9 +203,11 @@ export function FitTagsRow({ product, user }: FitTagsRowProps) {
   );
 }
 
+// v10.12 — fit tags row margins compressed. marginTop 28 → 18,
+// kicker marginBottom 12 → 8.
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: 28,
+    marginTop: 18,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
@@ -214,7 +216,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: palette.inkTertiary,
     marginHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   listContent: {
     paddingHorizontal: 20,
