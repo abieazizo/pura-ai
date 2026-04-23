@@ -9,6 +9,8 @@ export type ProductsRowKind =
 
 export type OnboardingStackParamList = {
   Splash: undefined;
+  /** v10.6 — Apple / Google / Email + Sign-in. Sits between Splash and CameraPrimer. */
+  AuthChoice: undefined;
   CameraPrimer: undefined;
   CameraPermission: undefined;
   AskName: undefined;
@@ -27,6 +29,8 @@ export type OnboardingStackParamList = {
   NotificationPermission: undefined;
   ReviewAsk: undefined;
   Paywall: undefined;
+  /** v10.6 — 3-page product walkthrough between Paywall and Welcome. */
+  Tutorial: undefined;
   Welcome: undefined;
 };
 

@@ -101,8 +101,7 @@ export function Splash({ onGetStarted, onSignIn }: SplashProps) {
 
         <View style={{ height: 12 }} />
         <Animated.Text style={[styles.subhead, subheadStyle]} maxFontSizeMultiplier={1.2}>
-          Thirty seconds a day. I{"'"}ll track what{"'"}s changing and tell you what to
-          do.
+          Thirty seconds a day. I{"\u2019"}ll track what{"\u2019"}s changing and tell you what to do.
         </Animated.Text>
 
         <View style={styles.spacer} />
@@ -174,18 +173,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
   },
+  // v10.6 — lineHeight widened from 57pt → 62pt so "Read your skin. Every
+  // day." doesn't clip descenders on "y" / "p". Subhead color moved from
+  // warm v5 rgba to palette.inkSecondary (cool ink). Sign-in footer now
+  // routes to AuthChoice for real; color polished to palette tokens.
   headline: {
     fontFamily: 'InstrumentSerif-Regular',
     fontSize: 56,
-    lineHeight: 56 * 1.02,
+    lineHeight: 62,
     letterSpacing: -1.2,
     color: palette.ink,
   },
   subhead: {
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 18,
-    lineHeight: 18 * 1.35,
-    color: 'rgba(26,22,20,0.7)',
+    lineHeight: 24,
+    color: palette.inkSecondary,
   },
   spacer: { flex: 1 },
   frameWrap: {
@@ -199,11 +202,11 @@ const styles = StyleSheet.create({
   signInLead: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
   },
   signInAction: {
     fontFamily: 'Inter-SemiBold',
-    color: palette.clay,
+    color: palette.ink,
   },
 });
 

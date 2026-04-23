@@ -7,6 +7,8 @@ import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { SlideEntry } from '@/components/onboarding/SlideEntry';
 import { Splash } from '@/screens/onboarding/Splash';
+import { AuthChoice } from '@/screens/onboarding/AuthChoice';
+import { Tutorial } from '@/screens/onboarding/Tutorial';
 import { CameraPrimer } from '@/screens/onboarding/CameraPrimer';
 import { CameraPermission } from '@/screens/onboarding/CameraPermission';
 import { AskName } from '@/screens/onboarding/AskName';
@@ -54,11 +56,25 @@ export function OnboardingNavigator() {
         {({ navigation }) => (
           <SlideEntry>
             <Splash
-              onGetStarted={() => navigation.navigate('CameraPrimer')}
-              onSignIn={() => {
-                // eslint-disable-next-line no-console
-                console.log('[onboarding] TODO: sign-in flow');
-              }}
+              onGetStarted={() => navigation.navigate('AuthChoice')}
+              onSignIn={() => navigation.navigate('AuthChoice')}
+            />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      {/* v10.6 — AuthChoice sits between the brand intro (Splash) and
+          the first permission prime. Apple/Google/Email all advance to
+          CameraPrimer for now; real auth wiring plugs in here when
+          identity provider keys ship. */}
+      <Stack.Screen name="AuthChoice">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AuthChoice
+              onAppleContinue={() => navigation.navigate('CameraPrimer')}
+              onGoogleContinue={() => navigation.navigate('CameraPrimer')}
+              onEmailContinue={() => navigation.navigate('CameraPrimer')}
+              onSignIn={() => navigation.navigate('CameraPrimer')}
             />
           </SlideEntry>
         )}
@@ -222,7 +238,7 @@ export function OnboardingNavigator() {
         {({ navigation }) => (
           <SlideEntry>
             <Paywall
-              onStartTrial={() => navigation.navigate('Welcome')}
+              onStartTrial={() => navigation.navigate('Tutorial')}
               onRestore={() => {
                 // eslint-disable-next-line no-console
                 console.log('[onboarding] TODO: restore');
@@ -230,6 +246,21 @@ export function OnboardingNavigator() {
               onBack={() => navigation.goBack()}
             />
           </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      {/* v10.6 — product walkthrough. Three pages: Scan / Plan / Track.
+          Skippable; skipping or completing both land on Welcome which
+          fires `finishOnboarding()`. */}
+      <Stack.Screen
+        name="Tutorial"
+        options={{ gestureEnabled: false, animation: 'slide_from_right' }}
+      >
+        {({ navigation }) => (
+          <Tutorial
+            onComplete={() => navigation.replace('Welcome')}
+            onSkip={() => navigation.replace('Welcome')}
+          />
         )}
       </Stack.Screen>
 

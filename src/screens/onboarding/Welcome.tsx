@@ -62,7 +62,7 @@ export function Welcome({ onTakeFirstScan }: WelcomeProps) {
 
         <View style={{ height: 10 }} />
         <Text style={styles.sub} maxFontSizeMultiplier={1.2}>
-          One scan unlocks your Skin Score, your plan, and your matched products.
+          One scan. Thirty seconds. The Skin Score, the plan, and the products follow.
         </Text>
       </View>
 
