@@ -14,6 +14,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
 import {
   HeartStraight,
   Moon,
@@ -22,6 +23,7 @@ import {
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
 import { hapt } from '@/utils/haptics';
+import { useAppStore } from '@/store/useAppStore';
 import { palette } from '@/theme';
 
 export type AddToRoutineTarget = 'morning' | 'evening' | 'saved';
@@ -106,6 +108,12 @@ export function AddToRoutineSheet({
   const insets = useSafeAreaInsets();
   const y = useSharedValue(1);
   const backdrop = useSharedValue(0);
+  const hasPromptedNotifications = useAppStore(
+    (s) => s.hasPromptedNotifications
+  );
+  const setHasPromptedNotifications = useAppStore(
+    (s) => s.setHasPromptedNotifications
+  );
 
   useEffect(() => {
     y.value = visible
@@ -128,6 +136,26 @@ export function AddToRoutineSheet({
     // eslint-disable-next-line no-console
     console.log(`[STUB] Added ${productId} to ${row.target}`);
     hapt.success();
+
+    // v10.11 — contextual notification permission. The first time a
+    // user actually schedules a morning or evening routine step is
+    // when reminders become meaningful; that's the right moment to
+    // request the OS permission, not during onboarding. "Saved"
+    // skips the prompt because it's a bookmark, not a scheduled
+    // action. `hasPromptedNotifications` persists across sessions
+    // so iOS's one-shot system sheet isn't re-attempted if the user
+    // already made a choice.
+    const needsSchedule = row.target === 'morning' || row.target === 'evening';
+    if (needsSchedule && !hasPromptedNotifications) {
+      setHasPromptedNotifications(true);
+      // Fire-and-forget. The OS handles denial + "ask again later"
+      // gracefully; we don't block the add-to-routine flow on the
+      // result.
+      Notifications.requestPermissionsAsync().catch(() => {
+        // Swallow — permission denied or unavailable is non-fatal.
+      });
+    }
+
     // Let the exit animation play before firing the toast.
     setTimeout(() => {
       onAdded?.(row.target, productId);

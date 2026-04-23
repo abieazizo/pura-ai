@@ -13,8 +13,9 @@ export type OnboardingStackParamList = {
   AuthChoice: undefined;
   /** v10.8 — returning-user path: provider sign-in + email/password entry. */
   SignIn: undefined;
-  CameraPrimer: undefined;
-  CameraPermission: undefined;
+  // v10.11 — CameraPrimer / CameraPermission removed from the stack.
+  // Camera permission is now requested contextually inside
+  // ScanCaptureScreen at the first capture attempt.
   AskName: undefined;
   AskAge: undefined;
   AskGender: undefined;
@@ -27,8 +28,9 @@ export type OnboardingStackParamList = {
   AskAttribution: undefined;
   Processing: undefined;
   ProfileSummary: undefined;
-  NotificationPrimer: undefined;
-  NotificationPermission: undefined;
+  // v10.11 — NotificationPrimer / NotificationPermission removed.
+  // Notification permission is requested from AddToRoutineSheet the
+  // first time a user schedules a routine step.
   ReviewAsk: undefined;
   Paywall: undefined;
   /** v10.7 — 3-page product walkthrough. Final onboarding step; its
@@ -39,8 +41,12 @@ export type OnboardingStackParamList = {
 export type TabParamList = {
   HomeTab: undefined;
   ScanTab: undefined;       // routes to ScanModal via tabPress listener
-  ProductsTab: undefined;   // v9.1 — replaces the RoutineTab slot
-  ProgressTab: undefined;
+  ProductsTab: undefined;
+  /** v10.11 — RoutineTab replaces the floating ProgressTab. Progress
+   *  content is now embedded inside Routine so the user's daily action
+   *  center (morning / evening / saved) and long-term trajectory live
+   *  in one destination. */
+  RoutineTab: undefined;
   AssistantTab: undefined;
 };
 

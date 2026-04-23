@@ -31,6 +31,10 @@ export interface AppState {
   messages: AssistantMessage[];
   appearance: AppearanceMode;
   hasSeenScanTutorial: boolean;
+  /** v10.11 — true once we've asked the OS for notification permission.
+   *  The first add-to-morning/evening from AddToRoutineSheet triggers
+   *  the contextual request, then this flag prevents re-prompting. */
+  hasPromptedNotifications: boolean;
 
   onboardingComplete: boolean;
   name: string;
@@ -75,6 +79,7 @@ export interface AppState {
   sendMessage: (text: string, attachedProductIds?: string[]) => Promise<void>;
   setAppearance: (mode: AppearanceMode) => void;
   setHasSeenScanTutorial: (seen: boolean) => void;
+  setHasPromptedNotifications: (prompted: boolean) => void;
 
   setName: (name: string) => void;
   setAge: (age: number | null) => void;
@@ -124,6 +129,7 @@ const blankState = {
   messages: [] as AssistantMessage[],
   appearance: 'light' as AppearanceMode,
   hasSeenScanTutorial: false,
+  hasPromptedNotifications: false,
   onboardingComplete: false,
   name: '',
   age: null as number | null,
@@ -223,6 +229,8 @@ export const useAppStore = create<AppState>()(
 
       setAppearance: (mode) => set({ appearance: mode }),
       setHasSeenScanTutorial: (seen) => set({ hasSeenScanTutorial: seen }),
+      setHasPromptedNotifications: (prompted) =>
+        set({ hasPromptedNotifications: prompted }),
 
       setName: (name) => set({ name }),
       setAge: (age) => set({ age }),
@@ -328,6 +336,7 @@ export const useAppStore = create<AppState>()(
         messages: state.messages,
         appearance: state.appearance,
         hasSeenScanTutorial: state.hasSeenScanTutorial,
+        hasPromptedNotifications: state.hasPromptedNotifications,
         onboardingComplete: state.onboardingComplete,
         name: state.name,
         age: state.age,

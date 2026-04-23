@@ -10,8 +10,8 @@ import { Splash } from '@/screens/onboarding/Splash';
 import { AuthChoice } from '@/screens/onboarding/AuthChoice';
 import { SignIn } from '@/screens/onboarding/SignIn';
 import { Tutorial } from '@/screens/onboarding/Tutorial';
-import { CameraPrimer } from '@/screens/onboarding/CameraPrimer';
-import { CameraPermission } from '@/screens/onboarding/CameraPermission';
+// v10.11 — CameraPrimer / CameraPermission imports removed; camera
+// permission is now requested contextually at first scan.
 import { AskName } from '@/screens/onboarding/AskName';
 import { AskAge } from '@/screens/onboarding/AskAge';
 import { AskGender } from '@/screens/onboarding/AskGender';
@@ -24,8 +24,9 @@ import { AskGoal } from '@/screens/onboarding/AskGoal';
 import { AskAttribution } from '@/screens/onboarding/AskAttribution';
 import { Processing } from '@/screens/onboarding/Processing';
 import { ProfileSummary } from '@/screens/onboarding/ProfileSummary';
-import { NotificationPrimer } from '@/screens/onboarding/NotificationPrimer';
-import { NotificationPermission } from '@/screens/onboarding/NotificationPermission';
+// v10.11 — NotificationPrimer / NotificationPermission imports removed;
+// notification permission is requested contextually from
+// AddToRoutineSheet the first time the user schedules a step.
 import { ReviewAsk } from '@/screens/onboarding/ReviewAsk';
 import { Paywall } from '@/screens/onboarding/Paywall';
 // v10.7 — Welcome was removed from the onboarding flow. The product
@@ -81,9 +82,9 @@ export function OnboardingNavigator() {
         {({ navigation }) => (
           <SlideEntry>
             <AuthChoice
-              onAppleContinue={() => navigation.navigate('CameraPrimer')}
-              onGoogleContinue={() => navigation.navigate('CameraPrimer')}
-              onEmailContinue={() => navigation.navigate('CameraPrimer')}
+              onAppleContinue={() => navigation.navigate('AskName')}
+              onGoogleContinue={() => navigation.navigate('AskName')}
+              onEmailContinue={() => navigation.navigate('AskName')}
               onSignIn={() => navigation.navigate('SignIn')}
             />
           </SlideEntry>
@@ -101,23 +102,12 @@ export function OnboardingNavigator() {
         {({ navigation }) => <SignInHost nav={navigation} />}
       </Stack.Screen>
 
-      <Stack.Screen name="CameraPrimer">
-        {({ navigation }) => (
-          <SlideEntry>
-            <CameraPrimer
-              onContinue={() => navigation.navigate('CameraPermission')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="CameraPermission" options={{ gestureEnabled: false }}>
-        {({ navigation }) => (
-          <SlideEntry replayOnFocus={false}>
-            <CameraPermission onDone={() => navigation.replace('AskName')} />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
+      {/* v10.11 — CameraPrimer / CameraPermission removed from the
+          onboarding stack. Asking for camera permission before the user
+          has even entered their name was product-wrong; the Tutorial
+          "01 · SCAN" page now carries the educational context, and the
+          actual system permission sheet fires contextually inside
+          ScanCaptureScreen at the first capture attempt. */}
 
       <Stack.Screen name="AskName">
         {({ navigation }) => (
@@ -217,34 +207,18 @@ export function OnboardingNavigator() {
         {({ navigation }) => (
           <SlideEntry>
             <ProfileSummary
-              onNext={() => navigation.navigate('NotificationPrimer')}
+              onNext={() => navigation.navigate('ReviewAsk')}
             />
           </SlideEntry>
         )}
       </Stack.Screen>
 
-      <Stack.Screen name="NotificationPrimer">
-        {({ navigation }) => (
-          <SlideEntry>
-            <NotificationPrimer
-              onContinue={() => navigation.navigate('NotificationPermission')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen
-        name="NotificationPermission"
-        options={{ gestureEnabled: false }}
-      >
-        {({ navigation }) => (
-          <SlideEntry replayOnFocus={false}>
-            <NotificationPermission
-              onDone={() => navigation.replace('ReviewAsk')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
+      {/* v10.11 — NotificationPrimer / NotificationPermission removed.
+          Asking for notifications before any routine exists is asking
+          the user to approve reminders for a thing they haven't created.
+          The system permission sheet now fires inside the
+          AddToRoutineSheet — at the moment the user actually schedules
+          something they'd want reminded about. */}
 
       <Stack.Screen
         name="ReviewAsk"

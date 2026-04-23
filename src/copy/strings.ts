@@ -48,9 +48,14 @@ export const common = {
 };
 
 /**
- * Tab labels. v10.3 — assist renamed to "AI ASSIST" so the feature reads
- * as AI at a glance. At 9pt / 1.3 letter-spacing the 9-char label fits
- * cleanly inside ~78pt tab slots (iPhone SE and up).
+ * Tab labels. v10.11 — five tabs: HOME · SCAN · PRODUCTS · ROUTINE ·
+ * AI ASSIST. Progress is no longer a standalone tab; its trend / biggest
+ * win / before/after content now lives as an embedded section inside
+ * Routine so the user's daily action center and long-term trajectory
+ * occupy one destination rather than two.
+ *
+ * `progress` is retained as a label for section kickers inside Routine;
+ * it no longer points at a tab.
  */
 export const tabs = {
   home: 'HOME',
@@ -58,9 +63,6 @@ export const tabs = {
   routine: 'ROUTINE',
   progress: 'PROGRESS',
   assist: 'AI ASSIST',
-  // Retained for any legacy callers that still reference `tabs.products` —
-  // the Products tab was demoted in v8 and discovery now lives through the
-  // home-screen recommendation module.
   products: 'PRODUCTS',
 };
 

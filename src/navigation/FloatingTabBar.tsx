@@ -13,7 +13,7 @@ import {
   House,
   ScanSmiley,
   Drop,
-  ChartLineUp,
+  ListChecks,
   Sparkle,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
@@ -37,7 +37,10 @@ const TAB_META: Record<
   HomeTab:     { label: tabsStrings.home,     Icon: House as PhosphorIcon },
   ScanTab:     { label: tabsStrings.scan,     Icon: ScanSmiley as PhosphorIcon },
   ProductsTab: { label: tabsStrings.products, Icon: Drop as PhosphorIcon },
-  ProgressTab: { label: tabsStrings.progress, Icon: ChartLineUp as PhosphorIcon },
+  // v10.11 — RoutineTab replaces ProgressTab. ListChecks reads as
+  // "daily actions you've committed to" — the right semantic for a
+  // destination that unifies morning/evening steps + progress.
+  RoutineTab:  { label: tabsStrings.routine,  Icon: ListChecks as PhosphorIcon },
   AssistantTab:{ label: tabsStrings.assist,   Icon: Sparkle as PhosphorIcon },
 };
 

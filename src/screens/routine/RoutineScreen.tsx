@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -12,21 +13,36 @@ import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { Sun, Moon, BookmarkSimple, ArrowRight } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
+import { CompareSlider } from '@/components/CompareSlider';
+import { SkinScoreHero } from '@/screens/progress/SkinScoreHero';
+import { ProgressNarrative } from '@/screens/progress/ProgressNarrative';
+import { PhotoTimelineStrip } from '@/screens/progress/PhotoTimelineStrip';
 import { useAppStore } from '@/store/useAppStore';
-import { palette } from '@/theme';
+import { computeSkinScore } from '@/utils/skinScore';
+import { palette, space } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { RootStackParamList } from '@/navigation/types';
+import type { Scan } from '@/types';
 
 /**
- * RoutineScreen — v8 placeholder.
+ * RoutineScreen — v10.11 unified daily destination.
  *
- * Functional shell for the routine tab. Gives users a proper home for
- * "what am I doing today" that matches the premium software feel, with
- * the segmented morning/evening/saved structure already in place so the
- * real routine-building logic can land without visual rework.
+ * The product architecture changed: the floating ProgressTab was
+ * removed and its content moved inside Routine. This screen is now the
+ * user's one long-format destination for "what am I doing today, and
+ * how is it going?":
  *
- * Empty states are intentional — they tell the user what the segment is
- * for and offer one clear next action. No toy-like illustrations.
+ *   1. Segmented morning / evening / saved — daily action center
+ *   2. Boundary rule ("YOUR TRAJECTORY")
+ *   3. Embedded Progress section:
+ *        • SkinScoreHero     (dial + celebration + chart)
+ *        • ProgressNarrative (biggest-win headline + tier transitions)
+ *        • CompareSlider     (before/after, full-bleed)
+ *        • PhotoTimelineStrip (scan history)
+ *
+ * Pre-scan users see the daily segments with empty states + the scan
+ * CTA; the Progress section is hidden until at least two scans exist
+ * (one reading is not a trajectory).
  */
 
 type Segment = 'morning' | 'evening' | 'saved';
@@ -40,7 +56,14 @@ const SEGMENTS: Array<{ id: Segment; label: string; Icon: React.FC<any> }> = [
 export function RoutineScreen() {
   const [active, setActive] = useState<Segment>('morning');
   const nav = useNavigation<NavigationProp<RootStackParamList>>();
-  const hasScanned = useAppStore((s) => s.scans.length > 0);
+  const scans = useAppStore((s) => s.scans);
+  const hasScanned = scans.length > 0;
+  const firstScan = scans[0];
+  const latestScan = scans[scans.length - 1];
+  const showProgress = scans.length >= 2;
+
+  const { width } = useWindowDimensions();
+  const compareHeight = 420;
 
   const handleSelect = (id: Segment) => {
     if (id === active) return;
@@ -50,11 +73,9 @@ export function RoutineScreen() {
 
   const handlePrimary = () => {
     hapt.tap();
-    // v9.8 — context-aware CTA. If the user has scanned, their routine
-    // builds from the plan page, not another scan. Otherwise, the
-    // primary action remains "take a scan".
+    // Context-aware CTA. Scanned users build from the plan; pre-scan
+    // users take their first scan.
     if (hasScanned) {
-      // Route to the Plan screen inside the Home stack.
       // @ts-expect-error nested stack nav
       nav.navigate?.('Tabs', {
         screen: 'HomeTab',
@@ -79,60 +100,60 @@ export function RoutineScreen() {
         <View style={{ flex: 1 }} />
       </View>
 
-      <View style={styles.titleBlock}>
-        <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
-          YOUR ROUTINE
-        </Text>
-        <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-          Routine.
-        </Text>
-        <Text style={styles.subtitle} maxFontSizeMultiplier={1.2}>
-          Morning and evening steps, tailored from your last scan.
-        </Text>
-      </View>
-
-      <View style={styles.segmentedWrap}>
-        <View style={styles.segmented}>
-          {SEGMENTS.map((seg) => {
-            const selected = seg.id === active;
-            const Icon = seg.Icon;
-            return (
-              <Pressable
-                key={seg.id}
-                onPress={() => handleSelect(seg.id)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`${seg.label} routine`}
-                style={({ pressed }) => [
-                  styles.segment,
-                  selected && styles.segmentSelected,
-                  pressed && !selected && { opacity: 0.85 },
-                ]}
-              >
-                <Icon
-                  size={14}
-                  color={selected ? palette.inkInverse : palette.inkSecondary}
-                  weight={selected ? 'duotone' : 'regular'}
-                />
-                <Text
-                  style={[
-                    styles.segmentLabel,
-                    { color: selected ? palette.inkInverse : palette.inkSecondary },
-                  ]}
-                  maxFontSizeMultiplier={1.1}
-                >
-                  {seg.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.titleBlock}>
+          <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
+            YOUR ROUTINE
+          </Text>
+          <Text style={styles.title} maxFontSizeMultiplier={1.15}>
+            Routine.
+          </Text>
+          <Text style={styles.subtitle} maxFontSizeMultiplier={1.2}>
+            Your daily steps, and how your skin is tracking.
+          </Text>
+        </View>
+
+        <View style={styles.segmentedWrap}>
+          <View style={styles.segmented}>
+            {SEGMENTS.map((seg) => {
+              const selected = seg.id === active;
+              const Icon = seg.Icon;
+              return (
+                <Pressable
+                  key={seg.id}
+                  onPress={() => handleSelect(seg.id)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${seg.label} routine`}
+                  style={({ pressed }) => [
+                    styles.segment,
+                    selected && styles.segmentSelected,
+                    pressed && !selected && { opacity: 0.85 },
+                  ]}
+                >
+                  <Icon
+                    size={14}
+                    color={selected ? palette.inkInverse : palette.inkSecondary}
+                    weight={selected ? 'duotone' : 'regular'}
+                  />
+                  <Text
+                    style={[
+                      styles.segmentLabel,
+                      { color: selected ? palette.inkInverse : palette.inkSecondary },
+                    ]}
+                    maxFontSizeMultiplier={1.1}
+                  >
+                    {seg.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         {active === 'morning' ? (
           <EmptyPanel
             heading="No morning steps yet."
@@ -172,11 +193,98 @@ export function RoutineScreen() {
           />
         ) : null}
 
+        {/* v10.11 — embedded Progress. Only renders with ≥2 scans; one
+            reading isn't a trajectory. A boundary rule introduces the
+            section so the daily actions above and the trend proof
+            below read as two intentional halves of the same page. */}
+        {showProgress && firstScan && latestScan ? (
+          <>
+            <View style={styles.boundary}>
+              <View style={styles.boundaryRule} />
+              <Text style={styles.boundaryKicker} maxFontSizeMultiplier={1.1}>
+                YOUR TRAJECTORY
+              </Text>
+              <View style={styles.boundaryRule} />
+            </View>
+
+            <SkinScoreHero score={computeSkinScore(scans)} scans={scans} />
+
+            <ProgressNarrative scans={scans} />
+
+            <ProgressCompareBlock
+              first={firstScan}
+              latest={latestScan}
+              width={width}
+              compareHeight={compareHeight}
+            />
+
+            {scans.length > 2 ? (
+              <View style={styles.historyBlock}>
+                <Text style={styles.historyKicker} maxFontSizeMultiplier={1.1}>
+                  SCAN HISTORY
+                </Text>
+                <View style={{ marginLeft: -space.lg }}>
+                  <PhotoTimelineStrip
+                    scans={scans}
+                    selectedId={latestScan.id}
+                    onSelect={() => {
+                      // Timeline selection is visual only on Routine;
+                      // tapping a history frame doesn't swap the compare
+                      // image here — the CompareSlider is fixed to
+                      // first-vs-latest for the celebration read.
+                    }}
+                  />
+                </View>
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
         <Text style={styles.footerHint} maxFontSizeMultiplier={1.2}>
           Your saved steps live here. They follow you across scans.
         </Text>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function ProgressCompareBlock({
+  first,
+  latest,
+  width,
+  compareHeight,
+}: {
+  first: Scan;
+  latest: Scan;
+  width: number;
+  compareHeight: number;
+}) {
+  return (
+    <View style={styles.compareBlock}>
+      <View style={styles.compareHead}>
+        <Text style={styles.compareKicker} maxFontSizeMultiplier={1.1}>
+          SIDE BY SIDE
+        </Text>
+        <Text style={styles.compareDates} maxFontSizeMultiplier={1.1}>
+          {`DAY 1 \u2192 DAY ${latest.dayNumber}`}
+        </Text>
+      </View>
+      <View
+        style={[
+          styles.fullBleedCompare,
+          { marginHorizontal: -space.lg },
+        ]}
+      >
+        <CompareSlider
+          leftUri={first.photoUri}
+          rightUri={latest.photoUri}
+          leftLabel="DAY 1"
+          rightLabel={`DAY ${latest.dayNumber}`}
+          width={width}
+          height={compareHeight}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -226,6 +334,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.bg,
   },
+  scroll: {
+    paddingBottom: 140,
+  },
 
   // Header
   headerRow: {
@@ -259,7 +370,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 44,
-    lineHeight: 46,
+    lineHeight: 50,
     letterSpacing: -1.0,
     color: palette.ink,
   },
@@ -302,12 +413,72 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Scroll
-  scroll: {
-    paddingBottom: 140,
+  // Boundary between daily actions and embedded Progress
+  boundary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 40,
+    marginHorizontal: 20,
+    marginBottom: 8,
+  },
+  boundaryRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: palette.hairline,
+  },
+  boundaryKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.8,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
   },
 
-  // Panel
+  // Embedded compare block (same vocabulary as the old ProgressScreen)
+  compareBlock: {
+    marginTop: space.xxl,
+  },
+  compareHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.md,
+    paddingHorizontal: space.lg,
+  },
+  compareKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  compareDates: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: palette.clay,
+    fontVariant: ['tabular-nums'],
+  },
+  fullBleedCompare: {
+    marginTop: 4,
+  },
+
+  // Scan history strip (only ≥3 scans)
+  historyBlock: {
+    marginTop: space.xxl,
+    paddingHorizontal: space.lg,
+  },
+  historyKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: space.md,
+  },
+
+  // Segment empty panel
   panel: {
     marginTop: 40,
     marginHorizontal: 20,

@@ -8,7 +8,6 @@ import { FloatingTabBar } from './FloatingTabBar';
 import { HomeScreen } from '@/screens/home/HomeScreen';
 import { ProductsScreen } from '@/screens/products/ProductsScreen';
 import { AssistantScreen } from '@/screens/assistant/AssistantScreen';
-import { ProgressScreen } from '@/screens/progress/ProgressScreen';
 import { RoutineScreen } from '@/screens/routine/RoutineScreen';
 import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen';
 import { CategoryView } from '@/screens/products/CategoryView';
@@ -82,7 +81,11 @@ export function TabNavigator() {
       />
 
       <Tab.Screen name="ProductsTab" component={ProductsStackScreen} />
-      <Tab.Screen name="ProgressTab" component={ProgressScreen} />
+      {/* v10.11 — RoutineTab replaces the floating ProgressTab. The
+          daily action center (morning/evening/saved) now surfaces
+          progress as an embedded section inside itself instead of
+          each living in its own separate tab. */}
+      <Tab.Screen name="RoutineTab" component={RoutineScreen} />
       <Tab.Screen name="AssistantTab" component={AssistantScreen} />
     </Tab.Navigator>
   );

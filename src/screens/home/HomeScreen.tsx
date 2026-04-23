@@ -84,7 +84,7 @@ export function HomeScreen() {
   const handleOpenProgress = () => {
     hapt.select();
     const parent = nav.getParent?.();
-    parent?.navigate?.('ProgressTab');
+    parent?.navigate?.('RoutineTab');
   };
 
   const handleOpenProducts = () => {
