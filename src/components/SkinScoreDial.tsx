@@ -10,12 +10,16 @@ import Animated, {
   Easing,
   runOnJS,
   useAnimatedProps,
+  useAnimatedStyle,
   useAnimatedReaction,
   useSharedValue,
   withDelay,
+  withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { palette } from '@/theme';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { tierFor, tierLabel, type SkinScoreTier } from '@/utils/skinScore';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -53,6 +57,9 @@ export interface SkinScoreDialProps {
   /** Optional delta caption shown inside the dial under the tier label —
    *  e.g. "+4 since last scan" / "new reading". */
   deltaCaption?: string | null;
+  /** Fires once when the count-up animation settles on its final value.
+   *  Lets callers (e.g. ScanResult) land a haptic at the reveal moment. */
+  onRevealComplete?: () => void;
 }
 
 const GAP_DEG = 120; // opens a 120° gap at the bottom — dial is 240° visible
@@ -64,6 +71,7 @@ export function SkinScoreDial({
   delay = 120,
   previousValue = null,
   deltaCaption = null,
+  onRevealComplete,
 }: SkinScoreDialProps) {
   const strokeWidth = Math.max(6, Math.round(size * 0.042));
   // The rendered SVG viewport uses a padded radius so the stroke doesn't clip.
@@ -89,6 +97,12 @@ export function SkinScoreDial({
   const displayValue = useSharedValue(0);
   const [display, setDisplay] = React.useState(0);
 
+  // v10.1 — idle breath. After the initial reveal settles, the glow opacity
+  // drifts 1.0 → 0.86 → 1.0 over 4.2s in a gentle sine. Keeps the hero
+  // object alive at rest without demanding attention. Respects reduce-motion.
+  const reduceMotion = useReduceMotion();
+  const breath = useSharedValue(1);
+
   useEffect(() => {
     progress.value = 0;
     displayValue.value = 0;
@@ -98,9 +112,43 @@ export function SkinScoreDial({
     );
     displayValue.value = withDelay(
       delay,
-      withTiming(value, { duration: 900, easing: Easing.out(Easing.cubic) })
+      withTiming(
+        value,
+        { duration: 900, easing: Easing.out(Easing.cubic) },
+        (finished) => {
+          if (finished && onRevealComplete) {
+            runOnJS(onRevealComplete)();
+          }
+        }
+      )
     );
-  }, [value, delay, progress, displayValue]);
+    if (reduceMotion) {
+      breath.value = 1;
+      return;
+    }
+    // Breath begins after the reveal fully settles (delay + 1100ms).
+    breath.value = withDelay(
+      delay + 1200,
+      withRepeat(
+        withSequence(
+          withTiming(0.86, {
+            duration: 2100,
+            easing: Easing.inOut(Easing.sin),
+          }),
+          withTiming(1, {
+            duration: 2100,
+            easing: Easing.inOut(Easing.sin),
+          })
+        ),
+        -1,
+        false
+      )
+    );
+  }, [value, delay, progress, displayValue, breath, reduceMotion, onRevealComplete]);
+
+  const glowBreathStyle = useAnimatedStyle(() => ({
+    opacity: breath.value,
+  }));
 
   useAnimatedReaction(
     () => Math.round(displayValue.value),
@@ -124,22 +172,27 @@ export function SkinScoreDial({
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Glow — behind everything, tier-keyed */}
-      <Svg
-        width={size * 1.35}
-        height={size * 1.35}
-        style={[StyleSheet.absoluteFillObject, { left: -size * 0.175, top: -size * 0.175 }]}
+      {/* Glow — behind everything, tier-keyed. v10.1: opacity drifts
+          (breath) after the reveal settles so the dial reads as alive. */}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFillObject,
+          { left: -size * 0.175, top: -size * 0.175, width: size * 1.35, height: size * 1.35 },
+          glowBreathStyle,
+        ]}
         pointerEvents="none"
       >
-        <Defs>
-          <RadialGradient id={glowId} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={glowColor} stopOpacity={glowOpacity} />
-            <Stop offset="0.55" stopColor={glowColor} stopOpacity={glowOpacity * 0.35} />
-            <Stop offset="1" stopColor={glowColor} stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        <Circle cx="50%" cy="50%" r="50%" fill={`url(#${glowId})`} />
-      </Svg>
+        <Svg width={size * 1.35} height={size * 1.35}>
+          <Defs>
+            <RadialGradient id={glowId} cx="0.5" cy="0.5" r="0.5">
+              <Stop offset="0" stopColor={glowColor} stopOpacity={glowOpacity} />
+              <Stop offset="0.55" stopColor={glowColor} stopOpacity={glowOpacity * 0.35} />
+              <Stop offset="1" stopColor={glowColor} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Circle cx="50%" cy="50%" r="50%" fill={`url(#${glowId})`} />
+        </Svg>
+      </Animated.View>
 
       <Svg width={size} height={size}>
         {/* Track — muted ring, full visible arc */}

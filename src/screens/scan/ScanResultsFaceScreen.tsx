@@ -94,6 +94,17 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
   const [tonightOpen, setTonightOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
+  // v10.1 — emotional landing. The medallion's count-up fires this at the
+  // moment the final value settles. `revealHapticFired` makes sure we only
+  // land the haptic once per screen mount, even if the dial is remounted
+  // via state transitions.
+  const revealHapticFired = useRef(false);
+  const handleRevealComplete = React.useCallback(() => {
+    if (revealHapticFired.current) return;
+    revealHapticFired.current = true;
+    hapt.success();
+  }, []);
+
   if (!scan) return null;
 
   // v9.1 — bigger, more dominant face. 1.32x aspect gives a near-full-screen
@@ -176,6 +187,7 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
               ? `${formatDelta(score.deltaSinceLast)} since last scan`
               : 'first reading'
           }
+          onRevealComplete={handleRevealComplete}
         />
 
         <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
@@ -239,6 +251,7 @@ function HeroPhoto({
   scoreValue,
   previousScore,
   deltaCaption,
+  onRevealComplete,
 }: {
   photoUri: string;
   size: { w: number; h: number };
@@ -246,6 +259,7 @@ function HeroPhoto({
   scoreValue: number;
   previousScore: number | null;
   deltaCaption: string;
+  onRevealComplete?: () => void;
 }) {
   return (
     <View
@@ -263,7 +277,8 @@ function HeroPhoto({
       {/* v9.5 — score reveal medallion. Bottom-center, floats below the
           face with a cool-paper backdrop so the dial reads over any photo
           luminance. The reveal moment now PAIRS the face with the score,
-          not just a tiny paper chip in the corner. */}
+          not just a tiny paper chip in the corner. v10.1: fires a success
+          haptic at the count-up landing so the reveal has a felt payoff. */}
       <View pointerEvents="none" style={styles.scoreRevealWrap}>
         <View style={styles.scoreRevealBackdrop}>
           <SkinScoreDial
@@ -273,6 +288,7 @@ function HeroPhoto({
             previousValue={previousScore}
             deltaCaption={deltaCaption}
             delay={420}
+            onRevealComplete={onRevealComplete}
           />
         </View>
       </View>

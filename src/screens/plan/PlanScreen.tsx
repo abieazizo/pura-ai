@@ -444,9 +444,17 @@ function HeroConcernCard({
     <View
       style={[
         hero.wrap,
-        { backgroundColor: withAlpha(color, 0.06) },
+        { backgroundColor: withAlpha(color, 0.1) },
       ]}
     >
+      {/* v10.1 — severity accent rail. A 3pt bar in the tier color runs
+          across the top of the card, turning it from "tinted panel" into
+          "flagged object." Works with the bumped 10% tint to give the
+          hero real consequence without shouting. */}
+      <View
+        style={[hero.accentRail, { backgroundColor: color }]}
+        pointerEvents="none"
+      />
       <View style={hero.stampRow}>
         <View style={[hero.severityPill, { backgroundColor: color }]}>
           <Text style={hero.severityText} maxFontSizeMultiplier={1.1}>
@@ -588,6 +596,10 @@ function ActionCard({
   const tod = timeOfDayMeta(timeOfDay);
   return (
     <View style={action.card}>
+      {/* v10.1 — left-edge color rail keyed to time-of-day. Three stacked
+          action cards now read as a striped rhythm (amber / azure / moss)
+          rather than three identical paper tiles. */}
+      <View style={[action.edgeRail, { backgroundColor: tod.chipFg }]} pointerEvents="none" />
       <View style={[action.iconWrap, { backgroundColor: tod.iconBg }]}>
         <Icon size={18} color={tod.iconFg} weight="duotone" />
       </View>
@@ -1165,6 +1177,15 @@ const hero = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: palette.bgDeep,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  // v10.1 — severity accent rail across the top of the hero card.
+  accentRail: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
   },
   stampRow: {
     flexDirection: 'row',
@@ -1250,11 +1271,21 @@ const action = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingLeft: 19, // 16 base + 3 for the rail
+    paddingRight: 16,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: palette.hairline,
     backgroundColor: palette.bg,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  edgeRail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
   },
   iconWrap: {
     width: 40,

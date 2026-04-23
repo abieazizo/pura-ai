@@ -12,9 +12,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import {
   ArrowRight,
-  ArrowUp,
-  ArrowDown,
-  Minus,
   ScanSmiley,
   Drop as DropIcon,
   Sparkle as SparkleIcon,
@@ -33,7 +30,6 @@ import { CATEGORY_LABEL, getConcerns, severityLabel } from '@/utils/concerns';
 import {
   computeSkinScore,
   formatDelta,
-  sinceLastPhrase,
 } from '@/utils/skinScore';
 import { seedProducts } from '@/data/seed';
 import type { Concern, Scan, Severity } from '@/types';
@@ -173,7 +169,11 @@ export function HomeScreen() {
         contentContainerStyle={{ paddingBottom: bottomClearance }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── A. Hero — Skin Score dial is the iconic object ─────── */}
+        {/* ── A. Hero — Skin Score dial is the iconic object. v10.1:
+             redundant "SKIN SCORE" kicker dropped. The dial's internal
+             tier label already carries the kicker semantics, so the
+             composition now reads greeting → dial → headline as one
+             coherent unit. ─────── */}
         <View style={styles.heroBlock}>
           <Text style={styles.greeting} maxFontSizeMultiplier={1.2}>
             {greeting}
@@ -193,12 +193,6 @@ export function HomeScreen() {
                   : 'new reading'
               }
             />
-          </View>
-
-          <View style={styles.scoreKickerBlock}>
-            <Text style={styles.scoreKicker} maxFontSizeMultiplier={1.1}>
-              SKIN SCORE
-            </Text>
           </View>
 
           <Text
@@ -247,6 +241,9 @@ export function HomeScreen() {
         </Pressable>
 
         {/* ── D. Progress teaser ──────────────────────────────────────── */}
+        {/* v10.1 — teaser rebuilt so the delta is the hero, not buried in
+            prose. The big serif delta reads at a glance; the caption
+            gives it context; the whole row tappable. */}
         {first && latest && latest.id !== first.id ? (
           <Pressable
             onPress={handleOpenProgress}
@@ -254,22 +251,36 @@ export function HomeScreen() {
             accessibilityLabel="Open progress"
             style={({ pressed }) => [
               styles.progressTeaser,
-              pressed && { opacity: 0.9 },
+              pressed && { opacity: 0.92 },
             ]}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-                {`${daysIn} DAYS IN`}
+            <View style={styles.progressTeaserLeft}>
+              <Text style={styles.progressTeaserKicker} maxFontSizeMultiplier={1.1}>
+                {`DAY ${daysIn} \u00B7 SINCE DAY 1`}
               </Text>
+              <View style={styles.progressTeaserValueRow}>
+                <Text
+                  style={[
+                    styles.progressTeaserDelta,
+                    { color: progressTeaserColor(delta) },
+                  ]}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  {progressTeaserLabel(delta)}
+                </Text>
+                <Text style={styles.progressTeaserUnit} maxFontSizeMultiplier={1.1}>
+                  points
+                </Text>
+              </View>
               <Text
-                style={styles.progressLine}
+                style={styles.progressTeaserCaption}
                 maxFontSizeMultiplier={1.15}
-                numberOfLines={2}
+                numberOfLines={1}
               >
-                {buildProgressLine(score.deltaSinceFirst, score.value)}
+                {progressTeaserCaption(delta, score.value)}
               </Text>
             </View>
-            <ProgressDelta delta={delta} />
+            <CaretRight size={14} color={palette.inkTertiary} weight="bold" />
           </Pressable>
         ) : null}
 
@@ -491,55 +502,6 @@ function withAlpha(hex: string, a: number): string {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
-/**
- * Tight chip for the delta next to the score hero. Green up / warm down /
- * neutral flat — visually echoes the Skin Score tier.
- */
-function ScoreDeltaChip({ delta }: { delta: number }) {
-  const Icon = delta > 0 ? ArrowUp : delta < 0 ? ArrowDown : Minus;
-  const bg =
-    delta > 0
-      ? palette.mossLight
-      : delta < 0
-      ? palette.rustLight
-      : palette.bgDeep;
-  const fg =
-    delta > 0
-      ? palette.mossDeep
-      : delta < 0
-      ? palette.rust
-      : palette.inkSecondary;
-  return (
-    <View style={[styles.scoreDeltaChip, { backgroundColor: bg }]}>
-      <Icon size={12} color={fg} weight="bold" />
-      <Text
-        style={[styles.scoreDeltaChipText, { color: fg }]}
-        maxFontSizeMultiplier={1.1}
-      >
-        {formatDelta(delta)}
-      </Text>
-    </View>
-  );
-}
-
-function ProgressDelta({ delta }: { delta: number }) {
-  const Icon = delta > 0 ? ArrowUp : delta < 0 ? ArrowDown : Minus;
-  const color =
-    delta > 0 ? palette.moss : delta < 0 ? palette.rust : palette.inkTertiary;
-  const text = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '0';
-  return (
-    <View style={styles.progressDelta}>
-      <Icon size={13} color={color} weight="duotone" />
-      <Text
-        style={[styles.progressDeltaLabel, { color }]}
-        maxFontSizeMultiplier={1.15}
-      >
-        {text}
-      </Text>
-    </View>
-  );
-}
-
 function PrimaryCta({
   label,
   onPress,
@@ -620,21 +582,27 @@ function buildGreeting(firstName: string | null): string {
 }
 
 /**
- * Progress teaser line — grounded in the Skin Score delta since day 1, not
- * abstract. "Up 12 since Day 1" is the default; score-specific narrative
- * is reserved for the Progress screen.
+ * v10.1 — progress teaser helpers. The teaser renders a big serif delta
+ * (e.g. "+12") in the tier-appropriate color, with a small caption below
+ * that carries the score value + direction narrative. No more prose-only
+ * row.
  */
-function buildProgressLine(
-  deltaSinceFirst: number | null,
-  scoreValue: number,
-): string {
-  if (deltaSinceFirst === null || deltaSinceFirst === 0) {
-    return `Skin Score ${scoreValue} — no change since day 1.`;
-  }
-  if (deltaSinceFirst > 0) {
-    return `Skin Score ${scoreValue} — up ${deltaSinceFirst} since day 1.`;
-  }
-  return `Skin Score ${scoreValue} — down ${Math.abs(deltaSinceFirst)} since day 1.`;
+function progressTeaserLabel(delta: number): string {
+  if (delta > 0) return `+${delta}`;
+  if (delta < 0) return `${delta}`;
+  return '\u00B10';
+}
+
+function progressTeaserColor(delta: number): string {
+  if (delta > 0) return palette.mossDeep;
+  if (delta < 0) return palette.rust;
+  return palette.inkSecondary;
+}
+
+function progressTeaserCaption(delta: number, scoreValue: number): string {
+  if (delta > 0) return `Skin Score ${scoreValue} \u00B7 trending up.`;
+  if (delta < 0) return `Skin Score ${scoreValue} \u00B7 below day 1.`;
+  return `Skin Score ${scoreValue} \u00B7 holding steady.`;
 }
 
 function pickRecProduct(category: Concern['category'] | undefined) {
@@ -742,57 +710,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
   },
-  scoreKickerBlock: {
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 10,
-  },
-  scoreKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-  },
-  scoreDeltaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  scoreDeltaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  scoreDeltaChipText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    letterSpacing: 0.1,
-    fontVariant: ['tabular-nums'],
-  },
-  scoreSinceLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: palette.inkTertiary,
-    flexShrink: 1,
-  },
-  scoreFirstLabel: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 14,
-    color: palette.inkTertiary,
-  },
+  // v10.1 — headline grew. With the redundant kicker gone, the headline
+  // carries the whole post-dial beat. 26pt serif + tighter letter-
+  // spacing + a bit more top gap lets the dial breathe and lets the
+  // sentence land.
   scoreHeadline: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.4,
+    fontSize: 26,
+    lineHeight: 30,
+    letterSpacing: -0.5,
     color: palette.ink,
-    marginTop: 20,
+    marginTop: 28,
     textAlign: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   whatChangedKicker: {
     fontFamily: 'Inter-SemiBold',
@@ -896,15 +826,49 @@ const styles = StyleSheet.create({
     color: palette.inkInverse,
   },
 
-  // D — Progress teaser
+  // D — Progress teaser (v10.1 editorial rebuild)
   progressTeaser: {
-    marginTop: 16,
+    marginTop: 18,
     marginHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
+  },
+  progressTeaserLeft: {
+    flex: 1,
+  },
+  progressTeaserKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  progressTeaserValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  progressTeaserDelta: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 36,
+    lineHeight: 38,
+    letterSpacing: -1.0,
+    fontVariant: ['tabular-nums'],
+  },
+  progressTeaserUnit: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    color: palette.inkTertiary,
+  },
+  progressTeaserCaption: {
+    marginTop: 4,
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: palette.inkSecondary,
   },
   sectionKicker: {
     fontFamily: 'Inter-SemiBold',
@@ -913,28 +877,6 @@ const styles = StyleSheet.create({
     color: palette.inkTertiary,
     textTransform: 'uppercase',
     marginBottom: 6,
-  },
-  progressLine: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 17,
-    lineHeight: 22,
-    letterSpacing: -0.2,
-    color: palette.ink,
-  },
-  progressDelta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: palette.bgDeep,
-  },
-  progressDeltaLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-    letterSpacing: 0.1,
-    fontVariant: ['tabular-nums'],
   },
 
   // E — Product rec row
