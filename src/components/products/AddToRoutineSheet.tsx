@@ -18,6 +18,7 @@ import {
   HeartStraight,
   Moon,
   Sun,
+  CaretRight,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
 import { hapt } from '@/utils/haptics';
@@ -37,39 +38,63 @@ export interface AddToRoutineSheetProps {
 interface RowDef {
   target: AddToRoutineTarget;
   Icon: React.FC<PhosphorIconProps>;
+  iconTint: string;
+  iconBg: string;
   label: string;
   helper: string;
   toastLabel: string;
 }
 
+// v9.8 — each row gets its own tint-keyed icon cell so the three options
+// read as distinct destinations, not identical tiles. Morning → amber,
+// Evening → deep ink-blue, Saved → clay. Same tint treatment used in
+// Home's concern-card icon cells.
 const ROWS: RowDef[] = [
   {
     target: 'morning',
     Icon: Sun,
+    iconTint: palette.amberDeep,
+    iconBg: palette.amberLight,
     label: 'Morning routine',
-    helper: "Tomorrow morning's steps",
+    helper: 'Starts tomorrow at 7:00',
     toastLabel: 'morning routine',
   },
   {
     target: 'evening',
     Icon: Moon,
+    iconTint: palette.clayDeep,
+    iconBg: palette.clayPaper,
     label: 'Evening routine',
-    helper: "Tonight's steps",
+    helper: 'Tonight at 9:30',
     toastLabel: 'evening routine',
   },
   {
     target: 'saved',
     Icon: HeartStraight,
-    label: 'Saved',
-    helper: 'Keep for later',
+    iconTint: palette.clay,
+    iconBg: palette.clayPaper,
+    label: 'Saved for later',
+    helper: 'Decide another time',
     toastLabel: 'saved',
   },
 ];
 
 /**
- * STUB — §3.14. Real routine wiring lands in a later PR. For now the sheet
- * shell + rows are real; a tap logs intent, fires a success haptic,
- * dismisses, and pings `onAdded` so the parent can show a toast.
+ * AddToRoutineSheet — v9.8 premium bottom sheet.
+ *
+ * Was v7.6: three sand-colored full-width tiles, InstrumentSerif-Regular
+ * headline, no affordance. Now:
+ *   • Headline typography tightened (SemiBold, -0.4 letter-spacing)
+ *   • Rows become paper tiles with 1pt hairline borders (matches the
+ *     Home concern-card language). Each row carries its own tint-keyed
+ *     icon cell (amber / clay-deep / clay) so destinations read as
+ *     distinct, not fungible.
+ *   • Caret chevron on the right for affordance.
+ *   • Helper line carries a concrete time hint instead of vague "tomorrow
+ *     morning's steps" language.
+ *
+ * The add-to-routine flow is still stubbed (logs + haptic + onAdded
+ * callback); routine store wiring is a separate PR.
  */
 export function AddToRoutineSheet({
   visible,
@@ -134,18 +159,17 @@ export function AddToRoutineSheet({
           <View style={styles.grabber} />
           <SafeAreaView edges={['bottom']} style={styles.inner}>
             <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
-              ADD TO
+              ADD TO ROUTINE
             </Text>
             <Text
               style={styles.headline}
               numberOfLines={2}
               adjustsFontSizeToFit
-              minimumFontScale={0.7}
+              minimumFontScale={0.8}
               maxFontSizeMultiplier={1.15}
             >
               {productName}
             </Text>
-            <View style={{ height: 16 }} />
             <View style={styles.rows}>
               {ROWS.map((r) => {
                 const Icon = r.Icon;
@@ -157,19 +181,18 @@ export function AddToRoutineSheet({
                     accessibilityLabel={`Add to ${r.label}`}
                     style={({ pressed }) => [
                       styles.row,
-                      pressed && { opacity: 0.9 },
+                      pressed && { opacity: 0.96, transform: [{ scale: 0.99 }] },
                     ]}
                   >
-                    <Icon
-                      size={22}
-                      color={palette.ink}
-                      weight="duotone"
-                      style={{ marginRight: 14 }}
-                    />
+                    <View
+                      style={[styles.iconWrap, { backgroundColor: r.iconBg }]}
+                    >
+                      <Icon size={18} color={r.iconTint} weight="duotone" />
+                    </View>
                     <View style={{ flex: 1 }}>
                       <Text
                         style={styles.rowLabel}
-                        maxFontSizeMultiplier={1.2}
+                        maxFontSizeMultiplier={1.15}
                       >
                         {r.label}
                       </Text>
@@ -180,6 +203,11 @@ export function AddToRoutineSheet({
                         {r.helper}
                       </Text>
                     </View>
+                    <CaretRight
+                      size={13}
+                      color={palette.inkTertiary}
+                      weight="bold"
+                    />
                   </Pressable>
                 );
               })}
@@ -202,7 +230,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
   tint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26,22,20,0.3)',
+    backgroundColor: 'rgba(11,18,32,0.45)',
   },
   sheet: {
     backgroundColor: palette.bg,
@@ -219,48 +247,63 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(26,22,20,0.15)',
+    backgroundColor: 'rgba(11,18,32,0.15)',
     marginTop: 12,
     marginBottom: 4,
   },
   inner: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingHorizontal: 22,
+    paddingTop: 14,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
-    letterSpacing: 1.4,
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
-    color: 'rgba(26,22,20,0.6)',
-    marginBottom: 8,
+    color: palette.inkTertiary,
+    marginBottom: 10,
   },
   headline: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 22,
-    lineHeight: 26,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.4,
     color: palette.ink,
+    marginBottom: 22,
   },
   rows: {
-    gap: 12,
+    gap: 10,
   },
   row: {
-    height: 76,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: 'rgba(212,165,116,0.5)', // sand @ 50%
-    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rowLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
+    lineHeight: 20,
+    letterSpacing: -0.3,
     color: palette.ink,
   },
   rowHelper: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    color: 'rgba(26,22,20,0.6)',
+    lineHeight: 15,
+    color: palette.inkTertiary,
     marginTop: 2,
   },
 });

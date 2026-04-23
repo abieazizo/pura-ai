@@ -12,6 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { Sun, Moon, BookmarkSimple, ArrowRight } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
+import { useAppStore } from '@/store/useAppStore';
 import { palette } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { RootStackParamList } from '@/navigation/types';
@@ -39,6 +40,7 @@ const SEGMENTS: Array<{ id: Segment; label: string; Icon: React.FC<any> }> = [
 export function RoutineScreen() {
   const [active, setActive] = useState<Segment>('morning');
   const nav = useNavigation<NavigationProp<RootStackParamList>>();
+  const hasScanned = useAppStore((s) => s.scans.length > 0);
 
   const handleSelect = (id: Segment) => {
     if (id === active) return;
@@ -46,12 +48,24 @@ export function RoutineScreen() {
     setActive(id);
   };
 
-  const handleBuildMorning = () => {
+  const handlePrimary = () => {
     hapt.tap();
-    // Discovery for products now lives via Home — route to the scan modal
-    // as the primary evidence-gathering step the app can offer today.
+    // v9.8 — context-aware CTA. If the user has scanned, their routine
+    // builds from the plan page, not another scan. Otherwise, the
+    // primary action remains "take a scan".
+    if (hasScanned) {
+      // Route to the Plan screen inside the Home stack.
+      // @ts-expect-error nested stack nav
+      nav.navigate?.('Tabs', {
+        screen: 'HomeTab',
+        params: { screen: 'Plan' },
+      });
+      return;
+    }
     nav.navigate('ScanModal');
   };
+
+  const primaryLabel = hasScanned ? 'Build from my plan' : 'Start with a scan';
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -59,6 +73,9 @@ export function RoutineScreen() {
 
       <View style={styles.headerRow}>
         <PuraMark size={26} variant="idle" />
+        <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
+          Pura AI
+        </Text>
         <View style={{ flex: 1 }} />
       </View>
 
@@ -119,37 +136,44 @@ export function RoutineScreen() {
         {active === 'morning' ? (
           <EmptyPanel
             heading="No morning steps yet."
-            body="Your morning routine will build itself from scan recommendations and products you add."
-            cta="Start with a scan"
-            onCta={handleBuildMorning}
+            body={
+              hasScanned
+                ? 'Build your morning from your last scan\u2019s plan. Steps you add persist here.'
+                : 'Your morning routine builds from your first scan. It takes thirty seconds.'
+            }
+            cta={primaryLabel}
+            onCta={handlePrimary}
           />
         ) : null}
 
         {active === 'evening' ? (
           <EmptyPanel
             heading="No evening steps yet."
-            body="Evening routines focus on repair. Add targeted products after your next analysis."
-            cta="Start with a scan"
-            onCta={handleBuildMorning}
+            body={
+              hasScanned
+                ? 'Evening is where repair happens. Add targeted steps from your plan.'
+                : 'Evening routines focus on repair. Start with a scan to tailor yours.'
+            }
+            cta={primaryLabel}
+            onCta={handlePrimary}
           />
         ) : null}
 
         {active === 'saved' ? (
           <EmptyPanel
             heading="Nothing saved."
-            body="Products you bookmark while exploring will land here so you can decide later."
+            body="Products you bookmark while exploring land here, so you can come back to decide."
             cta="Explore products"
             onCta={() => {
               hapt.tap();
-              // Products lives inside the Home stack now; hop to Home and
-              // let future rec-module taps route into it.
-              nav.navigate('Tabs');
+              // @ts-expect-error nested stack nav
+              nav.navigate?.('Tabs', { screen: 'ProductsTab' });
             }}
           />
         ) : null}
 
         <Text style={styles.footerHint} maxFontSizeMultiplier={1.2}>
-          Routine builder is rolling out. Steps you add today will persist.
+          Your saved steps live here. They follow you across scans.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -209,6 +233,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+  },
+  brandWord: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 20,
+    letterSpacing: -0.3,
+    color: palette.ink,
   },
 
   // Title block
