@@ -46,7 +46,7 @@ export function ErrorState({ onRetry, onAbort }: ErrorStateProps) {
           <CloudSlash
             size={48}
             weight="duotone"
-            color="rgba(26,22,20,0.60)"
+            color={palette.inkSecondary}
           />
         </View>
 
@@ -104,10 +104,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   closeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.35)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -127,7 +129,7 @@ const styles = StyleSheet.create({
   },
   bodyText: {
     ...scanTypography.errorBody,
-    color: 'rgba(26,22,20,0.70)',
+    color: palette.inkSecondary,
     marginBottom: 40,
   },
   primaryCta: {
@@ -159,7 +161,7 @@ const styles = StyleSheet.create({
   secondaryLinkText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 13,
-    color: 'rgba(26,22,20,0.55)',
+    color: palette.inkTertiary,
     textDecorationLine: 'underline',
   },
 });

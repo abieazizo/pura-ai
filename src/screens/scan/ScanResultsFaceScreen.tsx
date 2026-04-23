@@ -390,6 +390,10 @@ function FindingRow({
   showTopDivider: boolean;
 }) {
   const color = colorFor(concern.severity);
+  // v10 — severity bar. The four tiers map to fill ratios so the bar
+  // visually answers "how bad is it" before the user reads the word.
+  // Calm renders an empty rail, needs-attention renders a full rail.
+  const fillRatio = severityFillRatio(concern.severity);
 
   return (
     <Pressable
@@ -406,7 +410,6 @@ function FindingRow({
       ]}
     >
       <View style={styles.rowHead}>
-        <View style={[styles.rowDot, { backgroundColor: color }]} />
         <Text style={styles.rowTitle} maxFontSizeMultiplier={1.15}>
           <Text style={styles.rowTitleStrong}>
             {CATEGORY_LABEL[concern.category]}
@@ -430,6 +433,18 @@ function FindingRow({
         </Animated.View>
       </View>
 
+      <View style={styles.severityBarRail}>
+        <View
+          style={[
+            styles.severityBarFill,
+            {
+              backgroundColor: color,
+              width: `${Math.round(fillRatio * 100)}%`,
+            },
+          ]}
+        />
+      </View>
+
       {expanded ? (
         <View style={styles.rowDetail}>
           <Text style={styles.rowDetailFinding} maxFontSizeMultiplier={1.2}>
@@ -443,6 +458,19 @@ function FindingRow({
       ) : null}
     </Pressable>
   );
+}
+
+function severityFillRatio(s: Severity): number {
+  switch (s) {
+    case 'calm':
+      return 0.1;
+    case 'mild':
+      return 0.35;
+    case 'moderate':
+      return 0.65;
+    case 'needs-attention':
+      return 1;
+  }
 }
 
 // ============================================================================
@@ -686,10 +714,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  rowDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  // v10 — severity bar replaces the 8pt dot. Still a 1pt-tall rail but
+  // fill width maps to tier so the row carries visual weight proportional
+  // to how bad the concern is.
+  severityBarRail: {
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: palette.hairline,
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  severityBarFill: {
+    height: 3,
+    borderRadius: 1.5,
   },
   rowTitle: {
     fontFamily: 'Inter-SemiBold',

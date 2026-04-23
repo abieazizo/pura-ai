@@ -63,7 +63,7 @@ const styles = StyleSheet.create({
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 16,
     lineHeight: 22,
-    color: 'rgba(26,22,20,0.7)',
+    color: palette.inkTertiary,
     textAlign: 'center',
   },
 });

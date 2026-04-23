@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     marginHorizontal: 20,
     marginBottom: 12,
   },
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 16,
     lineHeight: 16 * 1.4,
-    color: 'rgba(26,22,20,0.85)',
+    color: palette.inkSecondary,
     padding: 16,
   },
 });

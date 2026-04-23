@@ -94,11 +94,11 @@ const styles = StyleSheet.create({
   sep: {
     fontFamily: 'Inter-Regular',
     fontSize: 13,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
   },
   reviews: {
     fontFamily: 'Inter-Regular',
     fontSize: 13,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
   },
 });

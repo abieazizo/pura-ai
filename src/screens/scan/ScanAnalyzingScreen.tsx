@@ -103,10 +103,12 @@ const styles = StyleSheet.create({
     paddingTop: space.sm,
   },
   closeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(26,22,20,0.08)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -128,7 +130,7 @@ const styles = StyleSheet.create({
   },
   vignette: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26,22,20,0.2)',
+    backgroundColor: 'rgba(11,18,32,0.22)', // v10 cool ink
   },
   markOverlay: {
     ...StyleSheet.absoluteFillObject,

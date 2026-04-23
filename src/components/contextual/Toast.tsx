@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     zIndex: 2000,
   },
   pill: {
-    backgroundColor: 'rgba(26,22,20,0.9)', // ink @ 90%
+    backgroundColor: 'rgba(11,18,32,0.92)', // v10 cool ink @ 92%
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,

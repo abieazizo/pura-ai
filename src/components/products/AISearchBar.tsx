@@ -96,7 +96,7 @@ export function AISearchBar({
         <View style={styles.innerContent}>
           <MagnifyingGlass
             size={18}
-            color="rgba(26,22,20,0.6)"
+            color={palette.inkTertiary}
             weight="duotone"
           />
           <TextInput
@@ -104,7 +104,7 @@ export function AISearchBar({
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder}
-            placeholderTextColor="rgba(26,22,20,0.4)"
+            placeholderTextColor={palette.inkTertiary}
             style={styles.input}
             autoCorrect={false}
             autoCapitalize="none"
@@ -122,7 +122,7 @@ export function AISearchBar({
                 pressed && { opacity: 0.6 },
               ]}
             >
-              <X size={16} color="rgba(26,22,20,0.6)" weight="duotone" />
+              <X size={16} color={palette.inkTertiary} weight="duotone" />
             </Pressable>
           ) : null}
         </View>

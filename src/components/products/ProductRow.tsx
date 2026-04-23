@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 13,
     lineHeight: 18,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     marginTop: 2,
   },
   seeAll: {

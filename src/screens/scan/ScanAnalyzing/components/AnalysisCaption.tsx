@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   },
   textItalic: {
     ...scanTypography.captionItalic,
-    color: 'rgba(26,22,20,0.85)',
+    color: palette.inkSecondary,
   },
   textRoman: {
     ...scanTypography.captionRoman,
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   },
   textWaiting: {
     ...scanTypography.captionWaiting,
-    color: 'rgba(26,22,20,0.70)',
+    color: palette.inkTertiary,
   },
   dot: {
     marginBottom: 8,

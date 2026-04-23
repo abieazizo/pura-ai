@@ -325,23 +325,45 @@ export function HomeScreen() {
         ) : null}
 
         {/* ── F. Entry points ─────────────────────────────────────────── */}
-        <View style={styles.entryRow}>
-          <EntryTile
-            Icon={ScanSmiley}
-            label="Scan"
+        {/* v10 — launcher-style three-tile row is gone. A hero "Scan again"
+            CTA carries the primary action weight; a tight two-row footer
+            handles secondary navigation without faking its importance. */}
+        <View style={styles.entryBlock}>
+          <Pressable
             onPress={handleScan}
-            primary
-          />
-          <EntryTile
-            Icon={DropIcon}
-            label="Products"
-            onPress={handleOpenProducts}
-          />
-          <EntryTile
-            Icon={SparkleIcon}
-            label="Assistant"
-            onPress={handleOpenAssistant}
-          />
+            accessibilityRole="button"
+            accessibilityLabel="Scan again"
+            style={({ pressed }) => [
+              styles.entryPrimary,
+              pressed && { opacity: 0.94, transform: [{ scale: 0.985 }] },
+            ]}
+          >
+            <ScanSmiley size={18} color={palette.inkInverse} weight="duotone" />
+            <Text style={styles.entryPrimaryLabel} maxFontSizeMultiplier={1.15}>
+              Scan again
+            </Text>
+            <View style={{ flex: 1 }} />
+            <Text style={styles.entryPrimaryMeta} maxFontSizeMultiplier={1.1}>
+              30s
+            </Text>
+            <ArrowRight size={14} color={palette.inkInverse} weight="bold" />
+          </Pressable>
+
+          <View style={styles.entrySecondaryWrap}>
+            <EntryLinkRow
+              Icon={DropIcon}
+              label="Browse products"
+              helper="Matched to your last scan"
+              onPress={handleOpenProducts}
+            />
+            <View style={styles.entrySecondaryDivider} />
+            <EntryLinkRow
+              Icon={SparkleIcon}
+              label="Ask about your skin"
+              helper="Grounded in your last scan"
+              onPress={handleOpenAssistant}
+            />
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -543,16 +565,16 @@ function PrimaryCta({
   );
 }
 
-function EntryTile({
+function EntryLinkRow({
   Icon,
   label,
+  helper,
   onPress,
-  primary = false,
 }: {
   Icon: React.FC<any>;
   label: string;
+  helper: string;
   onPress: () => void;
-  primary?: boolean;
 }) {
   return (
     <Pressable
@@ -560,25 +582,22 @@ function EntryTile({
       accessibilityRole="button"
       accessibilityLabel={label}
       style={({ pressed }) => [
-        styles.entryTile,
-        primary && styles.entryTilePrimary,
+        styles.entryLinkRow,
         pressed && { opacity: 0.92 },
       ]}
     >
-      <Icon
-        size={20}
-        color={primary ? palette.inkInverse : palette.ink}
-        weight="duotone"
-      />
-      <Text
-        style={[
-          styles.entryLabel,
-          { color: primary ? palette.inkInverse : palette.ink },
-        ]}
-        maxFontSizeMultiplier={1.15}
-      >
-        {label}
-      </Text>
+      <View style={styles.entryLinkIconWrap}>
+        <Icon size={16} color={palette.ink} weight="duotone" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.entryLinkLabel} maxFontSizeMultiplier={1.15}>
+          {label}
+        </Text>
+        <Text style={styles.entryLinkHelper} maxFontSizeMultiplier={1.15}>
+          {helper}
+        </Text>
+      </View>
+      <CaretRight size={13} color={palette.inkTertiary} weight="bold" />
     </Pressable>
   );
 }
@@ -955,29 +974,73 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  // F — Entry tiles
-  entryRow: {
+  // F — Entry block (v10). Primary ink CTA + two quieter link rows.
+  // Replaces the three-flat-tile launcher pattern.
+  entryBlock: {
     marginTop: 28,
     marginHorizontal: 20,
+  },
+  entryPrimary: {
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: palette.ink,
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
     gap: 10,
   },
-  entryTile: {
-    flex: 1,
-    height: 68,
+  entryPrimaryLabel: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 18,
+    letterSpacing: -0.2,
+    color: palette.inkInverse,
+  },
+  entryPrimaryMeta: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: 'rgba(248,250,252,0.55)',
+    marginRight: 6,
+  },
+  entrySecondaryWrap: {
+    marginTop: 14,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+    overflow: 'hidden',
+  },
+  entrySecondaryDivider: {
+    height: 1,
+    marginLeft: 58,
+    backgroundColor: palette.hairline,
+  },
+  entryLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  entryLinkIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     backgroundColor: palette.bgDeep,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
   },
-  entryTilePrimary: {
-    backgroundColor: palette.ink,
-  },
-  entryLabel: {
+  entryLinkLabel: {
     fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    letterSpacing: -0.1,
+    color: palette.ink,
+  },
+  entryLinkHelper: {
+    fontFamily: 'Inter-Regular',
     fontSize: 12,
-    letterSpacing: 0.2,
+    color: palette.inkTertiary,
+    marginTop: 1,
   },
 
   // Day 0

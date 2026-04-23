@@ -143,20 +143,20 @@ const styles = StyleSheet.create({
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 15,
     lineHeight: 22,
-    color: 'rgba(26,22,20,0.7)',
+    color: palette.inkSecondary,
     marginTop: 8,
   },
   closeBtn: {
     marginTop: 20,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(212,165,116,0.6)',
+    backgroundColor: palette.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 15,
-    color: palette.ink,
+    color: palette.inkInverse,
   },
 });

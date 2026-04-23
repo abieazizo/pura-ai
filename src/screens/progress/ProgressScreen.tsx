@@ -428,13 +428,15 @@ const counter = StyleSheet.create({
     alignItems: 'flex-end',
     position: 'relative',
   },
+  // v10 — hairlines in cool ink. The `rgba(198,93,72,…)` residuals were v5
+  // terracotta at 15/35% — they predated the v8 cool-palette migration.
   rail: {
     position: 'absolute',
     right: 0,
     top: 0,
     bottom: 0,
     width: 1,
-    backgroundColor: 'rgba(198,93,72,0.15)',
+    backgroundColor: palette.hairline,
   },
   ticks: {
     height: 240,
@@ -444,7 +446,7 @@ const counter = StyleSheet.create({
   tick: {
     width: 5,
     height: 1,
-    backgroundColor: 'rgba(198,93,72,0.35)',
+    backgroundColor: palette.inkTertiary,
   },
   tickActive: {
     width: 12,
@@ -460,7 +462,7 @@ const linkRow = StyleSheet.create({
     paddingTop: space.md,
     paddingBottom: space.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(198,93,72,0.2)',
+    borderTopColor: palette.hairline,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

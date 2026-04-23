@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   },
   overallKicker: {
     ...scanTypography.revealOverallKicker,
-    color: 'rgba(26,22,20,0.55)',
+    color: palette.inkTertiary,
     marginBottom: 2,
   },
   overallNumber: {
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: 'rgba(26,22,20,0.08)',
+    backgroundColor: palette.hairline,
     marginVertical: 18,
   },
   summaryRow: {
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     ...scanTypography.revealSummary,
-    color: 'rgba(26,22,20,0.70)',
+    color: palette.inkSecondary,
   },
   summaryDots: {
     flexDirection: 'row',
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   secondaryLinkText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 13,
-    color: 'rgba(26,22,20,0.55)',
+    color: palette.inkTertiary,
     textDecorationLine: 'underline',
   },
 });

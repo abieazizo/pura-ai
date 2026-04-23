@@ -212,19 +212,21 @@ function MatchWhyBlock({
 }
 
 function buildReason(product: Product, concern: Concern): string {
-  // Category-aware rationale. Uses the concern region for specificity; the
-  // product's own category implicitly shapes the language (e.g. a serum
-  // vs a moisturizer speaks to different concerns).
+  // v10 — region phrasing rewritten to stay grammatical for singular
+  // (chin, forehead, nose) and plural (cheeks, under-eyes) region strings.
+  // The product's own category implicitly shapes the language.
   const region = concern.region;
+  const cat = CATEGORY_LABEL[concern.category].toLowerCase();
+  const sev = concern.severity.replace('-', ' ');
   switch (concern.category) {
     case 'breakouts':
-      return `Your ${region} is tracking as ${CATEGORY_LABEL[concern.category].toLowerCase()} \u00b7 ${concern.severity.replace('-', ' ')}. This targets exactly that.`;
+      return `Your ${region} is reading as ${cat} \u00b7 ${sev}. This targets exactly that.`;
     case 'hydration':
-      return `Your ${region} are reading low on moisture. This restores hydration where you need it.`;
+      return `Low moisture on your ${region} in the last scan. This restores hydration where you need it.`;
     case 'texture':
-      return `Texture on your ${region} is uneven in your last scan. This smooths that surface.`;
+      return `Uneven texture on your ${region} in the last scan. This smooths that surface.`;
     case 'tone':
-      return `Dark marks on your ${region} are still visible. This works on uneven tone over time.`;
+      return `Dark marks still visible on your ${region}. This works on uneven tone over time.`;
   }
 }
 

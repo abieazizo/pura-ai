@@ -94,7 +94,7 @@ export function Accordion({
         <Animated.View style={chevronStyle}>
           <CaretDown
             size={18}
-            color="rgba(26,22,20,0.6)"
+            color={palette.inkTertiary}
             weight="duotone"
           />
         </Animated.View>
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(26,22,20,0.1)',
+    backgroundColor: palette.hairline,
   },
   content: {
     paddingTop: 16,

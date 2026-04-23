@@ -139,7 +139,7 @@ export function AssistantScreen() {
         <Text style={styles.title} maxFontSizeMultiplier={1.15}>
           Ask<Text style={{ color: palette.clay }}>.</Text>
         </Text>
-        <Text style={styles.subtitle}>I{'\u2019'}ve been watching your skin.</Text>
+        <Text style={styles.subtitle}>{strings.subtitle}</Text>
       </View>
 
       <KeyboardAvoidingView

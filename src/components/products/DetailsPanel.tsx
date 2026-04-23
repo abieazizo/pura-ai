@@ -76,13 +76,13 @@ const styles = StyleSheet.create({
   },
   rowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(26,22,20,0.08)',
+    borderBottomColor: palette.hairline,
   },
   label: {
     width: '35%',
     fontFamily: 'Inter-Regular',
     fontSize: 13,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
   },
   value: {
     flex: 1,

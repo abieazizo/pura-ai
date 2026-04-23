@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     letterSpacing: 1.4,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     marginBottom: 6,
   },
   name: {

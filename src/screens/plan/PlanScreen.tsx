@@ -721,15 +721,19 @@ function pickAlternatives(
 
 function buildRecReason(concern: Concern | undefined): string {
   if (!concern) return 'Matched to your skin profile.';
+  // v10 — rewritten so every region (singular or plural) reads grammatically.
+  // Prior copy had "your forehead are running dry" which failed noun-verb
+  // agreement. Each branch now names the region in a clause that works with
+  // any region string.
   switch (concern.category) {
     case 'breakouts':
-      return `Targets the breakout on your ${concern.region}.`;
+      return `Targets the breakout showing on your ${concern.region}.`;
     case 'hydration':
-      return `Restores moisture where your ${concern.region} are running dry.`;
+      return `Restores moisture to your ${concern.region}.`;
     case 'texture':
-      return `Smooths the texture showing on your ${concern.region}.`;
+      return `Smooths the texture on your ${concern.region}.`;
     case 'tone':
-      return `Fades the dark marks on your ${concern.region}.`;
+      return `Works on the dark marks across your ${concern.region}.`;
   }
 }
 

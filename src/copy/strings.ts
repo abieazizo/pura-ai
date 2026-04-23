@@ -78,7 +78,7 @@ export const onboarding = {
     {
       eyebrow: 'WATCH IT WORK',
       title: 'Compare your skin, day by day.',
-      body: 'Photos, zones, and measurable change. No hype. Just proof.',
+      body: 'Photos, zones, and real change over time. No hype. Just proof.',
     },
   ],
   getStarted: 'Begin',
@@ -111,7 +111,7 @@ export const home = {
     },
     {
       title: 'Tracks what\u2019s changing.',
-      body: 'Compare week to week. Measure progress that\u2019s actually there.',
+      body: 'Compare week to week. See progress you can actually point at.',
     },
   ],
 
@@ -222,11 +222,14 @@ export const scan = {
 
 export const assistant = {
   title: 'Ask',
-  subtitle: 'I\u2019ve been watching.',
+  // v10 — subtitles retuned. "I've been watching" was too vague and
+  // verging on uncanny. Each subtitle now points at the evidence base
+  // (the scan) so the assistant reads as grounded, not voyeuristic.
+  subtitle: 'Grounded in your last scan.',
   emptyTitle: 'Ask me anything.',
   emptyBody:
-    'I\u2019ve been watching. Ask me anything \u2014 I\u2019ll tailor advice to what I see.',
-  attachHint: 'Attach a product. I\u2019ll read it.',
+    'I answer from your last scan, your plan, and your routine \u2014 not general skincare chatter.',
+  attachHint: 'Attach a product. I\u2019ll read the label.',
   composerPlaceholder: 'Write your question\u2026',
   forYouLabel: 'FOR YOU',
   // v9.2 — concierge-style starter prompts. Tied to Skin Score + scan
@@ -253,14 +256,14 @@ export const progress = {
   dayBadge: (n: number) => `DAY ${n}`,
   cyclePercent: (p: number) => `${p}% through your first skin cycle.`,
   cycleTooltip: 'A skin cycle is eighty-four days.',
-  emptyTitle: 'Your story starts with your first scan.',
-  emptyBody: 'Scan, and you\u2019ll see your skin change, photo by photo.',
+  emptyTitle: 'Nothing to compare yet.',
+  emptyBody: 'One scan, and the before starts being recorded. Two, and the after begins.',
   emptyCta: 'Begin first scan',
   oneScanTitle: 'One more to unlock side-by-side.',
-  oneScanBody: 'Two scans is enough for measurable change.',
+  oneScanBody: 'Two scans is all it takes to see real change.',
   oneScanCta: 'Scan again',
   compareLabel: 'DRAG TO COMPARE',
-  changesHeading: 'Measurable changes since Day 1',
+  changesHeading: 'What\u2019s changed since Day 1',
 };
 
 export const profileSheet = {

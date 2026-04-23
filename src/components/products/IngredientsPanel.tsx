@@ -159,8 +159,8 @@ const fitConfigByTier: Record<
   },
   unknown: {
     Icon: Info,
-    bg: palette.sandPaper,
-    iconColor: 'rgba(26,22,20,0.6)',
+    bg: palette.bgDeep,
+    iconColor: palette.inkTertiary,
   },
 };
 
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 15,
     lineHeight: 21,
-    color: 'rgba(26,22,20,0.85)',
+    color: palette.inkSecondary,
   },
   row: {
     paddingVertical: 12,
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   purpose: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     textAlign: 'right',
     marginLeft: 12,
   },
@@ -218,13 +218,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: 'rgba(26,22,20,0.08)',
+    backgroundColor: palette.hairline,
   },
   emptyText: {
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 15,
     lineHeight: 21,
-    color: 'rgba(26,22,20,0.5)',
+    color: palette.inkTertiary,
     paddingVertical: 4,
   },
 });

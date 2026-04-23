@@ -84,8 +84,16 @@ export function ProductsScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
 
+      {/* v10 — brand bar harmonized with Home (PuraMark 32 + wordmark).
+          Products is a primary tab, so it needs the full brand mark, not
+          the v5 small-only treatment. */}
       <View style={styles.headerRow}>
-        <PuraMark variant="idle" size="sm" />
+        <View style={styles.brandLeft}>
+          <PuraMark size={32} variant="idle" />
+          <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
+            Pura AI
+          </Text>
+        </View>
         <Pressable
           onPress={() => {
             hapt.select();
@@ -102,7 +110,7 @@ export function ProductsScreen() {
           ]}
         >
           <SlidersHorizontal
-            size={20}
+            size={18}
             color={palette.ink}
             weight="duotone"
           />
@@ -203,7 +211,7 @@ function BestForYouSection({
           Scan your face to unlock matched products.
         </Text>
         <Text style={bestStyles.lockedBody} maxFontSizeMultiplier={1.2}>
-          Thirty seconds of reading produces a picks list based on your actual skin.
+          One thirty-second scan, and the catalog starts speaking to your skin directly.
         </Text>
         <Pressable
           onPress={() => {
@@ -425,34 +433,49 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   flex: { flex: 1 },
   headerRow: {
-    height: 56,
+    height: 60,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandWord: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    letterSpacing: -0.3,
+    color: palette.ink,
+  },
+  // v10 — cool paper filter chip. Prior warm-sand pill (v5 residual)
+  // was the single most jarring misfit on the catalog page.
   filterBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.6)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 56,
-    lineHeight: 56 * 1.02,
-    letterSpacing: -1.2,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 48,
+    lineHeight: 48 * 1.02,
+    letterSpacing: -1.0,
     color: palette.ink,
     marginHorizontal: 20,
-    marginTop: 12,
+    marginTop: 8,
   },
   searchKicker: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
     letterSpacing: 1.4,
-    color: 'rgba(26,22,20,0.6)',
+    color: palette.inkTertiary,
     textTransform: 'uppercase',
     marginHorizontal: 20,
     marginTop: 20,

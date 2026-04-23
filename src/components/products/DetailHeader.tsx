@@ -51,13 +51,16 @@ export function DetailHeader({ productId }: DetailHeaderProps) {
         <HeartStraight
           size={18}
           weight={isSaved ? 'fill' : 'duotone'}
-          color={isSaved ? palette.clay : 'rgba(26,22,20,0.6)'}
+          color={isSaved ? palette.clay : palette.inkSecondary}
         />
       </Pressable>
     </View>
   );
 }
 
+// v10 — cool paper chips with hairline borders. The prior warm-sand
+// (rgba(212,165,116,0.6)) pills predated the v8 cool palette migration
+// and read as an orange dot floating on every product page.
 const styles = StyleSheet.create({
   row: {
     height: 56,
@@ -67,10 +70,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   btn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.6)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },
