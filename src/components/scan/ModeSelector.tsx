@@ -101,7 +101,9 @@ const styles = StyleSheet.create({
     width: WIDTH,
     height: HEIGHT,
     borderRadius: HEIGHT / 2,
-    backgroundColor: 'rgba(26,22,20,0.4)',
+    backgroundColor: 'rgba(11,18,32,0.4)', // v10 cool ink @ 40%
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',

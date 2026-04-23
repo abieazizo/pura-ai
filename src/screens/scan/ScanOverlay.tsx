@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Alert,
   Pressable,
   StyleSheet,
   View,
@@ -8,8 +7,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Question } from 'phosphor-react-native';
-import { PuraMark } from '@/components/PuraMark';
+import { Question, X } from 'phosphor-react-native';
 import { Reticle, type ReticleMode } from '@/components/scan/Reticle';
 import { Caption } from '@/components/scan/Caption';
 import { ZoomToggle, type ZoomValue } from '@/components/scan/ZoomToggle';
@@ -35,12 +33,20 @@ export interface ScanOverlayProps {
 }
 
 /**
- * v6 scan overlay. Lives as an absolute layer on top of the camera feed.
- * Top-left exit, top-right help, a central reticle with caption, then a
- * bottom dock: zoom toggle, mode selector, ON-DEVICE kicker, capture row.
+ * v10 scan overlay. Lives as an absolute layer on top of the camera feed.
  *
- * Nothing stacks. Nothing overlaps. The ON-DEVICE label is its own row
- * below the mode selector with an explicit 8pt gap (§2.3).
+ * Chrome system (v10):
+ * - Top-left: single X close button in a frosted-ink pill (cool ink @ 45% +
+ *   1pt white hairline). No PuraMark-with-× overloading the brand mark.
+ * - Top-right: ? help button, same treatment. Both buttons read as "camera
+ *   chrome" rather than "branded utility buttons".
+ * - Exit taps fire immediately. No Alert.alert — the user taps the close
+ *   icon with clear intent; confirming it would be the opposite of premium
+ *   camera behavior. Haptic lands the decision.
+ * - Ink scrims (top 120pt, bottom 280pt) preserved at 60% for legibility.
+ *
+ * Dock order unchanged: zoom → mode → ON-DEVICE → capture, each on its own
+ * row with explicit gaps.
  */
 export function ScanOverlay({
   mode,
@@ -58,17 +64,9 @@ export function ScanOverlay({
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
-  const confirmExit = () => {
+  const handleExit = () => {
     hapt.select();
-    Alert.alert(
-      'Stop scanning?',
-      undefined,
-      [
-        { text: 'Keep scanning', style: 'cancel' },
-        { text: 'Stop', style: 'destructive', onPress: onExit },
-      ],
-      { cancelable: true }
-    );
+    onExit();
   };
 
   const handleHelp = () => {
@@ -92,8 +90,8 @@ export function ScanOverlay({
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {/* Warm charcoal gradients (§2.3): top 120pt fades down, bottom 280pt
-          fades up. SVG lets us do an actual gradient without expo-linear. */}
+      {/* Ink scrims (§2.3): top 120pt fades down, bottom 280pt fades up.
+          SVG lets us do an actual gradient without expo-linear. */}
       <Scrim
         placement="top"
         width={width}
@@ -111,29 +109,34 @@ export function ScanOverlay({
       {/* Caption 40pt below reticle lower edge */}
       <Caption mode={mode} top={captionTop} />
 
-      {/* Top-left — Mark exit */}
+      {/* Top-left — clean X close */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Stop scanning"
-        onPress={confirmExit}
+        accessibilityLabel="Close scanner"
+        onPress={handleExit}
         hitSlop={8}
-        style={[styles.topBtn, { top: insets.top + 16, left: 20 }]}
+        style={({ pressed }) => [
+          styles.chipBtn,
+          { top: insets.top + 12, left: 16 },
+          pressed && styles.chipBtnPressed,
+        ]}
       >
-        <PuraMark variant="idle" size="xs" />
-        {/* 1pt terracotta "×" stroke overlay — two thin crossed lines */}
-        <View style={styles.exitCrossOne} pointerEvents="none" />
-        <View style={styles.exitCrossTwo} pointerEvents="none" />
+        <X size={18} color={palette.bg} weight="bold" />
       </Pressable>
 
-      {/* Top-right — Help button */}
+      {/* Top-right — Help button (same chip) */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open scan tutorial"
         onPress={handleHelp}
         hitSlop={8}
-        style={[styles.topBtn, { top: insets.top + 16, right: 20 }]}
+        style={({ pressed }) => [
+          styles.chipBtn,
+          { top: insets.top + 12, right: 16 },
+          pressed && styles.chipBtnPressed,
+        ]}
       >
-        <Question size={18} color={palette.ink} weight="duotone" />
+        <Question size={18} color={palette.bg} weight="duotone" />
       </Pressable>
 
       {/* Bottom dock (§2.3): zoom → mode → ON-DEVICE → capture, each its
@@ -172,8 +175,8 @@ export function ScanOverlay({
 
 /**
  * Single SVG scrim. Placement `top` fades ink @ 60% down to transparent;
- * `bottom` fades ink @ 60% up. Warm charcoal (`palette.ink`), never pure
- * black.
+ * `bottom` fades ink @ 60% up. Uses `palette.ink` (cool ink #0B1220 in v8+),
+ * never pure black.
  */
 function Scrim({
   placement,
@@ -212,34 +215,34 @@ function Scrim({
   );
 }
 
+// v10 — scan camera chrome redesigned. The prior treatment (warm-sand
+// pill backgrounds + PuraMark-with-clay-× for close) had three problems:
+// brand mark overloaded with a destructive action, tint color from the
+// v5/v6 palette still leaking into v8+ cool surfaces, and an Alert.alert
+// confirm that violated the app-wide no-Alert rule. Replaced with frosted
+// cool-ink chips (ink @ 45% + 1pt white hairline) and a single-tap close.
+// Matches premium iOS / health-tech camera language — the chrome reads as
+// "system utility", not "branded marketing".
 const styles = StyleSheet.create({
   scrim: {
     position: 'absolute',
     left: 0,
     right: 0,
   },
-  topBtn: {
+  chipBtn: {
     position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.8)', // sand @ 80%
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(11,18,32,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  exitCrossOne: {
-    position: 'absolute',
-    width: 22,
-    height: 1,
-    backgroundColor: palette.clay,
-    transform: [{ rotate: '45deg' }],
-  },
-  exitCrossTwo: {
-    position: 'absolute',
-    width: 22,
-    height: 1,
-    backgroundColor: palette.clay,
-    transform: [{ rotate: '-45deg' }],
+  chipBtnPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.96 }],
   },
   bottomStack: {
     position: 'absolute',

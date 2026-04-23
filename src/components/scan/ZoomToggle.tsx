@@ -83,7 +83,9 @@ const styles = StyleSheet.create({
     width: SEG_W * 2,
     height: HEIGHT,
     borderRadius: HEIGHT / 2,
-    backgroundColor: 'rgba(26,22,20,0.4)', // warm charcoal @ 40%
+    backgroundColor: 'rgba(11,18,32,0.4)', // v10 cool ink @ 40%
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
     flexDirection: 'row',
     padding: 0,
     alignItems: 'center',

@@ -66,8 +66,11 @@ function FlashButton({
   mode: FlashMode;
   onPress: (next: FlashMode) => void;
 }) {
+  // v10 — frosted-ink chip. Icon sits on paper white; the "on" state flips
+  // the icon to amber (the warm-signal token) instead of clay so flash reads
+  // as an attention cue, not a brand accent.
   const iconColor =
-    mode === 'on' ? palette.clay : 'rgba(26,22,20,0.6)';
+    mode === 'on' ? palette.amber : 'rgba(248,250,252,0.85)';
   const handle = () => {
     hapt.select();
     onPress(FLASH_NEXT[mode]);
@@ -209,7 +212,7 @@ function GalleryButton({ onPick }: { onPick: (uri: string) => void }) {
     >
       <ImageIcon
         size={18}
-        color="rgba(26,22,20,0.6)"
+        color="rgba(248,250,252,0.85)"
         weight="duotone"
       />
     </Pressable>
@@ -223,16 +226,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 48,
   },
+  // v10 — frosted-ink chips. Matches the top-bar close / help treatment in
+  // ScanOverlay so the entire camera chrome is one material: cool ink @ 45%
+  // with a 1pt white hairline. Warm sand has been fully retired from the
+  // camera surface.
   sideBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.8)', // sand @ 80% — warm, readable
+    backgroundColor: 'rgba(11,18,32,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sideBtnPressed: {
-    opacity: 0.85,
+    opacity: 0.88,
     transform: [{ scale: 0.96 }],
   },
   onDot: {
@@ -241,7 +250,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: palette.clay,
+    backgroundColor: palette.amber,
   },
   autoLabel: {
     position: 'absolute',
@@ -250,7 +259,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     lineHeight: 10,
     letterSpacing: 0.8,
-    color: 'rgba(26,22,20,0.7)',
+    color: 'rgba(248,250,252,0.85)',
   },
   captureWrap: {
     width: OUTER,
