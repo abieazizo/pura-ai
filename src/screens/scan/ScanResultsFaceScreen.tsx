@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutAnimation,
   Platform,
@@ -21,8 +21,10 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@/store/useAppStore';
@@ -196,8 +198,9 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
 
         <View style={styles.findings}>
           {top3.map((concern, i) => (
-            <FindingRow
+            <StaggeredFindingRow
               key={concern.category}
+              index={i}
               concern={concern}
               expanded={expandedCategory === concern.category}
               onPress={() => toggleRow(concern.category)}
@@ -274,23 +277,19 @@ function HeroPhoto({
         contentFit="cover"
         transition={200}
       />
-      {/* v9.5 — score reveal medallion. Bottom-center, floats below the
-          face with a cool-paper backdrop so the dial reads over any photo
-          luminance. The reveal moment now PAIRS the face with the score,
-          not just a tiny paper chip in the corner. v10.1: fires a success
-          haptic at the count-up landing so the reveal has a felt payoff. */}
+      {/* v10.5 — reveal motion: the medallion now RISES from +28 into
+          its resting position while fading up from 0.0 opacity over
+          620ms with a spring-damped ease. The photo lands first, the
+          medallion arrives second — a two-beat reveal that feels
+          cinematic. Haptic still fires at count-up settle. Respects
+          reduce-motion via the initial value. */}
       <View pointerEvents="none" style={styles.scoreRevealWrap}>
-        <View style={styles.scoreRevealBackdrop}>
-          <SkinScoreDial
-            value={scoreValue}
-            size={112}
-            showTier={false}
-            previousValue={previousScore}
-            deltaCaption={deltaCaption}
-            delay={420}
-            onRevealComplete={onRevealComplete}
-          />
-        </View>
+        <RisingMedallion
+          scoreValue={scoreValue}
+          previousScore={previousScore}
+          deltaCaption={deltaCaption}
+          onRevealComplete={onRevealComplete}
+        />
       </View>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {hotspotConcerns.flatMap((c) =>
@@ -306,6 +305,117 @@ function HeroPhoto({
         )}
       </View>
     </View>
+  );
+}
+
+/**
+ * v10.5 — StaggeredFindingRow. Wraps each FindingRow so they slide up
+ * from +12pt and fade in from 0 opacity, cascading with an 80ms delay
+ * per rank. Fires shortly after the medallion arrives (base delay
+ * 640ms = medallion's 120 + 420 reveal lead-in + 100 settle). Gives
+ * the result a three-beat rhythm: photo → medallion → findings.
+ * Reduce-motion bypasses the animation.
+ */
+function StaggeredFindingRow({
+  index,
+  concern,
+  expanded,
+  onPress,
+  showTopDivider,
+}: {
+  index: number;
+  concern: Concern;
+  expanded: boolean;
+  onPress: () => void;
+  showTopDivider: boolean;
+}) {
+  const reduceMotion = useReduceMotion();
+  const opacity = useSharedValue(reduceMotion ? 1 : 0);
+  const translateY = useSharedValue(reduceMotion ? 0 : 12);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const delay = 640 + index * 80;
+    opacity.value = withDelay(
+      delay,
+      withTiming(1, { duration: 460, easing: Easing.out(Easing.cubic) })
+    );
+    translateY.value = withDelay(
+      delay,
+      withTiming(0, { duration: 460, easing: Easing.out(Easing.cubic) })
+    );
+  }, [opacity, translateY, reduceMotion, index]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  return (
+    <Animated.View style={style}>
+      <FindingRow
+        concern={concern}
+        expanded={expanded}
+        onPress={onPress}
+        showTopDivider={showTopDivider}
+      />
+    </Animated.View>
+  );
+}
+
+/**
+ * v10.5 — RisingMedallion. Wraps the existing SkinScoreDial in a
+ * reanimated container that rises from +28pt into resting position
+ * while fading in from 0 to 1 opacity over 620ms with a spring-damped
+ * ease. The dial's internal count-up still runs inside; the haptic
+ * still fires at settle. This outer motion turns "score medallion
+ * fades in" into "score medallion arrives" — the difference between
+ * a chart and a reveal.
+ */
+function RisingMedallion({
+  scoreValue,
+  previousScore,
+  deltaCaption,
+  onRevealComplete,
+}: {
+  scoreValue: number;
+  previousScore: number | null;
+  deltaCaption: string;
+  onRevealComplete?: () => void;
+}) {
+  const reduceMotion = useReduceMotion();
+  const translateY = useSharedValue(reduceMotion ? 0 : 28);
+  const opacity = useSharedValue(reduceMotion ? 1 : 0);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    translateY.value = withDelay(
+      120,
+      withSpring(0, { damping: 18, stiffness: 150, mass: 1 })
+    );
+    opacity.value = withDelay(
+      120,
+      withTiming(1, { duration: 620, easing: Easing.out(Easing.cubic) })
+    );
+  }, [translateY, opacity, reduceMotion]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles.scoreRevealBackdrop, style]}>
+      <SkinScoreDial
+        value={scoreValue}
+        size={112}
+        showTier={false}
+        previousValue={previousScore}
+        deltaCaption={deltaCaption}
+        delay={420}
+        onRevealComplete={onRevealComplete}
+      />
+    </Animated.View>
   );
 }
 

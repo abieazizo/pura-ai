@@ -596,6 +596,23 @@ function PrimaryCta({
   );
 }
 
+/**
+ * v10.5 — EntryLinkRow refined. The Scan CTA absorbed the primary
+ * action weight (v10); the product pick absorbed the premium card
+ * weight (v10.4). The two secondary link rows were the remaining weak
+ * element on Home — reading as launcher chrome.
+ *
+ * Refinements:
+ *   • Icon cell widened to 34×34 with a palette.bgDeep background so
+ *     it reads as an icon stage, not a dot.
+ *   • Label upgraded to InstrumentSerif-SemiBold 15pt so the two
+ *     entries match Home's editorial voice (Plan / PICKED FOR YOU
+ *     also use serif labels).
+ *   • Helper stays Inter, dropped to 11.5pt with letterSpacing 0.1
+ *     so it reads as a caption, not a subtitle.
+ *   • ArrowRight replaces CaretRight at 14pt — the two secondary
+ *     rows now rhyme with the Scan CTA's arrow iconography.
+ */
 function EntryLinkRow({
   Icon,
   label,
@@ -614,11 +631,11 @@ function EntryLinkRow({
       accessibilityLabel={label}
       style={({ pressed }) => [
         styles.entryLinkRow,
-        pressed && { opacity: 0.92 },
+        pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] },
       ]}
     >
       <View style={styles.entryLinkIconWrap}>
-        <Icon size={16} color={palette.ink} weight="duotone" />
+        <Icon size={17} color={palette.ink} weight="duotone" />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.entryLinkLabel} maxFontSizeMultiplier={1.15}>
@@ -628,7 +645,7 @@ function EntryLinkRow({
           {helper}
         </Text>
       </View>
-      <CaretRight size={13} color={palette.inkTertiary} weight="bold" />
+      <ArrowRight size={14} color={palette.inkTertiary} weight="duotone" />
     </Pressable>
   );
 }
@@ -1152,6 +1169,9 @@ const styles = StyleSheet.create({
     marginLeft: 58,
     backgroundColor: palette.hairline,
   },
+  // v10.5 — entry link rows now carry editorial weight (serif label,
+  // caption helper) so they rhyme with the Plan page and PICKED FOR
+  // YOU card instead of reading as launcher chrome.
   entryLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1160,24 +1180,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   entryLinkIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: palette.bgDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },
   entryLinkLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    letterSpacing: -0.1,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.2,
     color: palette.ink,
   },
   entryLinkHelper: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontSize: 11.5,
+    letterSpacing: 0.1,
     color: palette.inkTertiary,
-    marginTop: 1,
+    marginTop: 2,
   },
 
   // Day 0

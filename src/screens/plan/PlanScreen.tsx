@@ -312,6 +312,12 @@ export function PlanScreen() {
                 </Text>
               </Pressable>
             </View>
+            {/* v10.5 — alternatives rows enriched. Thumbnail grows 48×56
+                → 54×66, name gets paired with a tiny moss match percent,
+                price becomes serif to echo the hero card. Still one row
+                per product — net-zero element count. Each row now speaks
+                the app's "match-as-pitch" vocabulary instead of reading
+                as a price list. */}
             <View style={styles.altList}>
               {alternatives.map((p) => (
                 <Pressable
@@ -336,14 +342,24 @@ export function PlanScreen() {
                       />
                     ) : null}
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={styles.altBrand}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      {p.brand.toUpperCase()}
-                    </Text>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <View style={styles.altBrandRow}>
+                      <Text
+                        style={styles.altBrand}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={1.1}
+                      >
+                        {p.brand.toUpperCase()}
+                      </Text>
+                      <View style={styles.altMatchPill}>
+                        <Text
+                          style={styles.altMatchPillText}
+                          maxFontSizeMultiplier={1.1}
+                        >
+                          {`${p.matchScore ?? 84}%`}
+                        </Text>
+                      </View>
+                    </View>
                     <Text
                       style={styles.altName}
                       numberOfLines={1}
@@ -1085,38 +1101,62 @@ const styles = StyleSheet.create({
     color: palette.clay,
     letterSpacing: 0.2,
   },
+  // v10.5 — alternatives enriched. Thumbnails larger, brand row pairs
+  // with a moss match-percent pill, price becomes serif to echo the
+  // hero product card. Still one row per product.
   altList: {
-    gap: 12,
+    gap: 14,
   },
   altRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   altImage: {
-    width: 48,
-    height: 56,
-    borderRadius: 10,
+    width: 54,
+    height: 66,
+    borderRadius: 12,
     overflow: 'hidden',
+  },
+  altBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 3,
   },
   altBrand: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
     letterSpacing: 1.2,
     color: palette.inkTertiary,
-    marginBottom: 2,
+  },
+  altMatchPill: {
+    paddingHorizontal: 6,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: palette.mossLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  altMatchPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 0.4,
+    color: palette.mossDeep,
+    fontVariant: ['tabular-nums'],
   },
   altName: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 17,
+    lineHeight: 21,
     letterSpacing: -0.2,
     color: palette.ink,
   },
   altPrice: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    letterSpacing: -0.2,
     color: palette.ink,
     fontVariant: ['tabular-nums'],
   },
