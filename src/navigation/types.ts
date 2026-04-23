@@ -9,8 +9,10 @@ export type ProductsRowKind =
 
 export type OnboardingStackParamList = {
   Splash: undefined;
-  /** v10.6 — Apple / Google / Email + Sign-in. Sits between Splash and CameraPrimer. */
+  /** v10.6 — new-user path: Apple / Google / Email + returning-user tail. */
   AuthChoice: undefined;
+  /** v10.8 — returning-user path: provider sign-in + email/password entry. */
+  SignIn: undefined;
   CameraPrimer: undefined;
   CameraPermission: undefined;
   AskName: undefined;

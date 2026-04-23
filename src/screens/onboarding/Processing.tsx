@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -19,18 +19,36 @@ export interface ProcessingProps {
   onDone: () => void;
 }
 
-const HOLD_MS = 2000;
+// v10.8 — three-phase narrative within the hold window. Each phrase is
+// visible for ~800ms with a ~240ms crossfade so the beat feels
+// intentional (not a single static placeholder). Total hold ≈ 2400ms:
+// concise enough to preserve momentum, rich enough to land as "the AI
+// is working."
+const PHASE_MS = 800;
+const PHASE_FADE_MS = 240;
+const HOLD_MS = PHASE_MS * 3;
 const DOT_LOOP_MS = 1800;
 
+const PHASES = [
+  'Reading your answers\u2026',
+  'Calibrating for your skin\u2026',
+  'Prepping your first scan\u2026',
+];
+
 /**
- * Processing beat (§3.9). No header. Mark centered pulsing 1.0 → 1.08 →
- * 1.0, italic copy "Reading your answers…", three dots cycling. Holds
- * for 2000ms then fires `onDone`.
+ * Processing beat. No header. Mark centered pulsing 1.0 → 1.08 → 1.0.
+ * Italic copy rotates through three phases over ~2.4s, then fires
+ * `onDone`. Dots cycle underneath for ambient motion.
  */
 export function Processing({ onDone }: ProcessingProps) {
+  const [phaseIndex, setPhaseIndex] = useState(0);
+
   useEffect(() => {
-    const t = setTimeout(onDone, HOLD_MS);
-    return () => clearTimeout(t);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(setTimeout(() => setPhaseIndex(1), PHASE_MS));
+    timers.push(setTimeout(() => setPhaseIndex(2), PHASE_MS * 2));
+    timers.push(setTimeout(onDone, HOLD_MS));
+    return () => timers.forEach(clearTimeout);
   }, [onDone]);
 
   const pulse = useSharedValue(0);
@@ -56,14 +74,51 @@ export function Processing({ onDone }: ProcessingProps) {
         </Animated.View>
 
         <View style={{ height: 40 }} />
-        <Text style={styles.copy} maxFontSizeMultiplier={1.2}>
-          Reading your answers…
-        </Text>
+        <View style={styles.copyStack}>
+          {PHASES.map((phrase, i) => (
+            <PhrasePane
+              key={phrase}
+              phrase={phrase}
+              visible={i === phaseIndex}
+            />
+          ))}
+        </View>
 
         <View style={{ height: 16 }} />
         <Dots />
       </View>
     </SafeAreaView>
+  );
+}
+
+/**
+ * One narrative phrase rendered in an absolute slot so consecutive
+ * phrases crossfade in the same typographic position. `visible` flips
+ * the opacity via Reanimated; the previous phrase eases out while the
+ * next eases in over PHASE_FADE_MS.
+ */
+function PhrasePane({
+  phrase,
+  visible,
+}: {
+  phrase: string;
+  visible: boolean;
+}) {
+  const opacity = useSharedValue(visible ? 1 : 0);
+  useEffect(() => {
+    opacity.value = withTiming(visible ? 1 : 0, {
+      duration: PHASE_FADE_MS,
+      easing: Easing.inOut(Easing.ease),
+    });
+  }, [visible, opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.Text
+      style={[styles.copy, styles.copySlot, style]}
+      maxFontSizeMultiplier={1.2}
+    >
+      {phrase}
+    </Animated.Text>
   );
 }
 
@@ -116,6 +171,20 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: palette.inkSecondary,
     textAlign: 'center',
+  },
+  // v10.8 — three phrases stack in the same slot and crossfade; the
+  // stack reserves one line of vertical room so the layout doesn't
+  // jump as phrases change length.
+  copyStack: {
+    height: 32,
+    alignSelf: 'stretch',
+    marginHorizontal: 24,
+    justifyContent: 'center',
+  },
+  copySlot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
   },
 });
 

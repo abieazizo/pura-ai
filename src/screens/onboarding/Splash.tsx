@@ -210,10 +210,13 @@ const styles = StyleSheet.create({
   },
 });
 
+// v10.8 — stage bg moved from v5 sandPaper to cool bgDeep so the
+// Splash device-frame preview matches the rest of the cool palette
+// instead of rendering as a warm sepia square on a cool page.
 const stageStyles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: palette.sandPaper,
+    backgroundColor: palette.bgDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { SlideEntry } from '@/components/onboarding/SlideEntry';
 import { Splash } from '@/screens/onboarding/Splash';
 import { AuthChoice } from '@/screens/onboarding/AuthChoice';
+import { SignIn } from '@/screens/onboarding/SignIn';
 import { Tutorial } from '@/screens/onboarding/Tutorial';
 import { CameraPrimer } from '@/screens/onboarding/CameraPrimer';
 import { CameraPermission } from '@/screens/onboarding/CameraPermission';
@@ -65,16 +66,17 @@ export function OnboardingNavigator() {
           <SlideEntry>
             <Splash
               onGetStarted={() => navigation.navigate('AuthChoice')}
-              onSignIn={() => navigation.navigate('AuthChoice')}
+              onSignIn={() => navigation.navigate('SignIn')}
             />
           </SlideEntry>
         )}
       </Stack.Screen>
 
-      {/* v10.6 — AuthChoice sits between the brand intro (Splash) and
-          the first permission prime. Apple/Google/Email all advance to
+      {/* v10.6 — new-user auth entry. Apple/Google/Email all advance to
           CameraPrimer for now; real auth wiring plugs in here when
-          identity provider keys ship. */}
+          identity provider keys ship. v10.8 — "Sign in" tail routes to
+          the distinct SignIn screen (returning-user path), not back
+          into AuthChoice. */}
       <Stack.Screen name="AuthChoice">
         {({ navigation }) => (
           <SlideEntry>
@@ -82,10 +84,21 @@ export function OnboardingNavigator() {
               onAppleContinue={() => navigation.navigate('CameraPrimer')}
               onGoogleContinue={() => navigation.navigate('CameraPrimer')}
               onEmailContinue={() => navigation.navigate('CameraPrimer')}
-              onSignIn={() => navigation.navigate('CameraPrimer')}
+              onSignIn={() => navigation.navigate('SignIn')}
             />
           </SlideEntry>
         )}
+      </Stack.Screen>
+
+      {/* v10.8 — SignIn (returning users). Provider buttons + email +
+          password. On successful auth it jumps the user straight into
+          the tabs because their account already carries whatever
+          profile/scan history exists on the backend. Email submit is a
+          stub callback that routes into Tabs; real auth slots in
+          here. "Create account" footer routes back to AuthChoice for
+          first-time users who landed on SignIn by mistake. */}
+      <Stack.Screen name="SignIn">
+        {({ navigation }) => <SignInHost nav={navigation} />}
       </Stack.Screen>
 
       <Stack.Screen name="CameraPrimer">
@@ -270,6 +283,43 @@ export function OnboardingNavigator() {
         {() => <TutorialHost />}
       </Stack.Screen>
     </Stack.Navigator>
+  );
+}
+
+/**
+ * v10.8 — SignInHost wraps the returning-user SignIn screen. A
+ * successful sign-in (provider OR email+password) skips the entire
+ * quiz/paywall/tutorial because the backend already carries the
+ * user's profile and scan history. For this build (no real auth
+ * backend) every sign-in handler simply fires `finishOnboarding()`
+ * and resets into Tabs. When identity providers ship, the
+ * handlers swap to real auth with the same completion contract.
+ *
+ * "Create account" sends the user back to AuthChoice (new-user flow).
+ */
+function SignInHost({ nav }: { nav: any }) {
+  const rootNav = useNavigation<NavigationProp<any>>();
+  const finish = useAppStore((s) => s.finishOnboarding);
+
+  const completeSignIn = useCallback(() => {
+    finish();
+    rootNav.reset?.({ index: 0, routes: [{ name: 'Tabs' as never }] });
+  }, [finish, rootNav]);
+
+  return (
+    <SlideEntry>
+      <SignIn
+        onBack={() => nav.goBack()}
+        onAppleSignIn={completeSignIn}
+        onGoogleSignIn={completeSignIn}
+        onEmailSignIn={completeSignIn}
+        onForgotPassword={() => {
+          // eslint-disable-next-line no-console
+          console.log('[onboarding] TODO: forgot password flow');
+        }}
+        onCreateAccount={() => nav.replace('AuthChoice')}
+      />
+    </SlideEntry>
   );
 }
 

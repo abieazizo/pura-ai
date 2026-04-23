@@ -13,12 +13,15 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import Animated, {
   Easing,
+  interpolate,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
   withRepeat,
   withSequence,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 import Svg, {
   Circle,
@@ -66,10 +69,20 @@ const PAGES: PageIndex[] = [0, 1, 2];
 export function Tutorial({ onComplete, onSkip }: TutorialProps) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const listRef = useRef<FlatList<PageIndex>>(null);
+  const listRef = useRef<Animated.FlatList<PageIndex>>(null);
   const [page, setPage] = useState<PageIndex>(0);
 
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  // v10.8 — scrollX drives per-page parallax. Visuals translate at 0.4×
+  // the scroll rate (sticky), copy at 1.0× (standard), so the visual
+  // "stays" on screen longer while the next page's text arrives.
+  const scrollX = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollX.value = e.contentOffset.x;
+    },
+  });
+
+  const handleMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = Math.round(e.nativeEvent.contentOffset.x / width) as PageIndex;
     if (next !== page) {
       setPage(next);
@@ -127,17 +140,23 @@ export function Tutorial({ onComplete, onSkip }: TutorialProps) {
         </Pressable>
       </View>
 
-      <FlatList
+      <Animated.FlatList
         ref={listRef}
         data={PAGES}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         keyExtractor={(i) => String(i)}
-        onScroll={handleScroll}
+        onScroll={scrollHandler}
+        onMomentumScrollEnd={handleMomentumEnd}
         scrollEventThrottle={16}
         renderItem={({ item }) => (
-          <TutorialPage index={item} width={width} activeIndex={page} />
+          <TutorialPage
+            index={item}
+            width={width}
+            activeIndex={page}
+            scrollX={scrollX}
+          />
         )}
         getItemLayout={(_, i) => ({
           length: width,
@@ -201,54 +220,97 @@ function TutorialPage({
   index,
   width,
   activeIndex,
+  scrollX,
 }: {
   index: PageIndex;
   width: number;
   activeIndex: PageIndex;
+  scrollX: SharedValue<number>;
 }) {
   const meta = PAGE_META[index];
   const reduceMotion = useReduceMotion();
-
-  // Entrance: animate when this page becomes active.
   const isActive = index === activeIndex;
-  const opacity = useSharedValue(isActive ? 1 : 0);
-  const translateY = useSharedValue(isActive ? 0 : 14);
 
+  // v10.8 — parallax derived from scrollX. The page's "distance from
+  // center" is `scrollX - index * width`, normalized to [-1, 1] across
+  // the adjacent pages. Visual gets ~40% of the scroll translation
+  // (sticky feel); copy gets full translation but fades off-center so
+  // only the active page's words are readable.
+  const visualParallaxStyle = useAnimatedStyle(() => {
+    if (reduceMotion) return {};
+    const center = index * width;
+    const progress = (scrollX.value - center) / width; // [-1, 1] window
+    // Visual slides at 0.4× the scroll rate for a sticky parallax feel.
+    const translateX = -progress * width * 0.4;
+    // Slight scale pulse: shrinks toward 0.94 as the page leaves center.
+    const scale = interpolate(
+      Math.abs(progress),
+      [0, 1],
+      [1, 0.94],
+      'clamp'
+    );
+    // Opacity fades the off-center page's visual so the next one has
+    // uncontested visual weight when centered.
+    const opacity = interpolate(
+      Math.abs(progress),
+      [0, 0.6, 1],
+      [1, 0.45, 0],
+      'clamp'
+    );
+    return {
+      transform: [{ translateX }, { scale }],
+      opacity,
+    };
+  });
+
+  const copyParallaxStyle = useAnimatedStyle(() => {
+    if (reduceMotion) return {};
+    const center = index * width;
+    const progress = (scrollX.value - center) / width;
+    // Copy fades faster than the visual so off-center text doesn't
+    // bleed through. Slight lift so active copy feels anchored.
+    const opacity = interpolate(
+      Math.abs(progress),
+      [0, 0.5, 1],
+      [1, 0.3, 0],
+      'clamp'
+    );
+    const translateY = interpolate(
+      Math.abs(progress),
+      [0, 1],
+      [0, 10],
+      'clamp'
+    );
+    return { opacity, transform: [{ translateY }] };
+  });
+
+  // Entrance lift only when actively arriving from off-screen (e.g.
+  // first mount of page 0). Doesn't fight parallax — uses a separate
+  // shared value that settles in 420ms.
+  const entryY = useSharedValue(reduceMotion ? 0 : 14);
   useEffect(() => {
-    if (reduceMotion) {
-      opacity.value = 1;
-      translateY.value = 0;
-      return;
-    }
+    if (reduceMotion) return;
     if (isActive) {
-      opacity.value = withDelay(
-        120,
-        withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) })
-      );
-      translateY.value = withDelay(
+      entryY.value = withDelay(
         120,
         withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) })
       );
-    } else {
-      opacity.value = 0;
-      translateY.value = 14;
     }
-  }, [isActive, opacity, translateY, reduceMotion]);
+  }, [isActive, entryY, reduceMotion]);
 
-  const copyStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
+  const entryStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: entryY.value }],
   }));
 
   return (
     <View style={[pageStyles.wrap, { width }]}>
-      <View style={pageStyles.visualWrap}>
+      <Animated.View style={[pageStyles.visualWrap, visualParallaxStyle]}>
         {index === 0 ? <ScanVisual active={isActive} reduceMotion={reduceMotion} /> : null}
         {index === 1 ? <PlanVisual active={isActive} /> : null}
         {index === 2 ? <TrackVisual active={isActive} reduceMotion={reduceMotion} /> : null}
-      </View>
+      </Animated.View>
 
-      <Animated.View style={[pageStyles.copy, copyStyle]}>
+      <Animated.View style={[pageStyles.copy, copyParallaxStyle, entryStyle]}>
         <Text style={pageStyles.kicker} maxFontSizeMultiplier={1.1}>
           {meta.kicker}
         </Text>

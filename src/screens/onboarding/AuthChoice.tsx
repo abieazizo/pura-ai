@@ -13,6 +13,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import {
@@ -187,20 +188,53 @@ export function AuthChoice({
 }
 
 // ============================================================================
-// Button primitives — each has a spring-scaled press state.
+// Button primitives — v10.8: true Reanimated spring press feedback so
+// auth interaction matches OnboardingPrimaryButton's feel. Each button
+// wraps a shared `SpringPressButton` that owns the scale shared-value.
 // ============================================================================
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const PRESS_SPRING = { damping: 15, stiffness: 300, mass: 1 };
+
+function SpringPressButton({
+  onPress,
+  accessibilityLabel,
+  containerStyle,
+  children,
+}: {
+  onPress: () => void;
+  accessibilityLabel: string;
+  containerStyle: object;
+  children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const handle = () => {
+    scale.value = withSpring(0.98, PRESS_SPRING, () => {
+      scale.value = withSpring(1, PRESS_SPRING);
+    });
+    onPress();
+  };
+  return (
+    <AnimatedPressable
+      onPress={handle}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.button, containerStyle, animated]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
 
 function AppleButton({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable
+    <SpringPressButton
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel="Continue with Apple"
-      style={({ pressed }) => [
-        styles.button,
-        styles.buttonApple,
-        pressed && styles.buttonPressed,
-      ]}
+      containerStyle={styles.buttonApple}
     >
       <AppleLogo size={19} color={palette.bg} weight="fill" />
       <Text
@@ -209,47 +243,37 @@ function AppleButton({ onPress }: { onPress: () => void }) {
       >
         Continue with Apple
       </Text>
-    </Pressable>
+    </SpringPressButton>
   );
 }
 
 function GoogleButton({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable
+    <SpringPressButton
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel="Continue with Google"
-      style={({ pressed }) => [
-        styles.button,
-        styles.buttonGoogle,
-        pressed && styles.buttonPressed,
-      ]}
+      containerStyle={styles.buttonGoogle}
     >
       <GoogleLogo size={19} color={palette.ink} weight="bold" />
       <Text style={styles.buttonLabel} maxFontSizeMultiplier={1.15}>
         Continue with Google
       </Text>
-    </Pressable>
+    </SpringPressButton>
   );
 }
 
 function EmailButton({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable
+    <SpringPressButton
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel="Continue with email"
-      style={({ pressed }) => [
-        styles.button,
-        styles.buttonEmail,
-        pressed && styles.buttonPressed,
-      ]}
+      containerStyle={styles.buttonEmail}
     >
       <Envelope size={19} color={palette.ink} weight="duotone" />
       <Text style={styles.buttonLabel} maxFontSizeMultiplier={1.15}>
         Continue with email
       </Text>
-    </Pressable>
+    </SpringPressButton>
   );
 }
 
@@ -306,10 +330,6 @@ const styles = StyleSheet.create({
     backgroundColor: palette.bg,
     borderWidth: 1,
     borderColor: palette.hairline,
-  },
-  buttonPressed: {
-    opacity: 0.94,
-    transform: [{ scale: 0.985 }],
   },
   buttonLabel: {
     fontFamily: 'Inter-SemiBold',
