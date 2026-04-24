@@ -26,6 +26,12 @@ export interface AppState {
   user: User | null;
   scans: Scan[];
   routine: RoutineStep[];
+  /** v10.13 — user-built routine: product ids placed into morning and
+   *  evening. Distinct from `routine` (which is the rich AI-generated
+   *  `RoutineStep[]`). These are the simple user-managed slot arrays
+   *  wired up by AddToRoutineSheet. "Saved" is the existing `wishlist`. */
+  userRoutineMorning: string[];
+  userRoutineEvening: string[];
   matches: ProductMatch[];
   wishlist: string[];
   messages: AssistantMessage[];
@@ -80,6 +86,12 @@ export interface AppState {
   setAppearance: (mode: AppearanceMode) => void;
   setHasSeenScanTutorial: (seen: boolean) => void;
   setHasPromptedNotifications: (prompted: boolean) => void;
+  /** v10.13 — user-routine actions. Idempotent (no-op if productId is
+   *  already in the target slot); moving from one slot to another is
+   *  explicit via `moveUserRoutineProduct`. */
+  addUserRoutineProduct: (slot: 'morning' | 'evening', productId: string) => void;
+  removeUserRoutineProduct: (slot: 'morning' | 'evening', productId: string) => void;
+  moveUserRoutineProduct: (productId: string, to: 'morning' | 'evening') => void;
 
   setName: (name: string) => void;
   setAge: (age: number | null) => void;
@@ -124,6 +136,8 @@ const blankState = {
   user: null as User | null,
   scans: [] as Scan[],
   routine: [] as RoutineStep[],
+  userRoutineMorning: [] as string[],
+  userRoutineEvening: [] as string[],
   matches: [] as ProductMatch[],
   wishlist: [] as string[],
   messages: [] as AssistantMessage[],
@@ -232,6 +246,43 @@ export const useAppStore = create<AppState>()(
       setHasPromptedNotifications: (prompted) =>
         set({ hasPromptedNotifications: prompted }),
 
+      addUserRoutineProduct: (slot, productId) =>
+        set((state) => {
+          const key = slot === 'morning' ? 'userRoutineMorning' : 'userRoutineEvening';
+          const current = state[key];
+          if (current.includes(productId)) return state;
+          return { ...state, [key]: [...current, productId] };
+        }),
+
+      removeUserRoutineProduct: (slot, productId) =>
+        set((state) => {
+          const key = slot === 'morning' ? 'userRoutineMorning' : 'userRoutineEvening';
+          return { ...state, [key]: state[key].filter((id) => id !== productId) };
+        }),
+
+      moveUserRoutineProduct: (productId, to) =>
+        set((state) => {
+          const fromMorning = state.userRoutineMorning.includes(productId);
+          const fromEvening = state.userRoutineEvening.includes(productId);
+          const nextMorning =
+            to === 'morning'
+              ? fromMorning
+                ? state.userRoutineMorning
+                : [...state.userRoutineMorning, productId]
+              : state.userRoutineMorning.filter((id) => id !== productId);
+          const nextEvening =
+            to === 'evening'
+              ? fromEvening
+                ? state.userRoutineEvening
+                : [...state.userRoutineEvening, productId]
+              : state.userRoutineEvening.filter((id) => id !== productId);
+          return {
+            ...state,
+            userRoutineMorning: nextMorning,
+            userRoutineEvening: nextEvening,
+          };
+        }),
+
       setName: (name) => set({ name }),
       setAge: (age) => set({ age }),
       setGender: (gender) => set({ gender }),
@@ -331,6 +382,8 @@ export const useAppStore = create<AppState>()(
         user: state.user,
         scans: state.scans,
         routine: state.routine,
+        userRoutineMorning: state.userRoutineMorning,
+        userRoutineEvening: state.userRoutineEvening,
         matches: state.matches,
         wishlist: state.wishlist,
         messages: state.messages,

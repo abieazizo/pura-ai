@@ -178,3 +178,84 @@ export function sinceLastPhrase(latestAt: string | null, scanCount: number): str
   if (days < 14) return 'since last week';
   return `since ${Math.floor(days / 7)} weeks ago`;
 }
+
+/**
+ * v10.13 — Skin Score "why" line. Turns the number + delta into
+ * something the user can make sense of by naming which concerns moved.
+ * Examples:
+ *
+ *   "Breakouts calming. Hydration still needs work."
+ *   "All four areas trending well."
+ *   "Hydration improving. Dark marks holding."
+ *   "Your first reading — we'll have movement by scan two."
+ *
+ * Consumers pass the latest + previous scans. Falls back to a single
+ * grounded line when there's no prior scan to compare against.
+ */
+export function buildSkinScoreWhy(
+  scans: Scan[]
+): string {
+  if (scans.length === 0) {
+    return 'Your reading will appear here after your first scan.';
+  }
+  if (scans.length === 1) {
+    return 'First reading set. Movement shows up at scan two.';
+  }
+
+  const latest = scans[scans.length - 1];
+  const previous = scans[scans.length - 2];
+
+  type Direction = 'improved' | 'declined' | 'flat';
+  const movements: { category: string; direction: Direction }[] = [];
+
+  // Compare zone severities when available; fallback to overallScore tiers.
+  if (latest.zones && previous.zones) {
+    const prevMap = new Map(previous.zones.map((z) => [z.label, z.status]));
+    for (const z of latest.zones) {
+      const prevStatus = prevMap.get(z.label);
+      if (!prevStatus) continue;
+      const prevRank = statusRank(prevStatus);
+      const currRank = statusRank(z.status);
+      if (currRank < prevRank) movements.push({ category: z.label.toLowerCase(), direction: 'improved' });
+      else if (currRank > prevRank) movements.push({ category: z.label.toLowerCase(), direction: 'declined' });
+      else movements.push({ category: z.label.toLowerCase(), direction: 'flat' });
+    }
+  }
+
+  const improved = movements.filter((m) => m.direction === 'improved');
+  const declined = movements.filter((m) => m.direction === 'declined');
+
+  if (improved.length === 0 && declined.length === 0) {
+    return 'Holding steady across every category.';
+  }
+  if (improved.length > 0 && declined.length === 0) {
+    if (improved.length >= 3) return 'Most areas trending well.';
+    if (improved.length === 1) return `${capitalize(improved[0].category)} calming.`;
+    return `${capitalize(improved[0].category)} and ${improved[1].category} trending well.`;
+  }
+  if (declined.length > 0 && improved.length === 0) {
+    if (declined.length === 1) return `${capitalize(declined[0].category)} needs a closer look.`;
+    return `${capitalize(declined[0].category)} and ${declined[1].category} need attention.`;
+  }
+  // Mixed — name one of each.
+  const up = improved[0];
+  const down = declined[0];
+  return `${capitalize(up.category)} calming. ${capitalize(down.category)} still needs work.`;
+}
+
+function statusRank(status: string): number {
+  switch (status) {
+    case 'calm':
+      return 0;
+    case 'monitor':
+      return 1;
+    case 'active':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function capitalize(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
+}

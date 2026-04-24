@@ -28,6 +28,7 @@ import { hapt } from '@/utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { CATEGORY_LABEL, getConcerns, severityLabel } from '@/utils/concerns';
 import {
+  buildSkinScoreWhy,
   computeSkinScore,
   formatDelta,
 } from '@/utils/skinScore';
@@ -201,6 +202,18 @@ export function HomeScreen() {
             numberOfLines={2}
           >
             {score.headline}
+          </Text>
+
+          {/* v10.13 — Skin Score "why" line. Names which concerns
+              moved so the number + delta chip at the top don't read
+              as arbitrary. "Breakouts calming, hydration still needs
+              work" is more meaningful than "Up 4 since last scan." */}
+          <Text
+            style={styles.scoreWhyLine}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={2}
+          >
+            {buildSkinScoreWhy(scans)}
           </Text>
         </View>
 
@@ -828,6 +841,16 @@ const styles = StyleSheet.create({
     marginTop: 28,
     textAlign: 'center',
     paddingHorizontal: 20,
+  },
+  // v10.13 — Skin Score why-line beneath the headline.
+  scoreWhyLine: {
+    marginTop: 8,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    lineHeight: 21,
+    color: palette.inkSecondary,
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
   whatChangedKicker: {
     fontFamily: 'Inter-SemiBold',

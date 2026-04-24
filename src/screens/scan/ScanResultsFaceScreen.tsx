@@ -37,7 +37,7 @@ import {
   getConcerns,
   severityLabel,
 } from '@/utils/concerns';
-import { computeSkinScore, formatDelta } from '@/utils/skinScore';
+import { buildSkinScoreWhy, computeSkinScore, formatDelta } from '@/utils/skinScore';
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Concern, Severity } from '@/types';
@@ -195,6 +195,19 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
         <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
           {headline}
         </Text>
+
+        {/* v10.13 — Skin Score "why" line directly under the reveal
+            headline. Names which concerns moved so the medallion's
+            +4 / -4 reads as meaningful, not arbitrary. */}
+        {scans.length >= 2 ? (
+          <Text
+            style={styles.whyLine}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={2}
+          >
+            {buildSkinScoreWhy(scans)}
+          </Text>
+        ) : null}
 
         <View style={styles.findings}>
           {top3.map((concern, i) => (
@@ -820,6 +833,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
     color: palette.ink,
     marginTop: 74,
+    marginBottom: 12,
+    maxWidth: '92%',
+  },
+  // v10.13 — Skin Score why-line under the reveal headline.
+  whyLine: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    lineHeight: 21,
+    color: palette.inkSecondary,
     marginBottom: 24,
     maxWidth: '92%',
   },

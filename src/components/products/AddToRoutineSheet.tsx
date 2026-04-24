@@ -14,7 +14,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Notifications from 'expo-notifications';
 import {
   HeartStraight,
   Moon,
@@ -25,6 +24,7 @@ import {
 import { hapt } from '@/utils/haptics';
 import { useAppStore } from '@/store/useAppStore';
 import { palette } from '@/theme';
+import { NotificationPrimerSheet } from './NotificationPrimerSheet';
 
 export type AddToRoutineTarget = 'morning' | 'evening' | 'saved';
 
@@ -111,9 +111,18 @@ export function AddToRoutineSheet({
   const hasPromptedNotifications = useAppStore(
     (s) => s.hasPromptedNotifications
   );
-  const setHasPromptedNotifications = useAppStore(
-    (s) => s.setHasPromptedNotifications
+  const addUserRoutineProduct = useAppStore((s) => s.addUserRoutineProduct);
+  const toggleWishlist = useAppStore((s) => s.toggleWishlist);
+  const wishlistIncludes = useAppStore((s) =>
+    s.wishlist.includes(productId)
   );
+
+  // v10.13 — after a successful add, surface a premium
+  // NotificationPrimerSheet if reminders haven't been asked yet.
+  // Only triggers on morning/evening (scheduled actions). Saved
+  // doesn't need reminders.
+  const [primerVisible, setPrimerVisible] = React.useState(false);
+  const [primerTime, setPrimerTime] = React.useState('7:00 AM');
 
   useEffect(() => {
     y.value = visible
@@ -133,33 +142,35 @@ export function AddToRoutineSheet({
   }));
 
   const pick = (row: RowDef) => {
-    // eslint-disable-next-line no-console
-    console.log(`[STUB] Added ${productId} to ${row.target}`);
     hapt.success();
 
-    // v10.11 — contextual notification permission. The first time a
-    // user actually schedules a morning or evening routine step is
-    // when reminders become meaningful; that's the right moment to
-    // request the OS permission, not during onboarding. "Saved"
-    // skips the prompt because it's a bookmark, not a scheduled
-    // action. `hasPromptedNotifications` persists across sessions
-    // so iOS's one-shot system sheet isn't re-attempted if the user
-    // already made a choice.
-    const needsSchedule = row.target === 'morning' || row.target === 'evening';
-    if (needsSchedule && !hasPromptedNotifications) {
-      setHasPromptedNotifications(true);
-      // Fire-and-forget. The OS handles denial + "ask again later"
-      // gracefully; we don't block the add-to-routine flow on the
-      // result.
-      Notifications.requestPermissionsAsync().catch(() => {
-        // Swallow — permission denied or unavailable is non-fatal.
-      });
+    // v10.13 — actually persist to the store. Morning/evening go into
+    // the user-routine arrays; Saved toggles the existing wishlist.
+    // All three paths are idempotent — adding a duplicate is a no-op.
+    if (row.target === 'morning' || row.target === 'evening') {
+      addUserRoutineProduct(row.target, productId);
+    } else if (row.target === 'saved' && !wishlistIncludes) {
+      toggleWishlist(productId);
     }
 
-    // Let the exit animation play before firing the toast.
+    // Defer the notification primer to after the sheet has animated
+    // out — two overlapping sheets would fight. Only surfaces on
+    // morning/evening (scheduled actions) and only once per lifetime.
+    const needsReminder =
+      row.target === 'morning' || row.target === 'evening';
+    const willPromptNotifications =
+      needsReminder && !hasPromptedNotifications;
+    if (willPromptNotifications) {
+      setPrimerTime(row.target === 'morning' ? '7:00 AM' : '9:30 PM');
+    }
+
+    // Let the exit animation play before firing the toast + primer.
     setTimeout(() => {
       onAdded?.(row.target, productId);
-    }, 220);
+      if (willPromptNotifications) {
+        setPrimerVisible(true);
+      }
+    }, 260);
     onDismiss();
   };
 
@@ -243,6 +254,12 @@ export function AddToRoutineSheet({
           </SafeAreaView>
         </Animated.View>
       </View>
+
+      <NotificationPrimerSheet
+        visible={primerVisible}
+        reminderTime={primerTime}
+        onDismiss={() => setPrimerVisible(false)}
+      />
     </Modal>
   );
 }
