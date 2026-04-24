@@ -36,6 +36,7 @@ import { FaceOutline } from './FaceOutline';
 import { LandmarkDots } from './LandmarkDots';
 import { ZoneOverlay } from './ZoneOverlay';
 import { DetectionMarker } from './DetectionMarker';
+import { MeasuringSweep } from './MeasuringSweep';
 
 const WINDOW_W = Dimensions.get('window').width;
 const PHOTO_WIDTH = WINDOW_W - PHOTO_MARGIN_H * 2;
@@ -50,6 +51,10 @@ export interface PhotoStageProps {
   markersVisible: [boolean, boolean, boolean, boolean];
   reduceMotion: boolean;
   result: ScanResult | null;
+  /** Beat 5 duration in ms (from the active BeatTiming). The measuring
+   *  sweep scales itself to fit so compressed / minimal pacings don't
+   *  cut the sweep mid-travel. */
+  scoreBeatDuration: number;
 }
 
 export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
@@ -61,6 +66,7 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
     markersVisible,
     reduceMotion,
     result,
+    scoreBeatDuration,
   },
   ref
 ) {
@@ -173,6 +179,19 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
               />
             );
           })}
+
+          {/* v10.17 — Beat 5 measuring sweep. A luminous clay-tinted
+              band travels top → bottom within the Beat 5 window while
+              the caption reads "Preparing your result." Fills the
+              visual seam left when v10.16 removed per-zone numeric
+              bubbles, without reintroducing numbers on the face. The
+              sweep scales itself to fit compressed / minimal pacings. */}
+          <MeasuringSweep
+            size={{ w: PHOTO_WIDTH, h: currentHeight }}
+            beat={beat}
+            reduceMotion={reduceMotion}
+            durationMs={scoreBeatDuration}
+          />
         </Svg>
       </View>
     </Animated.View>

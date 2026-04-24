@@ -30,6 +30,9 @@ import type { ScanFinding } from '@/types';
 
 export interface RevealFooterProps {
   overallScore: number;
+  /** Previous scan's overall score; null when this is the user's first
+   *  scan. Used to render the "Up N from your last scan." line. */
+  previousScore: number | null;
   findings: ScanFinding[];
   onPrimary: () => void;
   onSecondary: () => void;
@@ -47,9 +50,16 @@ export interface RevealFooterProps {
  * score in a tier-labelled row ("Good · 73"). The CTA carries the
  * move into the result screen, where the full medallion, hotspots,
  * and findings live.
+ *
+ * v10.17 — one italic-serif context line sits under the score row:
+ * "Up 4 from your last scan." / "Down 2 from your last scan." /
+ * "Your first reading." Same tone as the why-line on Home and the
+ * result screen. Keeps the footer concise but removes the "why am I
+ * seeing just a number?" moment.
  */
 export function RevealFooter({
   overallScore,
+  previousScore,
   findings: _findings,
   onPrimary,
   onSecondary,
@@ -57,6 +67,7 @@ export function RevealFooter({
   reduceMotion,
 }: RevealFooterProps) {
   const tier = tierFor(overallScore);
+  const deltaLine = buildDeltaLine(overallScore, previousScore);
   const headlineOpacity = useSharedValue(0);
   const headlineTY = useSharedValue(12);
   const ctaOpacity = useSharedValue(0);
@@ -131,6 +142,13 @@ export function RevealFooter({
             {overallScore}
           </Text>
         </View>
+        <Text
+          style={styles.deltaLine}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={1}
+        >
+          {deltaLine}
+        </Text>
       </Animated.View>
 
       <Animated.View style={ctaStyle}>
@@ -141,7 +159,7 @@ export function RevealFooter({
             pressed && { opacity: 0.92 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`See your results. Skin Score ${overallScore}, ${tierLabel(tier)}.`}
+          accessibilityLabel={`See your results. Skin Score ${overallScore}, ${tierLabel(tier)}. ${deltaLine}`}
         >
           <Text style={styles.primaryCtaLabel} maxFontSizeMultiplier={1.15}>
             See your results
@@ -166,6 +184,27 @@ export function RevealFooter({
       </Animated.View>
     </View>
   );
+}
+
+/**
+ * Build the single context line under the score row.
+ *   • No previous scan         → "Your first reading."
+ *   • Delta ≥ 1 vs. previous   → "Up N from your last scan."
+ *   • Delta ≤ -1 vs. previous  → "Down N from your last scan."
+ *   • Delta == 0               → "Holding steady since your last scan."
+ *
+ * The result screen loads immediately after and adds why-line detail
+ * ("Breakouts calming. Hydration still needs work."); this footer line
+ * is the one-beat-earlier preview that answers "is the number good?"
+ */
+function buildDeltaLine(current: number, previous: number | null): string {
+  if (previous === null) {
+    return 'Your first reading.';
+  }
+  const delta = Math.round(current - previous);
+  if (delta > 0) return `Up ${delta} from your last scan.`;
+  if (delta < 0) return `Down ${Math.abs(delta)} from your last scan.`;
+  return 'Holding steady since your last scan.';
 }
 
 // Photo compressed bottom = PHOTO_Y_REVEAL + PHOTO_HEIGHT_REVEAL;
@@ -214,6 +253,13 @@ const styles = StyleSheet.create({
     letterSpacing: -1.2,
     color: palette.clay,
     fontVariant: ['tabular-nums'],
+  },
+  deltaLine: {
+    marginTop: 10,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    lineHeight: 21,
+    color: palette.inkSecondary,
   },
   primaryCta: {
     height: 56,

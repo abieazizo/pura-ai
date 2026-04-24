@@ -55,7 +55,7 @@ export interface SkinScoreDialProps {
    *  current value visually shows its movement. Null = no notch drawn. */
   previousValue?: number | null;
   /** Optional delta caption shown inside the dial under the tier label —
-   *  e.g. "+4 since last scan" / "new reading". */
+   *  e.g. "+4 since last scan" / "first reading". */
   deltaCaption?: string | null;
   /** Fires once when the count-up animation settles on its final value.
    *  Lets callers (e.g. ScanResult) land a haptic at the reveal moment. */

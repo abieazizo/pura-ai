@@ -191,7 +191,7 @@ export function HomeScreen() {
                   ? `${formatDelta(
                       score.deltaSinceLast
                     )} since last scan`
-                  : 'new reading'
+                  : 'first reading'
               }
             />
           </View>

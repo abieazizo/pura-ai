@@ -670,12 +670,17 @@ function ProgressSubTab({
         {/* v10.13 — "why" line below the hero turns the number into
             something understandable ("Breakouts calming, hydration
             still needs work"). Same utility surfaces on Home + Scan
-            Result so the Skin Score reads as meaningful everywhere. */}
-        <View style={styles.whyLineWrap}>
-          <Text style={styles.whyLineText} maxFontSizeMultiplier={1.2}>
-            {whyLine}
-          </Text>
-        </View>
+            Result so the Skin Score reads as meaningful everywhere.
+            v10.17 — stripped the tinted wrap so the treatment matches
+            the other two score destinations: plain italic serif,
+            nothing under it. The boxed variant was the odd one out. */}
+        <Text
+          style={styles.whyLineText}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={2}
+        >
+          {whyLine}
+        </Text>
 
         <ProgressNarrative scans={scans} />
 
@@ -921,20 +926,16 @@ const styles = StyleSheet.create({
     color: palette.inkSecondary,
   },
 
-  // Progress sub-tab extras
-  whyLineWrap: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: palette.bgDeep,
-  },
+  // Progress sub-tab why-line — plain italic serif, no wrap, matching
+  // the treatment on Home and the Scan Result screen.
   whyLineText: {
+    marginHorizontal: 20,
+    marginTop: 14,
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 15,
     lineHeight: 21,
     color: palette.inkSecondary,
+    maxWidth: '92%',
   },
   compareBlock: { marginTop: space.xxl },
   compareHead: {

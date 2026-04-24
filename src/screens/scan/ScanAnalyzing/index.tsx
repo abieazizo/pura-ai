@@ -179,6 +179,7 @@ export function ScanAnalyzingFaceScreen({
         markersVisible={choreography.markersVisible}
         reduceMotion={reduceMotion}
         result={result}
+        scoreBeatDuration={beatTiming.SCORE.duration}
       />
 
       {!canReveal ? (
@@ -193,6 +194,7 @@ export function ScanAnalyzingFaceScreen({
       {canReveal && result ? (
         <RevealFooter
           overallScore={result.overallScore}
+          previousScore={previousScan?.overallScore ?? null}
           findings={result.findings}
           onPrimary={handleRevealPrimary}
           onSecondary={handleRetry}

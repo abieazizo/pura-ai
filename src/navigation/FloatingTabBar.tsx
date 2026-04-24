@@ -13,7 +13,7 @@ import {
   House,
   ScanSmiley,
   Drop,
-  ChartLineUp,
+  CalendarCheck,
   Sparkle,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
@@ -37,15 +37,13 @@ const TAB_META: Record<
   HomeTab:     { label: tabsStrings.home,     Icon: House as PhosphorIcon },
   ScanTab:     { label: tabsStrings.scan,     Icon: ScanSmiley as PhosphorIcon },
   ProductsTab: { label: tabsStrings.products, Icon: Drop as PhosphorIcon },
-  // v10.16 — the tab label is now "ROUTINE" to match the screen's
-  // default segment. The v10.13 label "PROGRESS" conflicted with the
-  // default "Routine" view shown inside the destination, which made
-  // the tab and the page look like two different places. Inside the
-  // screen a premium segmented control still switches between
-  // Routine (default, daily action center) and Progress (proof
-  // layer). ChartLineUp icon is retained because the destination
-  // still owns long-term trajectory.
-  RoutineTab:  { label: tabsStrings.routine, Icon: ChartLineUp as PhosphorIcon },
+  // v10.17 — icon switched from ChartLineUp (progress/analytics-coded)
+  // to CalendarCheck so the glyph matches the ROUTINE label. A trend
+  // line next to "ROUTINE" pulled the tab toward its secondary Progress
+  // segment's personality; CalendarCheck reads as daily cadence +
+  // tracked completion and covers both sub-segments without leaning
+  // either way. Label + icon now speak the same noun.
+  RoutineTab:  { label: tabsStrings.routine, Icon: CalendarCheck as PhosphorIcon },
   AssistantTab:{ label: tabsStrings.assist,   Icon: Sparkle as PhosphorIcon },
 };
 
