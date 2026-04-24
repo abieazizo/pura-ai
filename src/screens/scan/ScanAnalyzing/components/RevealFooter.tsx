@@ -18,8 +18,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { ArrowRight } from 'phosphor-react-native';
-import { analysisMarkers, palette, scanTypography } from '@/theme';
+import { palette, scanTypography } from '@/theme';
 import { hapt } from '@/utils/haptics';
+import { tierFor, tierLabel } from '@/utils/skinScore';
 import {
   PHOTO_HEIGHT_REVEAL,
   PHOTO_MARGIN_H,
@@ -36,14 +37,26 @@ export interface RevealFooterProps {
   reduceMotion: boolean;
 }
 
+/**
+ * Beat 7 reveal footer.
+ *
+ * v10.16 — the old "OVERALL 73 / N findings · 4 dots" stack was both
+ * duplicative (the result screen re-lists findings with full context)
+ * and weak (a naked number with no delta or explanation). Rebuilt as
+ * a single confident score readout: "Your reading is ready." + the
+ * score in a tier-labelled row ("Good · 73"). The CTA carries the
+ * move into the result screen, where the full medallion, hotspots,
+ * and findings live.
+ */
 export function RevealFooter({
   overallScore,
-  findings,
+  findings: _findings,
   onPrimary,
   onSecondary,
   bottomInset,
   reduceMotion,
 }: RevealFooterProps) {
+  const tier = tierFor(overallScore);
   const headlineOpacity = useSharedValue(0);
   const headlineTY = useSharedValue(12);
   const ctaOpacity = useSharedValue(0);
@@ -95,7 +108,7 @@ export function RevealFooter({
 
   return (
     <View style={[styles.root, { paddingBottom: bottomInset + 24 }]}>
-      <Animated.View style={[styles.headlineRow, headlineStyle]}>
+      <Animated.View style={[styles.headlineBlock, headlineStyle]}>
         <Text
           style={styles.headline}
           maxFontSizeMultiplier={1.2}
@@ -103,14 +116,15 @@ export function RevealFooter({
           adjustsFontSizeToFit
           minimumFontScale={0.8}
         >
-          Your reading{'\n'}is ready.
+          Your reading is ready.
         </Text>
-        <View style={styles.overallBadge}>
-          <Text style={styles.overallKicker} maxFontSizeMultiplier={1.1}>
-            OVERALL
+        <View style={styles.scoreRow}>
+          <Text style={styles.tierLabel} maxFontSizeMultiplier={1.15}>
+            {tierLabel(tier)}
           </Text>
+          <View style={styles.scoreDivider} />
           <Text
-            style={styles.overallNumber}
+            style={styles.scoreNumber}
             maxFontSizeMultiplier={1.15}
             allowFontScaling
           >
@@ -118,25 +132,6 @@ export function RevealFooter({
           </Text>
         </View>
       </Animated.View>
-
-      <View style={styles.separator} />
-
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryText} maxFontSizeMultiplier={1.2}>
-          {findings.length} findings
-        </Text>
-        <View style={styles.summaryDots}>
-          {findings.slice(0, 4).map((f, i) => (
-            <View
-              key={i}
-              style={[
-                styles.summaryDot,
-                { backgroundColor: analysisMarkers[f.type] },
-              ]}
-            />
-          ))}
-        </View>
-      </View>
 
       <Animated.View style={ctaStyle}>
         <Pressable
@@ -146,7 +141,7 @@ export function RevealFooter({
             pressed && { opacity: 0.92 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`See your results. Overall score ${overallScore}.`}
+          accessibilityLabel={`See your results. Skin Score ${overallScore}, ${tierLabel(tier)}.`}
         >
           <Text style={styles.primaryCtaLabel} maxFontSizeMultiplier={1.15}>
             See your results
@@ -186,52 +181,39 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: PHOTO_MARGIN_H,
   },
-  headlineRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  headlineBlock: {
+    marginBottom: 28,
   },
   headline: {
     ...scanTypography.revealHeadline,
     color: palette.ink,
-    flex: 1,
-    marginRight: 16,
   },
-  overallBadge: {
-    alignItems: 'flex-end',
-  },
-  overallKicker: {
-    ...scanTypography.revealOverallKicker,
-    color: palette.inkTertiary,
-    marginBottom: 2,
-  },
-  overallNumber: {
-    ...scanTypography.revealOverallNumber,
-    color: palette.clay,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: palette.hairline,
-    marginVertical: 18,
-  },
-  summaryRow: {
+  scoreRow: {
+    marginTop: 14,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 28,
+    alignItems: 'baseline',
+    gap: 12,
   },
-  summaryText: {
-    ...scanTypography.revealSummary,
+  tierLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
     color: palette.inkSecondary,
   },
-  summaryDots: {
-    flexDirection: 'row',
-    gap: 6,
+  scoreDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: palette.hairline,
+    alignSelf: 'center',
   },
-  summaryDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  scoreNumber: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 44,
+    lineHeight: 48,
+    letterSpacing: -1.2,
+    color: palette.clay,
+    fontVariant: ['tabular-nums'],
   },
   primaryCta: {
     height: 56,

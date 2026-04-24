@@ -48,7 +48,6 @@ export interface PhotoStageProps {
   revealMode: boolean;
   zonesVisible: [boolean, boolean, boolean, boolean];
   markersVisible: [boolean, boolean, boolean, boolean];
-  scoresVisible: [boolean, boolean, boolean, boolean];
   reduceMotion: boolean;
   result: ScanResult | null;
 }
@@ -60,7 +59,6 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
     revealMode,
     zonesVisible,
     markersVisible,
-    scoresVisible,
     reduceMotion,
     result,
   },
@@ -152,9 +150,6 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
               photoSize={{ w: PHOTO_WIDTH, h: currentHeight }}
               visible={zonesVisible[i]}
               beat={beat}
-              score={result?.zoneScores[zone] ?? null}
-              scoreVisible={scoresVisible[i]}
-              compactScores={revealMode}
               reduceMotion={reduceMotion}
             />
           ))}

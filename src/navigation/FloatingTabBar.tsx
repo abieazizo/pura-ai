@@ -37,12 +37,15 @@ const TAB_META: Record<
   HomeTab:     { label: tabsStrings.home,     Icon: House as PhosphorIcon },
   ScanTab:     { label: tabsStrings.scan,     Icon: ScanSmiley as PhosphorIcon },
   ProductsTab: { label: tabsStrings.products, Icon: Drop as PhosphorIcon },
-  // v10.13 — the RoutineTab slot now carries the label "PROGRESS"
-  // with a ChartLineUp icon. Inside the screen, a premium segmented
-  // control switches between Routine (default) and Progress views,
-  // so this one tab covers both the daily action center and the
-  // long-term proof layer.
-  RoutineTab:  { label: tabsStrings.progress, Icon: ChartLineUp as PhosphorIcon },
+  // v10.16 — the tab label is now "ROUTINE" to match the screen's
+  // default segment. The v10.13 label "PROGRESS" conflicted with the
+  // default "Routine" view shown inside the destination, which made
+  // the tab and the page look like two different places. Inside the
+  // screen a premium segmented control still switches between
+  // Routine (default, daily action center) and Progress (proof
+  // layer). ChartLineUp icon is retained because the destination
+  // still owns long-term trajectory.
+  RoutineTab:  { label: tabsStrings.routine, Icon: ChartLineUp as PhosphorIcon },
   AssistantTab:{ label: tabsStrings.assist,   Icon: Sparkle as PhosphorIcon },
 };
 

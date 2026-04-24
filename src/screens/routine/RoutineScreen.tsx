@@ -43,16 +43,22 @@ import type { RootStackParamList } from '@/navigation/types';
 import type { Product, Scan } from '@/types';
 
 /**
- * Progress tab — v10.13 unified ongoing-use destination.
+ * Routine tab — v10.16 unified ongoing-use destination.
  *
- * Top-level tab label is "PROGRESS", icon ChartLineUp. Inside the
- * screen a segmented control switches between two sub-tabs:
+ * v10.16 — the top-level tab label is now "ROUTINE" (previously
+ * "PROGRESS"). The v10.13 mismatch where the tab said PROGRESS but the
+ * default screen said "Routine." made the destination feel like two
+ * pages wearing the same clothes. Routine leads because it's the daily
+ * action center; Progress remains the secondary segment where proof
+ * accumulates.
+ *
+ * Inside the screen a segmented control switches between two sub-tabs:
  *
  *   • Routine (default)  — action layer. Morning / Evening / Saved
  *                          nested segments with actual product cards.
  *                          Premium empty state for first-time users
  *                          ("What are you using right now?").
- *   • Progress          — proof layer. SkinScoreHero + "why" line +
+ *   • Progress           — proof layer. SkinScoreHero + "why" line +
  *                          ProgressNarrative + Day-1-vs-latest compare
  *                          + scan history.
  *

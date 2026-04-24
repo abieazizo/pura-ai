@@ -177,7 +177,6 @@ export function ScanAnalyzingFaceScreen({
         revealMode={canReveal}
         zonesVisible={choreography.zonesVisible}
         markersVisible={choreography.markersVisible}
-        scoresVisible={choreography.scoresVisible}
         reduceMotion={reduceMotion}
         result={result}
       />

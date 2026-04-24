@@ -1,6 +1,11 @@
 /**
- * A single zone — renders its tinted rect(s), its floating label pill, and
- * on Beat 5 delegates to ZoneScoreBubble.
+ * A single zone — renders its tinted rect(s) and its floating label pill.
+ *
+ * v10.16 — the per-zone numeric score bubbles (ZoneScoreBubble) are gone.
+ * Five floating numbers on a face read as arbitrary and cheap; the single
+ * overall Skin Score medallion on ScanResultsFaceScreen is the score
+ * moment. Zones still tint during partition/detect to show "where the AI
+ * is looking," but they no longer carry values of their own.
  *
  * Opacity schedule:
  *   beat 'partition'        → 0.22 (fade in with scale 0.96 → 1.0)
@@ -30,7 +35,6 @@ import {
   type ZoneTintKey,
 } from '../constants';
 import type { Beat } from '../hooks/useAnalysisChoreography';
-import { ZoneScoreBubble } from './ZoneScoreBubble';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const AnimatedG = Animated.createAnimatedComponent(G);
@@ -41,9 +45,6 @@ export interface ZoneOverlayProps {
   photoSize: { w: number; h: number };
   visible: boolean;
   beat: Beat;
-  score: number | null;
-  scoreVisible: boolean;
-  compactScores: boolean;
   reduceMotion: boolean;
 }
 
@@ -77,9 +78,6 @@ export function ZoneOverlay({
   photoSize,
   visible,
   beat,
-  score,
-  scoreVisible,
-  compactScores,
   reduceMotion,
 }: ZoneOverlayProps) {
   const opacity = useSharedValue(0);
@@ -160,24 +158,9 @@ export function ZoneOverlay({
         labelOpacity={labelOpacity}
       />
 
-      {/* Score bubble(s) — one per rect for cheeks, one for the others. */}
-      {score !== null
-        ? rects.map((r, i) => {
-            const cx = (r.x + r.w / 2) * photoSize.w;
-            const cy = (r.y + r.h / 2) * photoSize.h;
-            return (
-              <ZoneScoreBubble
-                key={`score-${i}`}
-                cx={cx}
-                cy={cy}
-                score={score}
-                visible={scoreVisible}
-                compact={compactScores}
-                reduceMotion={reduceMotion}
-              />
-            );
-          })
-        : null}
+      {/* v10.16 — numeric per-zone score bubbles removed. The single
+          overall Skin Score medallion on the result screen is the only
+          number the user sees; zones stay silent. */}
     </G>
   );
 }

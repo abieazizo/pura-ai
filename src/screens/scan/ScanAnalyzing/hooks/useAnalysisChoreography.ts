@@ -45,7 +45,6 @@ export interface ChoreographyState {
   captionStyle: CaptionStyle;
   zonesVisible: [boolean, boolean, boolean, boolean];
   markersVisible: [boolean, boolean, boolean, boolean];
-  scoresVisible: [boolean, boolean, boolean, boolean];
   errorState: boolean;
   /** Flipped to true when the AI has overshot Beat 6 by the spec's grace. */
   setErrorState: (v: boolean) => void;
@@ -66,7 +65,6 @@ export function useAnalysisChoreography({
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('italic');
   const [zonesVisible, setZonesVisible] = useState<[boolean, boolean, boolean, boolean]>(FALSE_FOUR);
   const [markersVisible, setMarkersVisible] = useState<[boolean, boolean, boolean, boolean]>(FALSE_FOUR);
-  const [scoresVisible, setScoresVisible] = useState<[boolean, boolean, boolean, boolean]>(FALSE_FOUR);
   const [errorState, setErrorState] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -91,7 +89,6 @@ export function useAnalysisChoreography({
       setBeat('locate');
       setZonesVisible(TRUE_FOUR);
       setMarkersVisible(TRUE_FOUR);
-      setScoresVisible(TRUE_FOUR);
 
       const cues: Array<{ t: number; text: string; style: CaptionStyle; beat: Beat; announce: string }> = [
         { t: 0,    text: CAPTION_COPY.locate,    style: 'italic', beat: 'locate',    announce: A11Y_ANNOUNCEMENTS.locate },
@@ -166,21 +163,17 @@ export function useAnalysisChoreography({
     }
 
     // BEAT 5 — SCORE
+    //
+    // v10.16 — the numeric per-zone score stagger is gone. The beat
+    // stays as a caption cue ("measuring…") so the narrative still has
+    // a pre-reveal breath, but no numbers land on the face. The overall
+    // Skin Score arrives as a single medallion on the result screen.
     schedule(beatTiming.SCORE.start, () => {
       setBeat('score');
       setCaptionText(CAPTION_COPY.score);
       setCaptionStyle('italic');
       announce(A11Y_ANNOUNCEMENTS.score);
     });
-    for (let i = 0; i < 4; i++) {
-      schedule(beatTiming.SCORE.start + i * 100, () => {
-        setScoresVisible((prev) => {
-          const next = [...prev] as [boolean, boolean, boolean, boolean];
-          next[i] = true;
-          return next;
-        });
-      });
-    }
 
     // BEAT 6 — SETTLE
     schedule(beatTiming.SETTLE.start, () => {
@@ -208,7 +201,6 @@ export function useAnalysisChoreography({
     captionStyle,
     zonesVisible,
     markersVisible,
-    scoresVisible,
     errorState,
     setErrorState,
     setWaiting,

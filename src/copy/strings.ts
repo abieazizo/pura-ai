@@ -48,14 +48,17 @@ export const common = {
 };
 
 /**
- * Tab labels. v10.11 — five tabs: HOME · SCAN · PRODUCTS · ROUTINE ·
- * AI ASSIST. Progress is no longer a standalone tab; its trend / biggest
- * win / before/after content now lives as an embedded section inside
- * Routine so the user's daily action center and long-term trajectory
- * occupy one destination rather than two.
+ * Tab labels. v10.16 — five tabs: HOME · SCAN · PRODUCTS · ROUTINE ·
+ * AI ASSIST. Progress is not a standalone tab; its trend / biggest
+ * win / before-after content lives as a segmented sub-tab inside the
+ * ROUTINE destination so the daily action center and long-term
+ * trajectory occupy one destination rather than two.
  *
- * `progress` is retained as a label for section kickers inside Routine;
- * it no longer points at a tab.
+ * `progress` is retained as a label for the inner segmented control
+ * and for section kickers; it no longer points at a tab. (v10.13–v10.15
+ * mistakenly routed the RoutineTab through `tabs.progress`; v10.16
+ * switches it to `tabs.routine` so the tab label matches the default
+ * segment.)
  */
 export const tabs = {
   home: 'HOME',
