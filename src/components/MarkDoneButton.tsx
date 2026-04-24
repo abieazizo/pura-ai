@@ -10,13 +10,21 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { colors, radius, space, type as typography } from '../theme/tokens';
 
-type Props = {
+// v10.14 — type renamed from local `Props` to exported `MarkDoneButtonProps`
+// so `components/index.ts` can re-export it cleanly. The prior index.ts
+// export `export type { MarkDoneButtonProps }` was referencing a name that
+// never existed in this file — a long-standing TS error in the build.
+export type MarkDoneButtonProps = {
   completed: boolean;
   onPress: () => void;
   label?: string;
 };
 
-export function MarkDoneButton({ completed, onPress, label = 'Mark done' }: Props) {
+export function MarkDoneButton({
+  completed,
+  onPress,
+  label = 'Mark done',
+}: MarkDoneButtonProps) {
   const progress = useSharedValue(completed ? 1 : 0);
   const scale = useSharedValue(1);
 

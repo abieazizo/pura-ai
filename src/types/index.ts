@@ -200,25 +200,14 @@ export interface ProductMatch {
   flags?: string[]; // warnings
 }
 
-export type RoutineSlot = 'morning' | 'evening';
-export type RoutineStepType =
-  | 'cleanser'
-  | 'toner'
-  | 'serum'
-  | 'moisturizer'
-  | 'spf'
-  | 'treatment';
-
-export interface RoutineStep {
-  id: string;
-  slot: RoutineSlot;
-  order: number;
-  stepType: RoutineStepType;
-  productId: string;
-  instruction: string;
-  completedAt: string | null;
-  whyThisProduct: string[];
-}
+// v10.14 — RoutineSlot / RoutineStepType / RoutineStep types removed.
+// They described the legacy AI-generated `RoutineStep[]` shape which no
+// longer ships. The v10.13 Routine sub-tab works off
+// `userRoutineMorning: string[]` + `userRoutineEvening: string[]` of
+// product ids, so the richer step / instruction / whyThisProduct
+// fields have no consumer. If a future feature re-introduces an
+// AI-generated rich routine, author a fresh type alongside the new
+// shape rather than resurrecting the prior design.
 
 export type AssistantRole = 'user' | 'assistant';
 

@@ -1,7 +1,6 @@
 import type {
   Product,
   ProductMatch,
-  RoutineStep,
   Scan,
   User,
 } from '@/types';
@@ -723,124 +722,18 @@ export const seedScans: Scan[] = [
 ];
 
 /* ------------------------------- Routine ------------------------------- */
-
-export const seedRoutine: RoutineStep[] = [
-  // Morning (4 steps) — first two completed, step 3 is "next"
-  {
-    id: 'am-1',
-    slot: 'morning',
-    order: 1,
-    stepType: 'cleanser',
-    productId: 'la-roche-posay-toleriane-cleanser',
-    instruction:
-      'Splash face with lukewarm water. Massage a dime-sized amount for 30 seconds. Rinse.',
-    completedAt: new Date(new Date().setHours(7, 12, 0, 0)).toISOString(),
-    whyThisProduct: [
-      'Non-stripping for combination skin.',
-      'Low-foam formula preserves your lipid layer.',
-      'No fragrance \u2014 reduces redness risk.',
-    ],
-  },
-  {
-    id: 'am-2',
-    slot: 'morning',
-    order: 2,
-    stepType: 'toner',
-    productId: 'anua-heartleaf-toner',
-    instruction: 'Pat 3-4 drops onto damp skin using your palms. Do not rub.',
-    completedAt: new Date(new Date().setHours(7, 14, 0, 0)).toISOString(),
-    whyThisProduct: [
-      'Heartleaf calms your cheek redness.',
-      'Non-comedogenic \u2014 safe for your active chin area.',
-      'Light consistency layers under your serum.',
-    ],
-  },
-  {
-    id: 'am-3',
-    slot: 'morning',
-    order: 3,
-    stepType: 'serum',
-    productId: 'the-ordinary-niacinamide',
-    instruction: 'Apply 2-3 drops to damp skin. Focus on the T-zone and chin.',
-    completedAt: null,
-    whyThisProduct: [
-      'Zinc regulates your T-zone shine.',
-      'Reduces visible pore size on your nose over time.',
-      'Plays well with your BHA nights.',
-    ],
-  },
-  {
-    id: 'am-4',
-    slot: 'morning',
-    order: 4,
-    stepType: 'spf',
-    productId: 'beauty-of-joseon-relief-sun',
-    instruction: 'Two finger-lengths minimum. Reapply every 2 hours outdoors.',
-    completedAt: null,
-    whyThisProduct: [
-      'Rice extract calms your cheek redness.',
-      'Imperceptibly lightweight over oily areas.',
-      'SPF50+ matches the UV dose we want during treatment.',
-    ],
-  },
-
-  // Evening (4 steps)
-  {
-    id: 'pm-1',
-    slot: 'evening',
-    order: 1,
-    stepType: 'cleanser',
-    productId: 'cerave-hydrating-cleanser',
-    instruction:
-      'Double cleanse: oil first if wearing SPF, then this. Rinse with lukewarm water.',
-    completedAt: null,
-    whyThisProduct: [
-      'Non-stripping for nightly use.',
-      'Ceramides rebuild what the day strips away.',
-    ],
-  },
-  {
-    id: 'pm-2',
-    slot: 'evening',
-    order: 2,
-    stepType: 'treatment',
-    productId: 'paulas-choice-2-bha',
-    instruction: 'Apply with a cotton pad to chin and T-zone only. Every other night.',
-    completedAt: null,
-    whyThisProduct: [
-      'BHA reaches into the clogs on your chin.',
-      'Already driving measurable clarity change.',
-      'Every-other-night cadence matches your tolerance.',
-    ],
-  },
-  {
-    id: 'pm-3',
-    slot: 'evening',
-    order: 3,
-    stepType: 'serum',
-    productId: 'the-ordinary-niacinamide',
-    instruction: 'Apply 2-3 drops to damp skin. Wait 60 seconds before moisturizer.',
-    completedAt: null,
-    whyThisProduct: [
-      'Compounds with your AM serum.',
-      'Zinc continues to regulate sebum overnight.',
-    ],
-  },
-  {
-    id: 'pm-4',
-    slot: 'evening',
-    order: 4,
-    stepType: 'moisturizer',
-    productId: 'cerave-pm-lotion',
-    instruction: 'Pea-sized across face and neck. Seal in all active layers.',
-    completedAt: null,
-    whyThisProduct: [
-      '3 ceramides rebuild your barrier overnight.',
-      'Light enough to layer over the BHA.',
-      'Niacinamide compounds your daytime work.',
-    ],
-  },
-];
+//
+// v10.14 — `seedRoutine: RoutineStep[]` removed. The legacy rich-routine
+// shape (AI-generated steps with instructions / why-this-product) is no
+// longer part of the app: the v10.13 Routine sub-tab reads product-id
+// arrays (`userRoutineMorning`, `userRoutineEvening`) that the user
+// builds themselves from AddToRoutineSheet. Nothing imports this seed.
+//
+// If a future feature re-introduces an AI-generated routine, it should
+// author a fresh seed fixture rather than inherit the old shape — the
+// prior step/order/slot data model grew out of a design that no longer
+// ships.
+// ------------------------------------------------------------------------
 
 /* ------------------------------- Users ------------------------------- */
 

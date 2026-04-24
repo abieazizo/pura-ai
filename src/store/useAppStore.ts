@@ -4,7 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { askAssistant } from '@/api';
 import { palette } from '@/theme';
 import {
-  seedRoutine,
   seedMatches,
   seedScans,
   seedUserNew,
@@ -14,7 +13,6 @@ import type {
   AssistantMessage,
   InFlightScan,
   ProductMatch,
-  RoutineStep,
   Scan,
   ScanResult,
   User,
@@ -25,11 +23,17 @@ export type AppearanceMode = 'light' | 'dark' | 'system';
 export interface AppState {
   user: User | null;
   scans: Scan[];
-  routine: RoutineStep[];
   /** v10.13 — user-built routine: product ids placed into morning and
-   *  evening. Distinct from `routine` (which is the rich AI-generated
-   *  `RoutineStep[]`). These are the simple user-managed slot arrays
-   *  wired up by AddToRoutineSheet. "Saved" is the existing `wishlist`. */
+   *  evening. Managed by AddToRoutineSheet's add/remove/move actions.
+   *  "Saved" is the existing `wishlist`.
+   *
+   *  v10.14 — the previous rich `routine: RoutineStep[]` field (plus
+   *  `markStepDone` / `resetStep` / `seedRoutine` / related selectors)
+   *  was removed: every consumer had been migrated onto the slot
+   *  arrays below, leaving the old shape as dead code that only
+   *  bloated persisted storage and made the routine system confusing
+   *  to reason about. This pair + `wishlist` is now the single source
+   *  of truth for everything the user-facing Routine sub-tab reads. */
   userRoutineMorning: string[];
   userRoutineEvening: string[];
   matches: ProductMatch[];
@@ -78,8 +82,6 @@ export interface AppState {
 
   completeOnboarding: (user: User) => void;
   addScan: (scan: Scan) => void;
-  markStepDone: (stepId: string) => void;
-  resetStep: (stepId: string) => void;
   toggleWishlist: (productId: string) => void;
   pushUserMessage: (text: string, attachedProductIds?: string[]) => AssistantMessage;
   sendMessage: (text: string, attachedProductIds?: string[]) => Promise<void>;
@@ -135,7 +137,6 @@ const emptyTransient = {
 const blankState = {
   user: null as User | null,
   scans: [] as Scan[],
-  routine: [] as RoutineStep[],
   userRoutineMorning: [] as string[],
   userRoutineEvening: [] as string[],
   matches: [] as ProductMatch[],
@@ -180,29 +181,20 @@ export const useAppStore = create<AppState>()(
       hasOnboarded: () => !!get().user,
 
       completeOnboarding: (user) =>
-        set({ user, scans: [], routine: [], matches: [], wishlist: [], messages: [] }),
+        set({ user, scans: [], matches: [], wishlist: [], messages: [] }),
 
+      // v10.14 — `addScan` no longer hydrates the legacy RoutineStep[]
+      // from `seedRoutine` on first scan. The user builds their
+      // routine explicitly via AddToRoutineSheet now; there is no
+      // AI-generated RoutineStep[] to seed. `matches` hydrates once
+      // from seed as before (used by the product recommendation
+      // system).
       addScan: (scan) =>
         set((s) => {
           const nextScans = [...s.scans, scan];
-          const routine = s.routine.length > 0 ? s.routine : seedRoutine.map(resetCompletedBeforeToday);
           const matches = s.matches.length > 0 ? s.matches : seedMatches;
-          return { scans: nextScans, routine, matches };
+          return { scans: nextScans, matches };
         }),
-
-      markStepDone: (stepId) =>
-        set((s) => ({
-          routine: s.routine.map((step) =>
-            step.id === stepId ? { ...step, completedAt: new Date().toISOString() } : step
-          ),
-        })),
-
-      resetStep: (stepId) =>
-        set((s) => ({
-          routine: s.routine.map((step) =>
-            step.id === stepId ? { ...step, completedAt: null } : step
-          ),
-        })),
 
       toggleWishlist: (productId) =>
         set((s) => ({
@@ -347,7 +339,6 @@ export const useAppStore = create<AppState>()(
         set({
           user: seedUserPopulated,
           scans: seedScans,
-          routine: seedRoutine,
           matches: seedMatches,
           wishlist: [],
           messages: [],
@@ -365,7 +356,6 @@ export const useAppStore = create<AppState>()(
         set({
           user: seedUserNew,
           scans: [],
-          routine: [],
           matches: [],
           wishlist: [],
           messages: [],
@@ -381,7 +371,6 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         user: state.user,
         scans: state.scans,
-        routine: state.routine,
         userRoutineMorning: state.userRoutineMorning,
         userRoutineEvening: state.userRoutineEvening,
         matches: state.matches,
@@ -420,52 +409,22 @@ export const useAppStore = create<AppState>()(
   )
 );
 
-function resetCompletedBeforeToday(step: RoutineStep): RoutineStep {
-  if (!step.completedAt) return step;
-  const completed = new Date(step.completedAt);
-  const today = new Date();
-  if (
-    completed.getFullYear() === today.getFullYear() &&
-    completed.getMonth() === today.getMonth() &&
-    completed.getDate() === today.getDate()
-  ) {
-    return step;
-  }
-  return { ...step, completedAt: null };
-}
-
-// -----------------------------------------------------------------------------
-// Routine selectors.
-//
-// `selectNextMorningStep` is safe to pass to `useAppStore(...)` because its
-// terminal `.find()` returns an existing RoutineStep reference from the store
-// array — if `s.routine` doesn't change, successive calls return the SAME
-// reference, so useSyncExternalStore's snapshot check is a no-op.
-//
-// The previous `selectMorningRoutine / selectEveningRoutine / selectMorning-
-// Progress / selectEveningProgress` helpers returned fresh arrays / objects on
-// every call and caused a getSnapshot infinite loop when passed as Zustand
-// selectors. They were removed — derive lengths/arrays in-component with a
-// primitive selector (`s => s.routine.filter(...).length`) or select the raw
-// `s.routine` once and derive with `useMemo`.
-// -----------------------------------------------------------------------------
-export const selectNextMorningStep = (s: AppState) =>
-  s.routine
-    .filter((r) => r.slot === 'morning')
-    .sort((a, b) => a.order - b.order)
-    .find((r) => !r.completedAt);
-
+// v10.14 — `resetCompletedBeforeToday` helper + `selectNextMorningStep`
+// selector + `useRoutine` / `useActions` hooks were all removed.
+// They all operated on the legacy `routine: RoutineStep[]` field,
+// which no user-facing surface reads after v10.13. The new
+// `userRoutineMorning` / `userRoutineEvening` arrays are consumed
+// directly in RoutineScreen via `useShallow`, no dedicated hooks
+// needed.
 
 // ============================================================================
-// Derived hooks â€” exported from the store directly so every import path works.
+// Derived hooks — exported from the store directly so every import path works.
 // These DO NOT live inside state (to avoid infinite getSnapshot loops).
 // ============================================================================
 import { useMemo as __useMemo } from 'react';
-import { useShallow as __useShallow } from 'zustand/react/shallow';
 
 export const useScans       = () => useAppStore((s) => s.scans);
 export const useUser        = () => useAppStore((s) => s.user);
-export const useRoutine     = () => useAppStore((s) => s.routine);
 export const useMatches     = () => useAppStore((s) => s.matches);
 export const useWishlist    = () => useAppStore((s) => s.wishlist);
 export const useMessages    = () => useAppStore((s) => s.messages);
@@ -473,25 +432,6 @@ export const useAppearance  = () => useAppStore((s) => s.appearance);
 export const useHasSeenScanTutorial = () => useAppStore((s) => s.hasSeenScanTutorial);
 export const useOnboardingComplete  = () => useAppStore((s) => s.onboardingComplete);
 export const useAssistantTyping     = () => useAppStore((s) => s.assistantTyping);
-
-export const useActions = () =>
-  useAppStore(
-    __useShallow((s) => ({
-      completeOnboarding: s.completeOnboarding,
-      addScan: s.addScan,
-      markStepDone: s.markStepDone,
-      resetStep: s.resetStep,
-      toggleWishlist: s.toggleWishlist,
-      pushUserMessage: s.pushUserMessage,
-      sendMessage: s.sendMessage,
-      setAppearance: s.setAppearance,
-      setHasSeenScanTutorial: s.setHasSeenScanTutorial,
-      finishOnboarding: s.finishOnboarding,
-      devLoadPopulated: s.devLoadPopulated,
-      devResetToNewUser: s.devResetToNewUser,
-      devWipeAll: s.devWipeAll,
-    }))
-  );
 
 export const useHasScanned = () => {
   const scans = useScans();
