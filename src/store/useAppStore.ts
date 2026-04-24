@@ -4,7 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { askAssistant } from '@/api';
 import { palette } from '@/theme';
 import {
-  seedMatches,
   seedScans,
   seedUserNew,
   seedUserPopulated,
@@ -12,7 +11,6 @@ import {
 import type {
   AssistantMessage,
   InFlightScan,
-  ProductMatch,
   Scan,
   ScanResult,
   User,
@@ -36,7 +34,15 @@ export interface AppState {
    *  of truth for everything the user-facing Routine sub-tab reads. */
   userRoutineMorning: string[];
   userRoutineEvening: string[];
-  matches: ProductMatch[];
+  /** v10.15 — `matches: ProductMatch[]` field removed. Was hydrated
+   *  from `seedMatches` on first scan, persisted, and exported via
+   *  `useMatches()`, but had zero UI consumers after v10+ product
+   *  recommendation surfaces (BestForYouLead, CategoryFeed, ProductRow)
+   *  migrated onto `getBestForYou()` which sorts `seedProducts` by their
+   *  enriched `matchScore` directly. `seedMatches` is preserved in
+   *  `data/seed.ts` because it still drives product enrichment via
+   *  `_matchPercentByProductId` → `matchScoreFor(...)`; the store-level
+   *  shadow of it was the dead part. */
   wishlist: string[];
   messages: AssistantMessage[];
   appearance: AppearanceMode;
@@ -139,7 +145,6 @@ const blankState = {
   scans: [] as Scan[],
   userRoutineMorning: [] as string[],
   userRoutineEvening: [] as string[],
-  matches: [] as ProductMatch[],
   wishlist: [] as string[],
   messages: [] as AssistantMessage[],
   appearance: 'light' as AppearanceMode,
@@ -181,20 +186,16 @@ export const useAppStore = create<AppState>()(
       hasOnboarded: () => !!get().user,
 
       completeOnboarding: (user) =>
-        set({ user, scans: [], matches: [], wishlist: [], messages: [] }),
+        set({ user, scans: [], wishlist: [], messages: [] }),
 
-      // v10.14 — `addScan` no longer hydrates the legacy RoutineStep[]
-      // from `seedRoutine` on first scan. The user builds their
-      // routine explicitly via AddToRoutineSheet now; there is no
-      // AI-generated RoutineStep[] to seed. `matches` hydrates once
-      // from seed as before (used by the product recommendation
-      // system).
+      // v10.14 — `addScan` stopped hydrating the legacy RoutineStep[]
+      // from `seedRoutine` on first scan.
+      // v10.15 — also stopped shadowing `seedMatches` into a store
+      // field. Product recommendations sort `seedProducts` by their
+      // enriched `matchScore` directly (via `getBestForYou()` and
+      // friends), so the store no longer needs a matches field.
       addScan: (scan) =>
-        set((s) => {
-          const nextScans = [...s.scans, scan];
-          const matches = s.matches.length > 0 ? s.matches : seedMatches;
-          return { scans: nextScans, matches };
-        }),
+        set((s) => ({ scans: [...s.scans, scan] })),
 
       toggleWishlist: (productId) =>
         set((s) => ({
@@ -339,7 +340,6 @@ export const useAppStore = create<AppState>()(
         set({
           user: seedUserPopulated,
           scans: seedScans,
-          matches: seedMatches,
           wishlist: [],
           messages: [],
           onboardingComplete: true,
@@ -356,7 +356,6 @@ export const useAppStore = create<AppState>()(
         set({
           user: seedUserNew,
           scans: [],
-          matches: [],
           wishlist: [],
           messages: [],
           onboardingComplete: true,
@@ -373,7 +372,6 @@ export const useAppStore = create<AppState>()(
         scans: state.scans,
         userRoutineMorning: state.userRoutineMorning,
         userRoutineEvening: state.userRoutineEvening,
-        matches: state.matches,
         wishlist: state.wishlist,
         messages: state.messages,
         appearance: state.appearance,
@@ -425,7 +423,6 @@ import { useMemo as __useMemo } from 'react';
 
 export const useScans       = () => useAppStore((s) => s.scans);
 export const useUser        = () => useAppStore((s) => s.user);
-export const useMatches     = () => useAppStore((s) => s.matches);
 export const useWishlist    = () => useAppStore((s) => s.wishlist);
 export const useMessages    = () => useAppStore((s) => s.messages);
 export const useAppearance  = () => useAppStore((s) => s.appearance);
