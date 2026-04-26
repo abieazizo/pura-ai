@@ -470,59 +470,66 @@ function RoutineList({
     }
   };
 
+  // v10.19 — section header + step numbering. Each segment now lands
+  // with its own identity inside the panel (icon + serif name +
+  // sub-line) instead of three identical lists below the chip. And
+  // morning/evening rows carry "STEP N" on the role kicker so the
+  // routine reads as a sequence, not a bag of products. Saved is
+  // explicitly NOT numbered — Saved is "decide later," not a
+  // sequence; numbering it would mis-frame its intent.
+  const sequenced = segment === 'morning' || segment === 'evening';
+
   return (
-    <View style={styles.list}>
-      {/* v10.18 — list row treatment upgraded so the routine reads
-          as a daily ritual rather than a database table. The small
-          "1, 2, 3" order badge is gone (it competed with the image
-          for visual hierarchy and didn't reflect actual ordering
-          since users place products in arrival order, not function
-          order). Step role ("CLEANSER" / "SERUM" / "MOISTURIZER" /
-          etc.) leads each row instead, so the user reads role first,
-          brand second, product name third. Image tile grew from
-          42×50 to 56×70; row gained a hairline border + soft paper
-          shadow so it feels like a card, not a bare flexbox row. */}
-      {products.map((p) => (
-        <Pressable
-          key={p.id}
-          onPress={() => {
-            hapt.select();
-            nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={`${productCategoryLabel(p.category)}: ${p.brand} ${p.name}`}
-          style={({ pressed }) => [
-            styles.listRow,
-            pressed && { opacity: 0.94, transform: [{ scale: 0.992 }] },
-          ]}
-        >
-          <View
-            style={[
-              styles.listImage,
-              { backgroundColor: tintFor(p) },
+    <View>
+      <RoutineSectionHeader segment={segment} count={products.length} />
+      <View style={styles.list}>
+        {products.map((p, i) => (
+          <Pressable
+            key={p.id}
+            onPress={() => {
+              hapt.select();
+              nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              sequenced
+                ? `Step ${i + 1}, ${productCategoryLabel(p.category)}: ${p.brand} ${p.name}`
+                : `${productCategoryLabel(p.category)}: ${p.brand} ${p.name}`
+            }
+            style={({ pressed }) => [
+              styles.listRow,
+              pressed && { opacity: 0.94, transform: [{ scale: 0.992 }] },
             ]}
           >
-            {p.imageUri ? (
-              <Image
-                source={{ uri: p.imageUri }}
-                style={StyleSheet.absoluteFillObject}
-                resizeMode="cover"
-              />
-            ) : (
-              <Drop size={26} color={palette.ink} weight="duotone" />
-            )}
-          </View>
-          <View style={styles.listText}>
-            <Text style={styles.listRole} numberOfLines={1} maxFontSizeMultiplier={1.1}>
-              {productCategoryLabel(p.category)}
-            </Text>
-            <Text style={styles.listName} numberOfLines={1} maxFontSizeMultiplier={1.15}>
-              {p.name}
-            </Text>
-            <Text style={styles.listBrand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
-              {p.brand}
-            </Text>
-          </View>
+            <View
+              style={[
+                styles.listImage,
+                { backgroundColor: tintFor(p) },
+              ]}
+            >
+              {p.imageUri ? (
+                <Image
+                  source={{ uri: p.imageUri }}
+                  style={StyleSheet.absoluteFillObject}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Drop size={26} color={palette.ink} weight="duotone" />
+              )}
+            </View>
+            <View style={styles.listText}>
+              <Text style={styles.listRole} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+                {sequenced
+                  ? `STEP ${i + 1} \u00B7 ${productCategoryLabel(p.category)}`
+                  : productCategoryLabel(p.category)}
+              </Text>
+              <Text style={styles.listName} numberOfLines={1} maxFontSizeMultiplier={1.15}>
+                {p.name}
+              </Text>
+              <Text style={styles.listBrand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+                {p.brand}
+              </Text>
+            </View>
           <Pressable
             onPress={() => removeProduct(p.id)}
             hitSlop={8}
@@ -537,10 +544,72 @@ function RoutineList({
             <X size={13} color={palette.inkTertiary} weight="bold" />
           </Pressable>
         </Pressable>
-      ))}
+        ))}
+      </View>
     </View>
   );
 }
+
+// v10.19 — section header rendered above the product list per
+// segment so each inner panel feels like its own micro-destination.
+// Morning gets the Sun + a serif name + a one-line role description;
+// Evening gets the Moon; Saved gets the Bookmark with a different
+// sub-line (Saved is "decide later," not a sequenced ritual).
+function RoutineSectionHeader({
+  segment,
+  count,
+}: {
+  segment: InnerSegment;
+  count: number;
+}) {
+  const meta = SECTION_META[segment];
+  const Icon = meta.Icon;
+  return (
+    <View style={sectionStyles.wrap}>
+      <View style={sectionStyles.iconWrap}>
+        <Icon size={18} color={palette.clay} weight="duotone" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={sectionStyles.titleRow}>
+          <Text style={sectionStyles.title} maxFontSizeMultiplier={1.15}>
+            {meta.title}
+          </Text>
+          <Text style={sectionStyles.count} maxFontSizeMultiplier={1.1}>
+            {count === 1 ? '1 item' : `${count} items`}
+          </Text>
+        </View>
+        <Text
+          style={sectionStyles.body}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={2}
+        >
+          {meta.body}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const SECTION_META: Record<
+  InnerSegment,
+  { title: string; body: string; Icon: React.FC<any> }
+> = {
+  morning: {
+    title: 'Morning.',
+    body: 'How you start the day. SPF is the closer.',
+    Icon: Sun,
+  },
+  evening: {
+    title: 'Evening.',
+    body: 'Repair window. Where active ingredients earn their keep.',
+    Icon: Moon,
+  },
+  saved: {
+    title: 'Saved.',
+    body: 'Decide later. Move into morning or evening when you’re ready.',
+    Icon: BookmarkSimple,
+  },
+};
 
 // v10.18 — display label for product category (used as the row's
 // step-role kicker). Falls back to the raw category string if a new
@@ -1096,6 +1165,56 @@ const styles = StyleSheet.create({
     color: palette.inkTertiary,
     textTransform: 'uppercase',
     marginBottom: space.md,
+  },
+});
+
+// v10.19 — section identity header above the routine list per
+// inner segment. Each segment lands as its own micro-destination
+// inside the panel: icon disc, serif name, role sub-line, item count.
+const sectionStyles = StyleSheet.create({
+  wrap: {
+    marginTop: 22,
+    marginBottom: 6,
+    marginHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: palette.clayPaper,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  title: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 26,
+    lineHeight: 30,
+    letterSpacing: -0.6,
+    color: palette.ink,
+  },
+  count: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.3,
+    color: palette.inkTertiary,
+    fontVariant: ['tabular-nums'],
+  },
+  body: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.inkSecondary,
+    maxWidth: '94%',
   },
 });
 

@@ -126,6 +126,12 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
 
   return (
     <View style={styles.wrap}>
+      {/* v10.19 — 1pt clay top rail. Tiny detail, but it claims the
+          card as the page's hero object — the score block is the
+          protagonist of the Progress sub-tab, and the rail lets the
+          eye land there without needing larger chrome. */}
+      <View style={styles.heroRail} pointerEvents="none" />
+
       {showCelebration ? (
         <CelebrationHero
           delta={deltaFirst}
@@ -137,9 +143,17 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
 
       {/* ── Dial hero ───────────────────────────────────────────── */}
       <View style={styles.dialWrap}>
+        {/* v10.19 — tier word now appears inside the dial alongside the
+            value (matching HomeScreen). The user reads "Good · 73"
+            in one glance, closing the abstraction gap that the brief
+            kept flagging: a number with no anchor for "is 73 good?"
+            The tier is contextualised below by the delta, the
+            verdict headline, and the why-line, so seeing "Fair" or
+            "Needs work" never lands without explanation. */}
         <SkinScoreDial
           value={score.value}
           size={220}
+          showTier
           previousValue={
             scans.length >= 2
               ? scans[scans.length - 2].overallScore
@@ -581,6 +595,23 @@ const styles = StyleSheet.create({
     backgroundColor: palette.bg,
     borderWidth: 1,
     borderColor: palette.hairline,
+    overflow: 'hidden',
+    // Soft warm shadow so the hero card lifts off the page rather
+    // than sharing visual weight with everything below it.
+    shadowColor: palette.clay,
+    shadowOpacity: 0.06,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  heroRail: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: palette.clay,
+    opacity: 0.85,
   },
   dialWrap: {
     alignItems: 'center',

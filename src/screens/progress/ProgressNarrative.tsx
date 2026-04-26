@@ -101,29 +101,58 @@ function buildNarrativeHeadline(win: Row | null, rows: Row[]): string {
   return 'Holding steady since day 1.';
 }
 
+/**
+ * v10.19 — per-concern row treatment.
+ *
+ * The previous treatment was four lines of "label · from · arrow · to"
+ * text — informationally right but visually flat. The proof page
+ * needs to feel like proof, not a chart legend. Each row now carries:
+ *   • a 3pt severity-coloured rail on the left (matches the result
+ *     screen's severity-bar pattern, so the language is consistent)
+ *   • the category label in serif as the row's title
+ *   • a clear "calm → mild" tier transition with a directional arrow
+ *     coloured moss / rust / ink for up / down / flat
+ * Reads as a journey row, not a stat line.
+ */
 function RowView({ row }: { row: Row }) {
-  const { Icon, color } = arrowFor(row.direction);
+  const { Icon, color: arrowColor } = arrowFor(row.direction);
+  const railColor = severityRailColor(row.endSeverity);
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel} maxFontSizeMultiplier={1.1}>
+      <View style={[styles.rowRail, { backgroundColor: railColor }]} />
+      <Text style={styles.rowLabel} maxFontSizeMultiplier={1.15}>
         {CATEGORY_LABEL[row.category]}
       </Text>
       <View style={{ flex: 1 }} />
-      <Text
-        style={styles.rowFrom}
-        maxFontSizeMultiplier={1.1}
-      >
-        {severityLabel(row.startSeverity)}
-      </Text>
-      <Icon size={11} color={color} weight="bold" />
-      <Text
-        style={[styles.rowTo, { color: palette.ink }]}
-        maxFontSizeMultiplier={1.1}
-      >
-        {severityLabel(row.endSeverity)}
-      </Text>
+      <View style={styles.rowJourney}>
+        <Text style={styles.rowFrom} maxFontSizeMultiplier={1.1}>
+          {severityLabel(row.startSeverity)}
+        </Text>
+        <Icon size={12} color={arrowColor} weight="bold" />
+        <Text
+          style={[styles.rowTo, { color: palette.ink }]}
+          maxFontSizeMultiplier={1.1}
+        >
+          {severityLabel(row.endSeverity)}
+        </Text>
+      </View>
     </View>
   );
+}
+
+/** Match the result screen's severity colour palette so the same word
+ *  ("moderate") reads at the same hue everywhere. */
+function severityRailColor(s: Severity): string {
+  switch (s) {
+    case 'calm':
+      return palette.moss;
+    case 'mild':
+      return palette.mossLight;
+    case 'moderate':
+      return palette.amber;
+    case 'needs-attention':
+      return palette.rust;
+  }
 }
 
 // ============================================================================
@@ -231,19 +260,41 @@ const styles = StyleSheet.create({
   },
   list: {
     marginTop: 22,
-    gap: 10,
+    gap: 12,
   },
+  // v10.19 — row carries a left rail in the current-severity colour so
+  // the user reads each concern's standing at a glance before any
+  // text. Same colour language as the result screen's severity bars.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
+    gap: 14,
+    paddingVertical: 12,
+    paddingLeft: 14,
+    paddingRight: 12,
+    borderRadius: 12,
+    backgroundColor: palette.bgDeep,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  rowRail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
   },
   rowLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    letterSpacing: 0.2,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.2,
     color: palette.ink,
+  },
+  rowJourney: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   rowFrom: {
     fontFamily: 'Inter-Regular',
