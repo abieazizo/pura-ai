@@ -1,5 +1,41 @@
+/**
+ * Products API — v10.22.
+ *
+ * Catalog reads (listProducts / getProduct) stay synchronous on
+ * seedProducts. Three new AI-powered functions ride alongside:
+ *
+ *   • getMatchedProductsForUser — calls aiGateway.matchProductsForUser
+ *     against the seeded catalog. Used by Home + Products grid to
+ *     reorder picks per user.
+ *
+ *   • getSearchSuggestions — calls aiGateway.buildSearchSuggestions to
+ *     produce contextual placeholder + chips for the AISearchBar.
+ *
+ *   • resolveBarcode — runs the two-step barcode resolution loop
+ *     through aiGateway. Caller supplies a host-side `lookupBarcode`
+ *     function (e.g. an open-product API) so the AI never invents
+ *     catalog data.
+ *
+ * Each new function falls back to a documented deterministic
+ * behaviour when the AI gateway is unavailable.
+ */
+
 import { seedProducts } from '@/data/seed';
 import type { Product } from '@/types';
+import { aiGateway } from '@/ai/aiGateway';
+import type {
+  BarcodeResolution,
+  ConcernType,
+  ProductMatchResult,
+  SearchSuggestionResult,
+} from '@/ai/ai-contracts';
+import type { BarcodeLookupResult } from '@/ai/claude-client';
+import { useAppStore } from '@/store/useAppStore';
+import { computeSkinScore } from '@/utils/skinScore';
+
+// ---------------------------------------------------------------------------
+// Catalog reads (unchanged from v10.15).
+// ---------------------------------------------------------------------------
 
 export async function listProducts(): Promise<Product[]> {
   return seedProducts;
@@ -7,4 +43,287 @@ export async function listProducts(): Promise<Product[]> {
 
 export async function getProduct(id: string): Promise<Product | undefined> {
   return seedProducts.find((p) => p.id === id);
+}
+
+// ---------------------------------------------------------------------------
+// v10.22 — AI matching.
+//
+// Builds the candidate-products JSON the AI engine needs and routes
+// the call through aiGateway. The result is also persisted to
+// `store.aiTopMatches` so getBestForYou-style selectors can read it
+// without re-issuing the call. Returns null when the gateway is
+// unavailable so callers can fall back to the seeded matchScore
+// ordering they already use.
+// ---------------------------------------------------------------------------
+
+const PRODUCT_CONCERN_HINTS: Record<string, ConcernType[]> = {
+  // Maps product seed IDs → likely concern coverage. Rough mapping;
+  // fine for ranking, doesn't have to be perfect.
+};
+
+function inferConcerns(p: Product): ConcernType[] {
+  const explicit = PRODUCT_CONCERN_HINTS[p.id];
+  if (explicit) return explicit;
+  const haystack = [
+    p.name,
+    p.description,
+    ...(p.keyIngredients ?? []),
+  ]
+    .join(' ')
+    .toLowerCase();
+  const out: ConcernType[] = [];
+  if (
+    haystack.includes('salicylic') ||
+    haystack.includes('benzoyl') ||
+    haystack.includes('niacinamide') ||
+    haystack.includes('zinc')
+  ) {
+    out.push('breakouts');
+  }
+  if (
+    haystack.includes('hyaluronic') ||
+    haystack.includes('glycerin') ||
+    haystack.includes('squalane') ||
+    haystack.includes('ceramide')
+  ) {
+    out.push('hydration');
+  }
+  if (
+    haystack.includes('aha') ||
+    haystack.includes('bha') ||
+    haystack.includes('lactic') ||
+    haystack.includes('glycolic') ||
+    haystack.includes('retinol')
+  ) {
+    out.push('texture');
+  }
+  if (
+    haystack.includes('vitamin c') ||
+    haystack.includes('arbutin') ||
+    haystack.includes('tranexamic') ||
+    haystack.includes('kojic') ||
+    haystack.includes('azelaic')
+  ) {
+    out.push('dark_marks');
+  }
+  if (haystack.includes('centella') || haystack.includes('panthenol')) {
+    out.push('redness');
+    out.push('sensitivity');
+  }
+  return out;
+}
+
+function buildSkinStateSummary(): string {
+  const s = useAppStore.getState();
+  const scans = s.scans;
+  const latest = scans[scans.length - 1];
+  const score = computeSkinScore(scans);
+  return JSON.stringify({
+    user_profile: {
+      skin_type: s.skinType,
+      goal: s.goal,
+      sensitivity: s.sensitivity,
+      sun_exposure: s.sunExposure,
+      effort: s.effort,
+      price_tier: s.priceTier,
+    },
+    latest_score: {
+      value: score.value,
+      tier: score.tier,
+      delta_since_last: score.deltaSinceLast,
+    },
+    latest_ai_analysis: latest?.aiAnalysis ?? null,
+  });
+}
+
+function buildCandidateProductsJson(candidates: Product[]): string {
+  return JSON.stringify(
+    candidates.map((p) => ({
+      product_id: p.id,
+      brand: p.brand,
+      name: p.name,
+      category: p.category,
+      key_ingredients: p.keyIngredients,
+      tags: p.tags,
+      likely_concerns_supported: inferConcerns(p),
+      price_usd: p.price,
+      seeded_match_score: p.matchScore,
+    }))
+  );
+}
+
+export async function getMatchedProductsForUser(args: {
+  userId?: string;
+  basedOnScanId?: string | null;
+  candidates?: Product[];
+}): Promise<ProductMatchResult | null> {
+  if (!aiGateway.isAvailable()) return null;
+  const candidates = args.candidates ?? seedProducts;
+  try {
+    const result = await aiGateway.matchProductsForUser({
+      userId: args.userId ?? 'current_user',
+      basedOnScanId: args.basedOnScanId ?? null,
+      skinStateSummary: buildSkinStateSummary(),
+      candidateProductsJson: buildCandidateProductsJson(candidates),
+    });
+    // Persist top matches so downstream selectors can read them.
+    try {
+      useAppStore.getState().setAiTopMatches(result.matches);
+    } catch {
+      // non-fatal
+    }
+    return result;
+  } catch (e) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[getMatchedProductsForUser] AI path failed, returning null:',
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v10.22 — AI search suggestions.
+//
+// Persists the result on `store.aiSearchSuggestions` so AISearchBar
+// can read it without re-issuing the call on every keystroke.
+// ---------------------------------------------------------------------------
+
+function buildLatestScanSummary(): string | null {
+  const s = useAppStore.getState();
+  const latest = s.scans[s.scans.length - 1];
+  if (!latest) return null;
+  if (latest.aiAnalysis) {
+    return JSON.stringify({
+      score: latest.aiAnalysis.skin_score.value,
+      band: latest.aiAnalysis.skin_score.band,
+      primary_concern: latest.aiAnalysis.primary_concern,
+      secondary_concerns: latest.aiAnalysis.secondary_concerns,
+      why: latest.aiAnalysis.skin_score.why_line,
+    });
+  }
+  return JSON.stringify({
+    score: latest.overallScore,
+    headline: latest.summaryHeadline,
+    concerns: (latest.concerns ?? []).slice(0, 3).map((c) => ({
+      category: c.category,
+      severity: c.severity,
+    })),
+  });
+}
+
+function buildRoutineSummary(): string {
+  const s = useAppStore.getState();
+  const morning = s.userRoutineMorning
+    .map((id) => seedProducts.find((p) => p.id === id))
+    .filter(Boolean)
+    .map((p) => `${p!.brand} ${p!.name}`);
+  const evening = s.userRoutineEvening
+    .map((id) => seedProducts.find((p) => p.id === id))
+    .filter(Boolean)
+    .map((p) => `${p!.brand} ${p!.name}`);
+  return JSON.stringify({ morning, evening, saved_count: s.wishlist.length });
+}
+
+export async function getSearchSuggestions(
+  pageContext: 'products' | 'assistant'
+): Promise<SearchSuggestionResult | null> {
+  if (!aiGateway.isAvailable()) return null;
+  try {
+    const result = await aiGateway.buildSearchSuggestions({
+      latestScanSummary: buildLatestScanSummary(),
+      routineSummary: buildRoutineSummary(),
+      pageContext,
+    });
+    try {
+      useAppStore.getState().setAiSearchSuggestions(result);
+    } catch {
+      // non-fatal
+    }
+    return result;
+  } catch (e) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[getSearchSuggestions] AI path failed, returning null:',
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v10.22 — Barcode resolution.
+//
+// Caller supplies a host-side `lookupBarcode` function (an open-
+// product DB lookup, an internal catalog match, etc.). When the
+// gateway is in "direct" mode the lookup runs in-process inside the
+// AI tool loop. When it's in "proxy" mode the host endpoint is
+// expected to perform its own server-side lookup; the lookup
+// function passed in here will be ignored by the proxy transport.
+// ---------------------------------------------------------------------------
+
+export async function resolveBarcode(args: {
+  barcodeValue: string;
+  lookupBarcode: (
+    barcodeValue: string
+  ) => Promise<BarcodeLookupResult | null>;
+}): Promise<BarcodeResolution | null> {
+  if (!aiGateway.isAvailable()) return null;
+  try {
+    return await aiGateway.normalizeBarcodeResolution(args);
+  } catch (e) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[resolveBarcode] AI path failed, returning null:',
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+    return null;
+  }
+}
+
+/**
+ * Default catalog-only barcode lookup. Tries to match the barcode
+ * value against `seedProducts.id` (a stand-in until a real catalog/
+ * UPC database lands). Used when callers don't supply their own
+ * lookup function.
+ */
+export async function defaultCatalogBarcodeLookup(
+  barcodeValue: string
+): Promise<BarcodeLookupResult | null> {
+  const matched = seedProducts.find((p) => p.id === barcodeValue);
+  if (!matched) return null;
+  const cat = matched.category;
+  // Map the app's ProductCategory ('treatment' / 'mask' / 'toner' /
+  // etc.) onto the AI's narrower set ('spot_treatment', 'mask',
+  // 'toner', etc.).
+  const aiCategory: BarcodeLookupResult['product_category'] =
+    cat === 'cleanser' ||
+    cat === 'serum' ||
+    cat === 'moisturizer' ||
+    cat === 'toner' ||
+    cat === 'spf' ||
+    cat === 'mask'
+      ? cat
+      : cat === 'treatment'
+      ? 'spot_treatment'
+      : 'unknown';
+  return {
+    matched_catalog_product_id: matched.id,
+    brand: matched.brand,
+    product_name: matched.name,
+    canonical_title: `${matched.brand} ${matched.name}`,
+    product_category: aiCategory,
+    likely_concerns_supported: [],
+    key_claims: matched.keyIngredients ?? [],
+    barcode_value: barcodeValue,
+    catalog_lookup_key: matched.id,
+    packaging_notes: matched.description,
+  };
 }

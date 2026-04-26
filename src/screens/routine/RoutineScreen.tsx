@@ -102,12 +102,19 @@ export function RoutineScreen() {
   // scan's concerns. Used as the Routine sub-tab's "TODAY" focus card
   // so the page opens with one clear daily-action voice instead of a
   // cold list of products.
+  // v10.22 — prefer the AI routine's tonight_focus when the post-scan
+  // composite has hydrated it; falls back to buildTonightFocus, which
+  // itself prefers the AI analysis's next_focus.tonight when present.
+  const aiRoutine = useAppStore((s) => s.aiRoutine);
   const todayFocus = useMemo<string | null>(() => {
+    if (aiRoutine?.tonight_focus && aiRoutine.tonight_focus.trim().length > 0) {
+      return aiRoutine.tonight_focus;
+    }
     if (!latestScan) return null;
     const previous = scans.length >= 2 ? scans[scans.length - 2] : undefined;
-    const focus = buildTonightFocus(getConcerns(latestScan, previous));
+    const focus = buildTonightFocus(getConcerns(latestScan, previous), latestScan);
     return focus[0] ?? null;
-  }, [latestScan, scans]);
+  }, [aiRoutine, latestScan, scans]);
 
   const morningProducts = useMemo(
     () => hydrate(userRoutineMorning),

@@ -1,21 +1,123 @@
+/**
+ * Scan API — v10.22.
+ *
+ * Two flows: face scan (analyzeFaceScan) and product image scan
+ * (analyzeProductScan). Both prefer the real AI gateway and fall
+ * back to the original deterministic logic only when the gateway
+ * has no transport configured (or when a call fails).
+ *
+ * Why fallbacks remain: the brief explicitly allows deterministic
+ * logic to remain alive as a "clearly intentional fallback path."
+ * Without it, the app would be unusable for users without an AI key
+ * or proxy. Every fallback emits a console.warn in __DEV__ so it's
+ * obvious which path ran.
+ */
+
 import type { Scan, SkinZone } from '@/types';
 import { buildSummaryHeadline, deriveConcerns } from '@/utils/concerns';
+import { aiGateway, AIGatewayUnavailableError } from '@/ai/aiGateway';
+import { translateAnalysisToScan, buildPreviousSummary } from '@/ai/translateAnalysis';
+import { useAppStore } from '@/store/useAppStore';
+import type { ProductIdentity, ProductMatchResult } from '@/ai/ai-contracts';
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// ---------------------------------------------------------------------------
+// Helpers — resolving the user profile + the photo bytes.
+// ---------------------------------------------------------------------------
+
+function buildUserProfileSummary(): string {
+  const s = useAppStore.getState();
+  return JSON.stringify({
+    name: s.name || null,
+    age: s.age,
+    skin_type: s.skinType,
+    concerns: s.concerns,
+    sensitivity: s.sensitivity,
+    sun_exposure: s.sunExposure,
+    effort: s.effort,
+    goal: s.goal,
+    price_tier: s.priceTier,
+  });
+}
+
+/**
+ * Read the file at `photoUri` and return base64-encoded JPEG bytes.
+ * RN's `fetch` works against a `file://` URI and yields a Blob; we
+ * convert via `FileReader` because that's the broadly-portable RN
+ * idiom (RN 0.81 has FileReader built in).
+ */
+async function readImageAsBase64(photoUri: string): Promise<string> {
+  const res = await fetch(photoUri);
+  const blob = await res.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('readImageAsBase64: unexpected non-string result'));
+        return;
+      }
+      // Strip data URL prefix if present: "data:image/jpeg;base64,...."
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () =>
+      reject(reader.error ?? new Error('readImageAsBase64: read failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Face scan.
+// ---------------------------------------------------------------------------
 
 export async function analyzeFaceScan(args: {
   photoUri: string;
   previousScan?: Scan;
   dayNumber: number;
 }): Promise<Scan> {
-  await delay(1800);
   const { photoUri, previousScan, dayNumber } = args;
-  const id = `scan-${Date.now()}`;
+  const scanId = `scan-${Date.now()}`;
+
+  // ── Primary path: real AI ──
+  if (aiGateway.isAvailable()) {
+    try {
+      const imageBase64 = await readImageAsBase64(photoUri);
+      const analysis = await aiGateway.analyzeFaceScan({
+        imageBase64,
+        mediaType: 'image/jpeg',
+        scanId,
+        previousSummary: previousScan
+          ? buildPreviousSummary(previousScan)
+          : undefined,
+        userProfileSummary: buildUserProfileSummary(),
+      });
+      return translateAnalysisToScan({
+        analysis,
+        photoUri,
+        dayNumber,
+        scanId,
+      });
+    } catch (e) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[analyzeFaceScan] AI path failed, using deterministic fallback:',
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+      // fall through
+    }
+  }
+
+  // ── Fallback path: deterministic mock (the original v8.1 logic) ──
+  await delay(1800);
 
   if (!previousScan) {
     const baseScan: Scan = {
-      id,
+      id: scanId,
       capturedAt: new Date().toISOString(),
       dayNumber: 1,
       photoUri,
@@ -43,7 +145,7 @@ export async function analyzeFaceScan(args: {
   });
 
   const baseScan: Scan = {
-    id,
+    id: scanId,
     capturedAt: new Date().toISOString(),
     dayNumber,
     photoUri,
@@ -66,16 +168,78 @@ export async function analyzeFaceScan(args: {
   };
 }
 
-export async function analyzeProductScan(): Promise<{
+// ---------------------------------------------------------------------------
+// Product image scan.
+//
+// v10.22 — the legacy stub returned a hard-coded `{ matchPercent: 78 }`.
+// The new path identifies the product from the image and ranks it
+// against the user, returning identity + AI-derived match. Callers
+// can read either piece. For backwards compatibility the legacy
+// shape (matchPercent only) is still returned when the gateway is
+// unavailable or the call fails.
+// ---------------------------------------------------------------------------
+
+export interface ProductScanResult {
+  /** Legacy field every existing UI surface reads. */
   matchPercent: number;
-}> {
+  /** v10.22 — present when the AI gateway resolved the product. */
+  identity?: ProductIdentity;
+  /** v10.22 — present when the AI gateway ran the matching pass. */
+  fit?: ProductMatchResult;
+}
+
+export async function analyzeProductScan(args?: {
+  photoUri?: string;
+}): Promise<ProductScanResult> {
+  if (args?.photoUri && aiGateway.isAvailable()) {
+    try {
+      const imageBase64 = await readImageAsBase64(args.photoUri);
+      const userContextSummary = buildUserProfileSummary();
+      const result = await aiGateway.analyzeScannedProductAgainstUser({
+        imageBase64,
+        mediaType: 'image/jpeg',
+        userContextSummary,
+      });
+      // Persist the active identity for AssistantContext grounding.
+      try {
+        useAppStore.getState().setAiActiveProductIdentity(result.identity);
+      } catch {
+        // Non-fatal — don't kill the UI flow if the store update
+        // failed (e.g. during a state migration).
+      }
+      const topMatchScore =
+        result.fit.matches.length > 0
+          ? result.fit.matches[0].match_score
+          : 0;
+      return {
+        matchPercent: topMatchScore,
+        identity: result.identity,
+        fit: result.fit,
+      };
+    } catch (e) {
+      if (e instanceof AIGatewayUnavailableError) {
+        // expected when no transport — fall through silently
+      } else if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[analyzeProductScan] AI path failed, using deterministic fallback:',
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+      // fall through
+    }
+  }
+
+  // Deterministic fallback — preserves the legacy shape so any caller
+  // reading only `matchPercent` continues to work.
   await delay(1800);
   return { matchPercent: 78 };
 }
 
-// Zone labels retained for internal mapping; the user never sees "T-zone"
-// directly — concern copy translates to plain English ("nose and center
-// forehead").
+// ---------------------------------------------------------------------------
+// Deterministic-fallback starter zones (the original v8.1 mock).
+// ---------------------------------------------------------------------------
+
 function starterZones(): SkinZone[] {
   return [
     {

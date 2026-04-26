@@ -16,6 +16,8 @@ import { CategoryRail, type GoalKey } from '@/components/products/CategoryRail';
 import { CategoryFeed } from '@/components/products/CategoryFeed';
 import { PuraMark } from '@/components/PuraMark';
 import { searchProducts } from '@/store/productSelectors';
+import { useAppStore } from '@/store/useAppStore';
+import { getSearchSuggestions } from '@/api';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 
@@ -59,11 +61,32 @@ export function ProductsScreen() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [goal, setGoal] = useState<GoalKey>('best-for-you');
 
+  // v10.22 — pull AI-driven placeholder + chips from the store.
+  // Hydrated by `getSearchSuggestions('products')` after a scan
+  // completes (see useAppStore::addScan); on mount we re-fire so a
+  // user landing here outside the scan flow still gets contextual
+  // suggestions if AI is configured.
+  const aiSuggestions = useAppStore((s) => s.aiSearchSuggestions);
+
   // 150ms debounce on search.
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 150);
     return () => clearTimeout(t);
   }, [query]);
+
+  // Fire-and-forget refresh of search suggestions on mount. Falls back
+  // silently when AI is unavailable (the placeholder reverts to the
+  // default copy in AISearchBar).
+  useEffect(() => {
+    let cancelled = false;
+    getSearchSuggestions('products').catch(() => {
+      /* swallowed — store state stays as-is */
+    });
+    return () => {
+      cancelled = true;
+      void cancelled;
+    };
+  }, []);
 
   const searchResults = useMemo(
     () =>
@@ -74,6 +97,11 @@ export function ProductsScreen() {
   );
 
   const isSearching = query.trim().length > 0;
+  const placeholder =
+    aiSuggestions?.prefill_placeholder &&
+    aiSuggestions.prefill_placeholder.trim().length > 0
+      ? aiSuggestions.prefill_placeholder
+      : undefined;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -116,6 +144,7 @@ export function ProductsScreen() {
         value={query}
         onChangeText={setQuery}
         onClear={() => setQuery('')}
+        placeholder={placeholder}
       />
 
       {isSearching ? (

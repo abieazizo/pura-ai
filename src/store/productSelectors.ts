@@ -1,10 +1,16 @@
 import type { Product, ProductCategory } from '@/types';
 import { seedProducts } from '@/data/seed';
+import { useAppStore } from '@/store/useAppStore';
 
 /**
  * v7.6 catalog selectors. Pure functions operating on `seedProducts` —
  * not attached to the Zustand store because they derive from static seed
  * data, not user state.
+ *
+ * v10.22 — `getBestForYou` now consults `store.aiTopMatches` first.
+ * When the AI gateway has run, the user's actual ranking lives there;
+ * the seeded `matchScore` ordering is the documented fallback for
+ * users with no AI configured (or who haven't scanned yet).
  *
  * When seed data moves to a real backend, each selector becomes an API
  * call; the signatures stay identical so call sites at the screen level
@@ -14,6 +20,34 @@ import { seedProducts } from '@/data/seed';
 const ROW_LIMIT = 10;
 
 export function getBestForYou(): Product[] {
+  // v10.22 — prefer AI-derived ranking when present.
+  const aiMatches = useAppStore.getState().aiTopMatches;
+  if (aiMatches.length > 0) {
+    const ordered: Product[] = [];
+    const seen = new Set<string>();
+    for (const m of aiMatches) {
+      const p = seedProducts.find((sp) => sp.id === m.product_id);
+      if (p && !seen.has(p.id)) {
+        ordered.push(p);
+        seen.add(p.id);
+      }
+      if (ordered.length >= ROW_LIMIT) return ordered;
+    }
+    if (ordered.length > 0) {
+      // Pad with seeded order so the row never shrinks below ROW_LIMIT.
+      for (const p of [...seedProducts].sort(
+        (a, b) => b.matchScore - a.matchScore
+      )) {
+        if (ordered.length >= ROW_LIMIT) break;
+        if (!seen.has(p.id)) {
+          ordered.push(p);
+          seen.add(p.id);
+        }
+      }
+      return ordered;
+    }
+  }
+  // Deterministic fallback — original v7.6 ranking.
   return [...seedProducts]
     .sort((a, b) => b.matchScore - a.matchScore)
     .slice(0, ROW_LIMIT);

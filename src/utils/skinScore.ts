@@ -182,27 +182,35 @@ export function sinceLastPhrase(latestAt: string | null, scanCount: number): str
 /**
  * v10.13 — Skin Score "why" line. Turns the number + delta into
  * something the user can make sense of by naming which concerns moved.
- * Examples:
  *
+ * v10.22 — when the latest scan carries `aiAnalysis`, the AI's
+ * `skin_score.why_line` is preferred verbatim. Every UI surface that
+ * already calls this helper (Home, ScanResult, Routine>Progress,
+ * SkinScoreHero) transparently inherits the AI voice — no rewiring at
+ * the call site. The deterministic fallback below is the documented
+ * fallback the brief allows, used only when no AI analysis attached.
+ *
+ * Examples (deterministic fallback):
  *   "Breakouts calming. Hydration still needs work."
  *   "All four areas trending well."
  *   "Hydration improving. Dark marks holding."
  *   "Your first reading — we'll have movement by scan two."
- *
- * Consumers pass the latest + previous scans. Falls back to a single
- * grounded line when there's no prior scan to compare against.
  */
-export function buildSkinScoreWhy(
-  scans: Scan[]
-): string {
+export function buildSkinScoreWhy(scans: Scan[]): string {
   if (scans.length === 0) {
     return 'Your reading will appear here after your first scan.';
   }
+  const latest = scans[scans.length - 1];
+
+  // v10.22 — prefer the AI's structured why-line when present.
+  if (latest.aiAnalysis?.skin_score.why_line) {
+    return latest.aiAnalysis.skin_score.why_line;
+  }
+
   if (scans.length === 1) {
     return 'First reading set. Movement shows up at scan two.';
   }
 
-  const latest = scans[scans.length - 1];
   const previous = scans[scans.length - 2];
 
   type Direction = 'improved' | 'declined' | 'flat';

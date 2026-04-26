@@ -15,6 +15,12 @@ import type {
   ScanResult,
   User,
 } from '@/types';
+import type {
+  ProductIdentity,
+  ProductMatch,
+  RoutineRecommendation,
+  SearchSuggestionResult,
+} from '@/ai/ai-contracts';
 
 export type AppearanceMode = 'light' | 'dark' | 'system';
 
@@ -82,6 +88,24 @@ export interface AppState {
   inFlightScan: InFlightScan | null;
   latestResult: ScanResult | null;
 
+  /**
+   * v10.22 — AI-derived state hydrated by the post-scan composite
+   * (analyzeFaceScan -> matchProductsForUser + explainSkinScore ->
+   * generateRoutineRecommendation). Persisted so the app stays AI-
+   * powered across cold starts even when the device is offline.
+   *
+   * `aiTopMatches` reorders the Products grid + Home pick.
+   * `aiRoutine` powers the TODAY focus card and the routine plan.
+   * `aiSearchSuggestions` powers the AISearchBar placeholder + chips.
+   * `aiActiveProductIdentity` is set transiently when the user has
+   * scanned a product image / barcode and the AssistantContext should
+   * include it on its next answer.
+   */
+  aiTopMatches: ProductMatch[];
+  aiRoutine: RoutineRecommendation | null;
+  aiSearchSuggestions: SearchSuggestionResult | null;
+  aiActiveProductIdentity: ProductIdentity | null;
+
   assistantTyping: boolean;
 
   hasOnboarded: () => boolean;
@@ -129,6 +153,13 @@ export interface AppState {
   setCompositePhoto: (uri: string) => void;
   clearInFlightScan: () => void;
 
+  // v10.22 AI hydration setters — called by api/scan + api/products
+  // when the AI gateway returns structured output.
+  setAiTopMatches: (matches: ProductMatch[]) => void;
+  setAiRoutine: (routine: RoutineRecommendation | null) => void;
+  setAiSearchSuggestions: (s: SearchSuggestionResult | null) => void;
+  setAiActiveProductIdentity: (i: ProductIdentity | null) => void;
+
   finishOnboarding: () => void;
 
   devLoadPopulated: () => void;
@@ -175,6 +206,12 @@ const blankState = {
   // v7.7 scan analyzing
   inFlightScan: null as InFlightScan | null,
   latestResult: null as ScanResult | null,
+
+  // v10.22 AI-derived state
+  aiTopMatches: [] as ProductMatch[],
+  aiRoutine: null as RoutineRecommendation | null,
+  aiSearchSuggestions: null as SearchSuggestionResult | null,
+  aiActiveProductIdentity: null as ProductIdentity | null,
 };
 
 export const useAppStore = create<AppState>()(
@@ -194,8 +231,69 @@ export const useAppStore = create<AppState>()(
       // field. Product recommendations sort `seedProducts` by their
       // enriched `matchScore` directly (via `getBestForYou()` and
       // friends), so the store no longer needs a matches field.
-      addScan: (scan) =>
-        set((s) => ({ scans: [...s.scans, scan] })),
+      // v10.22 — when the scan carries an AI analysis, kick off the
+      // post-scan composite (matching + routine + search suggestions)
+      // in the background so the rest of the app has AI-derived
+      // hydration ready when the user navigates around. Fires
+      // fire-and-forget; failures are swallowed (the helpers fall
+      // back to deterministic ordering / templates).
+      addScan: (scan) => {
+        set((s) => ({ scans: [...s.scans, scan] }));
+        if (scan.aiAnalysis) {
+          // Lazy import to avoid a circular dependency between the
+          // store and the api modules. The `Promise.resolve().then`
+          // also defers the kick to the next tick so the UI gets the
+          // scan in state before the composite fires.
+          Promise.resolve().then(async () => {
+            try {
+              const products = await import('@/api/products');
+              await products.getMatchedProductsForUser({
+                userId: 'current_user',
+                basedOnScanId: scan.id,
+              });
+            } catch {
+              /* swallowed — helpers fall back to seeded order */
+            }
+            try {
+              const products = await import('@/api/products');
+              await products.getSearchSuggestions('products');
+            } catch {
+              /* swallowed — AISearchBar uses its default placeholder */
+            }
+            try {
+              const ai = await import('@/ai/aiGateway');
+              if (!ai.aiGateway.isAvailable()) return;
+              const a = scan.aiAnalysis!;
+              const matchedProducts = get().aiTopMatches;
+              const matchedProductsJson = JSON.stringify({
+                matches: matchedProducts,
+              });
+              const existingRoutineJson = JSON.stringify({
+                morning: get().userRoutineMorning,
+                evening: get().userRoutineEvening,
+                saved: get().wishlist,
+              });
+              const scanSummary = JSON.stringify({
+                skin_score: a.skin_score,
+                primary_concern: a.primary_concern,
+                secondary_concerns: a.secondary_concerns,
+                findings: a.findings,
+                score_factors: a.score_factors,
+                plan_inputs: a.plan_inputs,
+              });
+              const routine = await ai.aiGateway.generateRoutineRecommendation({
+                scanSummary,
+                matchedProductsJson,
+                existingRoutineJson,
+                basedOnScanId: scan.id,
+              });
+              set({ aiRoutine: routine });
+            } catch {
+              /* swallowed — TODAY focus card falls back to buildTonightFocus */
+            }
+          });
+        }
+      },
 
       toggleWishlist: (productId) =>
         set((s) => ({
@@ -321,6 +419,14 @@ export const useAppStore = create<AppState>()(
 
       clearInFlightScan: () => set({ inFlightScan: null }),
 
+      // v10.22 — AI hydration setters. Called from api/scan +
+      // api/products after the AI gateway returns structured output.
+      setAiTopMatches: (matches) => set({ aiTopMatches: matches }),
+      setAiRoutine: (routine) => set({ aiRoutine: routine }),
+      setAiSearchSuggestions: (s) => set({ aiSearchSuggestions: s }),
+      setAiActiveProductIdentity: (i) =>
+        set({ aiActiveProductIdentity: i }),
+
       finishOnboarding: () => {
         const s = get();
         const rawName = (s.name ?? '').trim();
@@ -402,6 +508,14 @@ export const useAppStore = create<AppState>()(
         // results screens cleanly. `inFlightScan` is explicitly NOT persisted:
         // a half-run choreography should never survive app kill.
         latestResult: state.latestResult,
+
+        // v10.22 — persist AI hydration so the app stays AI-powered
+        // across cold starts even when offline. Active product
+        // identity is intentionally NOT persisted — it's tied to a
+        // single transient scan/barcode session.
+        aiTopMatches: state.aiTopMatches,
+        aiRoutine: state.aiRoutine,
+        aiSearchSuggestions: state.aiSearchSuggestions,
       }),
     }
   )

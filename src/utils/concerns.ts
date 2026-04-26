@@ -426,8 +426,20 @@ export const CATEGORY_LABEL: Record<ConcernCategory, string> = {
 // One-sentence headline for the top of the results screen and the home
 // intelligence block. Picks the top 1-2 concerns and phrases them as a
 // recommendation.
+//
+// v10.22 — accepts an optional `scan` so the helper can prefer the
+// AI's structured `skin_score.explanation` when it's attached. Every
+// existing caller that passes only `concerns` keeps working; new
+// callers who have the Scan in hand get the AI voice automatically.
 
-export function buildSummaryHeadline(concerns: Concern[]): string {
+export function buildSummaryHeadline(
+  concerns: Concern[],
+  scan?: Scan
+): string {
+  // v10.22 — AI-driven headline wins when present.
+  if (scan?.aiAnalysis?.skin_score.explanation) {
+    return scan.aiAnalysis.skin_score.explanation;
+  }
   if (concerns.length === 0) return 'Your reading is ready.';
   const top = concerns[0];
   const second = concerns[1];
@@ -467,8 +479,28 @@ function focusPhraseSecondary(c: Concern): string {
 }
 
 // ---------- Tonight's focus (consolidated action plan) ----------
+//
+// v10.22 — accepts an optional `scan` and prefers the AI's
+// `next_focus.tonight` array when present. The Routine sub-tab's
+// TODAY focus card and the result screen's TonightSheet both call
+// this helper, so they upgrade transparently.
 
-export function buildTonightFocus(concerns: Concern[]): string[] {
+export function buildTonightFocus(
+  concerns: Concern[],
+  scan?: Scan
+): string[] {
+  if (scan?.aiAnalysis && scan.aiAnalysis.next_focus.tonight.length > 0) {
+    // De-dupe in case the model repeats a step word-for-word.
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of scan.aiAnalysis.next_focus.tonight) {
+      const key = t.slice(0, 24).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+    }
+    return out;
+  }
   // Return the top 2-3 concerns' next steps, de-duplicated and concise.
   const unique: string[] = [];
   const seen = new Set<string>();

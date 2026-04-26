@@ -1,4 +1,5 @@
 import type { AvatarColor } from '@/theme';
+import type { FaceScanAnalysis } from '@/ai/ai-contracts';
 
 export interface User {
   id: string;
@@ -51,6 +52,17 @@ export interface Scan {
    * geometry + backward-compat; the UI surfaces concerns.
    */
   concerns?: Concern[];
+  /**
+   * v10.22 — full structured AI analysis. Set when the scan was
+   * processed through `aiGateway.analyzeFaceScan`; null when the
+   * deterministic fallback ran (no API key / no proxy / network
+   * failure). Helpers like `buildSkinScoreWhy`, `buildTonightFocus`,
+   * and `buildSummaryHeadline` prefer values from this object when
+   * present and fall back to deterministic templates otherwise — so
+   * every UI consumer of those helpers transparently upgrades to AI
+   * voice without rewiring.
+   */
+  aiAnalysis?: FaceScanAnalysis;
 }
 
 // ---------- Concern model (v8.1) ----------
