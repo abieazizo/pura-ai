@@ -42,6 +42,7 @@ import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Concern, Severity } from '@/types';
+import type { FaceScanAnalysis } from '@/ai/ai-contracts';
 
 /**
  * ScanResultsFaceScreen — v8.2 glanceable rebuild.
@@ -225,6 +226,17 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             />
           ))}
         </View>
+
+        {/* v10.26 — AI-only blocks. Each surfaces a structured field
+            from `aiAnalysis` that the previous template-based fallback
+            doesn't have: image quality issues, an explicit AVOID list,
+            and a tonight-focus list driven by the AI's
+            `next_focus.tonight`. None of these render on the
+            deterministic path, so the result screen looks visibly
+            different when AI is alive. */}
+        {scan.aiAnalysis ? (
+          <AIScanExtras analysis={scan.aiAnalysis} />
+        ) : null}
 
         <Pressable
           onPress={openPlan}
@@ -700,6 +712,212 @@ function TonightSheet({
     </View>
   );
 }
+
+// ============================================================================
+// AI-only extras (v10.26)
+//
+// Renders three extra blocks below the finding rows when AI ran:
+//   • image-quality nudge when the AI flagged the photo as low-
+//     confidence ("Re-scan for sharper findings")
+//   • TONIGHT — the AI's `next_focus.tonight` items as a numbered list
+//   • AVOID — the AI's `next_focus.avoid` items as a small list
+//
+// None render on the deterministic-fallback path, so their presence
+// is itself a strong signal that the scan was AI-driven.
+// ============================================================================
+
+function AIScanExtras({ analysis }: { analysis: FaceScanAnalysis }) {
+  const tonight = analysis.next_focus.tonight.filter(
+    (s) => s.trim().length > 0
+  );
+  const avoid = analysis.next_focus.avoid.filter(
+    (s) => s.trim().length > 0
+  );
+  const lowQuality =
+    !analysis.image_quality.usable ||
+    analysis.image_quality.confidence < 0.6 ||
+    analysis.image_quality.issues.length > 0;
+
+  if (!lowQuality && tonight.length === 0 && avoid.length === 0) return null;
+
+  return (
+    <View style={extrasStyles.wrap}>
+      {lowQuality ? (
+        <View style={extrasStyles.qualityCard}>
+          <View style={extrasStyles.qualityRail} />
+          <Text style={extrasStyles.qualityKicker} maxFontSizeMultiplier={1.1}>
+            IMAGE QUALITY
+          </Text>
+          <Text
+            style={extrasStyles.qualityBody}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={3}
+          >
+            {qualityCopy(analysis)}
+          </Text>
+        </View>
+      ) : null}
+
+      {tonight.length > 0 ? (
+        <View style={extrasStyles.block}>
+          <Text style={extrasStyles.kicker} maxFontSizeMultiplier={1.1}>
+            TONIGHT
+          </Text>
+          {tonight.slice(0, 3).map((item, i) => (
+            <View key={i} style={extrasStyles.item}>
+              <Text
+                style={extrasStyles.itemNum}
+                maxFontSizeMultiplier={1.15}
+              >
+                {i + 1}
+              </Text>
+              <Text
+                style={extrasStyles.itemText}
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={3}
+              >
+                {item}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {avoid.length > 0 ? (
+        <View style={extrasStyles.block}>
+          <Text
+            style={[extrasStyles.kicker, { color: palette.rust }]}
+            maxFontSizeMultiplier={1.1}
+          >
+            AVOID
+          </Text>
+          {avoid.slice(0, 3).map((item, i) => (
+            <View key={i} style={extrasStyles.avoidItem}>
+              <View style={extrasStyles.avoidDot} />
+              <Text
+                style={extrasStyles.avoidText}
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={2}
+              >
+                {item}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function qualityCopy(analysis: FaceScanAnalysis): string {
+  const issues = analysis.image_quality.issues;
+  if (issues.includes('blurry'))
+    return 'The photo read as slightly blurry — re-scan in steady light for sharper findings.';
+  if (issues.includes('low_light'))
+    return 'Low light detected. A brighter photo will tighten the per-zone confidence.';
+  if (issues.includes('partial_face'))
+    return 'Part of your face was cropped. Re-scan with the full face in frame for complete findings.';
+  if (issues.includes('angled'))
+    return 'The photo angle made some zones harder to read. Face the camera straight on for sharper findings.';
+  if (issues.includes('occluded'))
+    return 'Hair or hands covered part of the frame. Re-scan with the full face visible.';
+  return 'Some zones read as low-confidence. A re-scan in better light will tighten the findings.';
+}
+
+const extrasStyles = StyleSheet.create({
+  wrap: {
+    marginBottom: 24,
+    gap: 16,
+  },
+  block: {
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: palette.hairline,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.clay,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 10,
+  },
+  itemNum: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    lineHeight: 24,
+    letterSpacing: -0.4,
+    color: palette.clay,
+    width: 22,
+    fontVariant: ['tabular-nums'],
+  },
+  itemText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.ink,
+    paddingTop: 3,
+  },
+  avoidItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 8,
+    paddingLeft: 4,
+  },
+  avoidDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: palette.rust,
+    marginTop: 7,
+  },
+  avoidText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkSecondary,
+  },
+  qualityCard: {
+    paddingVertical: 14,
+    paddingLeft: 18,
+    paddingRight: 14,
+    borderRadius: 14,
+    backgroundColor: palette.amber + '14', // ~8% opacity
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  qualityRail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: palette.amber,
+  },
+  qualityKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.amber,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  qualityBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.ink,
+  },
+});
 
 // ============================================================================
 // Helpers

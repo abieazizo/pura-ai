@@ -27,6 +27,7 @@ import {
   formatDelta,
   sinceLastPhrase,
 } from '@/utils/skinScore';
+import { useAppStore } from '@/store/useAppStore';
 import type { Scan } from '@/types';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -171,6 +172,12 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
         </Text>
       ) : null}
 
+      {/* v10.26 — when the AI gateway has produced a structured
+          SkinScoreExplanation (via buildProgressBundle), surface its
+          coach_line as a small actionable line under the why-line.
+          Visible only when the AI ran. */}
+      <CoachLine />
+
       {/* v10.20 — the area chart used to live inside this hero card,
           which made the score block stuffed (dial + label + delta +
           headline + why-line + chart in one module). Spun out into a
@@ -180,6 +187,58 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
     </View>
   );
 }
+
+// ============================================================================
+// v10.26 — CoachLine
+// ============================================================================
+//
+// Pulls the AI's `coach_line` (an actionable one-liner) from
+// `useAppStore.aiScoreExplanation` and renders it below the why-line.
+// When the AI gateway hasn't produced a SkinScoreExplanation yet, the
+// component returns null so the hero stays clean.
+
+function CoachLine() {
+  const explanation = useAppStore((s) => s.aiScoreExplanation);
+  if (!explanation) return null;
+  const coach = explanation.coach_line.trim();
+  if (coach.length === 0) return null;
+  return (
+    <View style={coachStyles.wrap}>
+      <View style={coachStyles.bullet} />
+      <Text
+        style={coachStyles.text}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={3}
+      >
+        {coach}
+      </Text>
+    </View>
+  );
+}
+
+const coachStyles = StyleSheet.create({
+  wrap: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  bullet: {
+    width: 3,
+    height: 16,
+    borderRadius: 1.5,
+    backgroundColor: palette.clay,
+    marginTop: 4,
+  },
+  text: {
+    flex: 1,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    lineHeight: 19,
+    letterSpacing: -0.05,
+    color: palette.ink,
+  },
+});
 
 // ============================================================================
 // SkinScoreTrendCard — v10.20

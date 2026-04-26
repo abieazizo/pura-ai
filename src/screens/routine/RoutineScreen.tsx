@@ -474,10 +474,283 @@ function RoutineSubTab({
         ) : (
           <RoutineList products={activeList} segment={innerSegment} />
         )}
+
+        {/* v10.26 — when AI generated a routine plan for the active
+            slot (morning/evening), surface its actions as a
+            "Suggested by AI" panel below the user's current routine
+            list. Saved sub-tab gets nothing because Saved is
+            "decide later", not a sequenced plan. */}
+        <AIRoutineSuggestionPanel segment={innerSegment} />
       </Animated.View>
     </ScrollView>
   );
 }
+
+// ============================================================================
+// v10.26 — AI suggested routine panel
+// ============================================================================
+//
+// Pulls from store.aiRoutine and renders the actions for the active
+// slot, with their reasons. Visible only when AI ran AND has steps
+// for the current slot — so its presence is itself a strong AI signal
+// the user can feel without any debug overlay.
+
+function AIRoutineSuggestionPanel({
+  segment,
+}: {
+  segment: InnerSegment;
+}) {
+  const aiRoutine = useAppStore((s) => s.aiRoutine);
+  if (!aiRoutine) return null;
+  if (segment === 'saved') return null;
+  const steps = segment === 'morning' ? aiRoutine.morning : aiRoutine.evening;
+  if (steps.length === 0) return null;
+
+  const headline = aiRoutine.headline.trim().length > 0 ? aiRoutine.headline : null;
+
+  return (
+    <View style={aiRoutineStyles.wrap}>
+      <View style={aiRoutineStyles.rail} pointerEvents="none" />
+      <Text style={aiRoutineStyles.kicker} maxFontSizeMultiplier={1.1}>
+        AI SUGGESTS
+      </Text>
+      {headline ? (
+        <Text
+          style={aiRoutineStyles.headline}
+          maxFontSizeMultiplier={1.15}
+          numberOfLines={2}
+        >
+          {headline}
+        </Text>
+      ) : null}
+      {steps.slice(0, 4).map((step, i) => (
+        <View key={`${step.title}-${i}`} style={aiRoutineStyles.stepRow}>
+          <Text style={aiRoutineStyles.stepNum} maxFontSizeMultiplier={1.1}>
+            {step.step_order || i + 1}
+          </Text>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={aiRoutineStyles.stepTitle}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.15}
+            >
+              {step.title}
+            </Text>
+            {step.reason && step.reason.trim().length > 0 ? (
+              <Text
+                style={aiRoutineStyles.stepReason}
+                numberOfLines={2}
+                maxFontSizeMultiplier={1.2}
+              >
+                {step.reason}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ============================================================================
+// v10.26 — AI progress narrative card
+// ============================================================================
+
+function AIProgressNarrative({
+  progress,
+}: {
+  progress: import('@/ai/ai-contracts').ProgressExplanation;
+}) {
+  return (
+    <View style={aiProgressStyles.wrap}>
+      <Text style={aiProgressStyles.kicker} maxFontSizeMultiplier={1.1}>
+        WHAT THE AI SEES
+      </Text>
+      {progress.short_narrative.trim().length > 0 ? (
+        <Text
+          style={aiProgressStyles.narrative}
+          maxFontSizeMultiplier={1.2}
+        >
+          {progress.short_narrative}
+        </Text>
+      ) : null}
+      {progress.strongest_improvement.trim().length > 0 ? (
+        <View style={aiProgressStyles.row}>
+          <View
+            style={[
+              aiProgressStyles.dot,
+              { backgroundColor: palette.moss },
+            ]}
+          />
+          <Text
+            style={aiProgressStyles.rowText}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={3}
+          >
+            <Text style={aiProgressStyles.rowKicker}>UP</Text>
+            {`  ${progress.strongest_improvement}`}
+          </Text>
+        </View>
+      ) : null}
+      {progress.strongest_regression &&
+      progress.strongest_regression.trim().length > 0 ? (
+        <View style={aiProgressStyles.row}>
+          <View
+            style={[
+              aiProgressStyles.dot,
+              { backgroundColor: palette.rust },
+            ]}
+          />
+          <Text
+            style={aiProgressStyles.rowText}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={3}
+          >
+            <Text style={aiProgressStyles.rowKicker}>DOWN</Text>
+            {`  ${progress.strongest_regression}`}
+          </Text>
+        </View>
+      ) : null}
+      {progress.unchanged_summary.trim().length > 0 ? (
+        <View style={aiProgressStyles.row}>
+          <View
+            style={[
+              aiProgressStyles.dot,
+              { backgroundColor: palette.inkTertiary },
+            ]}
+          />
+          <Text
+            style={aiProgressStyles.rowText}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={3}
+          >
+            <Text style={aiProgressStyles.rowKicker}>STEADY</Text>
+            {`  ${progress.unchanged_summary}`}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const aiProgressStyles = StyleSheet.create({
+  wrap: {
+    marginTop: 16,
+    marginHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 18,
+    paddingHorizontal: 20,
+    borderRadius: 18,
+    backgroundColor: palette.bgDeep,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.clay,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  narrative: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 19,
+    lineHeight: 26,
+    letterSpacing: -0.2,
+    color: palette.ink,
+    marginBottom: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 7,
+  },
+  rowText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkSecondary,
+  },
+  rowKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: palette.ink,
+  },
+});
+
+const aiRoutineStyles = StyleSheet.create({
+  wrap: {
+    marginTop: 28,
+    marginHorizontal: 20,
+    paddingVertical: 18,
+    paddingLeft: 19,
+    paddingRight: 18,
+    borderRadius: 18,
+    backgroundColor: palette.clayPaper,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  rail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: palette.clay,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.clay,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  headline: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 19,
+    lineHeight: 24,
+    letterSpacing: -0.2,
+    color: palette.ink,
+    marginBottom: 16,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12,
+  },
+  stepNum: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.4,
+    color: palette.clay,
+    width: 18,
+    fontVariant: ['tabular-nums'],
+  },
+  stepTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.ink,
+  },
+  stepReason: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 13,
+    lineHeight: 17,
+    color: palette.inkSecondary,
+    marginTop: 2,
+  },
+});
 
 // ============================================================================
 // Today focus card — v10.18
@@ -920,6 +1193,28 @@ function ProgressSubTab({
   }, [op]);
   const fadeStyle = useAnimatedStyle(() => ({ opacity: op.value }));
 
+  // v10.26 — fire the AI progress bundle once on mount when we have
+  // ≥2 scans. Result hydrates store.aiProgress + store.aiScoreExplanation,
+  // which the SkinScoreHero and the AIProgressNarrative panel below
+  // read from. Failures fall back to the deterministic narrative.
+  const aiProgress = useAppStore((s) => s.aiProgress);
+  React.useEffect(() => {
+    if (!progressAvailable) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const mod = await import('@/api/progress');
+        if (cancelled) return;
+        await mod.getProgressBundle();
+      } catch {
+        /* swallowed — UI uses deterministic ProgressNarrative */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [progressAvailable, scans.length]);
+
   if (!progressAvailable || !firstScan || !latestScan) {
     return (
       <ScrollView
@@ -973,7 +1268,13 @@ function ProgressSubTab({
 
         <SkinScoreTrendCard scans={scans} />
 
-        <ProgressNarrative scans={scans} />
+        {/* v10.26 — AI progress narrative card. Renders only when the
+            AI gateway returned a structured ProgressExplanation;
+            falls through to the deterministic ProgressNarrative
+            otherwise so the page still ships when AI is unavailable. */}
+        {aiProgress ? <AIProgressNarrative progress={aiProgress} /> : null}
+
+        {!aiProgress ? <ProgressNarrative scans={scans} /> : null}
 
         <View style={styles.compareBlock}>
           <View style={styles.compareHead}>
@@ -981,7 +1282,10 @@ function ProgressSubTab({
               SIDE BY SIDE
             </Text>
             <Text style={styles.compareDates} maxFontSizeMultiplier={1.1}>
-              {`DAY 1 \u2192 DAY ${latestScan.dayNumber}`}
+              {aiProgress?.compare_caption &&
+              aiProgress.compare_caption.trim().length > 0
+                ? aiProgress.compare_caption
+                : `DAY 1 \u2192 DAY ${latestScan.dayNumber}`}
             </Text>
           </View>
           <View

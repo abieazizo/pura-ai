@@ -6,6 +6,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { SlidersHorizontal } from 'phosphor-react-native';
@@ -149,6 +155,23 @@ export function ProductsScreen() {
         placeholder={placeholder}
       />
 
+      {/* v10.26 — when AI search suggestions are present, render a
+          horizontal chip row under the search bar. Each chip is a
+          tap-to-search affordance. Only renders when the AI gateway
+          returned non-empty suggestion_chips; on fallback there's
+          simply no row, so its presence alone signals "AI ran". */}
+      {!isSearching &&
+      aiSuggestions &&
+      aiSuggestions.suggestion_chips.length > 0 ? (
+        <AISuggestionRow
+          chips={aiSuggestions.suggestion_chips}
+          onPick={(chip) => {
+            hapt.select();
+            setQuery(chip);
+          }}
+        />
+      ) : null}
+
       {isSearching ? (
         <ScrollView
           style={styles.flex}
@@ -181,6 +204,110 @@ export function ProductsScreen() {
     </SafeAreaView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// v10.26 — AI suggestion chip row.
+//
+// Renders a horizontal scrolling row of AI-generated suggestion chips
+// beneath the AISearchBar when the gateway has produced fresh
+// suggestions. Tapping a chip populates the search input.
+//
+// Chips fade-in on mount via a small reanimated transition so the row
+// doesn't pop visually when AI eventually returns. The whole row only
+// renders when AI suggestions exist — so its presence on screen is
+// itself a strong signal that AI is alive for this user.
+// ---------------------------------------------------------------------------
+
+function AISuggestionRow({
+  chips,
+  onPick,
+}: {
+  chips: string[];
+  onPick: (chip: string) => void;
+}) {
+  const op = useSharedValue(0);
+  const ty = useSharedValue(6);
+  React.useEffect(() => {
+    op.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
+    ty.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
+  }, [op, ty]);
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: op.value,
+    transform: [{ translateY: ty.value }],
+  }));
+
+  return (
+    <Animated.View style={[suggestionRow.wrap, containerStyle]}>
+      <Text style={suggestionRow.kicker} maxFontSizeMultiplier={1.1}>
+        SUGGESTED FOR YOU
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={suggestionRow.row}
+        keyboardShouldPersistTaps="handled"
+      >
+        {chips.map((chip) => (
+          <Pressable
+            key={chip}
+            onPress={() => onPick(chip)}
+            accessibilityRole="button"
+            accessibilityLabel={`Search ${chip}`}
+            style={({ pressed }) => [
+              suggestionRow.chip,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Text
+              style={suggestionRow.chipLabel}
+              maxFontSizeMultiplier={1.1}
+              numberOfLines={1}
+            >
+              {chip}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
+const suggestionRow = StyleSheet.create({
+  wrap: {
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: palette.clay,
+    textTransform: 'uppercase',
+    marginHorizontal: 20,
+    marginBottom: 8,
+  },
+  row: {
+    paddingHorizontal: 20,
+    gap: 8,
+    flexDirection: 'row',
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: palette.clayPaper,
+    borderWidth: 1,
+    borderColor: palette.clay,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chipLabel: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    letterSpacing: -0.1,
+    color: palette.ink,
+  },
+});
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },

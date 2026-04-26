@@ -553,12 +553,26 @@ function MessageLine({ message }: { message: AssistantMessage }) {
   }
 
   // Assistant — NO bubble. Mark xs to the left of raw text.
+  // v10.26 — when the API wrapper recorded grounding sources for this
+  // message, render a small "Grounded in: …" attribution line under
+  // the text so the user can see the answer was tied to their state.
   return (
     <View style={messageStyles.assistantRow}>
       <View style={messageStyles.assistantMark}>
         <PuraMark variant="idle" size="xs" />
       </View>
-      <Text style={messageStyles.assistantText}>{message.text}</Text>
+      <View style={messageStyles.assistantContent}>
+        <Text style={messageStyles.assistantText}>{message.text}</Text>
+        {message.groundedFrom && message.groundedFrom.length > 0 ? (
+          <Text
+            style={messageStyles.assistantGrounding}
+            maxFontSizeMultiplier={1.1}
+            numberOfLines={1}
+          >
+            {`Grounded in: ${message.groundedFrom.join(' · ')}`}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -905,9 +919,20 @@ const messageStyles = StyleSheet.create({
   assistantMark: {
     marginTop: 4,
   },
+  assistantContent: {
+    flex: 1,
+  },
   assistantText: {
     ...typography.body,
     color: palette.ink,
-    flex: 1,
+  },
+  // v10.26 — small grounding attribution under AI-driven replies.
+  assistantGrounding: {
+    marginTop: 6,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: palette.clay,
+    textTransform: 'uppercase',
   },
 });

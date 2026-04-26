@@ -197,6 +197,19 @@ function GridCard({
         >
           {product.name}
         </Text>
+        {/* v10.26 — when AI ranked this product, surface its top
+            primary_reason as a single italic line. Visible only when
+            AI is the source — so its presence is a real product-level
+            signal that the matching is grounded, not seeded. */}
+        {showAiNumber && aiMatch && aiMatch.primary_reasons.length > 0 ? (
+          <Text
+            style={styles.cardWhy}
+            numberOfLines={2}
+            maxFontSizeMultiplier={1.15}
+          >
+            {aiMatch.primary_reasons[0]}
+          </Text>
+        ) : null}
         <Text style={styles.cardPrice} maxFontSizeMultiplier={1.1}>
           {`$${Number.isInteger(product.price) ? product.price : product.price.toFixed(2)}`}
         </Text>
@@ -350,6 +363,15 @@ const styles = StyleSheet.create({
     color: palette.ink,
     marginBottom: 6,
     minHeight: 36,
+  },
+  // v10.26 — AI match reason (italic serif, secondary ink). Only
+  // visible when the AI grounded the ranking; absent on fallback.
+  cardWhy: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 12,
+    lineHeight: 16,
+    color: palette.inkSecondary,
+    marginBottom: 6,
   },
   cardPrice: {
     fontFamily: 'InstrumentSerif-SemiBold',

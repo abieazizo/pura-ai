@@ -339,6 +339,26 @@ export async function askAssistant(args: {
           context.latest_scan ? 'attached' : 'absent'
         }, ${context.top_matches.length} matches in context)`
       );
+      // v10.26 — record exactly which grounding surfaces the assistant
+      // had access to. The chat UI renders these as a small "Grounded
+      // in:" line below the bubble so the user can feel the answer is
+      // tied to their actual data.
+      const groundedFrom: string[] = [];
+      if (context.latest_scan) groundedFrom.push('latest scan');
+      if (context.latest_score) groundedFrom.push('Skin Score');
+      if (
+        context.routine_snapshot.morning_product_ids.length > 0 ||
+        context.routine_snapshot.evening_product_ids.length > 0
+      ) {
+        groundedFrom.push('routine');
+      }
+      if (context.top_matches.length > 0) {
+        groundedFrom.push(`${context.top_matches.length} matches`);
+      }
+      if (context.progress_snapshot) groundedFrom.push('progress');
+      if (context.active_product_identity) {
+        groundedFrom.push('active product');
+      }
       return {
         id: args.messageId,
         role: 'assistant',
@@ -348,6 +368,7 @@ export async function askAssistant(args: {
             : 'I couldn’t produce an answer for that one — try rephrasing?',
         attachedProductIds: args.attachedProductIds,
         createdAt: new Date().toISOString(),
+        groundedFrom: groundedFrom.length > 0 ? groundedFrom : undefined,
       };
     }
     aiLog.warn(

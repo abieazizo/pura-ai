@@ -229,6 +229,14 @@ export interface AssistantMessage {
   text: string;
   attachedProductIds?: string[];
   createdAt: string;
+  /**
+   * v10.26 — when the assistant reply came from the AI gateway with a
+   * grounded AssistantContext, the API wrapper stamps the surfaces it
+   * referenced ("scan", "routine", "matches", "active product") so
+   * the chat UI can render a small attribution line under the bubble.
+   * Absent on user messages and on deterministic-fallback replies.
+   */
+  groundedFrom?: string[];
 }
 
 // SKIN_CYCLE_DAYS lives in theme/tokens.ts so it sits alongside other

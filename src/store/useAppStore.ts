@@ -18,8 +18,10 @@ import type {
 import type {
   ProductIdentity,
   ProductMatch,
+  ProgressExplanation,
   RoutineRecommendation,
   SearchSuggestionResult,
+  SkinScoreExplanation,
 } from '@/ai/ai-contracts';
 
 export type AppearanceMode = 'light' | 'dark' | 'system';
@@ -105,6 +107,13 @@ export interface AppState {
   aiRoutine: RoutineRecommendation | null;
   aiSearchSuggestions: SearchSuggestionResult | null;
   aiActiveProductIdentity: ProductIdentity | null;
+  /** v10.26 — AI-derived progress narrative + score explanation,
+   *  hydrated by `getProgressBundle()` (api/progress.ts) on Progress
+   *  sub-tab mount. Surfaces in RoutineScreen's Progress segment as
+   *  the lead narrative (replaces deterministic ProgressNarrative
+   *  content) and the SkinScoreHero coach line. */
+  aiProgress: ProgressExplanation | null;
+  aiScoreExplanation: SkinScoreExplanation | null;
 
   assistantTyping: boolean;
 
@@ -159,6 +168,10 @@ export interface AppState {
   setAiRoutine: (routine: RoutineRecommendation | null) => void;
   setAiSearchSuggestions: (s: SearchSuggestionResult | null) => void;
   setAiActiveProductIdentity: (i: ProductIdentity | null) => void;
+  setAiProgressBundle: (
+    progress: ProgressExplanation | null,
+    score: SkinScoreExplanation | null
+  ) => void;
 
   finishOnboarding: () => void;
 
@@ -212,6 +225,10 @@ const blankState = {
   aiRoutine: null as RoutineRecommendation | null,
   aiSearchSuggestions: null as SearchSuggestionResult | null,
   aiActiveProductIdentity: null as ProductIdentity | null,
+
+  // v10.26 AI progress hydration
+  aiProgress: null as ProgressExplanation | null,
+  aiScoreExplanation: null as SkinScoreExplanation | null,
 };
 
 export const useAppStore = create<AppState>()(
@@ -450,6 +467,8 @@ export const useAppStore = create<AppState>()(
       setAiSearchSuggestions: (s) => set({ aiSearchSuggestions: s }),
       setAiActiveProductIdentity: (i) =>
         set({ aiActiveProductIdentity: i }),
+      setAiProgressBundle: (progress, score) =>
+        set({ aiProgress: progress, aiScoreExplanation: score }),
 
       finishOnboarding: () => {
         const s = get();
@@ -540,6 +559,8 @@ export const useAppStore = create<AppState>()(
         aiTopMatches: state.aiTopMatches,
         aiRoutine: state.aiRoutine,
         aiSearchSuggestions: state.aiSearchSuggestions,
+        aiProgress: state.aiProgress,
+        aiScoreExplanation: state.aiScoreExplanation,
       }),
     }
   )
