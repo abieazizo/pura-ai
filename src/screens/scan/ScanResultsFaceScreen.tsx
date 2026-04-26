@@ -214,6 +214,15 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </Text>
         ) : null}
 
+        {/* v10.28 — when the scan ran on the deterministic fallback
+            (no live AI configured or the call failed), be honest about
+            it instead of letting the result look like a real Claude-
+            powered analysis. The banner shows once, never on AI runs.
+            This fixes the "fallback masquerading as AI" complaint:
+            the user can now tell at a glance whether the findings are
+            from a live read of their photo or from the demo engine. */}
+        {!scan.aiAnalysis ? <ScanFallbackBanner /> : null}
+
         <View style={styles.findings}>
           {top3.map((concern, i) => (
             <StaggeredFindingRow
@@ -725,6 +734,71 @@ function TonightSheet({
 // None render on the deterministic-fallback path, so their presence
 // is itself a strong signal that the scan was AI-driven.
 // ============================================================================
+
+// ============================================================================
+// v10.28 — fallback banner shown when the scan ran on the deterministic
+// engine because live AI was unavailable. Always visible (not dev-gated)
+// because the user deserves to know that the findings aren't a real read
+// of their photo.
+// ============================================================================
+
+function ScanFallbackBanner() {
+  return (
+    <View style={fallbackBanner.wrap}>
+      <View style={fallbackBanner.rail} />
+      <Text
+        style={fallbackBanner.kicker}
+        maxFontSizeMultiplier={1.1}
+      >
+        DEMO READING
+      </Text>
+      <Text
+        style={fallbackBanner.body}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={3}
+      >
+        Live AI isn’t connected, so these findings are a demo response
+        — not a real read of your photo. Connect the proxy (see
+        SETUP.md) to get real, personalised analysis.
+      </Text>
+    </View>
+  );
+}
+
+const fallbackBanner = StyleSheet.create({
+  wrap: {
+    marginBottom: 22,
+    paddingVertical: 14,
+    paddingLeft: 18,
+    paddingRight: 14,
+    borderRadius: 14,
+    backgroundColor: palette.amber + '14',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  rail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: palette.amber,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.amber,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  body: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.ink,
+  },
+});
 
 function AIScanExtras({ analysis }: { analysis: FaceScanAnalysis }) {
   const tonight = analysis.next_focus.tonight.filter(

@@ -382,8 +382,27 @@ export async function askAssistant(args: {
     'assistant',
     'fallback',
     aiGateway.isAvailable()
-      ? 'AI assistant call failed; pattern-matched mock used'
-      : 'no AI proxy configured; pattern-matched mock used'
+      ? 'AI assistant call failed; honest demo response served'
+      : 'no AI proxy configured; honest demo response served'
   );
-  return buildAssistantReply(args);
+
+  // v10.28 — when the live AI path can't serve this question, do NOT
+  // pretend it did. The previous behaviour was to dress up the
+  // pattern-matching mock in a tone that looked exactly like Claude's
+  // grounded answers — which made the assistant feel "broken in a
+  // way I can't tell." Now we honestly mark the response as a demo
+  // fallback. The mock body still ships as the second paragraph so
+  // the user gets *something* relevant from their state, but they
+  // can no longer mistake it for live AI.
+  const honestPreamble = aiGateway.isAvailable()
+    ? 'AI didn’t respond just now, so this answer is a demo fallback rather than a live read of your skin data.'
+    : 'Live AI isn’t connected on this device — this answer is a demo response, not a personalised AI reply. Connect the proxy (see SETUP.md) to get real grounded answers.';
+
+  const mockReply = await buildAssistantReply(args);
+  return {
+    ...mockReply,
+    text: `${honestPreamble}\n\n${mockReply.text}`,
+    // Explicitly NO groundedFrom — this is not grounded.
+    groundedFrom: undefined,
+  };
 }

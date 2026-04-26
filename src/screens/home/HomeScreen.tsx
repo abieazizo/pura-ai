@@ -27,6 +27,7 @@ import { palette, statusColor } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { CATEGORY_LABEL, getConcerns, severityLabel } from '@/utils/concerns';
+import { AIStatusBanner } from '@/components/dev/AIStatusBanner';
 import {
   buildSkinScoreWhy,
   computeSkinScore,
@@ -175,6 +176,11 @@ export function HomeScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
       <BrandBar initials={user.initials ?? firstName?.[0]?.toUpperCase() ?? null} />
+      {/* v10.28 — dev-only AI proxy status banner. Hidden unless
+          EXPO_PUBLIC_PURA_AI_DEV_BADGE=1. Renders only when the proxy
+          is unreachable or unconfigured so the dev knows the live AI
+          path isn't actually serving requests. */}
+      <AIStatusBanner />
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: bottomClearance }}

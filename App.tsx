@@ -14,6 +14,7 @@ import { ThemeProvider } from '@/theme/ThemeProvider';
 import { colors, palette } from '@/theme';
 import { installDevConsole } from '@/utils/devConsole';
 import { ContextualProvider } from '@/components/contextual/ContextualProvider';
+import { probeProxyHealthz } from '@/ai/aiHealthProbe';
 
 const navTheme = {
   ...DefaultTheme,
@@ -50,6 +51,10 @@ export default function App() {
 
   useEffect(() => {
     installDevConsole();
+    // v10.28 — fire one /healthz probe at boot. Result lands on
+    // aiTelemetry.healthz so the Home banner + diagnostics screen can
+    // show whether the configured proxy actually answers.
+    void probeProxyHealthz();
     const unsub = useAppStore.persist.onFinishHydration(() => setHydrated(true));
     if (useAppStore.persist.hasHydrated()) setHydrated(true);
     return unsub;
