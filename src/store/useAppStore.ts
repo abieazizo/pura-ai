@@ -262,7 +262,15 @@ export const useAppStore = create<AppState>()(
             }
             try {
               const ai = await import('@/ai/aiGateway');
-              if (!ai.aiGateway.isAvailable()) return;
+              const tel = await import('@/ai/aiTelemetry');
+              if (!ai.aiGateway.isAvailable()) {
+                tel.aiTelemetry.setFeatureSource(
+                  'routine',
+                  'fallback',
+                  'no AI proxy configured; routine card falls back to deterministic tonight-focus'
+                );
+                return;
+              }
               const a = scan.aiAnalysis!;
               const matchedProducts = get().aiTopMatches;
               const matchedProductsJson = JSON.stringify({
@@ -288,8 +296,24 @@ export const useAppStore = create<AppState>()(
                 basedOnScanId: scan.id,
               });
               set({ aiRoutine: routine });
+              tel.aiTelemetry.setFeatureSource(
+                'routine',
+                'ai',
+                `AI routine generated: ${routine.morning.length} morning + ${routine.evening.length} evening steps`
+              );
             } catch {
               /* swallowed — TODAY focus card falls back to buildTonightFocus */
+              try {
+                const tel = await import('@/ai/aiTelemetry');
+                tel.aiTelemetry.countFallback('generateRoutineRecommendation');
+                tel.aiTelemetry.setFeatureSource(
+                  'routine',
+                  'fallback',
+                  'AI routine call failed; deterministic tonight-focus used'
+                );
+              } catch {
+                /* swallow */
+              }
             }
           });
         }

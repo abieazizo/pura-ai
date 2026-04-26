@@ -39,6 +39,7 @@ import {
 } from '@/utils/concerns';
 import { buildSkinScoreWhy, computeSkinScore, formatDelta } from '@/utils/skinScore';
 import { SkinScoreDial } from '@/components/SkinScoreDial';
+import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Concern, Severity } from '@/types';
 
@@ -159,6 +160,9 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
+      {/* v10.25 — dev-only AI source pill. Renders nothing in
+          production builds. Tap → AIDiagnostics. */}
+      <AISourceBadge feature="scan" />
 
       <View style={styles.header}>
         <Pressable

@@ -99,4 +99,9 @@ export type RootStackParamList = {
   ScanModal: { initialMode?: ScanModalMode } | undefined;
   ProfileSheet: undefined;
   ProductDetailModal: { productId: string };
+  /** v10.25 — dev-only AI status & smoke-test surface. Reachable by
+   *  tapping the AISourceBadge that floats in dev builds. The route
+   *  is registered unconditionally; in production no UI surfaces a
+   *  link to it. */
+  AIDiagnostics: undefined;
 };

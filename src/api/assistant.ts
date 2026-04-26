@@ -11,6 +11,7 @@ import type { AssistantMessage, Scan } from '@/types';
 import { buildAssistantReply } from '@/utils/assistantMock';
 import { aiGateway, tryAi } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
+import { aiTelemetry } from '@/ai/aiTelemetry';
 import { useAppStore } from '@/store/useAppStore';
 import { computeSkinScore } from '@/utils/skinScore';
 import type {
@@ -331,6 +332,13 @@ export async function askAssistant(args: {
       aiGateway.answerAssistant({ context, userQuestion: args.text })
     );
     if (text !== null) {
+      aiTelemetry.setFeatureSource(
+        'assistant',
+        'ai',
+        `answered question via proxy (latest scan ${
+          context.latest_scan ? 'attached' : 'absent'
+        }, ${context.top_matches.length} matches in context)`
+      );
       return {
         id: args.messageId,
         role: 'assistant',
@@ -348,5 +356,13 @@ export async function askAssistant(args: {
     );
   }
 
+  aiTelemetry.countFallback('answerAssistant');
+  aiTelemetry.setFeatureSource(
+    'assistant',
+    'fallback',
+    aiGateway.isAvailable()
+      ? 'AI assistant call failed; pattern-matched mock used'
+      : 'no AI proxy configured; pattern-matched mock used'
+  );
   return buildAssistantReply(args);
 }

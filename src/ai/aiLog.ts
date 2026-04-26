@@ -54,6 +54,20 @@ function isDev(): boolean {
 // ---------------------------------------------------------------------------
 
 const consoleSink: AiLogSink = (record) => {
+  // v10.25 — also push every log into the in-app telemetry buffer so
+  // the diagnostics screen has recent activity to render. Lazily
+  // imported to avoid a hard dependency cycle (telemetry imports
+  // AiLogRecord type from this file).
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('./aiTelemetry') as
+      | { aiTelemetry: { pushLog: (r: AiLogRecord) => void } }
+      | undefined;
+    if (mod && mod.aiTelemetry) mod.aiTelemetry.pushLog(record);
+  } catch {
+    // Telemetry module may not be reachable during early boot — fine.
+  }
+
   if (!isDev() && record.level === 'info') return;
   const tag = `[ai:${record.scope}]`;
   // eslint-disable-next-line no-console

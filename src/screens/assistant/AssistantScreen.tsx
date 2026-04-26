@@ -38,6 +38,7 @@ import { EditorialRule } from '@/components/EditorialRule';
 import { PuraMark } from '@/components/PuraMark';
 import { TypingDots } from '@/components/TypingDots';
 import { ProductCard } from '@/components/ProductCard';
+import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
@@ -128,6 +129,7 @@ export function AssistantScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
+      <AISourceBadge feature="assistant" />
 
       {/* v10.3 — branded chat header with a live status dot. The dot
           gently pulses when the assistant is ready (reads as "listening,

@@ -15,6 +15,7 @@ import { FiltersStubSheet } from '@/components/products/FiltersStubSheet';
 import { CategoryRail, type GoalKey } from '@/components/products/CategoryRail';
 import { CategoryFeed } from '@/components/products/CategoryFeed';
 import { PuraMark } from '@/components/PuraMark';
+import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { searchProducts } from '@/store/productSelectors';
 import { useAppStore } from '@/store/useAppStore';
 import { getSearchSuggestions } from '@/api';
@@ -106,6 +107,7 @@ export function ProductsScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
+      <AISourceBadge feature="products" />
 
       {/* Brand bar — PuraMark + wordmark + filter chip */}
       <View style={styles.headerRow}>

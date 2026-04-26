@@ -5,6 +5,7 @@ import { OnboardingNavigator } from './OnboardingNavigator';
 import { ScanModalStack } from './ScanModalStack';
 import { ProfileSheet } from '@/screens/profile/ProfileSheet';
 import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen';
+import { AIDiagnosticsScreen } from '@/components/dev/AIDiagnosticsScreen';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { RootStackParamList } from './types';
@@ -63,6 +64,19 @@ export function RootNavigator() {
           presentation: 'modal',
           animation: 'slide_from_bottom',
           animationDuration: 340,
+        }}
+      />
+
+      {/* v10.25 — dev-only AI diagnostics surface. Always registered
+          so the AISourceBadge can navigate to it when present; in
+          production the badge never renders so the route is unreachable. */}
+      <Stack.Screen
+        name="AIDiagnostics"
+        component={AIDiagnosticsScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
+          animationDuration: 280,
         }}
       />
     </Stack.Navigator>

@@ -24,6 +24,7 @@ import { seedProducts } from '@/data/seed';
 import type { Product } from '@/types';
 import { aiGateway, tryAi } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
+import { aiTelemetry } from '@/ai/aiTelemetry';
 import type {
   BarcodeResolution,
   ConcernType,
@@ -193,6 +194,22 @@ export async function getMatchedProductsForUser(args: {
     } catch {
       /* non-fatal */
     }
+    aiTelemetry.setFeatureSource(
+      'products',
+      'ai',
+      `${result.matches.length} AI-ranked matches; top pick ${
+        result.top_pick_product_id ?? 'none'
+      }`
+    );
+  } else {
+    aiTelemetry.countFallback('matchProductsForUser');
+    aiTelemetry.setFeatureSource(
+      'products',
+      'fallback',
+      aiGateway.isAvailable()
+        ? 'AI matching call failed; falling back to seeded matchScore'
+        : 'no AI proxy configured; using seeded matchScore'
+    );
   }
   return result;
 }
@@ -257,6 +274,18 @@ export async function getSearchSuggestions(
     } catch {
       /* non-fatal */
     }
+    aiTelemetry.setFeatureSource(
+      'search',
+      'ai',
+      `${result.suggestion_chips.length} AI suggestion chips, placeholder "${result.prefill_placeholder}"`
+    );
+  } else {
+    aiTelemetry.countFallback('buildSearchSuggestions');
+    aiTelemetry.setFeatureSource(
+      'search',
+      'fallback',
+      'AI search suggestions unavailable; using default placeholder'
+    );
   }
   return result;
 }
@@ -273,7 +302,14 @@ export async function getSearchSuggestions(
 export async function resolveBarcode(args: {
   barcodeValue: string;
 }): Promise<BarcodeResolution | null> {
-  if (!aiGateway.isAvailable()) return null;
+  if (!aiGateway.isAvailable()) {
+    aiTelemetry.setFeatureSource(
+      'barcode',
+      'fallback',
+      'no AI proxy configured; barcode flow unavailable'
+    );
+    return null;
+  }
   if (args.barcodeValue.trim().length === 0) {
     aiLog.warn(
       'products.resolveBarcode',
@@ -281,9 +317,24 @@ export async function resolveBarcode(args: {
     );
     return null;
   }
-  return await tryAi(() =>
+  const result = await tryAi(() =>
     aiGateway.normalizeBarcodeResolution({
       barcodeValue: args.barcodeValue,
     })
   );
+  if (result) {
+    aiTelemetry.setFeatureSource(
+      'barcode',
+      'ai',
+      `barcode ${args.barcodeValue} resolved via proxy (found=${result.found})`
+    );
+  } else {
+    aiTelemetry.countFallback('normalizeBarcodeResolution');
+    aiTelemetry.setFeatureSource(
+      'barcode',
+      'fallback',
+      'AI barcode resolution failed'
+    );
+  }
+  return result;
 }

@@ -17,6 +17,7 @@ import type { Scan, SkinZone } from '@/types';
 import { buildSummaryHeadline, deriveConcerns } from '@/utils/concerns';
 import { aiGateway, tryAi } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
+import { aiTelemetry } from '@/ai/aiTelemetry';
 import { translateAnalysisToScan, buildPreviousSummary } from '@/ai/translateAnalysis';
 import { useAppStore } from '@/store/useAppStore';
 import type { ProductIdentity, ProductMatchResult } from '@/ai/ai-contracts';
@@ -105,6 +106,11 @@ export async function analyzeFaceScan(args: {
         })
       );
       if (analysis) {
+        aiTelemetry.setFeatureSource(
+          'scan',
+          'ai',
+          `analyzed scan ${scanId} via proxy (skin score ${analysis.skin_score.value}, ${analysis.findings.length} findings)`
+        );
         return translateAnalysisToScan({
           analysis,
           photoUri,
@@ -121,6 +127,14 @@ export async function analyzeFaceScan(args: {
   }
 
   // ── Fallback path: deterministic mock (the original v8.1 logic) ──
+  aiTelemetry.countFallback('analyzeFaceScan');
+  aiTelemetry.setFeatureSource(
+    'scan',
+    'fallback',
+    aiGateway.isAvailable()
+      ? 'AI call failed; deterministic zone-based mock used'
+      : 'no AI proxy configured; deterministic zone-based mock used'
+  );
   await delay(1800);
 
   if (!previousScan) {
@@ -226,6 +240,13 @@ export async function analyzeProductScan(args?: {
           result.fit.matches.length > 0
             ? result.fit.matches[0].match_score
             : 0;
+        aiTelemetry.setFeatureSource(
+          'productScan',
+          'ai',
+          `identified ${result.identity.brand ?? 'unknown'} ${
+            result.identity.product_name ?? ''
+          } via proxy`
+        );
         return {
           matchPercent: topMatchScore,
           identity: result.identity,
@@ -241,6 +262,12 @@ export async function analyzeProductScan(args?: {
 
   // Deterministic fallback — preserves the legacy shape so any caller
   // reading only `matchPercent` continues to work.
+  aiTelemetry.countFallback('analyzeScannedProductAgainstUser');
+  aiTelemetry.setFeatureSource(
+    'productScan',
+    'fallback',
+    'AI unavailable or failed; returning canned 78% match'
+  );
   await delay(1800);
   return { matchPercent: 78 };
 }

@@ -31,6 +31,7 @@ import {
   Drop,
 } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
+import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { CompareSlider } from '@/components/CompareSlider';
 import { SkinScoreHero, SkinScoreTrendCard } from '@/screens/progress/SkinScoreHero';
 import { ProgressNarrative } from '@/screens/progress/ProgressNarrative';
@@ -163,6 +164,9 @@ export function RoutineScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
+      <AISourceBadge
+        feature={topSegment === 'progress' ? 'progress' : 'routine'}
+      />
 
       <View style={styles.headerRow}>
         <PuraMark size={26} variant="idle" />

@@ -59,6 +59,7 @@ import type {
   SupportedImageMediaType,
 } from './ai-contracts';
 import { aiLog } from './aiLog';
+import { aiTelemetry, type AIMethodKey } from './aiTelemetry';
 import {
   validateAssistantAnswer,
   validateBarcodeResolution,
@@ -260,29 +261,33 @@ async function runMethod<TRaw, T>(args: {
     return validated;
   };
 
+  aiTelemetry.beginMethodCall(method as AIMethodKey, requestId);
   try {
     aiLog.info('aiGateway.call', `${method} start`, {
       requestId,
       transport: TRANSPORT,
     });
     const result = await attempt();
+    const dur = Date.now() - start;
     aiLog.info('aiGateway.call', `${method} ok`, {
       requestId,
-      durationMs: Date.now() - start,
+      durationMs: dur,
     });
+    aiTelemetry.completeMethodCallOk(method as AIMethodKey, dur);
     return result;
   } catch (firstError) {
     const transient =
       firstError instanceof AIProxyError && firstError.isTransient();
     if (!transient) {
+      const dur = Date.now() - start;
+      const errMsg =
+        firstError instanceof Error ? firstError.message : String(firstError);
       aiLog.warn('aiGateway.call', `${method} failed (no retry)`, {
         requestId,
-        durationMs: Date.now() - start,
-        error:
-          firstError instanceof Error
-            ? firstError.message
-            : String(firstError),
+        durationMs: dur,
+        error: errMsg,
       });
+      aiTelemetry.completeMethodCallFail(method as AIMethodKey, dur, errMsg);
       throw firstError;
     }
     aiLog.warn('aiGateway.call', `${method} transient failure, retrying once`, {
@@ -291,20 +296,25 @@ async function runMethod<TRaw, T>(args: {
     });
     try {
       const result = await attempt();
+      const dur = Date.now() - start;
       aiLog.info('aiGateway.call', `${method} ok after retry`, {
         requestId,
-        durationMs: Date.now() - start,
+        durationMs: dur,
       });
+      aiTelemetry.completeMethodCallOk(method as AIMethodKey, dur);
       return result;
     } catch (secondError) {
+      const dur = Date.now() - start;
+      const errMsg =
+        secondError instanceof Error
+          ? secondError.message
+          : String(secondError);
       aiLog.error('aiGateway.call', `${method} failed after retry`, {
         requestId,
-        durationMs: Date.now() - start,
-        error:
-          secondError instanceof Error
-            ? secondError.message
-            : String(secondError),
+        durationMs: dur,
+        error: errMsg,
       });
+      aiTelemetry.completeMethodCallFail(method as AIMethodKey, dur, errMsg);
       throw secondError;
     }
   }
