@@ -23,17 +23,21 @@ import {
   Moon,
   BookmarkSimple,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  Minus,
+  CaretRight,
   X,
   Drop,
 } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
 import { CompareSlider } from '@/components/CompareSlider';
-import { SkinScoreHero } from '@/screens/progress/SkinScoreHero';
+import { SkinScoreHero, SkinScoreTrendCard } from '@/screens/progress/SkinScoreHero';
 import { ProgressNarrative } from '@/screens/progress/ProgressNarrative';
 import { PhotoTimelineStrip } from '@/screens/progress/PhotoTimelineStrip';
 import { useAppStore, useDayNumber } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
-import { computeSkinScore } from '@/utils/skinScore';
+import { computeSkinScore, formatDelta, tierLabel } from '@/utils/skinScore';
 import { buildTonightFocus, getConcerns } from '@/utils/concerns';
 import { seedProducts } from '@/data/seed';
 import { palette, space } from '@/theme';
@@ -175,6 +179,28 @@ export function RoutineScreen() {
         </Text>
       </View>
 
+      {/* v10.20 — persistent score strip. Always visible in the
+          destination header (when scanned), regardless of which
+          segment is active. The Skin Score becomes a constant
+          presence — the destination's anchor — instead of something
+          the user has to navigate to. Premium habit/health apps put
+          the user's current state at the top of the destination
+          (Apple Health rings, Whoop strap); this strip serves that
+          role for Pura. Tapping it switches to the Progress sub-tab
+          where the full hero treatment lives. */}
+      {hasScanned ? (
+        <ScoreStrip
+          score={computeSkinScore(scans)}
+          onPress={() => handleTop('progress')}
+          active={topSegment === 'progress'}
+        />
+      ) : null}
+
+      {/* v10.20 — TopSegmented restyled as magazine-style underline
+          tabs (see component below). The previous gray-pill
+          UIKit-default segmented control made the destination feel
+          like "two sub-pages in a weak container"; the new typographic
+          treatment lets the page own its own section masthead. */}
       <View style={styles.topSegmentedWrap}>
         <TopSegmented active={topSegment} onChange={handleTop} />
       </View>
@@ -209,8 +235,101 @@ export function RoutineScreen() {
 }
 
 // ============================================================================
-// Top segmented control — Routine | Progress
+// Persistent score strip — v10.20
 // ============================================================================
+//
+// Sits in the destination header above the segmented tabs whenever the
+// user has scanned at least once. Always visible regardless of segment,
+// so the Skin Score is the destination's identity, not a sub-tab
+// feature. Tapping the strip jumps to the Progress segment where the
+// full hero lives. Active state (when Progress is already selected) is
+// rendered in clay so the strip reads as a non-button context line.
+
+function ScoreStrip({
+  score,
+  onPress,
+  active,
+}: {
+  score: ReturnType<typeof computeSkinScore>;
+  onPress: () => void;
+  active: boolean;
+}) {
+  const delta = score.deltaSinceLast;
+  const DeltaIcon =
+    delta === null
+      ? null
+      : delta > 0
+      ? ArrowUp
+      : delta < 0
+      ? ArrowDown
+      : Minus;
+  const deltaColor =
+    delta === null
+      ? palette.inkTertiary
+      : delta > 0
+      ? palette.mossDeep
+      : delta < 0
+      ? palette.rust
+      : palette.inkTertiary;
+
+  const Wrapper: React.ComponentType<any> = active ? View : Pressable;
+
+  return (
+    <Wrapper
+      onPress={active ? undefined : onPress}
+      accessibilityRole={active ? undefined : 'button'}
+      accessibilityLabel={
+        active
+          ? undefined
+          : `Skin Score ${score.value}, ${tierLabel(score.tier)}. Open Progress.`
+      }
+      style={[
+        scoreStripStyles.wrap,
+        active && scoreStripStyles.wrapActive,
+      ]}
+    >
+      <Text style={scoreStripStyles.kicker} maxFontSizeMultiplier={1.1}>
+        SKIN SCORE
+      </Text>
+      <View style={scoreStripStyles.valueRow}>
+        <Text style={scoreStripStyles.value} maxFontSizeMultiplier={1.15}>
+          {score.value}
+        </Text>
+        <Text style={scoreStripStyles.tier} maxFontSizeMultiplier={1.15}>
+          {tierLabel(score.tier)}
+        </Text>
+      </View>
+      {DeltaIcon && delta !== null ? (
+        <View style={scoreStripStyles.deltaPill}>
+          <DeltaIcon size={11} color={deltaColor} weight="bold" />
+          <Text
+            style={[scoreStripStyles.deltaValue, { color: deltaColor }]}
+            maxFontSizeMultiplier={1.1}
+          >
+            {formatDelta(delta)}
+          </Text>
+        </View>
+      ) : (
+        <Text style={scoreStripStyles.firstReading} maxFontSizeMultiplier={1.1}>
+          first reading
+        </Text>
+      )}
+      {!active ? (
+        <CaretRight size={13} color={palette.inkTertiary} weight="bold" />
+      ) : null}
+    </Wrapper>
+  );
+}
+
+// ============================================================================
+// Top segmented control — v10.20 magazine-style underline tabs
+// ============================================================================
+//
+// Replaces the v10.13 gray-pill iOS-default segmented control. Two
+// serif labels sit side-by-side with a 2pt clay underline indicator
+// beneath the active one (animated on switch). A hairline rule runs
+// the full width below the labels so the strip reads as a publication
+// section masthead, not a UIKit primitive.
 
 function TopSegmented({
   active,
@@ -224,7 +343,7 @@ function TopSegmented({
     { id: 'progress', label: 'Progress' },
   ];
   return (
-    <View style={segStyles.top}>
+    <View style={segStyles.topRow}>
       {OPTIONS.map((o) => {
         const selected = o.id === active;
         return (
@@ -233,21 +352,31 @@ function TopSegmented({
             onPress={() => onChange(o.id)}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
+            hitSlop={6}
             style={({ pressed }) => [
               segStyles.topSeg,
-              selected && segStyles.topSegSelected,
-              pressed && !selected && { opacity: 0.85 },
+              pressed && !selected && { opacity: 0.7 },
             ]}
           >
             <Text
               style={[
                 segStyles.topSegLabel,
-                { color: selected ? palette.inkInverse : palette.inkSecondary },
+                {
+                  color: selected ? palette.ink : palette.inkTertiary,
+                },
               ]}
               maxFontSizeMultiplier={1.1}
             >
               {o.label}
             </Text>
+            <View
+              style={[
+                segStyles.topSegUnderline,
+                {
+                  backgroundColor: selected ? palette.clay : 'transparent',
+                },
+              ]}
+            />
           </Pressable>
         );
       })}
@@ -825,12 +954,13 @@ function ProgressSubTab({
       showsVerticalScrollIndicator={false}
     >
       <Animated.View style={fadeStyle}>
-        {/* v10.18 — SkinScoreHero now renders the why-line internally
-            so the score block reads as a single composed module:
-            label / value / delta / why. Removing the standalone
-            why-line below the hero kept the score visual story
-            intact and tightened the page rhythm. */}
+        {/* v10.20 — score hero is now the score story only (label /
+            value / delta / verdict / why); the trend chart that used
+            to live inside it has been spun out into SkinScoreTrendCard
+            below so each module gets its own page-rhythm beat. */}
         <SkinScoreHero score={computeSkinScore(scans)} scans={scans} />
+
+        <SkinScoreTrendCard scans={scans} />
 
         <ProgressNarrative scans={scans} />
 
@@ -967,10 +1097,14 @@ const styles = StyleSheet.create({
     color: palette.ink,
   },
 
+  // v10.20 — magazine-style underline tabs sit closer to the score
+  // strip above (when present) and the content below. The previous
+  // gray-pill layout needed more breathing room because the pill was
+  // visually heavy; the underline strip sits lighter on the page.
   topSegmentedWrap: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 6,
+    paddingTop: 18,
+    paddingBottom: 0,
   },
 
   innerSegmentedWrap: {
@@ -1258,28 +1392,103 @@ const focusStyles = StyleSheet.create({
   },
 });
 
-const segStyles = StyleSheet.create({
-  top: {
-    flexDirection: 'row',
+// v10.20 — persistent score strip in the destination header. Lives
+// between the title block and the segmented tabs whenever the user has
+// scanned. Always visible regardless of which segment is active so the
+// Skin Score is the destination's anchor, not a sub-tab feature.
+const scoreStripStyles = StyleSheet.create({
+  wrap: {
+    marginTop: 18,
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
     backgroundColor: palette.bgDeep,
-    borderRadius: 12,
-    padding: 3,
-    gap: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  wrapActive: {
+    // When the user is already on Progress, the strip is read-only
+    // context (not a button). Lighter background.
+    backgroundColor: palette.clayPaper,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    flexShrink: 0,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+    flex: 1,
+  },
+  value: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 24,
+    letterSpacing: -0.6,
+    color: palette.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  tier: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    letterSpacing: -0.1,
+    color: palette.inkSecondary,
+  },
+  deltaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 9,
+    backgroundColor: palette.bg,
+  },
+  deltaValue: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
+  firstReading: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: palette.inkTertiary,
+    fontStyle: 'italic',
+  },
+});
+
+const segStyles = StyleSheet.create({
+  // v10.20 — magazine-style underline tabs replace the v10.13 gray-pill
+  // segmented control. Two serif labels with a 2pt clay underline
+  // beneath the active one + a bottom hairline rule across the strip.
+  // Reads as a section masthead, not a UIKit segmented primitive.
+  topRow: {
+    flexDirection: 'row',
+    gap: 28,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: palette.hairline,
   },
   topSeg: {
-    flex: 1,
-    height: 42,
-    borderRadius: 10,
+    paddingTop: 6,
+    paddingBottom: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topSegSelected: {
-    backgroundColor: palette.ink,
   },
   topSegLabel: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 16,
+    fontSize: 18,
+    lineHeight: 22,
     letterSpacing: -0.2,
+  },
+  topSegUnderline: {
+    marginTop: 8,
+    width: 28,
+    height: 2,
+    borderRadius: 1,
   },
 
   inner: {

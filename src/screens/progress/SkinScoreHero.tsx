@@ -58,34 +58,6 @@ const Y_MAX = 100;
 const GRID_VALUES = [40, 60, 80];
 
 export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
-  const { width } = useWindowDimensions();
-  const chartW = width - 40 - 44; // full minus outer page padding + inset
-  const reveal = useSharedValue(0);
-
-  // Peak + low annotations — compute the best and lowest scan scores so
-  // the chart can surface them. Dates format as short MMM DD.
-  const peak = useMemo(() => {
-    if (scans.length === 0) return null;
-    let bestIdx = 0;
-    for (let i = 1; i < scans.length; i++) {
-      if (scans[i].overallScore > scans[bestIdx].overallScore) bestIdx = i;
-    }
-    const s = scans[bestIdx];
-    return {
-      score: s.overallScore,
-      label: formatShortDate(s.capturedAt),
-      index: bestIdx,
-    };
-  }, [scans]);
-
-  useEffect(() => {
-    reveal.value = 0;
-    reveal.value = withDelay(
-      320,
-      withTiming(1, { duration: 1100, easing: Easing.out(Easing.cubic) })
-    );
-  }, [scans.length, reveal]);
-
   const deltaLast = score.deltaSinceLast ?? 0;
   const deltaFirst = score.deltaSinceFirst ?? 0;
 
@@ -103,18 +75,6 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
       : deltaLast < 0
       ? palette.rust
       : palette.inkSecondary;
-
-  const pts = scans.map((s) => s.overallScore);
-  const hasTrend = pts.length >= 2;
-
-  const sinceFirstLine =
-    deltaFirst > 0
-      ? `Up ${deltaFirst} points since day 1.`
-      : deltaFirst < 0
-      ? `Down ${Math.abs(deltaFirst)} points since day 1.`
-      : scans.length > 1
-      ? 'Holding your day-1 score.'
-      : 'Your first reading.';
 
   // v10.4 — celebration banner. When the journey-since-day-1 delta is
   // positive, the page now leads with the win itself: a big moss-tinted
@@ -211,21 +171,109 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
         </Text>
       ) : null}
 
-      {/* ── Area chart ──────────────────────────────────────────── */}
-      {hasTrend ? (
-        <ScoreAreaChart
-          pts={pts}
-          width={chartW}
-          reveal={reveal}
-          label={sinceFirstLine}
-          firstScore={pts[0]}
-          lastScore={pts[pts.length - 1]}
-          peak={peak}
-        />
-      ) : null}
+      {/* v10.20 — the area chart used to live inside this hero card,
+          which made the score block stuffed (dial + label + delta +
+          headline + why-line + chart in one module). Spun out into a
+          dedicated `SkinScoreTrendCard` rendered below this component
+          on the Progress sub-tab so each piece gets its own page-
+          rhythm beat: the score is the score, the trend is the trend. */}
     </View>
   );
 }
+
+// ============================================================================
+// SkinScoreTrendCard — v10.20
+// ============================================================================
+//
+// Standalone trend card that sits below SkinScoreHero on the Progress
+// sub-tab. Renders the area chart + the day-1-vs-today footer that
+// used to live inside the hero. Same animations, same data, just its
+// own card so the score block doesn't carry all the visual load.
+
+export interface SkinScoreTrendCardProps {
+  scans: Scan[];
+}
+
+export function SkinScoreTrendCard({ scans }: SkinScoreTrendCardProps) {
+  const { width } = useWindowDimensions();
+  const chartW = width - 40 - 44;
+  const reveal = useSharedValue(0);
+
+  const pts = scans.map((s) => s.overallScore);
+  const hasTrend = pts.length >= 2;
+
+  const peak = useMemo(() => {
+    if (scans.length === 0) return null;
+    let bestIdx = 0;
+    for (let i = 1; i < scans.length; i++) {
+      if (scans[i].overallScore > scans[bestIdx].overallScore) bestIdx = i;
+    }
+    const s = scans[bestIdx];
+    return {
+      score: s.overallScore,
+      label: formatShortDate(s.capturedAt),
+      index: bestIdx,
+    };
+  }, [scans]);
+
+  useEffect(() => {
+    reveal.value = 0;
+    reveal.value = withDelay(
+      320,
+      withTiming(1, { duration: 1100, easing: Easing.out(Easing.cubic) })
+    );
+  }, [scans.length, reveal]);
+
+  if (!hasTrend) return null;
+
+  const deltaFirst =
+    pts.length >= 2 ? pts[pts.length - 1] - pts[0] : 0;
+  const sinceFirstLine =
+    deltaFirst > 0
+      ? `Up ${deltaFirst} points since day 1.`
+      : deltaFirst < 0
+      ? `Down ${Math.abs(deltaFirst)} points since day 1.`
+      : 'Holding your day-1 score.';
+
+  return (
+    <View style={trendCard.wrap}>
+      <Text style={trendCard.kicker} maxFontSizeMultiplier={1.1}>
+        TREND
+      </Text>
+      <ScoreAreaChart
+        pts={pts}
+        width={chartW}
+        reveal={reveal}
+        label={sinceFirstLine}
+        firstScore={pts[0]}
+        lastScore={pts[pts.length - 1]}
+        peak={peak}
+      />
+    </View>
+  );
+}
+
+const trendCard = StyleSheet.create({
+  wrap: {
+    marginTop: 16,
+    marginHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 22,
+    paddingHorizontal: 22,
+    borderRadius: 24,
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 14,
+  },
+});
 
 function formatShortDate(iso: string): string {
   const d = new Date(iso);
