@@ -167,6 +167,8 @@ export function ScanOverlay({
           onCapture={onCapture}
           onGalleryPick={onGalleryPick}
           analyzing={analyzing}
+          autoMode={mode === 'barcode'}
+          autoModeLabel={analyzing ? 'Found.' : 'Scanning…'}
         />
       </View>
     </View>

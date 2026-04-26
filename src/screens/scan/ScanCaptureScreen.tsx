@@ -23,16 +23,34 @@ import { useContextual } from '@/components/contextual/ContextualProvider';
 
 export interface ScanCaptureScreenProps {
   onClose: () => void;
-  onCaptured: (photoUri: string, mode: ScanModalMode) => void;
+  /**
+   * Fired when a face/product photo is captured. The barcode mode has
+   * a separate callback (`onBarcodeScanned`) because it skips the
+   * still-image capture path entirely — the camera auto-fires on
+   * detection.
+   */
+  onCaptured: (photoUri: string, mode: 'face' | 'product') => void;
+  /** v10.32 — fired when expo-camera's BarcodeScanner detects a code. */
+  onBarcodeScanned?: (barcodeValue: string) => void;
   onOpenHelp: () => void;
   initialMode?: ScanModalMode;
 }
 
 const toOverlayMode = (m: ScanModalMode | undefined): ReticleMode =>
-  m === 'product' ? 'product' : 'face';
+  m === 'product' ? 'product' : m === 'barcode' ? 'barcode' : 'face';
 
-const toAnalysisMode = (r: ReticleMode): ScanModalMode =>
+const toAnalysisMode = (r: ReticleMode): 'face' | 'product' =>
   r === 'face' ? 'face' : 'product';
+
+/**
+ * v10.32 — barcode formats the scanner watches for. Beauty product
+ * barcodes are overwhelmingly EAN-13 (international) or UPC-A (US)
+ * with EAN-8 / UPC-E for smaller packaging. Code-128 catches the
+ * occasional pharma-style barcode some K-beauty SKUs carry.
+ */
+const BARCODE_TYPES: ReadonlyArray<
+  'ean13' | 'ean8' | 'upc_a' | 'upc_e' | 'code128'
+> = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128'];
 
 /**
  * v6 scan capture. The camera permission flow (§1 read-only) is preserved
@@ -41,6 +59,7 @@ const toAnalysisMode = (r: ReticleMode): ScanModalMode =>
 export function ScanCaptureScreen({
   onClose,
   onCaptured,
+  onBarcodeScanned,
   onOpenHelp,
   initialMode = 'face',
 }: ScanCaptureScreenProps) {
@@ -136,6 +155,39 @@ export function ScanCaptureScreen({
     [onCaptured, mode]
   );
 
+  /**
+   * v10.32 — barcode auto-fire. expo-camera streams every detection
+   * frame so we debounce on `capturing` to make sure we navigate
+   * away on the first valid hit and never re-fire while leaving the
+   * screen. The ref-based scannedRef is belt-and-braces — React's
+   * batched setState can lag behind the rapid frame callbacks.
+   */
+  const scannedRef = useRef(false);
+  const handleBarcodeScanned = useCallback(
+    ({ data }: { data?: string }) => {
+      if (scannedRef.current || capturing) return;
+      if (mode !== 'barcode') return;
+      const value = (data ?? '').trim();
+      if (value.length < 6) return; // ignore single-digit garbage frames
+      scannedRef.current = true;
+      setCapturing(true);
+      flashOverlay.value = withTiming(0.25, { duration: 60 }, () => {
+        flashOverlay.value = withTiming(0, { duration: 60 });
+      });
+      onBarcodeScanned?.(value);
+    },
+    [capturing, mode, onBarcodeScanned, flashOverlay]
+  );
+
+  // Reset the scanned-ref when the user changes mode away from
+  // barcode and back, so a second scan in the same session works.
+  useEffect(() => {
+    if (mode !== 'barcode') {
+      scannedRef.current = false;
+      setCapturing(false);
+    }
+  }, [mode]);
+
   if (!permission) return <View style={styles.root} />;
 
   if (!permission.granted) {
@@ -185,6 +237,18 @@ export function ScanCaptureScreen({
         animateShutter={false}
         enableTorch={flashOn && mode !== 'face'}
         zoom={zoomValue}
+        // v10.32 — only stream barcode-scanner frames when the user
+        // is in barcode mode. Outside of that mode, expo-camera skips
+        // the decoder entirely, so face / product capture pays no
+        // perf cost.
+        barcodeScannerSettings={
+          mode === 'barcode'
+            ? { barcodeTypes: [...BARCODE_TYPES] }
+            : undefined
+        }
+        onBarcodeScanned={
+          mode === 'barcode' ? handleBarcodeScanned : undefined
+        }
       />
 
       <Animated.View

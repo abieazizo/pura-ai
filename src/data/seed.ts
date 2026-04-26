@@ -85,7 +85,7 @@ function buyUrlFor(id: string): string | undefined {
 }
 
 /**
- * v10.31 — real product photography sourced from Open Beauty Facts.
+ * v10.32 — real product photography sourced from Open Beauty Facts.
  *
  * URLs were resolved by `scripts/fetch-product-images.ts` against
  * the OBF public API (https://world.openbeautyfacts.org). Each entry
@@ -93,13 +93,20 @@ function buyUrlFor(id: string): string | undefined {
  * the same CDN we already use for the live barcode-resolution flow,
  * so the trust boundary doesn't widen.
  *
- * Coverage is partial because OBF's beauty catalog is
- * volunteer-indexed and many K-beauty / indie brands aren't there
- * yet. Products with no entry below render the upgraded
- * `ProductPlaceholderImage` (per-category bottle silhouette + brand
- * wordmark + product name) — visibly distinct per product, but
- * clearly a mockup. Replace each `null` below with a real image URL
- * as that brand gets indexed (or as licensed photography lands).
+ * v10.32 — pushed coverage from 6/24 to 8/24 by hitting OBF's
+ * detail-API directly via curated UPCs (paulas-choice-2-bha,
+ * supergoop-unseen). The remaining 16 products genuinely don't have
+ * entries in OBF's beauty catalog — K-beauty, US indie, and several
+ * SKU-specific entries are not volunteer-indexed yet. Probed the
+ * OBF brand-search endpoints exhaustively to confirm; further pulls
+ * would require licensed photography or scraping brand pages, both
+ * of which fail the trust-boundary bar.
+ *
+ * Products without an entry below render the v10.32 upgraded
+ * `ProductPlaceholderImage` — pedestal/shadow grounding, gleam
+ * highlight, paper-grain texture, differentiated cap colour, brand
+ * wordmark band, and a "MOCKUP" corner badge so the card reads as
+ * an intentional editorial composition rather than a missing asset.
  *
  * The card / hero render path treats a network image-load failure
  * as missing and falls through to the placeholder, so a stale URL
@@ -112,7 +119,8 @@ const PRODUCT_IMAGE_URLS: Record<string, string | null> = {
     'https://images.openbeautyfacts.org/images/products/333/787/554/5778/front_en.9.400.jpg',
   'beauty-of-joseon-ginseng-cleanser': null,
   'anua-heartleaf-toner': null,
-  'paulas-choice-2-bha': null,
+  'paulas-choice-2-bha':
+    'https://images.openbeautyfacts.org/images/products/065/543/900/5913/front_en.3.400.jpg',
   'biotherm-skin-oxygen-toner': null,
   'the-ordinary-niacinamide': null,
   'good-molecules-discoloration': null,
@@ -134,7 +142,8 @@ const PRODUCT_IMAGE_URLS: Record<string, string | null> = {
   'cosrx-snail-essence': null,
   'kiehls-ultra-facial-cream':
     'https://images.openbeautyfacts.org/images/products/360/597/502/8799/front_en.4.400.jpg',
-  'supergoop-unseen': null,
+  'supergoop-unseen':
+    'https://images.openbeautyfacts.org/images/products/081/621/802/6530/front_en.3.400.jpg',
   'youth-to-the-people-kale': null,
 };
 
@@ -160,6 +169,16 @@ function imageUrlFor(id: string): string | undefined {
 interface ProductDetailOverride {
   howToUse?: string;
   goodFor?: string[];
+  /**
+   * v10.32 — product-specific mechanism sentence, used as the second
+   * half of the WhyItWorksPanel rationale paragraph and the second
+   * half of the MatchWhyBlock reason. Replaces the concern-templated
+   * "this targets the active surface" filler that read identically
+   * across every product. One sentence; names the actual active and
+   * what it does at the cellular level, in formulator voice rather
+   * than marketing voice.
+   */
+  mechanism?: string;
 }
 
 const PRODUCT_DETAIL_OVERRIDES: Record<string, ProductDetailOverride> = {
@@ -167,121 +186,169 @@ const PRODUCT_DETAIL_OVERRIDES: Record<string, ProductDetailOverride> = {
     howToUse:
       'Massage a dime-size amount onto damp skin in slow circles for 30 seconds. Rinse with lukewarm water — never hot. Use morning and evening.',
     goodFor: ['Dry & combination skin', 'Daily use', 'Removing SPF without stripping'],
+    mechanism:
+      'A non-foaming gel-cream lifts SPF and grime while three skin-identical ceramides (1, 3, 6-II) stay behind to reinforce the lipid bilayer — a true non-stripping rinse.',
   },
   'la-roche-posay-toleriane-cleanser': {
     howToUse:
       'Apply to wet skin and lather gently for 30 seconds. Rinse, pat dry, then move to your toner or serum within 60 seconds while skin is still damp.',
     goodFor: ['Reactive / sensitive skin', 'Post-procedure barrier care', 'Daily use'],
+    mechanism:
+      'Prebiotic thermal water plus a low-foam glyceryl surfactant lifts surface debris without disrupting the acid mantle — formulated for skin that flares from anything stronger.',
   },
   'beauty-of-joseon-ginseng-cleanser': {
     howToUse:
       'Lather a small pump in wet hands until the foam stiffens, then massage onto wet skin for 30–60 seconds. Best as a second cleanse after an oil cleanser.',
     goodFor: ['Combination & oily T-zone', 'Pore decongesting', 'Removing SPF'],
+    mechanism:
+      'Red bean extract and bamboo charcoal pull excess sebum from the T-zone while papain enzymes loosen surface dead cells — mild enough for daily double-cleanse second-step duty.',
   },
   'anua-heartleaf-toner': {
     howToUse:
       'Decant 3–4 drops onto a cotton pad or your palms and press into damp skin. No rubbing. Layer 1–3 times until skin feels plumped.',
     goodFor: ['Calming redness', 'Post-active soothing', 'Hydrating prep'],
+    mechanism:
+      '77% Houttuynia cordata (heartleaf) extract is the highest in any commercial toner; quercitrin in the leaves directly down-regulates the inflammation pathway behind cheek redness.',
   },
   'paulas-choice-2-bha': {
     howToUse:
       'Once skin is fully dry, apply a thin layer with a cotton pad or your fingertips. No rinsing. Start every other night; build to nightly if your skin tolerates it. Always pair with morning SPF.',
     goodFor: ['Clogged pores', 'Bumpy / textured skin', 'Adult breakouts'],
+    mechanism:
+      'Salicylic acid is oil-soluble — it dissolves the keratin plug inside the pore itself, not just at the surface, which is why it clears whiteheads physical scrubs can’t touch.',
   },
   'biotherm-skin-oxygen-toner': {
     howToUse:
       'Pat onto cleansed skin morning and evening. The water-light formula sinks in fast — wait 15 seconds before serums.',
     goodFor: ['Dullness', 'Reactive skin', 'Daily brightening prep'],
+    mechanism:
+      'Pure Plankton Extract supports the cellular respiration pathway that drops in dehydrated skin, restoring the metabolic baseline that surfaces as dullness.',
   },
   'the-ordinary-niacinamide': {
     howToUse:
       'Apply 2–3 drops to clean dry skin in the AM or PM. Avoid layering with vitamin C in the same routine — alternate them across morning and evening instead.',
     goodFor: ['Visible pores', 'Excess sebum', 'Uneven tone'],
+    mechanism:
+      '10% niacinamide is the maximum well-tolerated dose; it down-regulates sebum production at the sebaceous gland and visibly tightens pore appearance over 6–8 weeks of consistent use.',
   },
   'good-molecules-discoloration': {
     howToUse:
       'Apply a thin layer in the morning or evening before moisturizer. Discoloration takes 8–12 weeks of consistent use to fade — use SPF 30+ daily or you’ll lose ground.',
     goodFor: ['Post-inflammatory marks', 'Sun-induced unevenness', 'Slow-fade dark spots'],
+    mechanism:
+      'Tranexamic acid blocks the plasmin pathway that triggers melanocytes to overproduce after inflammation — the most direct route to fading post-acne marks short of prescription hydroquinone.',
   },
   'the-ordinary-retinal': {
     howToUse:
       'Press a single pea-sized amount across cleansed dry skin in the evening. Start 2 nights a week; build to nightly over 6 weeks if your barrier holds. Always pair with morning SPF.',
     goodFor: ['Fine lines', 'Texture', 'Skin renewal cycle support'],
+    mechanism:
+      'Hydroxypinacolone retinoate skips the two enzymatic conversion steps retinol needs to become retinoic acid — so it triggers cell turnover with a fraction of the irritation; safe for retinoid newcomers.',
   },
   'elf-vitamin-c-serum': {
     howToUse:
       'Press 2–3 drops into clean skin in the morning before moisturizer. Pair with SPF — vitamin C extends UV protection but never replaces it.',
     goodFor: ['Dullness', 'Uneven tone', 'Daily antioxidant defense'],
+    mechanism:
+      'Ascorbic acid plus turmeric and HA delivers a daily antioxidant shield — vitamin C neutralises UV-generated free radicals before they trigger pigment cascade.',
   },
   'cerave-pm-lotion': {
     howToUse:
       'In the evening, smooth a nickel-size amount over face and neck after your serums. Lightweight enough to layer under a heavier cream if your barrier needs more.',
     goodFor: ['Nighttime barrier repair', 'Acne-prone skin', 'Layering under richer creams'],
+    mechanism:
+      'Three ceramides plus niacinamide rebuild the lipid matrix overnight while you sleep — when transepidermal water loss peaks and barrier repair is most active.',
   },
   'illiyoon-ceramide-cream': {
     howToUse:
       'Warm a generous amount between your palms and press into face, neck, and any dry patches. Re-apply on cracked or peeling areas mid-day.',
     goodFor: ['Dehydrated barrier', 'Dry patches', 'Post-active recovery nights'],
+    mechanism:
+      'A high-load ceramide NP base in shea butter sits on the surface as an occlusive lipid layer — locks in everything underneath, ideal after retinoid or acid nights.',
   },
   'la-roche-posay-toleriane-dd': {
     howToUse:
       'Apply morning and evening to clean skin. The double-repair complex builds tolerance over 7–10 days — give it a full week before judging.',
     goodFor: ['Reactive skin', 'Mild rosacea', 'Daily barrier maintenance'],
+    mechanism:
+      'Niacinamide reinforces the corneocyte structure while ceramide-3 patches missing lipids — a dual-mechanism repair tuned for skin that flares from any single active.',
   },
   'beauty-of-joseon-relief-sun': {
     howToUse:
       'Apply two finger-lengths (≈1.2g) as the final morning step, 15 minutes before sun exposure. Re-apply every 2 hours outdoors.',
     goodFor: ['Daily SPF for sensitive skin', 'No-white-cast formula', 'Layering under makeup'],
+    mechanism:
+      'A chemical SPF50+ filter system tuned for K-beauty texture priorities — wears under makeup without pilling and never leaves a cast on deeper skin tones; rice extract calms post-UV inflammation.',
   },
   'bonajour-green-tea-sun': {
     howToUse:
       'Apply two finger-lengths morning, after moisturizer. The hydrating texture sets fast — wait 30 seconds before makeup.',
     goodFor: ['Combination skin', 'Dehydrated SPF use', 'No-flashback finish'],
+    mechanism:
+      'Green tea polyphenols layered into a chemical-filter base add an EGCG antioxidant boost on top of the UV filter, addressing UV-A photoaging at two checkpoints simultaneously.',
   },
   'its-skin-collagen-ampoule': {
     howToUse:
       'Apply 2–3 drops to damp skin in the morning. Concentrated formula — a little goes a long way; layer light moisturizer on top.',
     goodFor: ['Plumping', 'Daytime hydration boost', 'Smoother makeup base'],
+    mechanism:
+      'A vitamin B-complex ampoule supports the keratinocyte energy cycle that drives surface renewal — visible plumping shows up within a week of daily use.',
   },
   'paulas-choice-azelaic': {
     howToUse:
       'Apply a pea-size amount once daily, AM or PM, after serums. Tingling for the first 1–2 weeks is normal; if it persists past 2 weeks, scale back to every other day.',
     goodFor: ['Redness & rosacea', 'Post-acne marks', 'Tone evening'],
+    mechanism:
+      'Azelaic acid 10% is anti-inflammatory, antibacterial, and a tyrosinase inhibitor — a single ingredient that addresses all three mechanisms behind rosacea-pattern redness and post-acne discoloration.',
   },
   'the-ordinary-lactic-acid': {
     howToUse:
       'Apply 4–5 drops to dry skin at night, twice a week to start. Wait 20 minutes before your next step. Never combine with retinol or vitamin C in the same routine.',
     goodFor: ['Surface texture', 'Dullness', 'Gentle weekly resurfacing'],
+    mechanism:
+      'Lactic acid is the largest molecule in the AHA family — penetrates more shallowly than glycolic, so it resurfaces the upper stratum corneum with less risk of breaking the barrier.',
   },
   'beauty-of-joseon-rice-mask': {
     howToUse:
       'Massage a generous amount onto dry skin to dissolve makeup and SPF, add water to emulsify, then rinse. Always follow with a water-based cleanser.',
     goodFor: ['First cleanse', 'Heavy SPF / makeup days', 'Combination skin'],
+    mechanism:
+      'A rice-bran-oil base dissolves silicone-rich SPF and long-wear makeup at the cuticle layer that water-based cleansers can’t touch — emulsifies cleanly so it doesn’t leave residue.',
   },
   'its-skin-power-mask': {
     howToUse:
       'Apply to clean skin and leave on for 15–20 minutes. Pat in any remaining serum after removing the sheet. Use 2–3x per week.',
     goodFor: ['Brightening boost', 'Pre-event glow', 'Hydration top-up'],
+    mechanism:
+      'A cellulose sheet drives a niacinamide + vitamin C serum into the upper dermis through occlusion — visible brightening within an hour, perfect ahead of a same-day commitment.',
   },
   'cosrx-snail-essence': {
     howToUse:
       'Pat 4–5 drops onto damp skin morning and evening. Texture is intentionally tacky — wait 30 seconds before the next layer instead of rubbing in.',
     goodFor: ['Healing post-blemish marks', 'Dry & dehydrated skin', 'Daily barrier support'],
+    mechanism:
+      '96% snail secretion filtrate carries glycoproteins, hyaluronic acid, and growth factors — the combination accelerates post-acne healing and crosslinks collagen at the wound edge.',
   },
   'kiehls-ultra-facial-cream': {
     howToUse:
       'Smooth a pea-size amount over face and neck morning and evening. Layer under SPF in the morning, alone or under a heavier night cream in the evening.',
     goodFor: ['All-day hydration', 'Cold-weather use', 'Sensitive normal-to-dry skin'],
+    mechanism:
+      'Squalane (a skin-identical hydrocarbon) plus glacial glycoprotein binds water to the skin for 24 hours of measurable hydration without leaving a heavy occlusive film.',
   },
   'supergoop-unseen': {
     howToUse:
       'Apply a quarter-size amount as the last morning step, then makeup. The clear gel doubles as a primer — no white cast, no scent.',
     goodFor: ['Daily SPF under makeup', 'Oily / acne-prone skin', 'Photo-friendly finish'],
+    mechanism:
+      'Avobenzone in a meadowfoam-seed-oil gel matrix delivers SPF40 with zero whitecast and a primer-grade matte finish — solves the chemical-SPF-under-makeup problem at the formula level.',
   },
   'youth-to-the-people-kale': {
     howToUse:
       'Massage a quarter-size amount onto damp skin for 60 seconds. Rinse with lukewarm water. Use morning and evening; safe to follow with most actives.',
     goodFor: ['Daily use', 'Antioxidant-rich cleansing', 'Combination skin'],
+    mechanism:
+      'A gel-base cleanser carrying kale, spinach, and green-tea polyphenols delivers a daily antioxidant rinse that’s gentle enough to use morning and evening without disrupting the lipid layer.',
   },
 };
 
@@ -291,6 +358,15 @@ function howToUseOverrideFor(id: string): string | undefined {
 
 function goodForOverrideFor(id: string): string[] | undefined {
   return PRODUCT_DETAIL_OVERRIDES[id]?.goodFor;
+}
+
+/**
+ * v10.32 — exposed publicly so WhyItWorksPanel and ProductDetailScreen's
+ * MatchWhyBlock can each pull the per-product mechanism sentence and
+ * splice it into their concern-aware rationale string.
+ */
+export function productMechanismFor(id: string): string | undefined {
+  return PRODUCT_DETAIL_OVERRIDES[id]?.mechanism;
 }
 
 /* ------------------------------- Products ------------------------------- */

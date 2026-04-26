@@ -18,6 +18,7 @@ import type { Concern, IngredientDetail, Product } from '@/types';
 import type { AppState } from '@/store/useAppStore';
 import { analyzeIngredientFit } from './IngredientsPanel';
 import { CATEGORY_LABEL } from '@/utils/concerns';
+import { productMechanismFor } from '@/data/seed';
 
 export interface WhyItWorksPanelProps {
   product: Product;
@@ -337,7 +338,16 @@ function relevanceLabel(concern: Concern): string {
  * it. Falls back to a grounded generic sentence when no scan exists.
  */
 function buildRationale(product: Product, concern: Concern | null): string {
+  // v10.32 — when seed.ts has authored a per-product mechanism
+  // sentence we splice that in instead of the concern-templated
+  // "this formula targets..." filler. Generic concern-template
+  // fallback stays in place for products without an authored
+  // mechanism so the page never shows a blank rationale.
+  const mechanism = productMechanismFor(product.id);
   if (!concern) {
+    if (mechanism) {
+      return `${mechanism} Scan once and this page will tie that mechanism directly to what your skin is actually doing.`;
+    }
     return `This ${product.category} is matched to your skin profile and flagged for common irritants we know to avoid. Scan once, and this page will speak more specifically to what your skin is actually doing.`;
   }
   const region = concern.region;
@@ -345,13 +355,13 @@ function buildRationale(product: Product, concern: Concern | null): string {
   const sev = concern.severity.replace('-', ' ');
   switch (concern.category) {
     case 'breakouts':
-      return `Your ${region} is reading as ${cat} \u00b7 ${sev} in the latest scan. This formula targets the active surface without aggravating the barrier — a direct response to what the scan picked up.`;
+      return `Your ${region} is reading as ${cat} \u00b7 ${sev} in the latest scan. ${mechanism ?? 'This formula targets the active surface without aggravating the barrier — a direct response to what the scan picked up.'}`;
     case 'hydration':
-      return `Your ${region} is reading low on moisture. This rebuilds hydration at the layer the scan flagged without sitting heavy on the rest of the face.`;
+      return `Your ${region} is reading low on moisture in the latest scan. ${mechanism ?? 'This rebuilds hydration at the layer the scan flagged without sitting heavy on the rest of the face.'}`;
     case 'texture':
-      return `Texture on your ${region} is uneven in the last reading. This works on the surface refinement the scan identified — gently enough to pair with the rest of your routine.`;
+      return `Texture on your ${region} is uneven in the last reading. ${mechanism ?? 'This works on the surface refinement the scan identified — gently enough to pair with the rest of your routine.'}`;
     case 'tone':
-      return `Dark marks on your ${region} are still visible. This formula works on uneven tone over a full skin cycle — change shows up gradually, scan by scan.`;
+      return `Dark marks on your ${region} are still visible. ${mechanism ?? 'This formula works on uneven tone over a full skin cycle — change shows up gradually, scan by scan.'}`;
   }
 }
 

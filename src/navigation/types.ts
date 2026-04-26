@@ -1,4 +1,5 @@
 import type { Product, ProductTint } from '@/types';
+import type { BarcodeResolution } from '@/ai/ai-contracts';
 
 export type ProductsRowKind =
   | 'best-for-you'
@@ -82,15 +83,32 @@ export type ProgressStackParamList = {
   Progress: undefined;
 };
 
-export type ScanModalMode = 'face' | 'product';
+/**
+ * v10.32 — `barcode` joins `face` and `product`. The Reticle, ModeSelector,
+ * and Caption already had a barcode rendering path baked in since v6 but
+ * the type previously collapsed it to `product`, so the camera never
+ * surfaced barcode detection. v10.32 wires the full path.
+ */
+export type ScanModalMode = 'face' | 'product' | 'barcode';
 
 export type ScanStackParamList = {
   /** First-run tutorial. Conditionally initial when `hasSeenScanTutorial === false`. */
   ScanTutorial: undefined;
   ScanCapture: { initialMode?: ScanModalMode } | undefined;
-  ScanAnalyzing: { photoUri: string; mode: ScanModalMode };
+  ScanAnalyzing: { photoUri: string; mode: 'face' | 'product' };
   ScanResultsFace: { scanId: string };
   ScanResultsProduct: { product: Product; matchPercent: number };
+  /** v10.32 — barcode lookup loading state. The screen kicks off the
+   *  AI gateway call on mount and replaces itself with BarcodeResult
+   *  on completion (success or fail). */
+  BarcodeAnalyzing: { barcodeValue: string };
+  /** v10.32 — barcode lookup result. Rendered for both the found and
+   *  not-found cases; the resolution shape carries enough info to
+   *  branch the UI. */
+  BarcodeResult: {
+    barcodeValue: string;
+    resolution: BarcodeResolution | null;
+  };
 };
 
 export type RootStackParamList = {

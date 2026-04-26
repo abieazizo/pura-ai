@@ -27,7 +27,7 @@ import {
   type AddToRoutineTarget,
 } from '@/components/products/AddToRoutineSheet';
 import { Toast } from '@/components/contextual/Toast';
-import { seedProducts } from '@/data/seed';
+import { seedProducts, productMechanismFor } from '@/data/seed';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { hapt } from '@/utils/haptics';
@@ -384,18 +384,22 @@ function buildReason(product: Product, concern: Concern): string {
   // v10 — region phrasing rewritten to stay grammatical for singular
   // (chin, forehead, nose) and plural (cheeks, under-eyes) region strings.
   // The product's own category implicitly shapes the language.
+  // v10.32 — second sentence is now the per-product mechanism when
+  // available, replacing the generic filler that read identically
+  // across every product.
   const region = concern.region;
   const cat = CATEGORY_LABEL[concern.category].toLowerCase();
   const sev = concern.severity.replace('-', ' ');
+  const mechanism = productMechanismFor(product.id);
   switch (concern.category) {
     case 'breakouts':
-      return `Your ${region} is reading as ${cat} \u00b7 ${sev}. This targets exactly that.`;
+      return `Your ${region} is reading as ${cat} \u00b7 ${sev}. ${mechanism ?? 'This targets exactly that.'}`;
     case 'hydration':
-      return `Low moisture on your ${region} in the last scan. This restores hydration where you need it.`;
+      return `Low moisture on your ${region} in the last scan. ${mechanism ?? 'This restores hydration where you need it.'}`;
     case 'texture':
-      return `Uneven texture on your ${region} in the last scan. This smooths that surface.`;
+      return `Uneven texture on your ${region} in the last scan. ${mechanism ?? 'This smooths that surface.'}`;
     case 'tone':
-      return `Dark marks still visible on your ${region}. This works on uneven tone over time.`;
+      return `Dark marks still visible on your ${region}. ${mechanism ?? 'This works on uneven tone over time.'}`;
   }
 }
 

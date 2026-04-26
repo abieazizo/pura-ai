@@ -4,167 +4,191 @@
     "image_url": "https://images.openbeautyfacts.org/images/products/360/600/053/7576/front_en.11.400.jpg",
     "matched_name": "Hydrating Facial Cleanser",
     "matched_brand": "CeraVe",
-    "query": "Hydrating Facial Cleanser"
+    "query": "Hydrating Facial Cleanser",
+    "source": "search"
   },
   "la-roche-posay-toleriane-cleanser": {
     "code": "3337875545778",
     "image_url": "https://images.openbeautyfacts.org/images/products/333/787/554/5778/front_en.9.400.jpg",
     "matched_name": "Toleriane Hydrating Gentle Cleanser",
     "matched_brand": "La Roche-Posay",
-    "query": "La Roche-Posay Toleriane Hydrating Gentle Cleanser"
+    "query": "barcode:3337875545778",
+    "source": "known-barcode"
   },
   "beauty-of-joseon-ginseng-cleanser": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Beauty of Joseon Red Bean Refreshing Foam Cleanser"
+    "query": "Beauty of Joseon Red Bean Refreshing Foam Cleanser",
+    "source": "none"
   },
   "anua-heartleaf-toner": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Anua Heartleaf 77% Soothing Toner"
+    "query": "Anua Heartleaf 77% Soothing Toner",
+    "source": "none"
   },
   "paulas-choice-2-bha": {
-    "code": "0787734079020",
-    "image_url": null,
-    "matched_name": "Paula's Choice Skin Perfecting 2% BHA Liquid Exfoliant",
-    "matched_brand": "Paula's Coiche",
-    "query": "Paula's Choice Skin Perfecting 2% BHA Liquid Exfoliant"
+    "code": "0655439005913",
+    "image_url": "https://images.openbeautyfacts.org/images/products/065/543/900/5913/front_en.3.400.jpg",
+    "matched_name": "2% BHA Liquid Exfoliant",
+    "matched_brand": "Paula’s choice",
+    "query": "barcode:0655439005913",
+    "source": "known-barcode"
   },
   "biotherm-skin-oxygen-toner": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Biotherm Skin Oxygen Oxygenating Lotion"
+    "query": "Biotherm Skin Oxygen Oxygenating Lotion",
+    "source": "none"
   },
   "the-ordinary-niacinamide": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Niacinamide 10% Zinc 1%"
+    "query": "Niacinamide 10% Zinc 1%",
+    "source": "none"
   },
   "good-molecules-discoloration": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Good Molecules Discoloration Correcting Serum"
+    "query": "Good Molecules Discoloration Correcting Serum",
+    "source": "none"
   },
   "the-ordinary-retinal": {
     "code": "0769915190045",
     "image_url": "https://images.openbeautyfacts.org/images/products/076/991/519/0045/front_en.7.400.jpg",
     "matched_name": "granactive retinoid 2% emulsion",
     "matched_brand": "the ordinary",
-    "query": "The Ordinary Granactive Retinoid 2% Emulsion"
+    "query": "barcode:0769915190045",
+    "source": "known-barcode"
   },
   "elf-vitamin-c-serum": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "e.l.f. Super 10 Serum"
+    "query": "e.l.f. Super 10 Serum",
+    "source": "none"
   },
   "cerave-pm-lotion": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "CeraVe PM Facial Moisturizing Lotion"
+    "query": "CeraVe PM Facial Moisturizing Lotion",
+    "source": "none"
   },
   "illiyoon-ceramide-cream": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Illiyoon Ceramide Ato Concentrate Cream"
+    "query": "Illiyoon Ceramide Ato Concentrate Cream",
+    "source": "none"
   },
   "la-roche-posay-toleriane-dd": {
     "code": "3337875545846",
     "image_url": "https://images.openbeautyfacts.org/images/products/333/787/554/5846/front_en.3.400.jpg",
     "matched_name": "Toleriane Double Repair Face Moisturizer UV SPF 30",
     "matched_brand": "La Roche-Posay",
-    "query": "La Roche-Posay Toleriane Double Repair Face Moisturizer"
+    "query": "barcode:3337875545846",
+    "source": "known-barcode"
   },
   "beauty-of-joseon-relief-sun": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Beauty of Joseon Relief Sun Rice Probiotics SPF50"
+    "query": "Beauty of Joseon Relief Sun Rice Probiotics SPF50",
+    "source": "none"
   },
   "bonajour-green-tea-sun": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "BONAJOUR Green Tea Water Bomb Sun Cream SPF50"
+    "query": "BONAJOUR Green Tea Water Bomb Sun Cream SPF50",
+    "source": "none"
   },
   "its-skin-collagen-ampoule": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "It's Skin Power 10 Formula VB Effector"
+    "query": "It's Skin Power 10 Formula VB Effector",
+    "source": "none"
   },
   "paulas-choice-azelaic": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Paula's Choice 10% Azelaic Acid Booster"
+    "query": "Paula's Choice 10% Azelaic Acid Booster",
+    "source": "none"
   },
   "the-ordinary-lactic-acid": {
     "code": "0769915190373",
     "image_url": "https://images.openbeautyfacts.org/images/products/076/991/519/0373/front_en.12.400.jpg",
     "matched_name": "Lactic Acid 10% + HA",
     "matched_brand": "The Ordinary",
-    "query": "The Ordinary Lactic Acid 10% HA"
+    "query": "barcode:0769915190373",
+    "source": "known-barcode"
   },
   "beauty-of-joseon-rice-mask": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Beauty of Joseon Radiance Cleansing Balm"
+    "query": "Beauty of Joseon Radiance Cleansing Balm",
+    "source": "none"
   },
   "its-skin-power-mask": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "It's Skin Power 10 Formula Brightening Mask"
+    "query": "It's Skin Power 10 Formula Brightening Mask",
+    "source": "none"
   },
   "cosrx-snail-essence": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "COSRX Advanced Snail 96 Mucin Power Essence"
+    "query": "COSRX Advanced Snail 96 Mucin Power Essence",
+    "source": "none"
   },
   "kiehls-ultra-facial-cream": {
     "code": "3605975028799",
     "image_url": "https://images.openbeautyfacts.org/images/products/360/597/502/8799/front_en.4.400.jpg",
     "matched_name": "Kiehl’s Ultra Facial Cream",
     "matched_brand": "L'Oréal, L'Oreal Luxe, Kiehl's",
-    "query": "Kiehls Ultra Facial Cream"
+    "query": "barcode:3605975028799",
+    "source": "known-barcode"
   },
   "supergoop-unseen": {
-    "code": null,
-    "image_url": null,
-    "matched_name": null,
-    "matched_brand": null,
-    "query": "Supergoop Unseen Sunscreen SPF 40"
+    "code": "0816218026530",
+    "image_url": "https://images.openbeautyfacts.org/images/products/081/621/802/6530/front_en.3.400.jpg",
+    "matched_name": "Unseen Sunscreen",
+    "matched_brand": "Supergoop",
+    "query": "barcode:0816218026530",
+    "source": "known-barcode"
   },
   "youth-to-the-people-kale": {
     "code": null,
     "image_url": null,
     "matched_name": null,
     "matched_brand": null,
-    "query": "Youth To The People Superfood Cleanser"
+    "query": "Youth To The People Superfood Cleanser",
+    "source": "none"
   }
 }

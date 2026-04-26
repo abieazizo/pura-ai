@@ -11,6 +11,8 @@ import { ScanAnalyzingFaceScreen } from '@/screens/scan/ScanAnalyzing';
 import { ScanResultsFaceScreen } from '@/screens/scan/ScanResultsFaceScreen';
 import { ScanResultsProductScreen } from '@/screens/scan/ScanResultsProductScreen';
 import { ScanTutorial } from '@/screens/scan/ScanTutorial';
+import { BarcodeAnalyzingScreen } from '@/screens/scan/BarcodeAnalyzingScreen';
+import { BarcodeResultScreen } from '@/screens/scan/BarcodeResultScreen';
 import { useAppStore } from '@/store/useAppStore';
 import type { RootStackParamList, ScanStackParamList } from './types';
 
@@ -62,7 +64,59 @@ export function ScanModalStack({ route }: any) {
           />
         )}
       </Stack.Screen>
+
+      {/* v10.32 — barcode flow */}
+      <Stack.Screen name="BarcodeAnalyzing">
+        {() => <BarcodeAnalyzingHost />}
+      </Stack.Screen>
+      <Stack.Screen name="BarcodeResult">
+        {() => <BarcodeResultHost />}
+      </Stack.Screen>
     </Stack.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// v10.32 — Barcode hosts
+// ---------------------------------------------------------------------------
+
+function BarcodeAnalyzingHost() {
+  const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
+  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<ScanStackParamList, 'BarcodeAnalyzing'>>();
+  const { barcodeValue } = route.params;
+
+  return (
+    <BarcodeAnalyzingScreen
+      barcodeValue={barcodeValue}
+      onComplete={(resolution) => {
+        scanNav.replace('BarcodeResult', { barcodeValue, resolution });
+      }}
+      onCancel={() => {
+        // User backed out mid-lookup — return them to the camera.
+        scanNav.replace('ScanCapture', { initialMode: 'barcode' });
+      }}
+    />
+  );
+}
+
+function BarcodeResultHost() {
+  const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
+  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<ScanStackParamList, 'BarcodeResult'>>();
+  const { barcodeValue, resolution } = route.params;
+
+  return (
+    <BarcodeResultScreen
+      barcodeValue={barcodeValue}
+      resolution={resolution}
+      onCloseModal={() => {
+        rootNav.getParent()?.goBack();
+      }}
+      onScanAgain={() => {
+        scanNav.replace('ScanCapture', { initialMode: 'barcode' });
+      }}
+    />
   );
 }
 
@@ -92,12 +146,22 @@ function TutorialScreenHost() {
 function CaptureScreenHost() {
   const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<ScanStackParamList, 'ScanCapture'>>();
+  const initialMode = route.params?.initialMode ?? 'face';
 
   return (
     <ScanCaptureScreen
+      initialMode={initialMode}
       onClose={() => rootNav.getParent()?.goBack()}
       onCaptured={(photoUri, mode) => {
         scanNav.navigate('ScanAnalyzing', { photoUri, mode });
+      }}
+      // v10.32 — barcode mode auto-fires onBarcodeScanned when
+      // expo-camera detects a code. Skip ScanAnalyzing (which is
+      // for face/product image analysis) and go straight to the
+      // barcode-specific lookup screen.
+      onBarcodeScanned={(barcodeValue) => {
+        scanNav.replace('BarcodeAnalyzing', { barcodeValue });
       }}
       // ? button on the camera — opens the tutorial without resetting the
       // seen flag (§3.1). Uses `push` so the camera stays in the stack and

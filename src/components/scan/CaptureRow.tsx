@@ -29,11 +29,25 @@ export interface CaptureRowProps {
   onGalleryPick: (uri: string) => void;
   /** True while the native capture is in-flight — drives the ring draw. */
   analyzing?: boolean;
+  /**
+   * v10.32 — when true, the centre CaptureButton is replaced with a
+   * passive "scanning" indicator. Used by the barcode mode where the
+   * camera auto-fires on detection and a manual shutter would be
+   * confusing.
+   */
+  autoMode?: boolean;
+  /** Status copy rendered inside the auto-mode chip. Default: "Scanning…". */
+  autoModeLabel?: string;
 }
 
 /**
  * Bottom capture dock (§2.3). Three floating elements: FlashButton (left),
  * CaptureButton (center), GalleryButton (right). Not nested in any card.
+ *
+ * v10.32 — when `autoMode` is true (barcode mode), the centre slot
+ * swaps to a `ScanningIndicator` and the manual shutter is disabled.
+ * The flash + gallery buttons stay live (a torch helps barcode
+ * detection in low light; gallery may carry a barcode-bearing photo).
  */
 export function CaptureRow({
   flashMode,
@@ -41,11 +55,17 @@ export function CaptureRow({
   onCapture,
   onGalleryPick,
   analyzing = false,
+  autoMode = false,
+  autoModeLabel = 'Scanning…',
 }: CaptureRowProps) {
   return (
     <View style={styles.row}>
       <FlashButton mode={flashMode} onPress={onChangeFlash} />
-      <CaptureButton onPress={onCapture} analyzing={analyzing} />
+      {autoMode ? (
+        <ScanningIndicator label={autoModeLabel} />
+      ) : (
+        <CaptureButton onPress={onCapture} analyzing={analyzing} />
+      )}
       <GalleryButton onPick={onGalleryPick} />
     </View>
   );
@@ -184,6 +204,39 @@ function CaptureButton({
   );
 }
 
+// ---------------- Scanning indicator (v10.32 barcode mode) ----------------
+
+/**
+ * Replaces the manual shutter when the camera is auto-firing. Reads
+ * "Scanning…" with a slow pulse on the dot — clearly NOT a button,
+ * which is what barcode mode wants. Same OUTER footprint as the
+ * shutter so the dock alignment doesn't shift between modes.
+ */
+function ScanningIndicator({ label }: { label: string }) {
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+    return () => cancelAnimation(pulse);
+  }, [pulse]);
+  const dotStyle = useAnimatedStyle(() => ({
+    opacity: 0.45 + 0.45 * pulse.value,
+  }));
+  return (
+    <View style={styles.scanningWrap}>
+      <View style={styles.scanningChip}>
+        <Animated.View style={[styles.scanningDot, dotStyle]} />
+        <Text style={styles.scanningLabel} maxFontSizeMultiplier={1.1}>
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 // ---------------- Gallery ----------------
 
 function GalleryButton({ onPick }: { onPick: (uri: string) => void }) {
@@ -272,5 +325,35 @@ const styles = StyleSheet.create({
     height: INNER,
     borderRadius: INNER / 2,
     backgroundColor: palette.bg,
+  },
+  // v10.32 — barcode-mode auto-scanning indicator
+  scanningWrap: {
+    width: OUTER,
+    height: OUTER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanningChip: {
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 19,
+    backgroundColor: 'rgba(11,18,32,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scanningDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: palette.clay,
+  },
+  scanningLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.4,
+    color: 'rgba(248,250,252,0.92)',
   },
 });
