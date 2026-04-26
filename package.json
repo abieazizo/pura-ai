@@ -9,8 +9,8 @@
     "web": "expo start --web",
     "tsc": "tsc --noEmit",
     "tsc:server": "tsc --noEmit -p server/tsconfig.json",
-    "server:ai": "tsx server/aiProxy.ts",
-    "verify:ai": "tsx scripts/verifyAi.ts",
+    "server:ai": "tsx --env-file=.env server/aiProxy.ts",
+    "verify:ai": "tsx --env-file=.env scripts/verifyAi.ts",
     "dev": "concurrently --kill-others-on-fail --names \"PROXY,EXPO\" --prefix-colors \"cyan,magenta\" \"npm:server:ai\" \"npm:start\""
   },
   "dependencies": {

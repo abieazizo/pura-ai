@@ -40,7 +40,55 @@
  */
 
 import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { URL } from 'node:url';
+
+// ---------------------------------------------------------------------------
+// .env loader — runs BEFORE any module that reads process.env.
+//
+// Node's `--env-file` flag does NOT override variables that are
+// already set in the parent shell. So an empty `ANTHROPIC_API_KEY=""`
+// inherited from a parent process beats the value we wrote to `.env`,
+// silently. This loader explicitly overrides whatever was in the
+// shell with whatever the local `.env` has, which is the right
+// behaviour for a "the .env file is the source of truth for this
+// machine" workflow.
+//
+// No new npm dep required: KEY=VALUE lines, blank lines, and `# ...`
+// comments are the only syntax we need.
+// ---------------------------------------------------------------------------
+
+(function loadDotenvWithOverride() {
+  const envPath = path.resolve(process.cwd(), '.env');
+  if (!fs.existsSync(envPath)) return;
+  let raw: string;
+  try {
+    raw = fs.readFileSync(envPath, 'utf8');
+  } catch {
+    return;
+  }
+  // Strip BOM if present.
+  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    // Strip surrounding quotes if any.
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+})();
+
 import {
   createClaudeClientFromEnv,
   type ClaudeClient,
