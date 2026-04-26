@@ -84,6 +84,215 @@ function buyUrlFor(id: string): string | undefined {
   return BUY_URLS[id];
 }
 
+/**
+ * v10.31 — real product photography sourced from Open Beauty Facts.
+ *
+ * URLs were resolved by `scripts/fetch-product-images.ts` against
+ * the OBF public API (https://world.openbeautyfacts.org). Each entry
+ * is a real product photo hosted on `images.openbeautyfacts.org` —
+ * the same CDN we already use for the live barcode-resolution flow,
+ * so the trust boundary doesn't widen.
+ *
+ * Coverage is partial because OBF's beauty catalog is
+ * volunteer-indexed and many K-beauty / indie brands aren't there
+ * yet. Products with no entry below render the upgraded
+ * `ProductPlaceholderImage` (per-category bottle silhouette + brand
+ * wordmark + product name) — visibly distinct per product, but
+ * clearly a mockup. Replace each `null` below with a real image URL
+ * as that brand gets indexed (or as licensed photography lands).
+ *
+ * The card / hero render path treats a network image-load failure
+ * as missing and falls through to the placeholder, so a stale URL
+ * here never breaks the card layout.
+ */
+const PRODUCT_IMAGE_URLS: Record<string, string | null> = {
+  'cerave-hydrating-cleanser':
+    'https://images.openbeautyfacts.org/images/products/360/600/053/7576/front_en.11.400.jpg',
+  'la-roche-posay-toleriane-cleanser':
+    'https://images.openbeautyfacts.org/images/products/333/787/554/5778/front_en.9.400.jpg',
+  'beauty-of-joseon-ginseng-cleanser': null,
+  'anua-heartleaf-toner': null,
+  'paulas-choice-2-bha': null,
+  'biotherm-skin-oxygen-toner': null,
+  'the-ordinary-niacinamide': null,
+  'good-molecules-discoloration': null,
+  'the-ordinary-retinal':
+    'https://images.openbeautyfacts.org/images/products/076/991/519/0045/front_en.7.400.jpg',
+  'elf-vitamin-c-serum': null,
+  'cerave-pm-lotion': null,
+  'illiyoon-ceramide-cream': null,
+  'la-roche-posay-toleriane-dd':
+    'https://images.openbeautyfacts.org/images/products/333/787/554/5846/front_en.3.400.jpg',
+  'beauty-of-joseon-relief-sun': null,
+  'bonajour-green-tea-sun': null,
+  'its-skin-collagen-ampoule': null,
+  'paulas-choice-azelaic': null,
+  'the-ordinary-lactic-acid':
+    'https://images.openbeautyfacts.org/images/products/076/991/519/0373/front_en.12.400.jpg',
+  'beauty-of-joseon-rice-mask': null,
+  'its-skin-power-mask': null,
+  'cosrx-snail-essence': null,
+  'kiehls-ultra-facial-cream':
+    'https://images.openbeautyfacts.org/images/products/360/597/502/8799/front_en.4.400.jpg',
+  'supergoop-unseen': null,
+  'youth-to-the-people-kale': null,
+};
+
+function imageUrlFor(id: string): string | undefined {
+  const url = PRODUCT_IMAGE_URLS[id];
+  return url ?? undefined;
+}
+
+/**
+ * v10.31 — per-product `howToUse` + `goodFor` overrides.
+ *
+ * `productEnrich.ts` derives default values from the category, which
+ * makes every cleanser read identically on the detail page ("Wet face.
+ * Massage a dime-sized amount for thirty seconds. Rinse..."). Real
+ * skincare detail pages have product-specific instructions tied to
+ * the actual formula and ingredient strength — that's the difference
+ * between "demo template" and "you can actually use this product."
+ *
+ * Where an entry is provided below, it overrides the category default.
+ * Where one isn't, the category template still applies (for products
+ * we haven't authored content for yet).
+ */
+interface ProductDetailOverride {
+  howToUse?: string;
+  goodFor?: string[];
+}
+
+const PRODUCT_DETAIL_OVERRIDES: Record<string, ProductDetailOverride> = {
+  'cerave-hydrating-cleanser': {
+    howToUse:
+      'Massage a dime-size amount onto damp skin in slow circles for 30 seconds. Rinse with lukewarm water — never hot. Use morning and evening.',
+    goodFor: ['Dry & combination skin', 'Daily use', 'Removing SPF without stripping'],
+  },
+  'la-roche-posay-toleriane-cleanser': {
+    howToUse:
+      'Apply to wet skin and lather gently for 30 seconds. Rinse, pat dry, then move to your toner or serum within 60 seconds while skin is still damp.',
+    goodFor: ['Reactive / sensitive skin', 'Post-procedure barrier care', 'Daily use'],
+  },
+  'beauty-of-joseon-ginseng-cleanser': {
+    howToUse:
+      'Lather a small pump in wet hands until the foam stiffens, then massage onto wet skin for 30–60 seconds. Best as a second cleanse after an oil cleanser.',
+    goodFor: ['Combination & oily T-zone', 'Pore decongesting', 'Removing SPF'],
+  },
+  'anua-heartleaf-toner': {
+    howToUse:
+      'Decant 3–4 drops onto a cotton pad or your palms and press into damp skin. No rubbing. Layer 1–3 times until skin feels plumped.',
+    goodFor: ['Calming redness', 'Post-active soothing', 'Hydrating prep'],
+  },
+  'paulas-choice-2-bha': {
+    howToUse:
+      'Once skin is fully dry, apply a thin layer with a cotton pad or your fingertips. No rinsing. Start every other night; build to nightly if your skin tolerates it. Always pair with morning SPF.',
+    goodFor: ['Clogged pores', 'Bumpy / textured skin', 'Adult breakouts'],
+  },
+  'biotherm-skin-oxygen-toner': {
+    howToUse:
+      'Pat onto cleansed skin morning and evening. The water-light formula sinks in fast — wait 15 seconds before serums.',
+    goodFor: ['Dullness', 'Reactive skin', 'Daily brightening prep'],
+  },
+  'the-ordinary-niacinamide': {
+    howToUse:
+      'Apply 2–3 drops to clean dry skin in the AM or PM. Avoid layering with vitamin C in the same routine — alternate them across morning and evening instead.',
+    goodFor: ['Visible pores', 'Excess sebum', 'Uneven tone'],
+  },
+  'good-molecules-discoloration': {
+    howToUse:
+      'Apply a thin layer in the morning or evening before moisturizer. Discoloration takes 8–12 weeks of consistent use to fade — use SPF 30+ daily or you’ll lose ground.',
+    goodFor: ['Post-inflammatory marks', 'Sun-induced unevenness', 'Slow-fade dark spots'],
+  },
+  'the-ordinary-retinal': {
+    howToUse:
+      'Press a single pea-sized amount across cleansed dry skin in the evening. Start 2 nights a week; build to nightly over 6 weeks if your barrier holds. Always pair with morning SPF.',
+    goodFor: ['Fine lines', 'Texture', 'Skin renewal cycle support'],
+  },
+  'elf-vitamin-c-serum': {
+    howToUse:
+      'Press 2–3 drops into clean skin in the morning before moisturizer. Pair with SPF — vitamin C extends UV protection but never replaces it.',
+    goodFor: ['Dullness', 'Uneven tone', 'Daily antioxidant defense'],
+  },
+  'cerave-pm-lotion': {
+    howToUse:
+      'In the evening, smooth a nickel-size amount over face and neck after your serums. Lightweight enough to layer under a heavier cream if your barrier needs more.',
+    goodFor: ['Nighttime barrier repair', 'Acne-prone skin', 'Layering under richer creams'],
+  },
+  'illiyoon-ceramide-cream': {
+    howToUse:
+      'Warm a generous amount between your palms and press into face, neck, and any dry patches. Re-apply on cracked or peeling areas mid-day.',
+    goodFor: ['Dehydrated barrier', 'Dry patches', 'Post-active recovery nights'],
+  },
+  'la-roche-posay-toleriane-dd': {
+    howToUse:
+      'Apply morning and evening to clean skin. The double-repair complex builds tolerance over 7–10 days — give it a full week before judging.',
+    goodFor: ['Reactive skin', 'Mild rosacea', 'Daily barrier maintenance'],
+  },
+  'beauty-of-joseon-relief-sun': {
+    howToUse:
+      'Apply two finger-lengths (≈1.2g) as the final morning step, 15 minutes before sun exposure. Re-apply every 2 hours outdoors.',
+    goodFor: ['Daily SPF for sensitive skin', 'No-white-cast formula', 'Layering under makeup'],
+  },
+  'bonajour-green-tea-sun': {
+    howToUse:
+      'Apply two finger-lengths morning, after moisturizer. The hydrating texture sets fast — wait 30 seconds before makeup.',
+    goodFor: ['Combination skin', 'Dehydrated SPF use', 'No-flashback finish'],
+  },
+  'its-skin-collagen-ampoule': {
+    howToUse:
+      'Apply 2–3 drops to damp skin in the morning. Concentrated formula — a little goes a long way; layer light moisturizer on top.',
+    goodFor: ['Plumping', 'Daytime hydration boost', 'Smoother makeup base'],
+  },
+  'paulas-choice-azelaic': {
+    howToUse:
+      'Apply a pea-size amount once daily, AM or PM, after serums. Tingling for the first 1–2 weeks is normal; if it persists past 2 weeks, scale back to every other day.',
+    goodFor: ['Redness & rosacea', 'Post-acne marks', 'Tone evening'],
+  },
+  'the-ordinary-lactic-acid': {
+    howToUse:
+      'Apply 4–5 drops to dry skin at night, twice a week to start. Wait 20 minutes before your next step. Never combine with retinol or vitamin C in the same routine.',
+    goodFor: ['Surface texture', 'Dullness', 'Gentle weekly resurfacing'],
+  },
+  'beauty-of-joseon-rice-mask': {
+    howToUse:
+      'Massage a generous amount onto dry skin to dissolve makeup and SPF, add water to emulsify, then rinse. Always follow with a water-based cleanser.',
+    goodFor: ['First cleanse', 'Heavy SPF / makeup days', 'Combination skin'],
+  },
+  'its-skin-power-mask': {
+    howToUse:
+      'Apply to clean skin and leave on for 15–20 minutes. Pat in any remaining serum after removing the sheet. Use 2–3x per week.',
+    goodFor: ['Brightening boost', 'Pre-event glow', 'Hydration top-up'],
+  },
+  'cosrx-snail-essence': {
+    howToUse:
+      'Pat 4–5 drops onto damp skin morning and evening. Texture is intentionally tacky — wait 30 seconds before the next layer instead of rubbing in.',
+    goodFor: ['Healing post-blemish marks', 'Dry & dehydrated skin', 'Daily barrier support'],
+  },
+  'kiehls-ultra-facial-cream': {
+    howToUse:
+      'Smooth a pea-size amount over face and neck morning and evening. Layer under SPF in the morning, alone or under a heavier night cream in the evening.',
+    goodFor: ['All-day hydration', 'Cold-weather use', 'Sensitive normal-to-dry skin'],
+  },
+  'supergoop-unseen': {
+    howToUse:
+      'Apply a quarter-size amount as the last morning step, then makeup. The clear gel doubles as a primer — no white cast, no scent.',
+    goodFor: ['Daily SPF under makeup', 'Oily / acne-prone skin', 'Photo-friendly finish'],
+  },
+  'youth-to-the-people-kale': {
+    howToUse:
+      'Massage a quarter-size amount onto damp skin for 60 seconds. Rinse with lukewarm water. Use morning and evening; safe to follow with most actives.',
+    goodFor: ['Daily use', 'Antioxidant-rich cleansing', 'Combination skin'],
+  },
+};
+
+function howToUseOverrideFor(id: string): string | undefined {
+  return PRODUCT_DETAIL_OVERRIDES[id]?.howToUse;
+}
+
+function goodForOverrideFor(id: string): string[] | undefined {
+  return PRODUCT_DETAIL_OVERRIDES[id]?.goodFor;
+}
+
 /* ------------------------------- Products ------------------------------- */
 /**
  * `rawSeedProducts` is the original hand-authored catalog (brand, name,
@@ -620,12 +829,22 @@ function enrich(raw: RawSeedProduct): Product {
     addedDate: addedDateFor(raw.id),
     price: raw.priceUsd ?? 15,
     ingredientList: deriveIngredientList(raw.ingredients),
-    howToUse: howToUseFor(raw.category),
+    // v10.31 — prefer hand-authored, product-specific instructions
+    // when available (PRODUCT_DETAIL_OVERRIDES). The category-level
+    // template still kicks in for any product we haven't authored
+    // copy for yet, so the detail page never shows a blank field.
+    howToUse: howToUseOverrideFor(raw.id) ?? howToUseFor(raw.category),
     formulation: formulationFor(raw.category),
     skinTypes: skinTypesFor(raw.category),
-    goodFor: goodForFor(raw.category),
+    goodFor: goodForOverrideFor(raw.id) ?? goodForFor(raw.category),
     timeOfUse: timeOfUseFor(raw.category),
-    imageUrl: raw.imageUri,
+    // v10.31 — prefer the real OBF image URL when one was resolved
+    // for this product. Falls back to whatever the raw seed set on
+    // imageUri (currently empty for every product); when both are
+    // empty, the cards/hero render the upgraded
+    // `ProductPlaceholderImage` (per-category bottle silhouette +
+    // brand wordmark + product name).
+    imageUrl: imageUrlFor(raw.id) ?? raw.imageUri,
     buyUrl: buyUrlFor(raw.id),
   };
 }

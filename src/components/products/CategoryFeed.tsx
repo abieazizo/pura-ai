@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowRight } from 'phosphor-react-native';
 import { hapt } from '@/utils/haptics';
@@ -166,16 +167,13 @@ function GridCard({
           { backgroundColor: tintFor(product) },
         ]}
       >
-        {/* v10.30 — branded placeholder upgraded to per-category
-            bottle silhouette + brand wordmark + tinted gradient.
-            Cards feel like real product mockups, not "icon on a
-            colour block". Replace this with a real <Image source={
-            uri }/> when licensed product photography lands. */}
-        <ProductPlaceholderImage
-          product={product}
-          silhouetteSize={56}
-          showBrandWord
-        />
+        {/* v10.31 — render a real Open Beauty Facts product photo
+            when one was resolved for this product (see seed.ts /
+            PRODUCT_IMAGE_URLS). On load failure or when no URL was
+            resolved (OBF doesn't index this brand yet), fall through
+            to the upgraded ProductPlaceholderImage so the card never
+            looks broken. */}
+        <ProductCardImage product={product} />
         <View style={styles.matchBadge}>
           {showAiNumber ? (
             <Text style={styles.matchBadgeNum} maxFontSizeMultiplier={1.1}>
@@ -231,6 +229,42 @@ function tintFor(p: Product): string {
     default:
       return palette.bgDeep;
   }
+}
+
+// ---------------------------------------------------------------------------
+// v10.31 — Image with placeholder fallback.
+//
+// Renders the real Open Beauty Facts product photo when present; on
+// load failure (404, network blip, OBF rotated the URL) falls
+// through to the upgraded ProductPlaceholderImage so the card never
+// shows an empty box. Uses expo-image's `onError` to detect failure
+// without relying on RN Image's quirkier event surface.
+// ---------------------------------------------------------------------------
+
+function ProductCardImage({ product }: { product: Product }) {
+  const [errored, setErrored] = useState(false);
+  const url =
+    !errored && product.imageUrl && product.imageUrl.trim().length > 0
+      ? product.imageUrl
+      : null;
+  if (!url) {
+    return (
+      <ProductPlaceholderImage
+        product={product}
+        silhouetteSize={56}
+        showBrandWord
+      />
+    );
+  }
+  return (
+    <Image
+      source={{ uri: url }}
+      style={StyleSheet.absoluteFillObject}
+      contentFit="cover"
+      transition={140}
+      onError={() => setErrored(true)}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------

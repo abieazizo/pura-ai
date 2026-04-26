@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -45,6 +45,11 @@ const TINT_MAP: Record<ProductTint, string> = {
 export function ProductHero({ tint, imageUrl, product }: ProductHeroProps) {
   const opacity = useSharedValue(0);
   const scale = useSharedValue(1.04);
+  // v10.31 — when the real OBF image URL fails to load, fall through
+  // to the upgraded placeholder rather than showing an empty hero.
+  const [imageErrored, setImageErrored] = useState(false);
+  const renderRealImage =
+    !imageErrored && imageUrl && imageUrl.trim().length > 0;
 
   useEffect(() => {
     opacity.value = withDelay(
@@ -94,11 +99,12 @@ export function ProductHero({ tint, imageUrl, product }: ProductHeroProps) {
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
       </Svg>
       <Animated.View style={[styles.content, contentStyle]}>
-        {imageUrl ? (
+        {renderRealImage ? (
           <Image
             source={imageUrl}
             style={styles.image}
             contentFit="contain"
+            onError={() => setImageErrored(true)}
           />
         ) : product ? (
           <View style={styles.placeholderFill}>
