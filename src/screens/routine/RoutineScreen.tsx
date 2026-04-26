@@ -23,9 +23,7 @@ import {
   Moon,
   BookmarkSimple,
   ArrowRight,
-  Plus,
   X,
-  CaretRight,
   Drop,
 } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
@@ -33,14 +31,15 @@ import { CompareSlider } from '@/components/CompareSlider';
 import { SkinScoreHero } from '@/screens/progress/SkinScoreHero';
 import { ProgressNarrative } from '@/screens/progress/ProgressNarrative';
 import { PhotoTimelineStrip } from '@/screens/progress/PhotoTimelineStrip';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, useDayNumber } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
-import { buildSkinScoreWhy, computeSkinScore } from '@/utils/skinScore';
+import { computeSkinScore } from '@/utils/skinScore';
+import { buildTonightFocus, getConcerns } from '@/utils/concerns';
 import { seedProducts } from '@/data/seed';
 import { palette, space } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { RootStackParamList } from '@/navigation/types';
-import type { Product, Scan } from '@/types';
+import type { Product, ProductCategory, Scan } from '@/types';
 
 /**
  * Routine tab — v10.16 unified ongoing-use destination.
@@ -87,12 +86,24 @@ export function RoutineScreen() {
       wishlist: s.wishlist,
     }))
   );
+  const dayNumber = useDayNumber();
 
   const hasScanned = scans.length > 0;
   const firstScan = scans[0];
   const latestScan = scans[scans.length - 1];
   const progressAvailable = scans.length >= 2 && !!firstScan && !!latestScan;
   const compareHeight = 420;
+
+  // v10.18 — pull the top "tonight focus" sentence from the latest
+  // scan's concerns. Used as the Routine sub-tab's "TODAY" focus card
+  // so the page opens with one clear daily-action voice instead of a
+  // cold list of products.
+  const todayFocus = useMemo<string | null>(() => {
+    if (!latestScan) return null;
+    const previous = scans.length >= 2 ? scans[scans.length - 2] : undefined;
+    const focus = buildTonightFocus(getConcerns(latestScan, previous));
+    return focus[0] ?? null;
+  }, [latestScan, scans]);
 
   const morningProducts = useMemo(
     () => hydrate(userRoutineMorning),
@@ -151,8 +162,13 @@ export function RoutineScreen() {
       </View>
 
       <View style={styles.titleBlock}>
+        {/* v10.18 — replaced the generic kicker ("WHAT YOU'RE DOING" /
+            "HOW IT'S TRACKING") with a daily-use anchor. When the user
+            has scanned at least once we surface the day count; this
+            gives the destination its identity as a place the user
+            comes back to every day, not a tab they configure once. */}
         <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
-          {topSegment === 'routine' ? 'WHAT YOU’RE DOING' : 'HOW IT’S TRACKING'}
+          {hasScanned ? `DAY ${dayNumber}` : 'BEGIN HERE'}
         </Text>
         <Text style={styles.title} maxFontSizeMultiplier={1.15}>
           {topSegment === 'routine' ? 'Routine.' : 'Progress.'}
@@ -173,6 +189,7 @@ export function RoutineScreen() {
           eveningCount={eveningProducts.length}
           savedCount={savedProducts.length}
           hasScanned={hasScanned}
+          todayFocus={todayFocus}
           onScan={openScan}
           onBrowseProducts={openProducts}
         />
@@ -251,6 +268,7 @@ function RoutineSubTab({
   eveningCount,
   savedCount,
   hasScanned,
+  todayFocus,
   onScan,
   onBrowseProducts,
 }: {
@@ -262,6 +280,7 @@ function RoutineSubTab({
   eveningCount: number;
   savedCount: number;
   hasScanned: boolean;
+  todayFocus: string | null;
   onScan: () => void;
   onBrowseProducts: () => void;
 }) {
@@ -278,6 +297,18 @@ function RoutineSubTab({
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
+      {/* v10.18 — TODAY focus card. Pulls the top sentence from the
+          latest scan's concerns and lands it at the top of the
+          Routine view so the page opens with a daily voice ("Apply
+          your calming gel directly to the spot.") instead of a cold
+          inner segmented control. Only renders when the user has
+          scanned and at least one product is in the routine — for
+          the first-run state, FirstRunRoutinePanel below is the
+          stronger anchor. */}
+      {hasScanned && anyProducts && todayFocus ? (
+        <TodayFocusCard text={todayFocus} />
+      ) : null}
+
       <View style={styles.innerSegmentedWrap}>
         <InnerSegmented
           active={innerSegment}
@@ -305,6 +336,32 @@ function RoutineSubTab({
         )}
       </Animated.View>
     </ScrollView>
+  );
+}
+
+// ============================================================================
+// Today focus card — v10.18
+// ============================================================================
+//
+// Premium clay-rail card that sits above the inner segmented control on
+// the Routine sub-tab. One sentence, no chrome, no CTA — the page's
+// daily voice. Reads as a quote-card, not a banner.
+
+function TodayFocusCard({ text }: { text: string }) {
+  return (
+    <View style={focusStyles.wrap}>
+      <View style={focusStyles.rail} pointerEvents="none" />
+      <Text style={focusStyles.kicker} maxFontSizeMultiplier={1.1}>
+        TODAY’S FOCUS
+      </Text>
+      <Text
+        style={focusStyles.body}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={3}
+      >
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -415,7 +472,17 @@ function RoutineList({
 
   return (
     <View style={styles.list}>
-      {products.map((p, i) => (
+      {/* v10.18 — list row treatment upgraded so the routine reads
+          as a daily ritual rather than a database table. The small
+          "1, 2, 3" order badge is gone (it competed with the image
+          for visual hierarchy and didn't reflect actual ordering
+          since users place products in arrival order, not function
+          order). Step role ("CLEANSER" / "SERUM" / "MOISTURIZER" /
+          etc.) leads each row instead, so the user reads role first,
+          brand second, product name third. Image tile grew from
+          42×50 to 56×70; row gained a hairline border + soft paper
+          shadow so it feels like a card, not a bare flexbox row. */}
+      {products.map((p) => (
         <Pressable
           key={p.id}
           onPress={() => {
@@ -423,17 +490,12 @@ function RoutineList({
             nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
           }}
           accessibilityRole="button"
-          accessibilityLabel={`${p.brand} ${p.name}`}
+          accessibilityLabel={`${productCategoryLabel(p.category)}: ${p.brand} ${p.name}`}
           style={({ pressed }) => [
             styles.listRow,
-            pressed && { opacity: 0.92 },
+            pressed && { opacity: 0.94, transform: [{ scale: 0.992 }] },
           ]}
         >
-          <View style={styles.orderBadge}>
-            <Text style={styles.orderBadgeText} maxFontSizeMultiplier={1.1}>
-              {i + 1}
-            </Text>
-          </View>
           <View
             style={[
               styles.listImage,
@@ -447,30 +509,61 @@ function RoutineList({
                 resizeMode="cover"
               />
             ) : (
-              <Drop size={22} color={palette.ink} weight="duotone" />
+              <Drop size={26} color={palette.ink} weight="duotone" />
             )}
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.listBrand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
-              {p.brand.toUpperCase()}
+          <View style={styles.listText}>
+            <Text style={styles.listRole} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+              {productCategoryLabel(p.category)}
             </Text>
             <Text style={styles.listName} numberOfLines={1} maxFontSizeMultiplier={1.15}>
               {p.name}
+            </Text>
+            <Text style={styles.listBrand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+              {p.brand}
             </Text>
           </View>
           <Pressable
             onPress={() => removeProduct(p.id)}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={`Remove ${p.name}`}
+            accessibilityLabel={
+              segment === 'saved'
+                ? `Remove ${p.name} from saved`
+                : `Remove ${p.name} from ${segment}`
+            }
             style={styles.removeBtn}
           >
-            <X size={14} color={palette.inkTertiary} weight="bold" />
+            <X size={13} color={palette.inkTertiary} weight="bold" />
           </Pressable>
         </Pressable>
       ))}
     </View>
   );
+}
+
+// v10.18 — display label for product category (used as the row's
+// step-role kicker). Falls back to the raw category string if a new
+// category is added without a label.
+function productCategoryLabel(c: ProductCategory): string {
+  switch (c) {
+    case 'cleanser':
+      return 'CLEANSER';
+    case 'toner':
+      return 'TONER';
+    case 'serum':
+      return 'SERUM';
+    case 'moisturizer':
+      return 'MOISTURIZER';
+    case 'spf':
+      return 'SPF';
+    case 'treatment':
+      return 'TREATMENT';
+    case 'mask':
+      return 'MASK';
+    default:
+      return String(c).toUpperCase();
+  }
 }
 
 // ============================================================================
@@ -657,30 +750,18 @@ function ProgressSubTab({
     );
   }
 
-  const whyLine = buildSkinScoreWhy(scans);
-
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
       <Animated.View style={fadeStyle}>
+        {/* v10.18 — SkinScoreHero now renders the why-line internally
+            so the score block reads as a single composed module:
+            label / value / delta / why. Removing the standalone
+            why-line below the hero kept the score visual story
+            intact and tightened the page rhythm. */}
         <SkinScoreHero score={computeSkinScore(scans)} scans={scans} />
-
-        {/* v10.13 — "why" line below the hero turns the number into
-            something understandable ("Breakouts calming, hydration
-            still needs work"). Same utility surfaces on Home + Scan
-            Result so the Skin Score reads as meaningful everywhere.
-            v10.17 — stripped the tinted wrap so the treatment matches
-            the other two score destinations: plain italic serif,
-            nothing under it. The boxed variant was the odd one out. */}
-        <Text
-          style={styles.whyLineText}
-          maxFontSizeMultiplier={1.2}
-          numberOfLines={2}
-        >
-          {whyLine}
-        </Text>
 
         <ProgressNarrative scans={scans} />
 
@@ -724,6 +805,28 @@ function ProgressSubTab({
             </View>
           </View>
         ) : null}
+
+        {/* v10.18 — invite-to-action footer. Progress is read-only by
+            nature; without this the page dead-ends on a chart strip
+            and gives the user nothing to do next. A quiet pressable
+            ("Scan again to update your reading") closes the loop and
+            keeps the destination active. */}
+        <Pressable
+          onPress={onScan}
+          accessibilityRole="button"
+          accessibilityLabel="Scan again to update your reading"
+          style={({ pressed }) => [
+            styles.scanAgainCta,
+            pressed && { opacity: 0.94 },
+          ]}
+        >
+          <View style={styles.scanAgainBadge}>
+            <ArrowRight size={14} color={palette.clay} weight="bold" />
+          </View>
+          <Text style={styles.scanAgainLabel} maxFontSizeMultiplier={1.15}>
+            Scan again to update your reading
+          </Text>
+        </Pressable>
       </Animated.View>
     </ScrollView>
   );
@@ -806,63 +909,68 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
 
-  // Routine list
+  // Routine list — v10.18 paper-card treatment.
   list: {
-    marginTop: 24,
+    marginTop: 18,
     paddingHorizontal: 20,
-    gap: 10,
+    gap: 12,
   },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 14,
+    gap: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 18,
     backgroundColor: palette.bg,
     borderWidth: 1,
     borderColor: palette.hairline,
-  },
-  orderBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: palette.bgDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  orderBadgeText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 0.2,
-    color: palette.inkSecondary,
-    fontVariant: ['tabular-nums'],
+    // Soft warm shadow so the row reads as a card, not a flexbox row.
+    shadowColor: palette.clay,
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   listImage: {
-    width: 42,
-    height: 50,
-    borderRadius: 8,
+    width: 56,
+    height: 70,
+    borderRadius: 12,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  listBrand: {
+  listText: {
+    flex: 1,
+    paddingVertical: 1,
+  },
+  listRole: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: palette.inkTertiary,
-    marginBottom: 2,
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: palette.clay,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
   listName: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 15,
-    lineHeight: 19,
-    letterSpacing: -0.2,
+    fontSize: 17,
+    lineHeight: 21,
+    letterSpacing: -0.3,
     color: palette.ink,
+    marginBottom: 2,
+  },
+  listBrand: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    letterSpacing: 0.1,
+    color: palette.inkTertiary,
   },
   removeBtn: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: palette.bgDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -926,16 +1034,33 @@ const styles = StyleSheet.create({
     color: palette.inkSecondary,
   },
 
-  // Progress sub-tab why-line — plain italic serif, no wrap, matching
-  // the treatment on Home and the Scan Result screen.
-  whyLineText: {
+  // v10.18 — Progress page invite-to-action footer.
+  scanAgainCta: {
+    marginTop: 24,
     marginHorizontal: 20,
-    marginTop: 14,
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 15,
-    lineHeight: 21,
-    color: palette.inkSecondary,
-    maxWidth: '92%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    backgroundColor: palette.bgDeep,
+  },
+  scanAgainBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: palette.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanAgainLabel: {
+    flex: 1,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    color: palette.ink,
   },
   compareBlock: { marginTop: space.xxl },
   compareHead: {
@@ -971,6 +1096,46 @@ const styles = StyleSheet.create({
     color: palette.inkTertiary,
     textTransform: 'uppercase',
     marginBottom: space.md,
+  },
+});
+
+// v10.18 — TODAY focus card. Lives at the top of the Routine sub-tab,
+// above the inner segmented control. Premium clay-rail treatment so
+// the page leads with a daily-action voice, not a configuration view.
+const focusStyles = StyleSheet.create({
+  wrap: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingVertical: 18,
+    paddingLeft: 19,
+    paddingRight: 18,
+    borderRadius: 18,
+    backgroundColor: palette.clayPaper,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  rail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: palette.clay,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.clayDeep,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  body: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 19,
+    lineHeight: 25,
+    letterSpacing: -0.2,
+    color: palette.ink,
   },
 });
 

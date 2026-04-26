@@ -22,6 +22,7 @@ import { ArrowUp, ArrowDown, Minus } from 'phosphor-react-native';
 import { palette } from '@/theme';
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import {
+  buildSkinScoreWhy,
   type SkinScore,
   formatDelta,
   sinceLastPhrase,
@@ -152,10 +153,16 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
         />
       </View>
 
-      {/* ── Kicker + delta chip ─────────────────────────────────── */}
-      <View style={styles.metaRow}>
-        <Text style={styles.metaKicker} maxFontSizeMultiplier={1.1}>
-          SKIN SCORE
+      {/* v10.18 — score block label + delta + headline + why-line all
+          composed into one module so the score reads as label / value
+          / delta / why in obvious vertical hierarchy. The previous
+          tracked-caps "SKIN SCORE" kicker was visually subordinate to
+          everything else; replaced with a serif label that holds its
+          own next to the dial, then a delta chip, then the score
+          headline, then the why-line — all part of the hero card. */}
+      <View style={styles.scoreLabelRow}>
+        <Text style={styles.scoreLabel} maxFontSizeMultiplier={1.15}>
+          Skin Score
         </Text>
         {score.deltaSinceLast !== null ? (
           <View style={[styles.deltaChip, { backgroundColor: deltaBg }]}>
@@ -179,6 +186,16 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
       <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
         {score.headline}
       </Text>
+
+      {scans.length >= 2 ? (
+        <Text
+          style={styles.whyLine}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={2}
+        >
+          {buildSkinScoreWhy(scans)}
+        </Text>
+      ) : null}
 
       {/* ── Area chart ──────────────────────────────────────────── */}
       {hasTrend ? (
@@ -569,18 +586,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
   },
-  metaRow: {
+  // v10.18 — replaced the small tracked-caps "SKIN SCORE" kicker with
+  // a proper serif label paired with the delta chip on a single line.
+  // The label finally has the visual weight to match the dial above.
+  scoreLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 14,
+    marginTop: 16,
+    gap: 10,
   },
-  metaKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
+  scoreLabel: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+    color: palette.ink,
   },
   deltaChip: {
     flexDirection: 'row',
@@ -600,13 +621,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.2,
   },
+  // v10.18 — score "headline" is the emotional verdict ("Highest Skin
+  // Score yet."). Held in serif at 17pt so it reads as the score's
+  // status, distinct from the smaller italic why-line below.
   headline: {
-    marginTop: 12,
+    marginTop: 8,
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 20,
-    lineHeight: 26,
-    letterSpacing: -0.3,
+    fontSize: 17,
+    lineHeight: 23,
+    letterSpacing: -0.2,
     color: palette.ink,
+  },
+  // v10.18 — why-line now lives inside the hero so the score block
+  // reads as one composed module: dial / label · delta / headline /
+  // why. Plain italic serif treatment matches Home and ScanResult.
+  whyLine: {
+    marginTop: 8,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    lineHeight: 21,
+    color: palette.inkSecondary,
   },
 });
 
