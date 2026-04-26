@@ -1,10 +1,18 @@
 /**
- * Pura AI — Claude client.
+ * Pura AI — Claude client. **SERVER-ONLY.**
  *
- * Single entrypoint for every AI call in the app. Screens and stores
- * never instantiate Anthropic directly; they call ClaudeClient methods
- * and receive parsed, type-safe results that match the contracts in
- * `ai-contracts.ts`.
+ * This file imports `@anthropic-ai/sdk`, which means it pulls in
+ * Node-only resources and beta resource paths that Metro cannot
+ * resolve. It MUST NOT be imported by any code under `src/` (the
+ * Expo / React Native bundle). The only legitimate consumers are:
+ *
+ *   • `server/aiProxy.ts`          (HTTP proxy entrypoint)
+ *   • `server/lib/handlers.ts`     (per-method handlers)
+ *   • Other files under `server/`
+ *
+ * The client app reaches Claude exclusively through HTTP fetch to
+ * the proxy server (see `src/ai/aiGateway.ts`). The client never
+ * instantiates the SDK and never sees the API key.
  *
  * Design rules:
  *   • Every flow that produces structured output uses tool_use with a
@@ -22,8 +30,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type {
   AssistantContext,
+  BarcodeLookupResult,
   BarcodeResolution,
-  ConcernType,
   FaceScanAnalysis,
   ProductIdentity,
   ProductMatchResult,
@@ -31,8 +39,9 @@ import type {
   RoutineRecommendation,
   SearchSuggestionResult,
   SkinScoreExplanation,
+  SupportedImageMediaType,
   JsonSchema,
-} from './ai-contracts';
+} from '../../src/ai/ai-contracts';
 import {
   BARCODE_LOOKUP_TOOL_SCHEMA,
   BARCODE_RESOLUTION_SCHEMA,
@@ -45,7 +54,11 @@ import {
   ROUTINE_RECOMMENDATION_SCHEMA,
   SEARCH_SUGGESTION_RESULT_SCHEMA,
   SKIN_SCORE_EXPLANATION_SCHEMA,
-} from './ai-contracts';
+} from '../../src/ai/ai-contracts';
+
+// Re-export for server consumers that still want to reach these from
+// `claude-client.ts` rather than the contracts file.
+export type { BarcodeLookupResult, SupportedImageMediaType };
 
 // ----------------------------------------------------------------------------
 // Local SDK aliases.
@@ -67,37 +80,8 @@ type SdkToolInputSchema = Anthropic.Messages.Tool.InputSchema;
 // Public types.
 // ----------------------------------------------------------------------------
 
-export type SupportedImageMediaType = 'image/jpeg' | 'image/png';
-
 export interface ClaudeClientConfig {
   apiKey: string;
-}
-
-/**
- * Shape returned by the host's barcode lookup function. The host owns
- * its own catalog/UPC source (a database, an open product API, etc.);
- * Claude consumes whatever this returns and normalises it into a
- * BarcodeResolution.
- */
-export interface BarcodeLookupResult {
-  matched_catalog_product_id: string | null;
-  brand: string | null;
-  product_name: string | null;
-  canonical_title: string | null;
-  product_category:
-    | 'cleanser'
-    | 'serum'
-    | 'moisturizer'
-    | 'spot_treatment'
-    | 'toner'
-    | 'spf'
-    | 'mask'
-    | 'unknown';
-  likely_concerns_supported: ConcernType[];
-  key_claims: string[];
-  barcode_value: string;
-  catalog_lookup_key: string | null;
-  packaging_notes: string;
 }
 
 // ----------------------------------------------------------------------------

@@ -1,27 +1,21 @@
 /**
  * Pura AI — end-to-end verification.
  *
- * Smoke-tests every public AI flow against whichever transport the
- * runtime resolves at boot. Exits non-zero on first failure so it can
- * be wired into CI.
+ * Smoke-tests every public AI flow against the running proxy server.
+ * Exits non-zero on first failure so it can be wired into CI.
  *
  * Run:
- *   # against the production proxy
+ *   # 1. boot the proxy in another shell:
+ *   ANTHROPIC_API_KEY=sk-ant-... npm run server:ai
+ *
+ *   # 2. then run verification:
  *   EXPO_PUBLIC_PURA_AI_PROXY_URL=http://localhost:8787 \
  *   EXPO_PUBLIC_PURA_AI_PROXY_TOKEN=$PURA_AI_PROXY_TOKEN \
  *   npm run verify:ai
  *
- *   # against direct mode
- *   EXPO_PUBLIC_PURA_AI_TRANSPORT=direct \
- *   EXPO_PUBLIC_ANTHROPIC_API_KEY=sk-ant-... \
- *   npm run verify:ai
- *
- * The script:
- *   1. Boots the gateway.
- *   2. Builds a tiny but valid input payload for every method.
- *   3. Calls each method, validates the structured output, and prints
- *      a pass/fail line.
- *   4. Returns a non-zero exit code if any check failed.
+ * The verification script uses the same client gateway the RN app
+ * uses, so passing here means the production fetch path works end-
+ * to-end — request shapes, validation, retries, and response parsing.
  *
  * Coverage spans the brief's required scenarios:
  *   • first face scan
@@ -189,7 +183,6 @@ async function checkProductImageScan(): Promise<void> {
 async function checkBarcodeResolution(): Promise<void> {
   const result = await aiGateway.normalizeBarcodeResolution({
     barcodeValue: 'gentle-foam-cleanser',
-    lookupBarcode: async () => null, // ignored in proxy mode
   });
   expect(
     result.barcode_value === 'gentle-foam-cleanser',
@@ -317,8 +310,9 @@ async function main(): Promise<void> {
   if (!aiGateway.isAvailable()) {
     // eslint-disable-next-line no-console
     console.error(
-      '[verify:ai] ABORT: no AI transport configured. Set EXPO_PUBLIC_PURA_AI_PROXY_URL ' +
-        'or EXPO_PUBLIC_PURA_AI_TRANSPORT=direct + EXPO_PUBLIC_ANTHROPIC_API_KEY.'
+      '[verify:ai] ABORT: no AI transport configured. Set ' +
+        'EXPO_PUBLIC_PURA_AI_PROXY_URL to your running proxy ' +
+        '(`npm run server:ai` boots a local one on http://localhost:8787).'
     );
     process.exit(2);
   }

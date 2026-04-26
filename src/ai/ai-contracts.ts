@@ -1,15 +1,21 @@
 /**
  * Pura AI — central AI contract layer.
  *
- * This file is the single source of truth for every AI flow in the app.
+ * This file is **client-safe**. It contains nothing but TypeScript
+ * types, JSON schema literals, and configuration constants. It does
+ * NOT import the Anthropic SDK or any Node-only module, so it can be
+ * bundled by Metro into the React Native app and re-imported by the
+ * server-only `claude-client.ts` at the same time.
+ *
  * It defines:
  *   1. The user-facing TypeScript types every consumer reads.
  *   2. The strict JSON schemas Claude returns through tool_use.
  *   3. The model + decoding configuration each flow uses.
  *
  * No prompt logic lives here — only contracts. The prompts and the
- * actual API calls live in `claude-client.ts`. UI screens and stores
- * never talk to Anthropic directly; they go through `ClaudeClient`.
+ * actual API calls live in `server/anthropic/claude-client.ts` (server-
+ * only). UI screens and stores never see the Anthropic SDK; they go
+ * through `src/ai/aiGateway.ts` which talks to the proxy via fetch.
  *
  * Keep schemas and TS types in lockstep — every required field on a
  * schema must have a matching field on the corresponding interface,
@@ -865,3 +871,31 @@ export const CLAUDE_STRUCTURED_SCHEMAS: ClaudeStructuredSchemas = {
   PROGRESS_EXPLANATION_SCHEMA,
   SEARCH_SUGGESTION_RESULT_SCHEMA,
 };
+
+// ============================================================================
+// Cross-boundary shared types — used by both client gateway (proxy
+// request shapes) and server claude-client. Defined here because they
+// describe wire-level data, not SDK-specific shapes.
+// ============================================================================
+
+/** Image MIME types supported by the AI image-bearing methods. */
+export type SupportedImageMediaType = 'image/jpeg' | 'image/png';
+
+/**
+ * Result the host's barcode lookup function returns to the AI's
+ * tool-call inside `normalizeBarcodeResolution`. Lives in this file
+ * (not in `claude-client.ts`) because both the server proxy's
+ * `lib/barcodeLookup.ts` and the validators here reference it.
+ */
+export interface BarcodeLookupResult {
+  matched_catalog_product_id: string | null;
+  brand: string | null;
+  product_name: string | null;
+  canonical_title: string | null;
+  product_category: Exclude<ProductCategory, 'unknown'> | 'unknown';
+  likely_concerns_supported: ConcernType[];
+  key_claims: string[];
+  barcode_value: string;
+  catalog_lookup_key: string | null;
+  packaging_notes: string;
+}

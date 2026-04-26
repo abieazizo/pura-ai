@@ -18,7 +18,7 @@
  * cleanly in Node without pulling Expo / RN modules.
  */
 
-import type { BarcodeLookupResult } from '../../src/ai/claude-client';
+import type { BarcodeLookupResult } from '../../src/ai/ai-contracts';
 
 interface CatalogEntry {
   id: string;

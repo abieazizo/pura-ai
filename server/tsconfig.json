@@ -25,7 +25,6 @@
     "./**/*.ts",
     "../src/ai/ai-contracts.ts",
     "../src/ai/aiLog.ts",
-    "../src/ai/claude-client.ts",
     "../src/ai/validation.ts"
   ],
   "exclude": ["node_modules"]

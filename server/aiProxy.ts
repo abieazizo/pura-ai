@@ -44,7 +44,7 @@ import { URL } from 'node:url';
 import {
   createClaudeClientFromEnv,
   type ClaudeClient,
-} from '../src/ai/claude-client';
+} from './anthropic/claude-client';
 import { aiLog } from '../src/ai/aiLog';
 import { HandlerError, HANDLERS } from './lib/handlers';
 

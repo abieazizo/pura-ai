@@ -1,55 +1,51 @@
 /**
- * Pura AI — gateway.
+ * Pura AI — client-side gateway. **EXPO-SAFE.**
  *
- * The single thing the rest of the app touches when it wants AI.
+ * This file is the only thing the React Native bundle imports when it
+ * needs AI. It is strictly fetch-based:
+ *   • no `@anthropic-ai/sdk` import (the SDK pulls Node-only resources
+ *     and a beta path Metro can't resolve, so it MUST stay server-only)
+ *   • no import of any file under `server/`
+ *   • no instantiation of the Anthropic SDK at any branch, ever
  *
- * Three transports, picked once at module load:
+ * Two transports:
  *
- *   1. PROXY (production)
+ *   1. PROXY (production / dev)
  *      Active when `EXPO_PUBLIC_PURA_AI_PROXY_URL` is set. Every method
  *      POSTs JSON to `<proxy_url>/<method-name>`. The proxy server
  *      (see `server/aiProxy.ts`) holds the Anthropic API key, runs
- *      ClaudeClient server-side, and returns validated structured
- *      output. The client adds an `Authorization: Bearer <token>`
+ *      the SDK server-side, validates the structured output, and
+ *      returns it. The client adds an `Authorization: Bearer <token>`
  *      header from `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN` when present.
  *
- *   2. DIRECT (local development only)
- *      Active when `EXPO_PUBLIC_PURA_AI_TRANSPORT=direct` and
- *      `EXPO_PUBLIC_ANTHROPIC_API_KEY` are both set. Instantiates
- *      ClaudeClient in-process with `dangerouslyAllowBrowser: true`.
- *      Embedding a key in a shipped RN bundle exposes it; this
- *      transport refuses to activate without the explicit
- *      `transport=direct` opt-in so a stray key in a `.env` file
- *      can't accidentally enable it in production.
- *
- *   3. NONE (resilience fallback only)
+ *   2. NONE (resilience fallback only)
  *      No transport configured. The gateway reports
  *      `isAvailable() === false`; every method throws
  *      `AIGatewayUnavailableError`. Callers catch and fall back to
- *      deterministic logic. The brief allows this as the
- *      controlled-resilience path; it is NEVER the primary user
- *      experience in production.
+ *      deterministic logic. This is NEVER the primary user
+ *      experience in production — it exists only so the app keeps
+ *      running for users who haven't pointed at a proxy yet.
  *
- * Production hardening (v10.23):
+ * Hardening:
  *   • Per-method timeouts via AbortController.
  *   • One retry on transient errors (network failures + HTTP 5xx);
  *     no retry on 4xx, on validation failures, or on
  *     AIGatewayUnavailableError.
- *   • Every result passes through `validation.ts` before reaching the
- *     caller; malformed payloads are treated as failures and counted
- *     against the retry budget.
- *   • Structured logs through `aiLog` for every attempt + outcome.
+ *   • Every result passes through `validation.ts` before returning;
+ *     malformed payloads are treated as failures and counted against
+ *     the retry budget.
+ *   • Structured logs through `aiLog`.
  *   • Per-request request-id surfaced as `x-request-id` for
  *     server-side correlation.
  *   • Bearer-token auth header on every proxy call.
+ *
+ * The "direct" SDK transport that previously lived here was removed
+ * in v10.24 — embedding the Anthropic SDK in the RN bundle is
+ * infeasible (Metro can't resolve the SDK's beta resource paths) and
+ * exposes the API key. Local development now uses the same proxy
+ * (`npm run server:ai`).
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import {
-  ClaudeClient,
-  type BarcodeLookupResult,
-  type SupportedImageMediaType,
-} from './claude-client';
 import type {
   AssistantContext,
   BarcodeResolution,
@@ -60,6 +56,7 @@ import type {
   RoutineRecommendation,
   SearchSuggestionResult,
   SkinScoreExplanation,
+  SupportedImageMediaType,
 } from './ai-contracts';
 import { aiLog } from './aiLog';
 import {
@@ -77,6 +74,10 @@ import {
   validateSkinScoreExplanation,
 } from './validation';
 
+// Re-export for client callers that previously read this from the
+// gateway file.
+export type { SupportedImageMediaType };
+
 // ---------------------------------------------------------------------------
 // Public errors.
 // ---------------------------------------------------------------------------
@@ -85,9 +86,8 @@ export class AIGatewayUnavailableError extends Error {
   constructor() {
     super(
       'AIGatewayUnavailableError: no AI transport configured. ' +
-        'Set EXPO_PUBLIC_PURA_AI_PROXY_URL for production, or ' +
-        'EXPO_PUBLIC_PURA_AI_TRANSPORT=direct + ' +
-        'EXPO_PUBLIC_ANTHROPIC_API_KEY for local development.'
+        'Set EXPO_PUBLIC_PURA_AI_PROXY_URL to point at the proxy server ' +
+        '(run `npm run server:ai` locally for development).'
     );
     this.name = 'AIGatewayUnavailableError';
   }
@@ -123,8 +123,7 @@ export class AIValidationError extends Error {
 
 // ---------------------------------------------------------------------------
 // Per-method timeout budget. Image-bearing calls get the most time;
-// text-only calls less. Tuned conservatively so requests never hang
-// the UI past what feels reasonable to users.
+// text-only calls less.
 // ---------------------------------------------------------------------------
 
 const TIMEOUT_MS = {
@@ -145,34 +144,22 @@ const TIMEOUT_MS = {
 type AIMethodName = keyof typeof TIMEOUT_MS;
 
 // ---------------------------------------------------------------------------
-// Transport selection.
+// Transport selection — proxy or none.
 // ---------------------------------------------------------------------------
 
-type Transport = 'direct' | 'proxy' | 'none';
+type Transport = 'proxy' | 'none';
 
 function envString(name: string): string {
-  const raw = (process.env[name] ?? '').trim();
-  return raw;
+  return (process.env[name] ?? '').trim();
 }
 
-function resolveTransport(): Transport {
-  const explicit = envString('EXPO_PUBLIC_PURA_AI_TRANSPORT');
-  const proxyUrl = envString('EXPO_PUBLIC_PURA_AI_PROXY_URL');
-  const directKey = envString('EXPO_PUBLIC_ANTHROPIC_API_KEY');
-
-  // Explicit direct opt-in. Refuses without a key.
-  if (explicit === 'direct') {
-    return directKey.length > 0 ? 'direct' : 'none';
-  }
-  // Production preference: proxy URL wins if set.
-  if (proxyUrl.length > 0) return 'proxy';
-  // No transport configured.
-  return 'none';
-}
-
-const TRANSPORT: Transport = resolveTransport();
-const PROXY_URL = envString('EXPO_PUBLIC_PURA_AI_PROXY_URL').replace(/\/+$/, '');
+const PROXY_URL = envString('EXPO_PUBLIC_PURA_AI_PROXY_URL').replace(
+  /\/+$/,
+  ''
+);
 const PROXY_TOKEN = envString('EXPO_PUBLIC_PURA_AI_PROXY_TOKEN');
+
+const TRANSPORT: Transport = PROXY_URL.length > 0 ? 'proxy' : 'none';
 
 aiLog.info('aiGateway.boot', `transport=${TRANSPORT}`, {
   proxyUrlSet: PROXY_URL.length > 0,
@@ -180,38 +167,10 @@ aiLog.info('aiGateway.boot', `transport=${TRANSPORT}`, {
 });
 
 // ---------------------------------------------------------------------------
-// Direct transport client (local dev only).
-// ---------------------------------------------------------------------------
-
-let _directClient: ClaudeClient | null = null;
-function getDirectClient(): ClaudeClient {
-  if (_directClient) return _directClient;
-  const apiKey = envString('EXPO_PUBLIC_ANTHROPIC_API_KEY');
-  if (apiKey.length === 0) {
-    throw new AIGatewayUnavailableError();
-  }
-  // Subclass overwrite: replace the parent's strict Anthropic
-  // instance with one that allows browser-like environments. The
-  // `private anthropic` is a TS access modifier only; the field is
-  // a plain property at runtime.
-  _directClient = new (class extends ClaudeClient {
-    constructor() {
-      super({ apiKey });
-      (this as unknown as { anthropic: Anthropic }).anthropic = new Anthropic({
-        apiKey,
-        dangerouslyAllowBrowser: true,
-      });
-    }
-  })();
-  return _directClient;
-}
-
-// ---------------------------------------------------------------------------
 // Request-id generator.
 // ---------------------------------------------------------------------------
 
 function newRequestId(): string {
-  // Reasonably unique without a crypto dep: timestamp + 6 random hex.
   const t = Date.now().toString(36);
   const r = Math.floor(Math.random() * 0xffffff)
     .toString(16)
@@ -229,7 +188,7 @@ async function proxyFetch<TRaw>(
   timeoutMs: number,
   requestId: string
 ): Promise<TRaw> {
-  if (PROXY_URL.length === 0) throw new AIGatewayUnavailableError();
+  if (TRANSPORT !== 'proxy') throw new AIGatewayUnavailableError();
   const url = `${PROXY_URL}/${method}`;
 
   const controller = new AbortController();
@@ -276,24 +235,21 @@ async function proxyFetch<TRaw>(
 
 // ---------------------------------------------------------------------------
 // Per-call envelope: timeout + single retry on transient errors +
-// validation + structured logs. The validator is required so every
-// path through the gateway returns a guaranteed-shape result.
+// validation + structured logs.
 // ---------------------------------------------------------------------------
 
 async function runMethod<TRaw, T>(args: {
   method: AIMethodName;
-  /** Transport-agnostic call. Either calls Anthropic directly or
-   *  posts to the proxy. */
-  call: (timeoutMs: number, requestId: string) => Promise<TRaw>;
+  body: unknown;
   validate: (raw: unknown) => T | null;
 }): Promise<T> {
-  const { method, call, validate } = args;
+  const { method, body, validate } = args;
   const timeoutMs = TIMEOUT_MS[method];
   const requestId = newRequestId();
   const start = Date.now();
 
   const attempt = async (): Promise<T> => {
-    const raw = await call(timeoutMs, requestId);
+    const raw = await proxyFetch<TRaw>(method, body, timeoutMs, requestId);
     const validated = validate(raw);
     if (!validated) {
       aiLog.warn('aiGateway.validate', `${method} returned malformed payload`, {
@@ -354,16 +310,16 @@ async function runMethod<TRaw, T>(args: {
   }
 }
 
+function ensureAvailable(): void {
+  if (TRANSPORT !== 'proxy') throw new AIGatewayUnavailableError();
+}
+
 // ---------------------------------------------------------------------------
 // Public gateway shape.
 // ---------------------------------------------------------------------------
 
 export interface AIGateway {
-  /** True iff a transport is configured. UI surfaces should still
-   *  function when this is false — they just use deterministic
-   *  fallbacks. */
   isAvailable(): boolean;
-  /** Which transport is active — useful for telemetry / dev console. */
   transport(): Transport;
 
   analyzeFaceScan(params: {
@@ -379,13 +335,13 @@ export interface AIGateway {
     mediaType: SupportedImageMediaType;
   }): Promise<ProductIdentity>;
 
+  /**
+   * Resolve a barcode through the AI's two-step lookup loop. The
+   * server proxy owns the catalog lookup — clients never supply a
+   * lookup callback. Pass only the scanned barcode value.
+   */
   normalizeBarcodeResolution(params: {
     barcodeValue: string;
-    /** Used in DIRECT mode only. The proxy runs its own catalog
-     *  lookup server-side and ignores this callback. */
-    lookupBarcode: (
-      barcodeValue: string
-    ) => Promise<BarcodeLookupResult | null>;
   }): Promise<BarcodeResolution>;
 
   matchProductsForUser(params: {
@@ -459,18 +415,9 @@ export interface AIGateway {
   }>;
 }
 
-// ---------------------------------------------------------------------------
-// Direct/proxy dispatch — every method goes through `runMethod` so
-// timeouts, retries, validation, and logging are uniform.
-// ---------------------------------------------------------------------------
-
-function ensureAvailable(): void {
-  if (TRANSPORT === 'none') throw new AIGatewayUnavailableError();
-}
-
 const gateway: AIGateway = {
   isAvailable() {
-    return TRANSPORT !== 'none';
+    return TRANSPORT === 'proxy';
   },
   transport() {
     return TRANSPORT;
@@ -480,16 +427,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'analyzeFaceScan',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().analyzeFaceScan(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch('analyzeFaceScan', params, timeoutMs, requestId);
-      },
+      body: params,
       validate: validateFaceScanAnalysis,
     });
   },
@@ -498,21 +436,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'identifyProductFromImage',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().identifyProductFromImage(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch(
-          'identifyProductFromImage',
-          params,
-          timeoutMs,
-          requestId
-        );
-      },
+      body: params,
       validate: validateProductIdentity,
     });
   },
@@ -521,22 +445,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'normalizeBarcodeResolution',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().normalizeBarcodeResolution(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        // The proxy server owns the lookup; the callback is stripped.
-        return proxyFetch(
-          'normalizeBarcodeResolution',
-          { barcodeValue: params.barcodeValue },
-          timeoutMs,
-          requestId
-        );
-      },
+      body: { barcodeValue: params.barcodeValue },
       validate: validateBarcodeResolution,
     });
   },
@@ -545,16 +454,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'matchProductsForUser',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().matchProductsForUser(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch('matchProductsForUser', params, timeoutMs, requestId);
-      },
+      body: params,
       validate: validateProductMatchResult,
     });
   },
@@ -563,21 +463,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'generateRoutineRecommendation',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().generateRoutineRecommendation(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch(
-          'generateRoutineRecommendation',
-          params,
-          timeoutMs,
-          requestId
-        );
-      },
+      body: params,
       validate: validateRoutineRecommendation,
     });
   },
@@ -586,16 +472,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'explainSkinScore',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().explainSkinScore(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch('explainSkinScore', params, timeoutMs, requestId);
-      },
+      body: params,
       validate: validateSkinScoreExplanation,
     });
   },
@@ -604,16 +481,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'explainProgress',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().explainProgress(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch('explainProgress', params, timeoutMs, requestId);
-      },
+      body: params,
       validate: validateProgressExplanation,
     });
   },
@@ -622,21 +490,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'buildSearchSuggestions',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().buildSearchSuggestions(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch(
-          'buildSearchSuggestions',
-          params,
-          timeoutMs,
-          requestId
-        );
-      },
+      body: params,
       validate: validateSearchSuggestionResult,
     });
   },
@@ -645,16 +499,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'answerAssistant',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().answerAssistant(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch('answerAssistant', params, timeoutMs, requestId);
-      },
+      body: params,
       validate: validateAssistantAnswer,
     });
   },
@@ -663,21 +508,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'analyzeScannedProductAgainstUser',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().analyzeScannedProductAgainstUser(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch(
-          'analyzeScannedProductAgainstUser',
-          params,
-          timeoutMs,
-          requestId
-        );
-      },
+      body: params,
       validate: validateScannedProductFit,
     });
   },
@@ -686,21 +517,7 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'buildFullScanToPlanBundle',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().buildFullScanToPlanBundle(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch(
-          'buildFullScanToPlanBundle',
-          params,
-          timeoutMs,
-          requestId
-        );
-      },
+      body: params,
       validate: validateScanToPlanBundle,
     });
   },
@@ -709,55 +526,11 @@ const gateway: AIGateway = {
     ensureAvailable();
     return runMethod({
       method: 'buildProgressBundle',
-      call: async (timeoutMs, requestId) => {
-        if (TRANSPORT === 'direct') {
-          return withDirectTimeout(
-            getDirectClient().buildProgressBundle(params),
-            timeoutMs,
-            requestId
-          );
-        }
-        return proxyFetch('buildProgressBundle', params, timeoutMs, requestId);
-      },
+      body: params,
       validate: validateProgressBundle,
     });
   },
 };
-
-// ---------------------------------------------------------------------------
-// Direct-mode timeout shim. Anthropic's SDK has its own request
-// timeouts but we wrap defensively so direct mode obeys the same
-// per-method budget proxy mode does.
-// ---------------------------------------------------------------------------
-
-async function withDirectTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  requestId: string
-): Promise<T> {
-  return await new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(
-        new AIProxyError(
-          'direct',
-          0,
-          requestId,
-          `direct call timed out after ${timeoutMs}ms`
-        )
-      );
-    }, timeoutMs);
-    promise.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(timer);
-        reject(e);
-      }
-    );
-  });
-}
 
 export const aiGateway: AIGateway = gateway;
 

@@ -11,7 +11,7 @@
  * `aiProxy.ts` translates that into a clean HTTP error response.
  */
 
-import { ClaudeClient } from '../../src/ai/claude-client';
+import { ClaudeClient } from '../anthropic/claude-client';
 import {
   validateAssistantContext,
   validateBarcodeResolution,

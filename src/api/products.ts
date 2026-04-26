@@ -30,7 +30,6 @@ import type {
   ProductMatchResult,
   SearchSuggestionResult,
 } from '@/ai/ai-contracts';
-import type { BarcodeLookupResult } from '@/ai/claude-client';
 import { useAppStore } from '@/store/useAppStore';
 import { computeSkinScore } from '@/utils/skinScore';
 
@@ -264,20 +263,15 @@ export async function getSearchSuggestions(
 
 // ---------------------------------------------------------------------------
 // v10.22 — Barcode resolution.
-//
-// Caller supplies a host-side `lookupBarcode` function (an open-
-// product DB lookup, an internal catalog match, etc.). When the
-// gateway is in "direct" mode the lookup runs in-process inside the
-// AI tool loop. When it's in "proxy" mode the host endpoint is
-// expected to perform its own server-side lookup; the lookup
-// function passed in here will be ignored by the proxy transport.
+// v10.24 — the client no longer supplies a `lookupBarcode` callback.
+// The proxy server owns the catalog lookup (see
+// `server/lib/barcodeLookup.ts`); the client only passes the scanned
+// barcode value. This both keeps the catalog out of the RN bundle and
+// guarantees a single source of truth for what a barcode resolves to.
 // ---------------------------------------------------------------------------
 
 export async function resolveBarcode(args: {
   barcodeValue: string;
-  lookupBarcode: (
-    barcodeValue: string
-  ) => Promise<BarcodeLookupResult | null>;
 }): Promise<BarcodeResolution | null> {
   if (!aiGateway.isAvailable()) return null;
   if (args.barcodeValue.trim().length === 0) {
@@ -287,45 +281,9 @@ export async function resolveBarcode(args: {
     );
     return null;
   }
-  return await tryAi(() => aiGateway.normalizeBarcodeResolution(args));
-}
-
-/**
- * Default catalog-only barcode lookup. Tries to match the barcode
- * value against `seedProducts.id` (a stand-in until a real catalog/
- * UPC database lands). Used when callers don't supply their own
- * lookup function.
- */
-export async function defaultCatalogBarcodeLookup(
-  barcodeValue: string
-): Promise<BarcodeLookupResult | null> {
-  const matched = seedProducts.find((p) => p.id === barcodeValue);
-  if (!matched) return null;
-  const cat = matched.category;
-  // Map the app's ProductCategory ('treatment' / 'mask' / 'toner' /
-  // etc.) onto the AI's narrower set ('spot_treatment', 'mask',
-  // 'toner', etc.).
-  const aiCategory: BarcodeLookupResult['product_category'] =
-    cat === 'cleanser' ||
-    cat === 'serum' ||
-    cat === 'moisturizer' ||
-    cat === 'toner' ||
-    cat === 'spf' ||
-    cat === 'mask'
-      ? cat
-      : cat === 'treatment'
-      ? 'spot_treatment'
-      : 'unknown';
-  return {
-    matched_catalog_product_id: matched.id,
-    brand: matched.brand,
-    product_name: matched.name,
-    canonical_title: `${matched.brand} ${matched.name}`,
-    product_category: aiCategory,
-    likely_concerns_supported: [],
-    key_claims: matched.keyIngredients ?? [],
-    barcode_value: barcodeValue,
-    catalog_lookup_key: matched.id,
-    packaging_notes: matched.description,
-  };
+  return await tryAi(() =>
+    aiGateway.normalizeBarcodeResolution({
+      barcodeValue: args.barcodeValue,
+    })
+  );
 }
