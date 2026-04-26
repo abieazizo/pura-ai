@@ -15,7 +15,8 @@
 
 import type { Scan, SkinZone } from '@/types';
 import { buildSummaryHeadline, deriveConcerns } from '@/utils/concerns';
-import { aiGateway, AIGatewayUnavailableError } from '@/ai/aiGateway';
+import { aiGateway, tryAi } from '@/ai/aiGateway';
+import { aiLog } from '@/ai/aiLog';
 import { translateAnalysisToScan, buildPreviousSummary } from '@/ai/translateAnalysis';
 import { useAppStore } from '@/store/useAppStore';
 import type { ProductIdentity, ProductMatchResult } from '@/ai/ai-contracts';
@@ -83,32 +84,39 @@ export async function analyzeFaceScan(args: {
 
   // ── Primary path: real AI ──
   if (aiGateway.isAvailable()) {
+    let imageBase64: string | null = null;
     try {
-      const imageBase64 = await readImageAsBase64(photoUri);
-      const analysis = await aiGateway.analyzeFaceScan({
-        imageBase64,
-        mediaType: 'image/jpeg',
-        scanId,
-        previousSummary: previousScan
-          ? buildPreviousSummary(previousScan)
-          : undefined,
-        userProfileSummary: buildUserProfileSummary(),
-      });
-      return translateAnalysisToScan({
-        analysis,
-        photoUri,
-        dayNumber,
-        scanId,
-      });
+      imageBase64 = await readImageAsBase64(photoUri);
     } catch (e) {
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          '[analyzeFaceScan] AI path failed, using deterministic fallback:',
-          e instanceof Error ? e.message : String(e)
-        );
+      aiLog.warn('analyzeFaceScan', 'failed to read image bytes', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    if (imageBase64) {
+      const analysis = await tryAi(() =>
+        aiGateway.analyzeFaceScan({
+          imageBase64: imageBase64!,
+          mediaType: 'image/jpeg',
+          scanId,
+          previousSummary: previousScan
+            ? buildPreviousSummary(previousScan)
+            : undefined,
+          userProfileSummary: buildUserProfileSummary(),
+        })
+      );
+      if (analysis) {
+        return translateAnalysisToScan({
+          analysis,
+          photoUri,
+          dayNumber,
+          scanId,
+        });
       }
-      // fall through
+      aiLog.warn(
+        'analyzeFaceScan',
+        'AI path failed (gateway/validation), using deterministic fallback',
+        { scanId }
+      );
     }
   }
 
@@ -192,41 +200,42 @@ export async function analyzeProductScan(args?: {
   photoUri?: string;
 }): Promise<ProductScanResult> {
   if (args?.photoUri && aiGateway.isAvailable()) {
+    let imageBase64: string | null = null;
     try {
-      const imageBase64 = await readImageAsBase64(args.photoUri);
-      const userContextSummary = buildUserProfileSummary();
-      const result = await aiGateway.analyzeScannedProductAgainstUser({
-        imageBase64,
-        mediaType: 'image/jpeg',
-        userContextSummary,
-      });
-      // Persist the active identity for AssistantContext grounding.
-      try {
-        useAppStore.getState().setAiActiveProductIdentity(result.identity);
-      } catch {
-        // Non-fatal — don't kill the UI flow if the store update
-        // failed (e.g. during a state migration).
-      }
-      const topMatchScore =
-        result.fit.matches.length > 0
-          ? result.fit.matches[0].match_score
-          : 0;
-      return {
-        matchPercent: topMatchScore,
-        identity: result.identity,
-        fit: result.fit,
-      };
+      imageBase64 = await readImageAsBase64(args.photoUri);
     } catch (e) {
-      if (e instanceof AIGatewayUnavailableError) {
-        // expected when no transport — fall through silently
-      } else if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          '[analyzeProductScan] AI path failed, using deterministic fallback:',
-          e instanceof Error ? e.message : String(e)
-        );
+      aiLog.warn('analyzeProductScan', 'failed to read image bytes', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    if (imageBase64) {
+      const result = await tryAi(() =>
+        aiGateway.analyzeScannedProductAgainstUser({
+          imageBase64: imageBase64!,
+          mediaType: 'image/jpeg',
+          userContextSummary: buildUserProfileSummary(),
+        })
+      );
+      if (result) {
+        try {
+          useAppStore.getState().setAiActiveProductIdentity(result.identity);
+        } catch {
+          /* non-fatal */
+        }
+        const topMatchScore =
+          result.fit.matches.length > 0
+            ? result.fit.matches[0].match_score
+            : 0;
+        return {
+          matchPercent: topMatchScore,
+          identity: result.identity,
+          fit: result.fit,
+        };
       }
-      // fall through
+      aiLog.warn(
+        'analyzeProductScan',
+        'AI path failed (gateway/validation), using deterministic fallback'
+      );
     }
   }
 

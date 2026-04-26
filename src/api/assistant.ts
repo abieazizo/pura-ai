@@ -9,7 +9,8 @@
 
 import type { AssistantMessage, Scan } from '@/types';
 import { buildAssistantReply } from '@/utils/assistantMock';
-import { aiGateway } from '@/ai/aiGateway';
+import { aiGateway, tryAi } from '@/ai/aiGateway';
+import { aiLog } from '@/ai/aiLog';
 import { useAppStore } from '@/store/useAppStore';
 import { computeSkinScore } from '@/utils/skinScore';
 import type {
@@ -280,66 +281,71 @@ export async function askAssistant(args: {
   latestScan?: Scan;
   messageId: string;
 }): Promise<AssistantMessage> {
+  if (args.text.trim().length === 0) {
+    // Empty-question guard — never burn an AI call.
+    return {
+      id: args.messageId,
+      role: 'assistant',
+      text: 'Ask me anything about your scan, your routine, or a product — I’ll ground the answer in your actual data.',
+      attachedProductIds: args.attachedProductIds,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
   if (aiGateway.isAvailable()) {
-    try {
-      const context = buildAssistantContext(args.latestScan);
-      // If the user attached products and the active identity slot is
-      // empty, surface the first attached product to the AI as the
-      // "active product" so it has a concrete object to reason about.
-      if (
-        !context.active_product_identity &&
-        args.attachedProductIds &&
-        args.attachedProductIds.length > 0
-      ) {
-        const p = seedProducts.find(
-          (sp) => sp.id === args.attachedProductIds![0]
-        );
-        if (p) {
-          context.active_product_identity = {
-            source: 'image',
-            confidence: 0.95,
-            resolved: true,
-            brand: p.brand,
-            product_name: p.name,
-            canonical_title: `${p.brand} ${p.name}`,
-            product_category:
-              (p.category as
-                | 'cleanser'
-                | 'serum'
-                | 'moisturizer'
-                | 'spot_treatment'
-                | 'toner'
-                | 'spf'
-                | 'mask') ?? 'unknown',
-            likely_concerns_supported: [],
-            key_claims: p.keyIngredients ?? [],
-            barcode_value: null,
-            catalog_lookup_key: p.id,
-            packaging_notes: '',
-          };
-        }
+    const context = buildAssistantContext(args.latestScan);
+    if (
+      !context.active_product_identity &&
+      args.attachedProductIds &&
+      args.attachedProductIds.length > 0
+    ) {
+      const p = seedProducts.find(
+        (sp) => sp.id === args.attachedProductIds![0]
+      );
+      if (p) {
+        context.active_product_identity = {
+          source: 'image',
+          confidence: 0.95,
+          resolved: true,
+          brand: p.brand,
+          product_name: p.name,
+          canonical_title: `${p.brand} ${p.name}`,
+          product_category:
+            (p.category as
+              | 'cleanser'
+              | 'serum'
+              | 'moisturizer'
+              | 'spot_treatment'
+              | 'toner'
+              | 'spf'
+              | 'mask') ?? 'unknown',
+          likely_concerns_supported: [],
+          key_claims: p.keyIngredients ?? [],
+          barcode_value: null,
+          catalog_lookup_key: p.id,
+          packaging_notes: '',
+        };
       }
-      const text = await aiGateway.answerAssistant({
-        context,
-        userQuestion: args.text,
-      });
+    }
+    const text = await tryAi(() =>
+      aiGateway.answerAssistant({ context, userQuestion: args.text })
+    );
+    if (text !== null) {
       return {
         id: args.messageId,
         role: 'assistant',
-        text: text.length > 0 ? text : 'I couldn’t produce an answer for that one — try rephrasing?',
+        text:
+          text.length > 0
+            ? text
+            : 'I couldn’t produce an answer for that one — try rephrasing?',
         attachedProductIds: args.attachedProductIds,
         createdAt: new Date().toISOString(),
       };
-    } catch (e) {
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          '[askAssistant] AI path failed, using deterministic fallback:',
-          e instanceof Error ? e.message : String(e)
-        );
-      }
-      // fall through
     }
+    aiLog.warn(
+      'askAssistant',
+      'AI path failed (gateway/validation), using deterministic fallback'
+    );
   }
 
   return buildAssistantReply(args);

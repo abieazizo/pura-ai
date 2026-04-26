@@ -7,7 +7,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc --noEmit",
+    "tsc:server": "tsc --noEmit -p server/tsconfig.json",
+    "server:ai": "tsx server/aiProxy.ts",
+    "verify:ai": "tsx scripts/verifyAi.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -46,11 +49,13 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
+    "@types/node": "^25.6.0",
     "@types/react": "~19.1.10",
     "babel-plugin-module-resolver": "^5.0.2",
     "expo": "~54.0.0",
     "npx": "^10.2.2",
     "start": "^5.1.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.3.3"
   },
   "private": true

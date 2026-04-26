@@ -18,6 +18,7 @@ import {
   getNatural,
 } from '@/store/productSelectors';
 import { type GoalKey } from './CategoryRail';
+import type { ProductMatch } from '@/ai/ai-contracts';
 
 export interface CategoryFeedProps {
   goal: GoalKey;
@@ -40,12 +41,25 @@ export interface CategoryFeedProps {
  */
 export function CategoryFeed({ goal }: CategoryFeedProps) {
   const nav = useNavigation<any>();
-  const { hasScanned } = useAppStore(
-    useShallow((s) => ({ hasScanned: s.scans.length > 0 }))
+  const { hasScanned, aiTopMatches } = useAppStore(
+    useShallow((s) => ({
+      hasScanned: s.scans.length > 0,
+      aiTopMatches: s.aiTopMatches,
+    }))
   );
 
   const products = useMemo(() => pickForGoal(goal), [goal]);
   const meta = GOAL_LABELS[goal];
+
+  // v10.23 — build a quick id -> AI match lookup so each grid card
+  // can show the AI-derived match score instead of the seeded one.
+  // When the AI hasn't run yet, the badge falls back to a label-only
+  // "MATCH" pill (no fake number).
+  const aiMatchById = useMemo<Map<string, ProductMatch>>(() => {
+    const m = new Map<string, ProductMatch>();
+    for (const match of aiTopMatches) m.set(match.product_id, match);
+    return m;
+  }, [aiTopMatches]);
 
   if (goal === 'best-for-you' && !hasScanned) {
     return <BestForYouLocked onScan={() => nav.navigate('ScanModal')} />;
@@ -67,6 +81,7 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
           <GridCard
             key={p.id}
             product={p}
+            aiMatch={aiMatchById.get(p.id) ?? null}
             onPress={() => {
               hapt.select();
               nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
@@ -117,16 +132,29 @@ function pickForGoal(goal: GoalKey): Product[] {
 
 function GridCard({
   product,
+  aiMatch,
   onPress,
 }: {
   product: Product;
+  aiMatch: ProductMatch | null;
   onPress: () => void;
 }) {
+  // v10.23 — match badge sourcing rule:
+  //   • aiMatch present → show the AI score + "MATCH" label.
+  //   • aiMatch absent → show "MATCH" label only, no number. The
+  //     seeded matchScore is no longer surfaced as if the AI had
+  //     ranked it; doing so was a fake-AI gap the production
+  //     hardening pass closed.
+  const showAiNumber = aiMatch !== null;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${product.brand} ${product.name}`}
+      accessibilityLabel={
+        showAiNumber
+          ? `${product.brand} ${product.name}, ${aiMatch!.match_score}% AI match`
+          : `${product.brand} ${product.name}`
+      }
       style={({ pressed }) => [
         styles.card,
         pressed && { opacity: 0.94 },
@@ -148,9 +176,11 @@ function GridCard({
           <Drop size={36} color={palette.ink} weight="duotone" />
         )}
         <View style={styles.matchBadge}>
-          <Text style={styles.matchBadgeNum} maxFontSizeMultiplier={1.1}>
-            {`${product.matchScore ?? 80}%`}
-          </Text>
+          {showAiNumber ? (
+            <Text style={styles.matchBadgeNum} maxFontSizeMultiplier={1.1}>
+              {`${aiMatch!.match_score}%`}
+            </Text>
+          ) : null}
           <Text style={styles.matchBadgeLabel} maxFontSizeMultiplier={1.1}>
             MATCH
           </Text>

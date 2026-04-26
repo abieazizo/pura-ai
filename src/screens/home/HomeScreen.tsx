@@ -161,6 +161,16 @@ export function HomeScreen() {
     [primary]
   );
 
+  // v10.23 — surface the AI's actual match score for this product when
+  // the post-scan composite has run. Falls back to a label-only badge
+  // (no fake number) when no AI ranking is available.
+  const aiTopMatches = useAppStore((s) => s.aiTopMatches);
+  const recProductAiScore =
+    recProduct == null
+      ? null
+      : aiTopMatches.find((m) => m.product_id === recProduct.id)?.match_score ??
+        null;
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
@@ -339,9 +349,14 @@ export function HomeScreen() {
                   />
                 ) : null}
                 <View style={styles.recCardMatch}>
-                  <Text style={styles.recCardMatchNum} maxFontSizeMultiplier={1.1}>
-                    {`${recProduct.matchScore ?? 90}%`}
-                  </Text>
+                  {recProductAiScore !== null ? (
+                    <Text
+                      style={styles.recCardMatchNum}
+                      maxFontSizeMultiplier={1.1}
+                    >
+                      {`${recProductAiScore}%`}
+                    </Text>
+                  ) : null}
                   <Text style={styles.recCardMatchLabel} maxFontSizeMultiplier={1.1}>
                     MATCH
                   </Text>

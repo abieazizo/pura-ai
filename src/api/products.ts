@@ -22,7 +22,8 @@
 
 import { seedProducts } from '@/data/seed';
 import type { Product } from '@/types';
-import { aiGateway } from '@/ai/aiGateway';
+import { aiGateway, tryAi } from '@/ai/aiGateway';
+import { aiLog } from '@/ai/aiLog';
 import type {
   BarcodeResolution,
   ConcernType,
@@ -159,30 +160,42 @@ export async function getMatchedProductsForUser(args: {
 }): Promise<ProductMatchResult | null> {
   if (!aiGateway.isAvailable()) return null;
   const candidates = args.candidates ?? seedProducts;
-  try {
-    const result = await aiGateway.matchProductsForUser({
+  if (candidates.length === 0) {
+    // Empty candidate set guard — never burn a Claude call. Clear the
+    // store-side ranking so the UI knows there's nothing to show.
+    aiLog.info(
+      'products.getMatchedProductsForUser',
+      'empty candidate set; skipping AI call'
+    );
+    try {
+      useAppStore.getState().setAiTopMatches([]);
+    } catch {
+      /* non-fatal */
+    }
+    return {
+      for_user_id: args.userId ?? 'current_user',
+      based_on_scan_id: args.basedOnScanId ?? null,
+      top_pick_product_id: null,
+      matches: [],
+      alternatives: [],
+    };
+  }
+  const result = await tryAi(() =>
+    aiGateway.matchProductsForUser({
       userId: args.userId ?? 'current_user',
       basedOnScanId: args.basedOnScanId ?? null,
       skinStateSummary: buildSkinStateSummary(),
       candidateProductsJson: buildCandidateProductsJson(candidates),
-    });
-    // Persist top matches so downstream selectors can read them.
+    })
+  );
+  if (result) {
     try {
       useAppStore.getState().setAiTopMatches(result.matches);
     } catch {
-      // non-fatal
+      /* non-fatal */
     }
-    return result;
-  } catch (e) {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[getMatchedProductsForUser] AI path failed, returning null:',
-        e instanceof Error ? e.message : String(e)
-      );
-    }
-    return null;
   }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,28 +245,21 @@ export async function getSearchSuggestions(
   pageContext: 'products' | 'assistant'
 ): Promise<SearchSuggestionResult | null> {
   if (!aiGateway.isAvailable()) return null;
-  try {
-    const result = await aiGateway.buildSearchSuggestions({
+  const result = await tryAi(() =>
+    aiGateway.buildSearchSuggestions({
       latestScanSummary: buildLatestScanSummary(),
       routineSummary: buildRoutineSummary(),
       pageContext,
-    });
+    })
+  );
+  if (result) {
     try {
       useAppStore.getState().setAiSearchSuggestions(result);
     } catch {
-      // non-fatal
+      /* non-fatal */
     }
-    return result;
-  } catch (e) {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[getSearchSuggestions] AI path failed, returning null:',
-        e instanceof Error ? e.message : String(e)
-      );
-    }
-    return null;
   }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,18 +280,14 @@ export async function resolveBarcode(args: {
   ) => Promise<BarcodeLookupResult | null>;
 }): Promise<BarcodeResolution | null> {
   if (!aiGateway.isAvailable()) return null;
-  try {
-    return await aiGateway.normalizeBarcodeResolution(args);
-  } catch (e) {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[resolveBarcode] AI path failed, returning null:',
-        e instanceof Error ? e.message : String(e)
-      );
-    }
+  if (args.barcodeValue.trim().length === 0) {
+    aiLog.warn(
+      'products.resolveBarcode',
+      'refusing to resolve empty barcode value'
+    );
     return null;
   }
+  return await tryAi(() => aiGateway.normalizeBarcodeResolution(args));
 }
 
 /**
