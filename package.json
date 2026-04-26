@@ -11,6 +11,7 @@
     "tsc:server": "tsc --noEmit -p server/tsconfig.json",
     "server:ai": "tsx --env-file=.env server/aiProxy.ts",
     "verify:ai": "tsx --env-file=.env scripts/verifyAi.ts",
+    "lanip": "tsx --env-file=.env scripts/lanip.ts",
     "dev": "concurrently --kill-others-on-fail --names \"PROXY,EXPO\" --prefix-colors \"cyan,magenta\" \"npm:server:ai\" \"npm:start\""
   },
   "dependencies": {

@@ -175,33 +175,82 @@ that the findings are a demo response, not a real read of your photo.
 
 ---
 
-## 7. Network notes
+## 7. Network notes — phone testing
 
-- `localhost` works in **web preview** (`npx expo start --web`) and
-  on iOS / Android **simulators** that share a localhost with the dev
-  machine.
-- For **Expo Go on a phone**, the phone's `localhost` is the phone
-  itself. Set `EXPO_PUBLIC_PURA_AI_PROXY_URL` to your dev machine's
-  LAN IP (e.g. `http://192.168.1.42:8787`) and start the proxy bound
-  to `0.0.0.0` so the phone can reach it:
+`localhost` works in web preview and on iOS / Android simulators that
+share a localhost with the dev machine. For **Expo Go on a real
+phone over the same Wi-Fi**, the phone's `localhost` is the phone
+itself, so you have to point the client at the dev machine's LAN IP.
 
-  ```bash
-  PURA_AI_PROXY_HOST=0.0.0.0 npm run server:ai
+v10.30 onward, the proxy:
+- **Defaults to binding `0.0.0.0`** (every interface), so it's
+  reachable from the LAN out of the box. You no longer have to set
+  `PURA_AI_PROXY_HOST=0.0.0.0` manually.
+- **Prints every reachable URL** on boot so you can see exactly
+  which one to put in `.env`. Sample output:
+
+  ```
+  [pura-ai-proxy] listening on http://0.0.0.0:8787 ...
+  [pura-ai-proxy] reachable at:
+                    http://localhost:8787
+                    http://192.168.1.42:8787
+  [pura-ai-proxy] for a phone on the same Wi-Fi, set:
+                    EXPO_PUBLIC_PURA_AI_PROXY_URL=http://192.168.1.42:8787
   ```
 
-  Then in `.env`:
+For convenience, a one-shot helper prints the same recommendation
+without booting the proxy:
 
-  ```dotenv
+```bash
+npm run lanip
+```
+
+Output:
+
+```
+LAN IP: 192.168.1.42  (interface: en0)
+For phone testing, set in .env:
   EXPO_PUBLIC_PURA_AI_PROXY_URL=http://192.168.1.42:8787
-  ```
+```
 
-- For deployed environments, the proxy lives at a real HTTPS hostname.
-  Set `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN` (matched on the server) so
-  every request carries an `Authorization: Bearer <token>` header.
+If you're on multiple networks (e.g. Wi-Fi + Docker bridge), the
+helper lists all candidates so you can pick the one matching your
+phone's network.
+
+To restrict the proxy to loopback only (e.g. CI):
+
+```bash
+PURA_AI_PROXY_HOST=127.0.0.1 npm run server:ai
+```
+
+For deployed environments, the proxy lives at a real HTTPS hostname.
+Set `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN` (matched on the server) so
+every request carries an `Authorization: Bearer <token>` header.
+
+## 8. Barcode flow
+
+The barcode resolution path (`POST /normalizeBarcodeResolution` →
+two-step Anthropic tool loop → server-side product lookup) is wired
+to the **Open Beauty Facts** public API
+(`https://world.openbeautyfacts.org/api/v2/product/<barcode>.json`).
+
+What this means in practice:
+- A real product barcode (UPC/EAN, 6–14 digits) is looked up against
+  the OBF database server-side. Brand, product name, category, and
+  ingredient claims come from the real entry.
+- If OBF doesn't have the barcode, the server falls back to a small
+  local dev catalog (3 entries used by the smoke test).
+- If neither has it, the AI marks the resolution as
+  `fallback_needed: true` and the client UX nudges the user to take
+  a product image instead.
+
+The request to OBF has a 4-second timeout so a slow lookup can't hang
+a barcode scan. The server is identified to OBF via a `User-Agent`
+header.
 
 ---
 
-## 8. Common failure modes
+## 9. Common failure modes
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
@@ -209,5 +258,6 @@ that the findings are a demo response, not a real read of your photo.
 | Home banner: **AI proxy unreachable** | Proxy not running, or wrong URL | `npm run server:ai`; check the URL points at it |
 | `verify:ai` 401 errors | Token mismatch | Ensure `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN` (client) matches `PURA_AI_PROXY_TOKEN` (server) |
 | All replies start with "Live AI isn't connected…" | Same as above; gateway is in fallback | Check `/healthz` from the host first |
-| Server logs `cannot start: ANTHROPIC_API_KEY is missing` | The key isn't exported in the shell that launched the proxy | `export ANTHROPIC_API_KEY=sk-ant-…` then re-run |
-| Phone can't reach proxy | Bound to `127.0.0.1` only | `PURA_AI_PROXY_HOST=0.0.0.0 npm run server:ai` |
+| Server logs `cannot start: ANTHROPIC_API_KEY is missing` | The key isn't exported in the shell launching the proxy AND `.env` hasn't been loaded | Put the key in `.env` (auto-loaded by the proxy at boot) |
+| Phone can't reach proxy | Wrong proxy URL on the client (still pointing at localhost) | `npm run lanip` to get the LAN URL, paste into `.env`, restart Expo |
+| Barcode scan returns "no match" for a real product barcode | Open Beauty Facts doesn't have it indexed | Expected — the AI surfaces `fallback_needed: true` and the UX nudges the user to take a product image instead |

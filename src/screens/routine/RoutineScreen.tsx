@@ -919,7 +919,7 @@ function RoutineList({
                   identical generic photos. */}
               <ProductPlaceholderImage
                 product={p}
-                iconSize={22}
+                silhouetteSize={28}
                 showBrandWord={false}
               />
             </View>

@@ -42,6 +42,7 @@
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { URL } from 'node:url';
 
 // ---------------------------------------------------------------------------
@@ -101,7 +102,11 @@ import { HandlerError, HANDLERS } from './lib/handlers';
 // ---------------------------------------------------------------------------
 
 const PORT = Number(process.env.PURA_AI_PROXY_PORT ?? 8787);
-const HOST = process.env.PURA_AI_PROXY_HOST ?? '127.0.0.1';
+// v10.30 — default to 0.0.0.0 so the proxy is reachable from the
+// local LAN by default. This is the right default for a dev workflow
+// where the user wants to test on a real phone over the same Wi-Fi.
+// To restrict to loopback only, set PURA_AI_PROXY_HOST=127.0.0.1.
+const HOST = process.env.PURA_AI_PROXY_HOST ?? '0.0.0.0';
 const TOKEN = (process.env.PURA_AI_PROXY_TOKEN ?? '').trim();
 const RATE_PER_MIN = Number(process.env.PURA_AI_PROXY_RATE_PER_MIN ?? 60);
 const BODY_LIMIT_BYTES =
@@ -362,6 +367,32 @@ async function dispatch(
 // Boot.
 // ---------------------------------------------------------------------------
 
+/**
+ * Enumerate every URL the proxy is actually reachable at given the
+ * configured HOST. When HOST is the wildcard 0.0.0.0 (or ::), the
+ * proxy listens on every interface — so we surface loopback +
+ * every IPv4 address the OS reports. When HOST is bound to a
+ * specific address, that's the only reachable URL.
+ *
+ * Skip internal/down interfaces and IPv6 addresses (RN's `fetch`
+ * to `http://[::1]:8787/...` works but most devs reach for IPv4).
+ */
+function listReachableUrls(host: string, port: number): string[] {
+  if (host !== '0.0.0.0' && host !== '::' && host !== '') {
+    return [`http://${host}:${port}`];
+  }
+  const out: string[] = [`http://localhost:${port}`];
+  const interfaces = os.networkInterfaces();
+  for (const ifaces of Object.values(interfaces)) {
+    for (const ni of ifaces ?? []) {
+      if (ni.family !== 'IPv4') continue;
+      if (ni.internal) continue; // skip 127.x.x.x — covered by 'localhost'
+      out.push(`http://${ni.address}:${port}`);
+    }
+  }
+  return out;
+}
+
 function main(): void {
   // Fail fast if the API key is missing — better here than on the
   // first request.
@@ -399,6 +430,30 @@ function main(): void {
         `(token=${TOKEN.length > 0 ? 'on' : 'off'}, rate=${RATE_PER_MIN}/min, ` +
         `bodyLimit=${(BODY_LIMIT_BYTES / 1024 / 1024).toFixed(1)}MB)`
     );
+    // v10.30 — print every reachable URL so the developer doesn't
+    // have to guess which one to set on a real-device EXPO_PUBLIC_
+    // env. Hides the wildcard 0.0.0.0 itself (it isn't a clickable
+    // URL) and surfaces both loopback and the dev machine's LAN IP
+    // separately.
+    const reachable = listReachableUrls(HOST, PORT);
+    if (reachable.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log('[pura-ai-proxy] reachable at:');
+      for (const u of reachable) {
+        // eslint-disable-next-line no-console
+        console.log(`                  ${u}`);
+      }
+      const lan = reachable.find(
+        (u) => !u.includes('localhost') && !u.includes('127.0.0.1')
+      );
+      if (lan) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[pura-ai-proxy] for a phone on the same Wi-Fi, set:\n` +
+            `                  EXPO_PUBLIC_PURA_AI_PROXY_URL=${lan}`
+        );
+      }
+    }
   });
 
   const shutdown = () => {

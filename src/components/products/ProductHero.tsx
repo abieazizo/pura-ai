@@ -10,12 +10,22 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { palette } from '@/theme';
-import type { ProductTint } from '@/types';
+import type { Product, ProductTint } from '@/types';
 import { BottleSilhouette } from './BottleSilhouette';
+import { ProductPlaceholderImage } from './ProductPlaceholderImage';
 
 export interface ProductHeroProps {
   tint: ProductTint;
   imageUrl?: string;
+  /**
+   * v10.30 — when no `imageUrl` is available, the hero now renders
+   * the upgraded `ProductPlaceholderImage` (per-category bottle
+   * silhouette + brand wordmark + product name) instead of falling
+   * through to the generic `BottleSilhouette`. Pass the full product
+   * to get that richer mockup; pass nothing and the hero degrades
+   * gracefully to the legacy generic silhouette.
+   */
+  product?: Pick<Product, 'brand' | 'category' | 'name'>;
 }
 
 const TINT_MAP: Record<ProductTint, string> = {
@@ -32,7 +42,7 @@ const TINT_MAP: Record<ProductTint, string> = {
  * Entrance: opacity 0→1 over 500ms, scale 1.04→1.0 over 600ms easeOut,
  * 100ms delay after mount.
  */
-export function ProductHero({ tint, imageUrl }: ProductHeroProps) {
+export function ProductHero({ tint, imageUrl, product }: ProductHeroProps) {
   const opacity = useSharedValue(0);
   const scale = useSharedValue(1.04);
 
@@ -90,6 +100,15 @@ export function ProductHero({ tint, imageUrl }: ProductHeroProps) {
             style={styles.image}
             contentFit="contain"
           />
+        ) : product ? (
+          <View style={styles.placeholderFill}>
+            <ProductPlaceholderImage
+              product={product}
+              showBrandWord
+              showProductName
+              silhouetteSize={140}
+            />
+          </View>
         ) : (
           <BottleSilhouette tint={palette.ink} opacity={0.35} size={180} />
         )}
@@ -122,5 +141,14 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  // v10.30 — full-bleed wrap so ProductPlaceholderImage's
+  // absolute-fill layout has a sized parent to render into.
+  placeholderFill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
 });

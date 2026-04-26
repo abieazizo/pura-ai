@@ -127,7 +127,17 @@ export function ProductDetailScreen() {
             Image → Brand/Name → Match (% + one-line reason) → Price
             → compact Fit chips. Tight 16pt rhythm between these five
             elements so they read as one product-identity block. */}
-        <ProductHero tint={tint} imageUrl={product.imageUrl ?? product.imageUri} />
+        <ProductHero
+          tint={tint}
+          imageUrl={
+            product.imageUrl && product.imageUrl.length > 0
+              ? product.imageUrl
+              : product.imageUri && product.imageUri.length > 0
+              ? product.imageUri
+              : undefined
+          }
+          product={product}
+        />
         <BrandAndName brand={product.brand} name={product.name} />
         <MatchWhyBlock product={product} topConcern={topConcern} />
         <PriceAndRating

@@ -166,11 +166,16 @@ function GridCard({
           { backgroundColor: tintFor(product) },
         ]}
       >
-        {/* v10.27 — every product card now renders a deterministic
-            branded placeholder (gradient + category icon + brand
-            wordmark) so cards feel distinct and product-y instead of
-            sharing the same generic Lorem-photo look. */}
-        <ProductPlaceholderImage product={product} iconSize={40} />
+        {/* v10.30 — branded placeholder upgraded to per-category
+            bottle silhouette + brand wordmark + tinted gradient.
+            Cards feel like real product mockups, not "icon on a
+            colour block". Replace this with a real <Image source={
+            uri }/> when licensed product photography lands. */}
+        <ProductPlaceholderImage
+          product={product}
+          silhouetteSize={56}
+          showBrandWord
+        />
         <View style={styles.matchBadge}>
           {showAiNumber ? (
             <Text style={styles.matchBadgeNum} maxFontSizeMultiplier={1.1}>
