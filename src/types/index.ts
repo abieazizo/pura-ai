@@ -203,6 +203,14 @@ export interface Product {
   contraindications?: string;
   /** Preferred high-res detail image. Falls back to `imageUri` when absent. */
   imageUrl?: string;
+  /**
+   * v10.27 — real "shop on {brand}" link surfaced on the product
+   * detail page. Opened via `Linking.openURL`. Required so the
+   * catalog feels like real shoppable inventory rather than demo
+   * placeholders. Every seed product carries one; missing values
+   * are treated as "no shop link" and the CTA is suppressed.
+   */
+  buyUrl?: string;
 }
 
 export interface ProductMatch {

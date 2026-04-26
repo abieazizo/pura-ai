@@ -1,23 +1,27 @@
 /**
- * Dev-only floating pill that shows whether the screen is currently
- * driven by real AI or by deterministic fallback.
+ * Floating pill that shows whether the screen is currently driven by
+ * real AI or by deterministic fallback.
  *
- * • In production builds (`__DEV__ === false`) the component returns
- *   `null` immediately — zero footprint on shipped users.
- * • In dev builds, a small clay/rust/sand pill anchors to the
- *   top-right of the screen showing one of:
+ * v10.27 — visibility gated on an EXPLICIT env opt-in
+ * (`EXPO_PUBLIC_PURA_AI_DEV_BADGE === '1'`) rather than on `__DEV__`.
+ * `__DEV__` is true in every Expo Go session and every Expo web
+ * preview, which meant the "FALLBACK" pill was leaking into the
+ * normal-usage experience. The badge is a developer tool — it should
+ * never be visible by default. To turn it on:
+ *
+ *   EXPO_PUBLIC_PURA_AI_DEV_BADGE=1 npm start
+ *
+ * In all other configurations the component returns `null` and adds
+ * zero footprint to the screen.
+ *
+ * When enabled, a small clay/rust/sand pill anchors to the top-right
+ * of the screen showing one of:
  *     AI       — the feature's last call resolved through the proxy
  *     FALLBACK — fallback path ran (no proxy / failed / validation)
  *     PENDING  — in-flight call
  *     IDLE     — feature hasn't run yet on this screen
  *
- * Tapping the pill opens the diagnostics drawer (`AIDiagnosticsScreen`)
- * via the navigator passed to it through React Navigation, so a dev
- * can drill from "what does this screen show me" to the full per-
- * method status snapshot in one tap.
- *
- * The badge intentionally lives close to the safe-area top edge with
- * a subtle elevation so it doesn't clash with hero content underneath.
+ * Tapping the pill opens the diagnostics drawer (`AIDiagnosticsScreen`).
  */
 
 import React from 'react';
@@ -32,21 +36,23 @@ import {
 import { palette } from '@/theme';
 import { hapt } from '@/utils/haptics';
 
-declare const __DEV__: boolean | undefined;
-
 export interface AISourceBadgeProps {
   feature: AIFeatureKey;
   /** Optional position override; defaults to top-right with safe-area inset. */
   anchor?: 'top-right' | 'top-left';
 }
 
+const DEV_BADGE_ENABLED =
+  (process.env.EXPO_PUBLIC_PURA_AI_DEV_BADGE ?? '').trim() === '1';
+
 export function AISourceBadge({
   feature,
   anchor = 'top-right',
 }: AISourceBadgeProps) {
-  // Hard guard: never render in production. The badge is a developer
-  // tool; users never see it.
-  if (typeof __DEV__ !== 'undefined' && !__DEV__) return null;
+  // v10.27 — never render unless the developer explicitly opts in.
+  // `__DEV__` is true in Expo Go and web preview, so it can't be a
+  // gate. Only enabled when EXPO_PUBLIC_PURA_AI_DEV_BADGE === '1'.
+  if (!DEV_BADGE_ENABLED) return null;
 
   const insets = useSafeAreaInsets();
   const nav = useNavigation();

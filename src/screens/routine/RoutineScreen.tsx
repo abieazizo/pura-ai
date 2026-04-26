@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,11 +27,11 @@ import {
   Minus,
   CaretRight,
   X,
-  Drop,
 } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { CompareSlider } from '@/components/CompareSlider';
+import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
 import { SkinScoreHero, SkinScoreTrendCard } from '@/screens/progress/SkinScoreHero';
 import { ProgressNarrative } from '@/screens/progress/ProgressNarrative';
 import { PhotoTimelineStrip } from '@/screens/progress/PhotoTimelineStrip';
@@ -914,21 +913,15 @@ function RoutineList({
               pressed && { opacity: 0.94, transform: [{ scale: 0.992 }] },
             ]}
           >
-            <View
-              style={[
-                styles.listImage,
-                { backgroundColor: tintFor(p) },
-              ]}
-            >
-              {p.imageUri ? (
-                <Image
-                  source={{ uri: p.imageUri }}
-                  style={StyleSheet.absoluteFillObject}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Drop size={26} color={palette.ink} weight="duotone" />
-              )}
+            <View style={styles.listImage}>
+              {/* v10.27 — branded placeholder on every routine row so
+                  the products read as distinct items, not a column of
+                  identical generic photos. */}
+              <ProductPlaceholderImage
+                product={p}
+                iconSize={22}
+                showBrandWord={false}
+              />
             </View>
             <View style={styles.listText}>
               <Text style={styles.listRole} numberOfLines={1} maxFontSizeMultiplier={1.1}>

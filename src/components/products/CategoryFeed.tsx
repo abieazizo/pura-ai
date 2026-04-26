@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowRight, Drop } from 'phosphor-react-native';
+import { ArrowRight } from 'phosphor-react-native';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import { useAppStore } from '@/store/useAppStore';
@@ -18,6 +17,7 @@ import {
   getNatural,
 } from '@/store/productSelectors';
 import { type GoalKey } from './CategoryRail';
+import { ProductPlaceholderImage } from './ProductPlaceholderImage';
 import type { ProductMatch } from '@/ai/ai-contracts';
 
 export interface CategoryFeedProps {
@@ -166,15 +166,11 @@ function GridCard({
           { backgroundColor: tintFor(product) },
         ]}
       >
-        {product.imageUri ? (
-          <Image
-            source={{ uri: product.imageUri }}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
-          />
-        ) : (
-          <Drop size={36} color={palette.ink} weight="duotone" />
-        )}
+        {/* v10.27 — every product card now renders a deterministic
+            branded placeholder (gradient + category icon + brand
+            wordmark) so cards feel distinct and product-y instead of
+            sharing the same generic Lorem-photo look. */}
+        <ProductPlaceholderImage product={product} iconSize={40} />
         <View style={styles.matchBadge}>
           {showAiNumber ? (
             <Text style={styles.matchBadgeNum} maxFontSizeMultiplier={1.1}>

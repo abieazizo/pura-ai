@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -91,10 +92,26 @@ export function ProductDetailScreen() {
     setToastMsg(`Added to ${routineTargetLabel(target)}.`);
   };
 
-  const handleWhereToBuy = () => {
-    // eslint-disable-next-line no-console
-    console.log('[product] TODO: purchasing links coming soon');
-    setToastMsg('Purchasing links coming soon.');
+  const handleWhereToBuy = async () => {
+    // v10.27 — open the brand's real product page when the seed
+    // catalog has a buyUrl for this id. Falls back to a brand search
+    // if not, then to a friendly toast if neither works (offline,
+    // unsupported scheme, etc.).
+    const target =
+      product.buyUrl ??
+      `https://duckduckgo.com/?q=${encodeURIComponent(
+        `${product.brand} ${product.name}`
+      )}`;
+    try {
+      const supported = await Linking.canOpenURL(target);
+      if (!supported) {
+        setToastMsg('Couldn’t open the shop link on this device.');
+        return;
+      }
+      await Linking.openURL(target);
+    } catch {
+      setToastMsg('Couldn’t open the shop link.');
+    }
   };
 
   return (

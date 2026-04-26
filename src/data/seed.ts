@@ -22,6 +22,68 @@ import {
 
 const picsum = (id: string) => `https://picsum.photos/seed/pura-${id}/400/400`;
 
+/**
+ * v10.27 — real "Shop on {brand}" links for every catalog product.
+ *
+ * The product detail page renders a Shop CTA that opens this URL via
+ * `Linking.openURL`, so the catalog feels like a real shoppable
+ * inventory rather than demo placeholders. Every URL is a real
+ * brand-owned product page (or brand homepage where we don't have a
+ * stable product slug). If a product is added without a buyUrl entry
+ * in this map, the Shop CTA is suppressed for that product.
+ *
+ * Keep the map tied to product IDs so the buy link survives any
+ * catalog reorganisation.
+ */
+const BUY_URLS: Record<string, string> = {
+  'cerave-hydrating-cleanser':
+    'https://www.cerave.com/skincare/cleansers/hydrating-facial-cleanser',
+  'la-roche-posay-toleriane-cleanser':
+    'https://www.laroche-posay.us/our-products/face/face-wash/toleriane-hydrating-gentle-facial-cleanser-3337875545792.html',
+  'beauty-of-joseon-ginseng-cleanser':
+    'https://beautyofjoseon.com/products/red-bean-refreshing-foam-cleanser',
+  'anua-heartleaf-toner':
+    'https://anua-global.com/products/anua-heartleaf-77-soothing-toner',
+  'paulas-choice-2-bha':
+    'https://www.paulaschoice.com/skin-perfecting-2pct-bha-liquid-exfoliant/201.html',
+  'biotherm-skin-oxygen-toner':
+    'https://www.biotherm-usa.com/skin-care/skin-oxygen/skin-oxygen-oxygenating-lotion.html',
+  'the-ordinary-niacinamide':
+    'https://theordinary.com/en-us/niacinamide-10-zinc-1-serum-100436.html',
+  'good-molecules-discoloration':
+    'https://www.goodmolecules.com/products/discoloration-correcting-serum',
+  'the-ordinary-retinal':
+    'https://theordinary.com/en-us/granactive-retinoid-2-emulsion-100406.html',
+  'elf-vitamin-c-serum': 'https://www.elfcosmetics.com/super-10-serum/91801.html',
+  'cerave-pm-lotion':
+    'https://www.cerave.com/skincare/moisturizers/pm-facial-moisturizing-lotion',
+  'illiyoon-ceramide-cream': 'https://en.illiyoon.com/',
+  'la-roche-posay-toleriane-dd':
+    'https://www.laroche-posay.us/our-products/face/moisturizers/toleriane-double-repair-face-moisturizer-883140046387.html',
+  'beauty-of-joseon-relief-sun':
+    'https://beautyofjoseon.com/products/relief-sun-rice-probiotic-spf50-pa',
+  'bonajour-green-tea-sun': 'https://bonajour.com/',
+  'its-skin-collagen-ampoule': 'https://itsskin.com/',
+  'paulas-choice-azelaic':
+    'https://www.paulaschoice.com/10pct-azelaic-acid-booster/2360.html',
+  'the-ordinary-lactic-acid':
+    'https://theordinary.com/en-us/lactic-acid-10-hyaluronic-acid-2-serum-100437.html',
+  'beauty-of-joseon-rice-mask':
+    'https://beautyofjoseon.com/products/radiance-cleansing-balm',
+  'its-skin-power-mask': 'https://itsskin.com/',
+  'cosrx-snail-essence':
+    'https://www.cosrx.com/products/advanced-snail-96-mucin-power-essence',
+  'kiehls-ultra-facial-cream':
+    'https://www.kiehls.com/skincare/face-moisturizers/ultra-facial-cream/00362.html',
+  'supergoop-unseen': 'https://supergoop.com/products/unseen-sunscreen',
+  'youth-to-the-people-kale':
+    'https://www.youthtothepeople.com/products/superfood-cleanser',
+};
+
+function buyUrlFor(id: string): string | undefined {
+  return BUY_URLS[id];
+}
+
 /* ------------------------------- Products ------------------------------- */
 /**
  * `rawSeedProducts` is the original hand-authored catalog (brand, name,
@@ -564,6 +626,7 @@ function enrich(raw: RawSeedProduct): Product {
     goodFor: goodForFor(raw.category),
     timeOfUse: timeOfUseFor(raw.category),
     imageUrl: raw.imageUri,
+    buyUrl: buyUrlFor(raw.id),
   };
 }
 
