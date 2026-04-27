@@ -85,71 +85,76 @@ function buyUrlFor(id: string): string | undefined {
 }
 
 /**
- * v10.32 — real product photography sourced from Open Beauty Facts.
+ * v10.34 — real product photography BUNDLED LOCALLY in assets/products/.
  *
- * URLs were resolved by `scripts/fetch-product-images.ts` against
- * the OBF public API (https://world.openbeautyfacts.org). Each entry
- * is a real product photo hosted on `images.openbeautyfacts.org` —
- * the same CDN we already use for the live barcode-resolution flow,
- * so the trust boundary doesn't widen.
+ * History:
+ *   • v10.31/v10.32 stored remote OBF CDN URLs and let the cards fetch
+ *     them on first paint. That worked on the dev machine but failed
+ *     on phones whose network blocks `images.openbeautyfacts.org`
+ *     (corporate firewalls, captive portals, content filters). Users
+ *     reported "no pictures, all fallback".
+ *   • v10.34 downloads the 8 resolved OBF photos at build time into
+ *     `assets/products/<id>.jpg` and ships them in the JS bundle via
+ *     `require()`. Phones never hit the network for these images —
+ *     they're local assets, just like the brand wordmarks and fonts.
  *
- * v10.32 — pushed coverage from 6/24 to 8/24 by hitting OBF's
- * detail-API directly via curated UPCs (paulas-choice-2-bha,
- * supergoop-unseen). The remaining 16 products genuinely don't have
- * entries in OBF's beauty catalog — K-beauty, US indie, and several
- * SKU-specific entries are not volunteer-indexed yet. Probed the
- * OBF brand-search endpoints exhaustively to confirm; further pulls
- * would require licensed photography or scraping brand pages, both
- * of which fail the trust-boundary bar.
+ * The 8 products with bundled photography were resolved via curated
+ * UPCs against OBF's detail API (see `scripts/fetch-product-images.ts`).
+ * The remaining 16 products genuinely don't have an OBF entry yet —
+ * K-beauty, US indie, and SKU-specific items are not volunteer-indexed.
+ * They render the v10.32 ProductPlaceholderImage (pedestal/shadow,
+ * gleam, embossed label band, "MOCKUP" corner badge).
  *
- * Products without an entry below render the v10.32 upgraded
- * `ProductPlaceholderImage` — pedestal/shadow grounding, gleam
- * highlight, paper-grain texture, differentiated cap colour, brand
- * wordmark band, and a "MOCKUP" corner badge so the card reads as
- * an intentional editorial composition rather than a missing asset.
- *
- * The card / hero render path treats a network image-load failure
- * as missing and falls through to the placeholder, so a stale URL
- * here never breaks the card layout.
+ * Why `ImageRequireSource` (a number) instead of a string URL: expo-
+ * image's `source` prop accepts a require()'d asset as a stable
+ * numeric resource id. Metro resolves the asset path at bundle time;
+ * the runtime never has to fetch.
  */
-const PRODUCT_IMAGE_URLS: Record<string, string | null> = {
-  'cerave-hydrating-cleanser':
-    'https://images.openbeautyfacts.org/images/products/360/600/053/7576/front_en.11.400.jpg',
-  'la-roche-posay-toleriane-cleanser':
-    'https://images.openbeautyfacts.org/images/products/333/787/554/5778/front_en.9.400.jpg',
+
+type ProductImageSource = number;
+
+const PRODUCT_IMAGES: Record<string, ProductImageSource | null> = {
+  'cerave-hydrating-cleanser': require('../../assets/products/cerave-hydrating-cleanser.jpg'),
+  'la-roche-posay-toleriane-cleanser': require('../../assets/products/la-roche-posay-toleriane-cleanser.jpg'),
   'beauty-of-joseon-ginseng-cleanser': null,
   'anua-heartleaf-toner': null,
-  'paulas-choice-2-bha':
-    'https://images.openbeautyfacts.org/images/products/065/543/900/5913/front_en.3.400.jpg',
+  'paulas-choice-2-bha': require('../../assets/products/paulas-choice-2-bha.jpg'),
   'biotherm-skin-oxygen-toner': null,
   'the-ordinary-niacinamide': null,
   'good-molecules-discoloration': null,
-  'the-ordinary-retinal':
-    'https://images.openbeautyfacts.org/images/products/076/991/519/0045/front_en.7.400.jpg',
+  'the-ordinary-retinal': require('../../assets/products/the-ordinary-retinal.jpg'),
   'elf-vitamin-c-serum': null,
   'cerave-pm-lotion': null,
   'illiyoon-ceramide-cream': null,
-  'la-roche-posay-toleriane-dd':
-    'https://images.openbeautyfacts.org/images/products/333/787/554/5846/front_en.3.400.jpg',
+  'la-roche-posay-toleriane-dd': require('../../assets/products/la-roche-posay-toleriane-dd.jpg'),
   'beauty-of-joseon-relief-sun': null,
   'bonajour-green-tea-sun': null,
   'its-skin-collagen-ampoule': null,
   'paulas-choice-azelaic': null,
-  'the-ordinary-lactic-acid':
-    'https://images.openbeautyfacts.org/images/products/076/991/519/0373/front_en.12.400.jpg',
+  'the-ordinary-lactic-acid': require('../../assets/products/the-ordinary-lactic-acid.jpg'),
   'beauty-of-joseon-rice-mask': null,
   'its-skin-power-mask': null,
   'cosrx-snail-essence': null,
-  'kiehls-ultra-facial-cream':
-    'https://images.openbeautyfacts.org/images/products/360/597/502/8799/front_en.4.400.jpg',
-  'supergoop-unseen':
-    'https://images.openbeautyfacts.org/images/products/081/621/802/6530/front_en.3.400.jpg',
+  'kiehls-ultra-facial-cream': require('../../assets/products/kiehls-ultra-facial-cream.jpg'),
+  'supergoop-unseen': require('../../assets/products/supergoop-unseen.jpg'),
   'youth-to-the-people-kale': null,
 };
 
-function imageUrlFor(id: string): string | undefined {
-  const url = PRODUCT_IMAGE_URLS[id];
-  return url ?? undefined;
+/**
+ * v10.34 — exposes the bundled product photo for a given seed id.
+ * Returns `undefined` (not null) when no photo is bundled, matching
+ * the existing optional `imageUrl` field shape on Product.
+ */
+export function localProductImageFor(id: string): ProductImageSource | undefined {
+  return PRODUCT_IMAGES[id] ?? undefined;
+}
+
+function imageUrlFor(_id: string): string | undefined {
+  // v10.34 — remote URLs no longer live in seed.ts. Card / hero
+  // surfaces read `localProductImageFor(id)` and pass it directly to
+  // expo-image as a require()'d source. The legacy string-URL
+  // imageUrl field on Product is left empty for everything.
+  return undefined;
 }
 
 /**

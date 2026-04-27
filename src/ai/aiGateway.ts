@@ -156,34 +156,44 @@ function envString(name: string): string {
 }
 
 /**
- * v10.33 — auto-derive the proxy URL from Expo's bundle host.
+ * v10.34 — route AI requests through Metro's dev server.
  *
- * The bug v10.33 fixes: a dev running on a real phone (Expo Go or a
- * dev build) couldn't reach the AI proxy because the bundle's
- * `EXPO_PUBLIC_PURA_AI_PROXY_URL` was `http://localhost:8787` — and
- * `localhost` on a phone resolves to the phone's own loopback, not
- * the dev machine. Every AI call hit a network error, `tryAi`
- * swallowed it, and every screen rendered the deterministic fallback
- * — so the entire app appeared to be running without AI.
+ * History:
+ *   • v10.33 auto-derived the proxy URL from Expo's bundle host
+ *     (Constants.expoConfig.hostUri, e.g. `192.168.1.42:8081`) and
+ *     swapped the port to 8787 — the proxy's own port. That fixed
+ *     the localhost-on-phone bug but left a port-firewall bug:
+ *     most dev machines whitelist port 8081 (because that's how the
+ *     JS bundle loads) but block inbound 8787, so phones still saw
+ *     "Network request failed" on every AI call.
+ *   • v10.34 keeps the bundle host but routes through Metro's port
+ *     (the SAME port the bundle uses) under the `/__pura_ai__/`
+ *     prefix. Metro's middleware (see `metro.config.js`) forwards
+ *     each request to the actual proxy on `127.0.0.1:8787`, which
+ *     works because Metro lives on the dev machine and can reach
+ *     its own loopback. No firewall changes needed.
  *
- * The fix: prefer Expo's bundle host (Constants.expoConfig.hostUri,
- * e.g. `192.168.1.42:8081`) — that IS the dev machine, by definition,
- * because the phone is currently downloading the JS bundle from it.
- * Strip the Metro port, append 8787, and that's the proxy URL.
+ * Result: zero env config required for dev. Phone reaches Metro on
+ * 8081 → Metro forwards to local proxy → Anthropic. The same path
+ * the bundle takes.
  *
  * Order of precedence:
  *   1. Explicit override — EXPO_PUBLIC_PURA_AI_PROXY_URL set to a
- *      non-localhost host. Production deployments and explicit dev
- *      tunnels (ngrok etc) take this path.
- *   2. Auto-derived bundle host — the LAN IP Metro is serving from.
- *      Right for 99% of dev workflows.
- *   3. Localhost fallback — works in iOS Simulator / Android emulator
- *      where localhost IS the dev machine. The bundle host can also
- *      be 'localhost' in that case, which is fine.
+ *      non-localhost host. Use for production deployments, ngrok,
+ *      Cloudflare tunnels, etc.
+ *   2. Auto-derived Metro middleware URL — the LAN IP Metro is
+ *      serving from + Metro's port + `/__pura_ai__/` prefix. Right
+ *      for 99% of dev workflows.
+ *   3. Localhost fallback — iOS Simulator / Android emulator with
+ *      direct port 8787 access. Rare.
  */
 function deriveProxyUrl(): {
   url: string;
-  source: 'override' | 'bundle-host' | 'localhost-fallback' | 'none';
+  source:
+    | 'override'
+    | 'metro-middleware'
+    | 'localhost-fallback'
+    | 'none';
 } {
   const override = envString('EXPO_PUBLIC_PURA_AI_PROXY_URL').replace(
     /\/+$/,
@@ -217,14 +227,20 @@ function deriveProxyUrl(): {
     /* fall through */
   }
   if (hostUri) {
-    const host = hostUri.split(':')[0];
+    // hostUri is "host:port" — keep BOTH so we hit Metro itself,
+    // not a different port the firewall might block.
+    const [host, port] = hostUri.split(':');
+    const metroPort = port && /^\d+$/.test(port) ? port : '8081';
     if (
       host &&
       host !== 'localhost' &&
       host !== '127.0.0.1' &&
       host !== '0.0.0.0'
     ) {
-      return { url: `http://${host}:8787`, source: 'bundle-host' };
+      return {
+        url: `http://${host}:${metroPort}/__pura_ai__`,
+        source: 'metro-middleware',
+      };
     }
   }
 
@@ -419,7 +435,11 @@ export interface AIGateway {
    * `proxyUrl: ''` when transport is `none`.
    */
   proxyUrl(): string;
-  proxyUrlSource(): 'override' | 'bundle-host' | 'localhost-fallback' | 'none';
+  proxyUrlSource():
+    | 'override'
+    | 'metro-middleware'
+    | 'localhost-fallback'
+    | 'none';
 
   analyzeFaceScan(params: {
     imageBase64: string;

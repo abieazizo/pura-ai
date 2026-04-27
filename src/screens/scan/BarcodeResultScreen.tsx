@@ -50,7 +50,7 @@ import {
 } from 'phosphor-react-native';
 import { palette } from '@/theme';
 import { hapt } from '@/utils/haptics';
-import { seedProducts } from '@/data/seed';
+import { seedProducts, localProductImageFor } from '@/data/seed';
 import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
 import {
   AddToRoutineSheet,
@@ -304,21 +304,29 @@ function FoundCard({
       </Text>
 
       <View style={[cardStyles.imageTile, { backgroundColor: tintFor(tint) }]}>
-        {catalogMatch?.imageUrl ? (
+        {/* v10.34 — prefer the bundled local asset; fall back to the
+            legacy remote URL; final fallback to the placeholder. */}
+        <ProductPlaceholderImage
+          product={previewProduct}
+          silhouetteSize={120}
+          showBrandWord
+          showProductName
+        />
+        {catalogMatch && localProductImageFor(catalogMatch.id) ? (
+          <Image
+            source={localProductImageFor(catalogMatch.id)!}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={140}
+          />
+        ) : catalogMatch?.imageUrl ? (
           <Image
             source={{ uri: catalogMatch.imageUrl }}
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
             transition={140}
           />
-        ) : (
-          <ProductPlaceholderImage
-            product={previewProduct}
-            silhouetteSize={120}
-            showBrandWord
-            showProductName
-          />
-        )}
+        ) : null}
       </View>
 
       <Text style={cardStyles.brand} maxFontSizeMultiplier={1.1}>

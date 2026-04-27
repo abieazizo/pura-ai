@@ -19,6 +19,7 @@ import {
 } from '@/store/productSelectors';
 import { type GoalKey } from './CategoryRail';
 import { ProductPlaceholderImage } from './ProductPlaceholderImage';
+import { localProductImageFor } from '@/data/seed';
 import type { ProductMatch } from '@/ai/ai-contracts';
 
 export interface CategoryFeedProps {
@@ -243,28 +244,40 @@ function tintFor(p: Product): string {
 
 function ProductCardImage({ product }: { product: Product }) {
   const [errored, setErrored] = useState(false);
-  const url =
-    product.imageUrl && product.imageUrl.trim().length > 0
+  // v10.34 — prefer the bundled local asset (no network needed) over
+  // the legacy remote URL. require()'d assets are inline in the JS
+  // bundle, so they paint on first frame even with no internet.
+  const localSrc = localProductImageFor(product.id);
+  const remoteUrl =
+    !localSrc && product.imageUrl && product.imageUrl.trim().length > 0
       ? product.imageUrl
       : null;
-  // v10.33 — render the placeholder UNDER the Image at all times.
-  // Earlier the placeholder was a swap fallback — during the brief
-  // moment between mount and the OBF image actually finishing its
-  // network round-trip, the card showed an empty colour block which
-  // contributed to the "no pictures, all fallback" perception. With
-  // the placeholder always behind, cards now look populated on first
-  // paint, and the real image fades in over it on load.
+  const hasRealImage = !errored && (!!localSrc || !!remoteUrl);
+
+  // Placeholder rendered UNDER the Image at all times so cards look
+  // populated on first paint. When the bundled / remote photo loads
+  // (or is already inlined), it covers the silhouette via
+  // contentFit="cover". On error, the placeholder remains visible.
   return (
     <View style={StyleSheet.absoluteFillObject}>
       <ProductPlaceholderImage
         product={product}
         silhouetteSize={56}
         showBrandWord
-        showMockupBadge={!url || errored}
+        showMockupBadge={!hasRealImage}
       />
-      {url && !errored ? (
+      {localSrc && !errored ? (
         <Image
-          source={{ uri: url }}
+          source={localSrc}
+          style={StyleSheet.absoluteFillObject}
+          contentFit="cover"
+          transition={180}
+          onError={() => setErrored(true)}
+        />
+      ) : null}
+      {!localSrc && remoteUrl ? (
+        <Image
+          source={{ uri: remoteUrl }}
           style={StyleSheet.absoluteFillObject}
           contentFit="cover"
           transition={180}

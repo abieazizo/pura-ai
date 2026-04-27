@@ -13,6 +13,7 @@ import { palette } from '@/theme';
 import type { Product, ProductTint } from '@/types';
 import { BottleSilhouette } from './BottleSilhouette';
 import { ProductPlaceholderImage } from './ProductPlaceholderImage';
+import { localProductImageFor } from '@/data/seed';
 
 export interface ProductHeroProps {
   tint: ProductTint;
@@ -25,7 +26,7 @@ export interface ProductHeroProps {
    * to get that richer mockup; pass nothing and the hero degrades
    * gracefully to the legacy generic silhouette.
    */
-  product?: Pick<Product, 'brand' | 'category' | 'name'>;
+  product?: Pick<Product, 'id' | 'brand' | 'category' | 'name'>;
 }
 
 const TINT_MAP: Record<ProductTint, string> = {
@@ -45,11 +46,16 @@ const TINT_MAP: Record<ProductTint, string> = {
 export function ProductHero({ tint, imageUrl, product }: ProductHeroProps) {
   const opacity = useSharedValue(0);
   const scale = useSharedValue(1.04);
-  // v10.31 — when the real OBF image URL fails to load, fall through
-  // to the upgraded placeholder rather than showing an empty hero.
+  // v10.31 — when the real image URL fails to load, fall through to
+  // the upgraded placeholder rather than showing an empty hero.
+  // v10.34 — also try the bundled local require()'d asset first so
+  // the hero never depends on network for the products we ship
+  // photography for.
   const [imageErrored, setImageErrored] = useState(false);
+  const localSrc = product?.id ? localProductImageFor(product.id) : undefined;
+  const renderLocal = !imageErrored && !!localSrc;
   const renderRealImage =
-    !imageErrored && imageUrl && imageUrl.trim().length > 0;
+    !renderLocal && !imageErrored && imageUrl && imageUrl.trim().length > 0;
 
   useEffect(() => {
     opacity.value = withDelay(
@@ -99,7 +105,14 @@ export function ProductHero({ tint, imageUrl, product }: ProductHeroProps) {
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
       </Svg>
       <Animated.View style={[styles.content, contentStyle]}>
-        {renderRealImage ? (
+        {renderLocal ? (
+          <Image
+            source={localSrc!}
+            style={styles.image}
+            contentFit="contain"
+            onError={() => setImageErrored(true)}
+          />
+        ) : renderRealImage ? (
           <Image
             source={imageUrl}
             style={styles.image}

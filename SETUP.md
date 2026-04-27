@@ -12,14 +12,20 @@ same time (via `concurrently`). If you only run `npm start`, the
 proxy isn't running and every AI screen falls through to the
 deterministic demo response.
 
-> v10.33 — the client **auto-derives the proxy URL from Expo's
-> bundle host**, so phones on the same Wi-Fi as the dev machine reach
-> the proxy automatically without any `.env` edit. The legacy
-> `EXPO_PUBLIC_PURA_AI_PROXY_URL=http://localhost:8787` setting was
-> broken on real devices (a phone's `localhost` is the phone, not the
-> dev machine) — the auto-derivation fixes that. Set
-> `EXPO_PUBLIC_PURA_AI_PROXY_URL` only for production / tunnel
-> deployments.
+> v10.34 — the AI now travels through Metro's dev server.
+> Phone hits `http://<bundle-host>:8081/__pura_ai__/<method>` (Metro's
+> port — already firewall-allowed because the JS bundle loads
+> through it). Metro's middleware (see `metro.config.js`) forwards
+> the request to the AI proxy on `127.0.0.1:8787` (loopback, no
+> firewall hassle). Net effect: AI works on a real phone with
+> ZERO env config and ZERO firewall changes. Set
+> `EXPO_PUBLIC_PURA_AI_PROXY_URL` only for production deployments.
+
+> v10.34 — the 8 catalog products with real photography are now
+> **bundled locally** as `require()`'d assets in `assets/products/`.
+> The cards never hit the network for those images, so they paint
+> on first frame regardless of the phone's outbound network policy.
+> The remaining 16 products render the upgraded `ProductPlaceholderImage`.
 
 If a screen says "AI didn't respond just now, so this answer is a
 demo fallback…", check the floating AI badge in the top-right (it
