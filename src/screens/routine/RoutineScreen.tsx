@@ -921,6 +921,7 @@ function RoutineList({
                 product={p}
                 silhouetteSize={28}
                 showBrandWord={false}
+                showMockupBadge={false}
               />
             </View>
             <View style={styles.listText}>

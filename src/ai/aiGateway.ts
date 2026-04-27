@@ -46,6 +46,7 @@
  * (`npm run server:ai`).
  */
 
+import Constants from 'expo-constants';
 import type {
   AssistantContext,
   BarcodeResolution,
@@ -154,16 +155,96 @@ function envString(name: string): string {
   return (process.env[name] ?? '').trim();
 }
 
-const PROXY_URL = envString('EXPO_PUBLIC_PURA_AI_PROXY_URL').replace(
-  /\/+$/,
-  ''
-);
+/**
+ * v10.33 — auto-derive the proxy URL from Expo's bundle host.
+ *
+ * The bug v10.33 fixes: a dev running on a real phone (Expo Go or a
+ * dev build) couldn't reach the AI proxy because the bundle's
+ * `EXPO_PUBLIC_PURA_AI_PROXY_URL` was `http://localhost:8787` — and
+ * `localhost` on a phone resolves to the phone's own loopback, not
+ * the dev machine. Every AI call hit a network error, `tryAi`
+ * swallowed it, and every screen rendered the deterministic fallback
+ * — so the entire app appeared to be running without AI.
+ *
+ * The fix: prefer Expo's bundle host (Constants.expoConfig.hostUri,
+ * e.g. `192.168.1.42:8081`) — that IS the dev machine, by definition,
+ * because the phone is currently downloading the JS bundle from it.
+ * Strip the Metro port, append 8787, and that's the proxy URL.
+ *
+ * Order of precedence:
+ *   1. Explicit override — EXPO_PUBLIC_PURA_AI_PROXY_URL set to a
+ *      non-localhost host. Production deployments and explicit dev
+ *      tunnels (ngrok etc) take this path.
+ *   2. Auto-derived bundle host — the LAN IP Metro is serving from.
+ *      Right for 99% of dev workflows.
+ *   3. Localhost fallback — works in iOS Simulator / Android emulator
+ *      where localhost IS the dev machine. The bundle host can also
+ *      be 'localhost' in that case, which is fine.
+ */
+function deriveProxyUrl(): {
+  url: string;
+  source: 'override' | 'bundle-host' | 'localhost-fallback' | 'none';
+} {
+  const override = envString('EXPO_PUBLIC_PURA_AI_PROXY_URL').replace(
+    /\/+$/,
+    ''
+  );
+  // Use the explicit override only when it's a real host. A localhost
+  // override loses to bundle-host derivation because localhost on a
+  // phone is broken — keeping the override would defeat the auto fix.
+  if (
+    override.length > 0 &&
+    !/\/\/(localhost|127\.0\.0\.1)\b/.test(override)
+  ) {
+    return { url: override, source: 'override' };
+  }
+
+  // Bundle host comes from Expo Constants. Different SDK versions
+  // expose it under slightly different shapes — try them all.
+  let hostUri: string | undefined;
+  try {
+    const cfg = (Constants as unknown as {
+      expoConfig?: { hostUri?: string } | null;
+      expoGoConfig?: { hostUri?: string } | null;
+      manifest2?: { extra?: { expoGo?: { developer?: { hostUri?: string } } } };
+    }) ?? {};
+    hostUri =
+      cfg.expoConfig?.hostUri ??
+      cfg.expoGoConfig?.hostUri ??
+      cfg.manifest2?.extra?.expoGo?.developer?.hostUri ??
+      undefined;
+  } catch {
+    /* fall through */
+  }
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    if (
+      host &&
+      host !== 'localhost' &&
+      host !== '127.0.0.1' &&
+      host !== '0.0.0.0'
+    ) {
+      return { url: `http://${host}:8787`, source: 'bundle-host' };
+    }
+  }
+
+  // Last resort — keep whatever the override said (even if it was
+  // localhost, since simulator/emulator workflows benefit from it),
+  // or empty if nothing was configured.
+  if (override.length > 0) {
+    return { url: override, source: 'localhost-fallback' };
+  }
+  return { url: '', source: 'none' };
+}
+
+const { url: PROXY_URL, source: PROXY_URL_SOURCE } = deriveProxyUrl();
 const PROXY_TOKEN = envString('EXPO_PUBLIC_PURA_AI_PROXY_TOKEN');
 
 const TRANSPORT: Transport = PROXY_URL.length > 0 ? 'proxy' : 'none';
 
 aiLog.info('aiGateway.boot', `transport=${TRANSPORT}`, {
-  proxyUrlSet: PROXY_URL.length > 0,
+  proxyUrl: PROXY_URL,
+  proxyUrlSource: PROXY_URL_SOURCE,
   proxyTokenSet: PROXY_TOKEN.length > 0,
 });
 
@@ -331,6 +412,14 @@ function ensureAvailable(): void {
 export interface AIGateway {
   isAvailable(): boolean;
   transport(): Transport;
+  /**
+   * v10.33 — diagnostic surfaces. The dev badge / diagnostics screen
+   * reads these so a user looking at fallback can see exactly what
+   * proxy URL the client tried and where it came from. Returns
+   * `proxyUrl: ''` when transport is `none`.
+   */
+  proxyUrl(): string;
+  proxyUrlSource(): 'override' | 'bundle-host' | 'localhost-fallback' | 'none';
 
   analyzeFaceScan(params: {
     imageBase64: string;
@@ -431,6 +520,12 @@ const gateway: AIGateway = {
   },
   transport() {
     return TRANSPORT;
+  },
+  proxyUrl() {
+    return PROXY_URL;
+  },
+  proxyUrlSource() {
+    return PROXY_URL_SOURCE;
   },
 
   async analyzeFaceScan(params) {

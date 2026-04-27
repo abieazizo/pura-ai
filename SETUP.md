@@ -2,13 +2,30 @@
 
 You have a working app shell out of the box. To get the **real AI path
 live** (assistant + scan + matching + progress + suggestions all
-backed by Claude) you need three things:
+backed by Claude) you need two things:
 
-1. an Anthropic API key
-2. the proxy server running on `localhost:8787`
-3. the Expo client pointed at the proxy
+1. an Anthropic API key in `.env`
+2. one terminal running **`npm run dev`** — that's it
 
-The whole thing takes about two minutes.
+`npm run dev` starts BOTH the AI proxy and the Expo bundler at the
+same time (via `concurrently`). If you only run `npm start`, the
+proxy isn't running and every AI screen falls through to the
+deterministic demo response.
+
+> v10.33 — the client **auto-derives the proxy URL from Expo's
+> bundle host**, so phones on the same Wi-Fi as the dev machine reach
+> the proxy automatically without any `.env` edit. The legacy
+> `EXPO_PUBLIC_PURA_AI_PROXY_URL=http://localhost:8787` setting was
+> broken on real devices (a phone's `localhost` is the phone, not the
+> dev machine) — the auto-derivation fixes that. Set
+> `EXPO_PUBLIC_PURA_AI_PROXY_URL` only for production / tunnel
+> deployments.
+
+If a screen says "AI didn't respond just now, so this answer is a
+demo fallback…", check the floating AI badge in the top-right (it
+shows `AI` when live, `FALLBACK` when not), tap it for diagnostics —
+the diagnostics screen prints the exact proxy URL the client is
+trying and pings `/healthz` automatically.
 
 ---
 

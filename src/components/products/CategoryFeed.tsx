@@ -244,26 +244,34 @@ function tintFor(p: Product): string {
 function ProductCardImage({ product }: { product: Product }) {
   const [errored, setErrored] = useState(false);
   const url =
-    !errored && product.imageUrl && product.imageUrl.trim().length > 0
+    product.imageUrl && product.imageUrl.trim().length > 0
       ? product.imageUrl
       : null;
-  if (!url) {
-    return (
+  // v10.33 — render the placeholder UNDER the Image at all times.
+  // Earlier the placeholder was a swap fallback — during the brief
+  // moment between mount and the OBF image actually finishing its
+  // network round-trip, the card showed an empty colour block which
+  // contributed to the "no pictures, all fallback" perception. With
+  // the placeholder always behind, cards now look populated on first
+  // paint, and the real image fades in over it on load.
+  return (
+    <View style={StyleSheet.absoluteFillObject}>
       <ProductPlaceholderImage
         product={product}
         silhouetteSize={56}
         showBrandWord
+        showMockupBadge={!url || errored}
       />
-    );
-  }
-  return (
-    <Image
-      source={{ uri: url }}
-      style={StyleSheet.absoluteFillObject}
-      contentFit="cover"
-      transition={140}
-      onError={() => setErrored(true)}
-    />
+      {url && !errored ? (
+        <Image
+          source={{ uri: url }}
+          style={StyleSheet.absoluteFillObject}
+          contentFit="cover"
+          transition={180}
+          onError={() => setErrored(true)}
+        />
+      ) : null}
+    </View>
   );
 }
 

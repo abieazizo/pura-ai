@@ -16,7 +16,7 @@
  * shipping it adds a tiny bytecode footprint and zero attack surface.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -78,18 +78,22 @@ export function AIDiagnosticsScreen() {
   const [smokeRunning, setSmokeRunning] = useState(false);
   const [smokeReport, setSmokeReport] = useState<string | null>(null);
 
-  // ── Health-check ping. Reads the proxy URL straight from the env
-  //    var (the gateway exposes `transport()` but not the URL).
+  // v10.33 — auto-ping /healthz on mount so the user sees the
+  // reachability state without having to tap PING. Fires-and-forgets
+  // so a slow proxy never blocks the screen render.
+
+  // ── Health-check ping. v10.33 — read proxy URL from the gateway's
+  //    auto-derived value (bundle-host → override → localhost-fallback).
+  //    The legacy direct env read here was wrong on phones where
+  //    EXPO_PUBLIC_PURA_AI_PROXY_URL was localhost.
   const pingProxy = useCallback(async () => {
-    const proxyUrl = (process.env.EXPO_PUBLIC_PURA_AI_PROXY_URL ?? '')
-      .trim()
-      .replace(/\/+$/, '');
+    const proxyUrl = aiGateway.proxyUrl();
     if (!proxyUrl) {
       setHealthz({
         ok: false,
         pingedAt: Date.now(),
         latencyMs: null,
-        detail: 'EXPO_PUBLIC_PURA_AI_PROXY_URL is not set',
+        detail: 'no proxy URL configured (transport=none)',
       });
       return;
     }
@@ -124,6 +128,15 @@ export function AIDiagnosticsScreen() {
       });
     }
   }, [setHealthz]);
+
+  // v10.33 — auto-ping on mount so the reachability state appears
+  // immediately. Without this the user has to tap PING to learn
+  // anything; with the proxy URL now auto-derived, an automatic ping
+  // is the cheapest way to surface "is it actually reachable from
+  // this device?" — the question the screen exists to answer.
+  useEffect(() => {
+    void pingProxy();
+  }, [pingProxy]);
 
   // ── Smoke test: hits two cheap text-only methods and reports.
   //    Avoids vision endpoints so the test is fast and cheap.
@@ -221,13 +234,28 @@ export function AIDiagnosticsScreen() {
         <SectionHeader title="Transport" />
         <View style={styles.card}>
           <Row label="mode" value={transport} />
+          {/* v10.33 — surface the auto-derived proxy URL + its source.
+              When the badge shows FALLBACK and this row says
+              `bundle-host: http://192.168.x.y:8787`, the user knows
+              the URL was correct and the proxy itself isn't running
+              (run `npm run dev`, not `npm start`). */}
           <Row
-            label="proxy URL set"
+            label="proxy URL"
             value={
-              (process.env.EXPO_PUBLIC_PURA_AI_PROXY_URL ?? '').trim().length >
-              0
-                ? 'yes'
-                : 'no'
+              aiGateway.proxyUrl().length > 0
+                ? aiGateway.proxyUrl()
+                : '(none)'
+            }
+          />
+          <Row
+            label="URL source"
+            value={aiGateway.proxyUrlSource()}
+            valueColor={
+              aiGateway.proxyUrlSource() === 'localhost-fallback'
+                ? palette.rust
+                : aiGateway.proxyUrlSource() === 'none'
+                ? palette.rust
+                : palette.ink
             }
           />
           <Row
