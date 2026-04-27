@@ -187,26 +187,39 @@ function envString(name: string): string {
  *   3. Localhost fallback — iOS Simulator / Android emulator with
  *      direct port 8787 access. Rare.
  */
-function deriveProxyUrl(): {
+type ProxySource =
+  | 'override'
+  | 'metro-middleware'
+  | 'direct-port'
+  | 'localhost-fallback'
+  | 'none';
+
+interface ProxyCandidate {
   url: string;
-  source:
-    | 'override'
-    | 'metro-middleware'
-    | 'localhost-fallback'
-    | 'none';
-} {
+  source: ProxySource;
+}
+
+/**
+ * v10.36 — build the FULL list of plausible proxy URLs and let the
+ * runtime probe each one to find the live transport. Solves a
+ * regression seen on real phones in v10.34/35: if the dev didn't
+ * fully restart Metro after pulling, the metro.config.js middleware
+ * isn't loaded, so `/__pura_ai__/*` paths go to a default Metro
+ * handler instead of being forwarded to the proxy. By probing the
+ * direct proxy port (8787) too, we recover automatically when the
+ * middleware path is dead but the proxy itself is reachable.
+ */
+function listProxyCandidates(): ProxyCandidate[] {
+  const out: ProxyCandidate[] = [];
   const override = envString('EXPO_PUBLIC_PURA_AI_PROXY_URL').replace(
     /\/+$/,
     ''
   );
-  // Use the explicit override only when it's a real host. A localhost
-  // override loses to bundle-host derivation because localhost on a
-  // phone is broken — keeping the override would defeat the auto fix.
   if (
     override.length > 0 &&
     !/\/\/(localhost|127\.0\.0\.1)\b/.test(override)
   ) {
-    return { url: override, source: 'override' };
+    out.push({ url: override, source: 'override' });
   }
 
   // Bundle host comes from Expo Constants. Different SDK versions
@@ -227,8 +240,6 @@ function deriveProxyUrl(): {
     /* fall through */
   }
   if (hostUri) {
-    // hostUri is "host:port" — keep BOTH so we hit Metro itself,
-    // not a different port the firewall might block.
     const [host, port] = hostUri.split(':');
     const metroPort = port && /^\d+$/.test(port) ? port : '8081';
     if (
@@ -237,30 +248,65 @@ function deriveProxyUrl(): {
       host !== '127.0.0.1' &&
       host !== '0.0.0.0'
     ) {
-      return {
+      // Two parallel candidates per host: middleware path (no
+      // firewall change needed if Metro is restarted with the new
+      // metro.config.js) AND direct port 8787 (works if firewall
+      // allows it / on the dev machine itself).
+      out.push({
         url: `http://${host}:${metroPort}/__pura_ai__`,
         source: 'metro-middleware',
-      };
+      });
+      out.push({
+        url: `http://${host}:8787`,
+        source: 'direct-port',
+      });
     }
   }
 
-  // Last resort — keep whatever the override said (even if it was
-  // localhost, since simulator/emulator workflows benefit from it),
-  // or empty if nothing was configured.
+  // Last resort — localhost flavours, useful in iOS Simulator /
+  // Android emulator (and as a sanity check on the dev machine).
   if (override.length > 0) {
-    return { url: override, source: 'localhost-fallback' };
+    out.push({ url: override, source: 'localhost-fallback' });
   }
-  return { url: '', source: 'none' };
+  out.push({
+    url: 'http://127.0.0.1:8081/__pura_ai__',
+    source: 'localhost-fallback',
+  });
+  out.push({ url: 'http://127.0.0.1:8787', source: 'localhost-fallback' });
+
+  return out;
 }
 
-const { url: PROXY_URL, source: PROXY_URL_SOURCE } = deriveProxyUrl();
+const PROXY_CANDIDATES = listProxyCandidates();
+let _activeCandidate: ProxyCandidate =
+  PROXY_CANDIDATES[0] ?? { url: '', source: 'none' };
+
+/**
+ * Replace the active proxy candidate. Called once a probe succeeds
+ * so all subsequent calls go through the URL that's known to work.
+ * Exposed for the diagnostics screen.
+ */
+export function setActiveProxyCandidate(c: ProxyCandidate): void {
+  _activeCandidate = c;
+  aiLog.info('aiGateway.candidate', 'active proxy candidate updated', {
+    url: c.url,
+    source: c.source,
+  });
+}
+
+export function getProxyCandidates(): ProxyCandidate[] {
+  return PROXY_CANDIDATES.slice();
+}
+
 const PROXY_TOKEN = envString('EXPO_PUBLIC_PURA_AI_PROXY_TOKEN');
 
-const TRANSPORT: Transport = PROXY_URL.length > 0 ? 'proxy' : 'none';
+const TRANSPORT: Transport =
+  _activeCandidate.url.length > 0 ? 'proxy' : 'none';
 
 aiLog.info('aiGateway.boot', `transport=${TRANSPORT}`, {
-  proxyUrl: PROXY_URL,
-  proxyUrlSource: PROXY_URL_SOURCE,
+  candidates: PROXY_CANDIDATES.map((c) => `${c.source}: ${c.url}`),
+  activeUrl: _activeCandidate.url,
+  activeSource: _activeCandidate.source,
   proxyTokenSet: PROXY_TOKEN.length > 0,
 });
 
@@ -287,7 +333,7 @@ async function proxyFetch<TRaw>(
   requestId: string
 ): Promise<TRaw> {
   if (TRANSPORT !== 'proxy') throw new AIGatewayUnavailableError();
-  const url = `${PROXY_URL}/${method}`;
+  const url = `${_activeCandidate.url}/${method}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -435,11 +481,7 @@ export interface AIGateway {
    * `proxyUrl: ''` when transport is `none`.
    */
   proxyUrl(): string;
-  proxyUrlSource():
-    | 'override'
-    | 'metro-middleware'
-    | 'localhost-fallback'
-    | 'none';
+  proxyUrlSource(): ProxySource;
 
   analyzeFaceScan(params: {
     imageBase64: string;
@@ -542,10 +584,10 @@ const gateway: AIGateway = {
     return TRANSPORT;
   },
   proxyUrl() {
-    return PROXY_URL;
+    return _activeCandidate.url;
   },
   proxyUrlSource() {
-    return PROXY_URL_SOURCE;
+    return _activeCandidate.source;
   },
 
   async analyzeFaceScan(params) {
