@@ -5,44 +5,87 @@ const http = require('node:http');
 const config = getDefaultConfig(__dirname);
 
 /**
- * v10.34 — AI proxy routed through Metro's dev server.
+ * v10.35 — AI proxy routed through Metro's dev server (hardened).
  *
- * The bug v10.34 fixes: even with the proxy URL auto-derived from
- * Expo's bundle host (v10.33), real-device AI calls still failed with
- * "Network request failed". Reason: most dev machines firewall TCP
- * port 8787 (the proxy's own port) for inbound LAN traffic — the phone
- * could only reach Metro's port 8081 (whitelisted because that's how
- * the JS bundle loads).
+ * History
+ *   • v10.34 added an `enhanceMiddleware` that intercepted
+ *     `/__pura_ai__/*` requests and reverse-proxied them to the
+ *     proxy on `127.0.0.1:8787`. That eliminated the port-firewall
+ *     issue on 8787 — phones reach Metro on 8081 (already
+ *     whitelisted because the JS bundle loads through it), Metro
+ *     forwards to the loopback proxy.
+ *   • v10.35 fixes two regressions seen in production:
+ *       1. Some Expo middleware ahead of ours buffers/consumes the
+ *          POST body before our handler runs, so `req.pipe(upstreamReq)`
+ *          forwarded an empty body — proxy returned 400 "missing
+ *          imageBase64", client logged it as a validation failure.
+ *          Fix: read the entire request body into a buffer FIRST,
+ *          then send it with an explicit Content-Length to the
+ *          proxy. No piping race.
+ *       2. Default Connection: keep-alive caused the response to
+ *          hang on some Node versions when the upstream sets
+ *          `Content-Length` and the middleware's pipe doesn't
+ *          terminate cleanly. Fix: explicitly request close on the
+ *          upstream connection.
  *
- * The fix: Metro's enhanceMiddleware forwards every request whose path
- * starts with `/__pura_ai__/` to the proxy on `127.0.0.1:8787`.
- * The proxy continues to bind to loopback only (no LAN exposure /
- * firewall hassle), and the phone reaches the AI through the same
- * port that already serves the JS bundle.
- *
- * Net effect on the user:
- *   • `npm run dev` is unchanged (proxy + Metro start together).
- *   • The phone hits `http://<bundle-host>:8081/__pura_ai__/<method>`
- *     instead of `http://<bundle-host>:8787/<method>`.
- *   • No firewall changes needed on the dev machine.
- *
- * The forward is a thin reverse proxy: read req body, POST to proxy,
- * stream response back. Stays under 80 lines so this config file
- * remains a thin shim — the proxy itself owns auth, validation,
- * rate-limiting, and Anthropic SDK access.
+ * Net effect on the user
+ *   • `npm run dev` is unchanged.
+ *   • Phone hits `http://<bundle-host>:8081/__pura_ai__/<method>`.
+ *   • Middleware buffers the body, re-sends it with proper Content-
+ *     Length, streams the response back without piping mid-flight.
  */
 
 const PROXY_TARGET_HOST = '127.0.0.1';
 const PROXY_TARGET_PORT = Number(process.env.PURA_AI_PROXY_PORT || 8787);
 const AI_PATH_PREFIX = '/__pura_ai__/';
 
-function forwardToProxy(req, res) {
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    const MAX = 24 * 1024 * 1024; // 24MB, generous for image uploads
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > MAX) {
+        req.destroy();
+        reject(new Error('request body too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', (e) => reject(e));
+  });
+}
+
+async function forwardToProxy(req, res) {
   const targetPath = req.url.slice(AI_PATH_PREFIX.length - 1); // keep leading '/'
+
+  // 1. Buffer the request body. If something upstream already
+  //    consumed the body, this resolves to an empty Buffer and we
+  //    forward an empty body (the proxy will then 400 with a clear
+  //    field-missing message — better than silent failure).
+  let bodyBuf;
+  try {
+    bodyBuf = await readBody(req);
+  } catch (e) {
+    res.writeHead(413, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'request body too large' }));
+    return;
+  }
+
+  // 2. Build the headers to send upstream. Strip hop-by-hop and
+  //    length headers that we'll rewrite from the buffer length.
   const headers = { ...req.headers };
-  // Strip hop-by-hop headers that don't make sense to forward.
   delete headers.host;
   delete headers.connection;
+  delete headers['content-length'];
+  delete headers['transfer-encoding'];
+  if (bodyBuf.length > 0) {
+    headers['content-length'] = String(bodyBuf.length);
+  }
 
+  // 3. Issue the upstream request and pipe the response back.
   const upstreamReq = http.request(
     {
       host: PROXY_TARGET_HOST,
@@ -50,19 +93,29 @@ function forwardToProxy(req, res) {
       method: req.method,
       path: targetPath,
       headers,
+      timeout: 120_000,
     },
     (upstreamRes) => {
       const respHeaders = { ...upstreamRes.headers };
-      // Add CORS so a web preview can also consume this if needed.
       respHeaders['access-control-allow-origin'] = '*';
+      // Drop content-length if upstream uses chunked; let pipe
+      // handle the streaming.
+      if (
+        respHeaders['transfer-encoding'] &&
+        String(respHeaders['transfer-encoding']).toLowerCase().includes('chunked')
+      ) {
+        delete respHeaders['content-length'];
+      }
       res.writeHead(upstreamRes.statusCode || 502, respHeaders);
       upstreamRes.pipe(res);
     }
   );
 
+  upstreamReq.on('timeout', () => {
+    upstreamReq.destroy(new Error('upstream timeout'));
+  });
+
   upstreamReq.on('error', (err) => {
-    // Connection refused = proxy isn't running. Surface a clear,
-    // actionable JSON body the client can parse + show.
     if (!res.headersSent) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
     }
@@ -75,10 +128,13 @@ function forwardToProxy(req, res) {
     );
   });
 
-  req.pipe(upstreamReq);
+  // 4. Send the buffered body and end the request.
+  if (bodyBuf.length > 0) upstreamReq.write(bodyBuf);
+  upstreamReq.end();
 }
 
-const baseEnhanceMiddleware = config.server && config.server.enhanceMiddleware;
+const baseEnhanceMiddleware =
+  config.server && config.server.enhanceMiddleware;
 
 config.server = config.server || {};
 config.server.enhanceMiddleware = (defaultMiddleware, server) => {
@@ -87,7 +143,16 @@ config.server.enhanceMiddleware = (defaultMiddleware, server) => {
     : defaultMiddleware;
   return (req, res, next) => {
     if (req.url && req.url.startsWith(AI_PATH_PREFIX)) {
-      forwardToProxy(req, res);
+      // eslint-disable-next-line no-console
+      console.log(`[pura-ai-middleware] ${req.method} ${req.url}`);
+      forwardToProxy(req, res).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error('[pura-ai-middleware] forward failed', e);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: 'middleware error: ' + e.message }));
+        }
+      });
       return;
     }
     return wrappedDefault(req, res, next);

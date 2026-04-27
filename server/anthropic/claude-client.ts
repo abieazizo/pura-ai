@@ -232,6 +232,9 @@ export class ClaudeClient {
       '• Return EXACTLY ONE tool call to "return_face_scan_analysis".\n' +
       '• Use only the provided schema. Do not invent fields.\n' +
       '• Do not write prose outside the tool. No preamble, no apology.\n' +
+      '• ALWAYS echo the `scan_id` value from the user message into ' +
+      'the tool output exactly as given. Set `analyzed_at_iso` to ' +
+      'the current UTC time in ISO-8601.\n' +
       '• Be conservative. Only flag concerns the image visually ' +
       'supports — never invent breakouts, redness, or marks that are ' +
       'not visible.\n' +
@@ -686,6 +689,9 @@ export class ClaudeClient {
       'plain-English explanation.\n\n' +
       'Hard rules:\n' +
       '• Return EXACTLY ONE tool call to "return_skin_score_explanation".\n' +
+      '• ALWAYS echo the `score`, `delta_reference`, and `delta_value` ' +
+      'values from the user message into the tool output exactly as ' +
+      'given. The schema requires them — do not omit them.\n' +
       '• Never return a naked number without a reason. why_line names ' +
       "the concrete concern that moved (\"Breakouts calming, hydration " +
       'still needs work.").\n' +

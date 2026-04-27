@@ -86,6 +86,64 @@ function reqBasedOnScanId(body: Record<string, unknown>): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// v10.35 — repair helpers.
+//
+// Claude's tool_use output sometimes omits fields the model treats as
+// "input context" — `scan_id` on analyzeFaceScan, `score` on
+// explainSkinScore. The handler already knows these values from the
+// request params, so repair the response BEFORE validation runs.
+// This eliminates the "missing scan_id" / "missing score" 502s that
+// the user saw on every face scan / skin-score explanation in v10.34.
+// ---------------------------------------------------------------------------
+
+function repairFaceScanAnalysis(
+  result: unknown,
+  scanId: string
+): unknown {
+  if (!result || typeof result !== 'object') return result;
+  const r = result as Record<string, unknown>;
+  if (typeof r.scan_id !== 'string' || r.scan_id.length === 0) {
+    r.scan_id = scanId;
+  }
+  if (typeof r.analyzed_at_iso !== 'string' || r.analyzed_at_iso.length === 0) {
+    r.analyzed_at_iso = new Date().toISOString();
+  }
+  return r;
+}
+
+function repairSkinScoreExplanation(
+  result: unknown,
+  score: number,
+  deltaReference: 'previous_scan' | 'baseline' | 'none',
+  deltaValue: number | null
+): unknown {
+  if (!result || typeof result !== 'object') return result;
+  const r = result as Record<string, unknown>;
+  if (typeof r.score !== 'number' || !Number.isFinite(r.score)) {
+    r.score = score;
+  }
+  if (
+    r.delta_reference !== 'previous_scan' &&
+    r.delta_reference !== 'baseline' &&
+    r.delta_reference !== 'none'
+  ) {
+    r.delta_reference = deltaReference;
+  }
+  if (
+    r.delta_value !== null &&
+    !(typeof r.delta_value === 'number' && Number.isFinite(r.delta_value))
+  ) {
+    r.delta_value = deltaValue;
+  }
+  // Auto-derive band from score if Claude omitted it.
+  if (r.band !== 'poor' && r.band !== 'fair' && r.band !== 'good' && r.band !== 'great') {
+    r.band =
+      score >= 85 ? 'great' : score >= 70 ? 'good' : score >= 55 ? 'fair' : 'poor';
+  }
+  return r;
+}
+
+// ---------------------------------------------------------------------------
 // Per-method handlers.
 // ---------------------------------------------------------------------------
 
@@ -104,7 +162,13 @@ export const HANDLERS: Record<string, Handler> = {
       userProfileSummary: reqString(body, 'userProfileSummary'),
     };
     const result = await client.analyzeFaceScan(params);
-    const validated = validateFaceScanAnalysis(result);
+    // v10.35 — Claude sometimes omits scan_id from the tool_use
+    // payload (it's in the user message and the model treats it as
+    // input, not output). Fill it in from the request params before
+    // validation so the response surfaces as success instead of
+    // failing structural validation.
+    const repaired = repairFaceScanAnalysis(result, params.scanId);
+    const validated = validateFaceScanAnalysis(repaired);
     if (!validated) aiBad('analyzeFaceScan');
     return validated;
   },
@@ -201,7 +265,16 @@ export const HANDLERS: Record<string, Handler> = {
       concernMovementsJson: reqString(body, 'concernMovementsJson'),
     };
     const result = await client.explainSkinScore(params);
-    const validated = validateSkinScoreExplanation(result);
+    // v10.35 — Claude treats `score` as input context and sometimes
+    // omits it from the tool output. Repair it from params before
+    // validation so we don't reject otherwise-valid explanations.
+    const repaired = repairSkinScoreExplanation(
+      result,
+      params.score,
+      params.deltaReference,
+      params.deltaValue
+    );
+    const validated = validateSkinScoreExplanation(repaired);
     if (!validated) aiBad('explainSkinScore');
     return validated;
   },

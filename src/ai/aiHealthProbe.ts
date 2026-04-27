@@ -29,9 +29,12 @@ export async function probeProxyHealthz(): Promise<void> {
   if (_hasProbed) return;
   _hasProbed = true;
 
-  const proxyUrl = (process.env.EXPO_PUBLIC_PURA_AI_PROXY_URL ?? '')
-    .trim()
-    .replace(/\/+$/, '');
+  // v10.35 — read the auto-derived proxy URL from the gateway, not
+  // the raw env var. The env-var-only path was wrong on phones where
+  // EXPO_PUBLIC_PURA_AI_PROXY_URL was either localhost or unset, so
+  // the probe always reported "proxy unreachable" even when the
+  // Metro-middleware route was actually working.
+  const proxyUrl = aiGateway.proxyUrl();
 
   if (proxyUrl.length === 0 || !aiGateway.isAvailable()) {
     aiLog.info('aiHealthProbe', 'no proxy configured; skipping /healthz probe');
@@ -39,7 +42,7 @@ export async function probeProxyHealthz(): Promise<void> {
       ok: false,
       pingedAt: Date.now(),
       latencyMs: null,
-      detail: 'EXPO_PUBLIC_PURA_AI_PROXY_URL is not set',
+      detail: 'no proxy URL configured (transport=none)',
     });
     return;
   }
