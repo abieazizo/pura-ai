@@ -278,8 +278,17 @@ function listProxyCandidates(): ProxyCandidate[] {
 }
 
 const PROXY_CANDIDATES = listProxyCandidates();
-let _activeCandidate: ProxyCandidate =
-  PROXY_CANDIDATES[0] ?? { url: '', source: 'none' };
+// v10.38 — start UNVERIFIED. Previously we defaulted to candidate[0]
+// which made the diagnostic UI render the first candidate as "active"
+// (in moss-green) before the probe had verified anything. That was
+// misleading — the user saw a green active source but unreachable
+// status simultaneously. Active stays empty until the probe finds a
+// candidate that returns a valid /healthz.
+let _activeCandidate: ProxyCandidate = PROXY_CANDIDATES[0] ?? {
+  url: '',
+  source: 'none',
+};
+let _activeVerified = false;
 
 /**
  * Replace the active proxy candidate. Called once a probe succeeds
@@ -288,10 +297,15 @@ let _activeCandidate: ProxyCandidate =
  */
 export function setActiveProxyCandidate(c: ProxyCandidate): void {
   _activeCandidate = c;
+  _activeVerified = true;
   aiLog.info('aiGateway.candidate', 'active proxy candidate updated', {
     url: c.url,
     source: c.source,
   });
+}
+
+export function isActiveProxyVerified(): boolean {
+  return _activeVerified;
 }
 
 export function getProxyCandidates(): ProxyCandidate[] {

@@ -37,8 +37,15 @@ import {
   type AIMethodSnapshot,
   type AIFeatureSnapshot,
 } from '@/ai/aiTelemetry';
-import { aiGateway, getProxyCandidates } from '@/ai/aiGateway';
-import { rePingProxyHealthz } from '@/ai/aiHealthProbe';
+import {
+  aiGateway,
+  getProxyCandidates,
+  isActiveProxyVerified,
+} from '@/ai/aiGateway';
+import {
+  rePingProxyHealthz,
+  getMiddlewareLoadedState,
+} from '@/ai/aiHealthProbe';
 
 const FEATURE_LABEL: Record<AIFeatureKey, string> = {
   scan: 'Face scan',
@@ -217,11 +224,13 @@ export function AIDiagnosticsScreen() {
           />
           <Row
             label="active source"
-            value={aiGateway.proxyUrlSource()}
+            value={
+              isActiveProxyVerified()
+                ? aiGateway.proxyUrlSource()
+                : `${aiGateway.proxyUrlSource()} (UNVERIFIED)`
+            }
             valueColor={
-              aiGateway.proxyUrlSource() === 'metro-middleware' ||
-              aiGateway.proxyUrlSource() === 'direct-port' ||
-              aiGateway.proxyUrlSource() === 'override'
+              isActiveProxyVerified()
                 ? palette.mossDeep
                 : palette.rust
             }
@@ -235,6 +244,39 @@ export function AIDiagnosticsScreen() {
                 : 'no'
             }
           />
+        </View>
+
+        {/* v10.38 — middleware-loaded state. Definitively answers
+            "did metro.config.js load?" — if NOT LOADED, the user
+            needs to fully restart Metro (Ctrl+C, then `npm run dev`). */}
+        <SectionHeader title="Metro middleware" />
+        <View style={styles.card}>
+          <Row
+            label="status"
+            value={
+              getMiddlewareLoadedState().state === 'loaded'
+                ? 'LOADED'
+                : getMiddlewareLoadedState().state === 'not-loaded'
+                ? 'NOT LOADED — restart Metro'
+                : 'unknown (probe pending)'
+            }
+            valueColor={
+              getMiddlewareLoadedState().state === 'loaded'
+                ? palette.mossDeep
+                : getMiddlewareLoadedState().state === 'not-loaded'
+                ? palette.rust
+                : palette.inkTertiary
+            }
+          />
+          {getMiddlewareLoadedState().detail ? (
+            <Row label="detail" value={getMiddlewareLoadedState().detail} />
+          ) : null}
+          {getMiddlewareLoadedState().state === 'not-loaded' ? (
+            <Row
+              label="fix"
+              value="Stop ALL terminals, run `npm run dev`. Or `npm run firewall:allow` (admin) to use direct-port."
+            />
+          ) : null}
         </View>
 
         {/* v10.36 — list every URL the probe tries so the dev sees

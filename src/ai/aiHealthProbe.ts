@@ -33,6 +33,22 @@ import { aiTelemetry } from './aiTelemetry';
 
 let _hasProbed = false;
 
+/**
+ * v10.38 — middleware-loaded state. Exposed for the diagnostics
+ * screen so the user gets a definitive "Metro middleware: LOADED"
+ * vs "NOT LOADED — restart Metro" answer, separate from the
+ * /healthz reachability state.
+ */
+let _middlewareLoaded: 'unknown' | 'loaded' | 'not-loaded' = 'unknown';
+let _middlewareDetail = '';
+
+export function getMiddlewareLoadedState(): {
+  state: 'unknown' | 'loaded' | 'not-loaded';
+  detail: string;
+} {
+  return { state: _middlewareLoaded, detail: _middlewareDetail };
+}
+
 interface CandidateResult {
   url: string;
   source: string;
@@ -85,6 +101,55 @@ async function probeCandidate(
   }
 }
 
+/**
+ * v10.38 — probe the Metro-middleware marker. Tells us definitively
+ * whether the metro.config.js middleware is loaded. Returns true if
+ * the marker URL responds with the expected `middleware_alive: true`
+ * shape; false otherwise.
+ */
+async function probeMiddlewareMarker(): Promise<{
+  loaded: boolean;
+  detail: string;
+}> {
+  // Build the marker URL from the metro-middleware candidate's URL
+  // (strip the trailing /__pura_ai__ and append /__pura_ai__/_metro_marker).
+  const candidates = getProxyCandidates();
+  const middleware = candidates.find((c) => c.source === 'metro-middleware');
+  if (!middleware) return { loaded: false, detail: 'no metro-middleware candidate' };
+  const url = `${middleware.url}/_metro_marker`;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4_000);
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) {
+      return {
+        loaded: false,
+        detail: `marker URL returned HTTP ${res.status}`,
+      };
+    }
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    if (body.middleware_alive === true) {
+      return {
+        loaded: true,
+        detail: `version=${body.version ?? '?'}, target=${body.proxy_target ?? '?'}`,
+      };
+    }
+    return {
+      loaded: false,
+      detail: 'marker URL returned 200 but body.middleware_alive !== true',
+    };
+  } catch (e) {
+    return {
+      loaded: false,
+      detail: e instanceof Error ? e.message : 'network error',
+    };
+  }
+}
+
 export async function probeProxyHealthz(): Promise<void> {
   if (_hasProbed) return;
   _hasProbed = true;
@@ -101,6 +166,21 @@ export async function probeProxyHealthz(): Promise<void> {
     return;
   }
 
+  // v10.38 — first, probe the marker so we know definitively whether
+  // the Metro middleware is installed. This runs in parallel with the
+  // healthz probes below.
+  const markerPromise = probeMiddlewareMarker().then((m) => {
+    _middlewareLoaded = m.loaded ? 'loaded' : 'not-loaded';
+    _middlewareDetail = m.detail;
+    aiLog.info(
+      'aiHealthProbe.marker',
+      m.loaded
+        ? `Metro middleware LOADED — ${m.detail}`
+        : `Metro middleware NOT LOADED — ${m.detail}`
+    );
+    return m;
+  });
+
   aiLog.info(
     'aiHealthProbe',
     `probing ${candidates.length} proxy candidate(s) in parallel`,
@@ -109,9 +189,10 @@ export async function probeProxyHealthz(): Promise<void> {
 
   // 4-second timeout per candidate, all run in parallel so the
   // total wait is <= 4s even when some endpoints are unreachable.
-  const results = await Promise.all(
-    candidates.map((c) => probeCandidate(c.url, c.source, 4_000))
-  );
+  const [results] = await Promise.all([
+    Promise.all(candidates.map((c) => probeCandidate(c.url, c.source, 4_000))),
+    markerPromise,
+  ]);
 
   // Log every candidate's result so the diagnostics screen renders
   // a clear picture of which transports are live.

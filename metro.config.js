@@ -39,6 +39,23 @@ const PROXY_TARGET_HOST = '127.0.0.1';
 const PROXY_TARGET_PORT = Number(process.env.PURA_AI_PROXY_PORT || 8787);
 const AI_PATH_PREFIX = '/__pura_ai__/';
 
+/**
+ * v10.38 — middleware-loaded marker.
+ *
+ * The marker URL returns an unmistakable JSON response that ONLY
+ * this middleware can produce. The client probes for it on boot;
+ * if it comes back, the middleware is definitively loaded. If it
+ * doesn't (or returns something else), the diagnostic banner
+ * instructs the user to fully restart Metro.
+ *
+ * This is the crucial bit the v10.34-v10.37 iterations were missing:
+ * we could only see "the proxy is unreachable" in aggregate. With
+ * the marker we can split that into "the middleware is loaded but
+ * the proxy is dead" vs "the middleware itself isn't loaded".
+ */
+const MARKER_PATH = '/__pura_ai__/_metro_marker';
+const MARKER_VERSION = 'v10.38';
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -142,6 +159,26 @@ config.server.enhanceMiddleware = (defaultMiddleware, server) => {
     ? baseEnhanceMiddleware(defaultMiddleware, server)
     : defaultMiddleware;
   return (req, res, next) => {
+    // v10.38 — marker endpoint. Returns a fixed JSON shape ONLY this
+    // middleware can produce, so the client can definitively tell
+    // whether Metro was started with the new metro.config.js.
+    if (req.url && req.url.startsWith(MARKER_PATH)) {
+      // eslint-disable-next-line no-console
+      console.log(`[pura-ai-middleware] marker ping ${req.url}`);
+      const body = JSON.stringify({
+        middleware_alive: true,
+        version: MARKER_VERSION,
+        proxy_target: `http://${PROXY_TARGET_HOST}:${PROXY_TARGET_PORT}`,
+        time: Date.now(),
+      });
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(body),
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(body);
+      return;
+    }
     if (req.url && req.url.startsWith(AI_PATH_PREFIX)) {
       // eslint-disable-next-line no-console
       console.log(`[pura-ai-middleware] ${req.method} ${req.url}`);

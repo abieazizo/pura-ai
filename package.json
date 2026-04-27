@@ -12,6 +12,7 @@
     "server:ai": "tsx --env-file=.env server/aiProxy.ts",
     "verify:ai": "tsx --env-file=.env scripts/verifyAi.ts",
     "lanip": "tsx --env-file=.env scripts/lanip.ts",
+    "firewall:allow": "powershell -ExecutionPolicy Bypass -File scripts/allow-firewall.ps1",
     "dev": "concurrently --kill-others-on-fail --names \"PROXY,EXPO\" --prefix-colors \"cyan,magenta\" \"npm:server:ai\" \"npm:start\""
   },
   "dependencies": {
