@@ -37,7 +37,8 @@ import {
   type AIMethodSnapshot,
   type AIFeatureSnapshot,
 } from '@/ai/aiTelemetry';
-import { aiGateway } from '@/ai/aiGateway';
+import { aiGateway, getProxyCandidates } from '@/ai/aiGateway';
+import { rePingProxyHealthz } from '@/ai/aiHealthProbe';
 
 const FEATURE_LABEL: Record<AIFeatureKey, string> = {
   scan: 'Face scan',
@@ -82,52 +83,19 @@ export function AIDiagnosticsScreen() {
   // reachability state without having to tap PING. Fires-and-forgets
   // so a slow proxy never blocks the screen render.
 
-  // ── Health-check ping. v10.33 — read proxy URL from the gateway's
-  //    auto-derived value (bundle-host → override → localhost-fallback).
-  //    The legacy direct env read here was wrong on phones where
-  //    EXPO_PUBLIC_PURA_AI_PROXY_URL was localhost.
+  // ── Health-check ping. v10.36 — delegated to the shared multi-
+  //    candidate probe (`rePingProxyHealthz`) so this screen and the
+  //    boot probe surface identical results. The legacy local-only
+  //    pingProxy hit only the FIRST candidate URL; if that one was
+  //    dead (e.g. middleware route when Metro wasn't restarted) it
+  //    showed "transport=unknown, uptime_s=?" even when the
+  //    direct-port route was actually working.
   const pingProxy = useCallback(async () => {
-    const proxyUrl = aiGateway.proxyUrl();
-    if (!proxyUrl) {
-      setHealthz({
-        ok: false,
-        pingedAt: Date.now(),
-        latencyMs: null,
-        detail: 'no proxy URL configured (transport=none)',
-      });
-      return;
-    }
-    const start = Date.now();
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5_000);
-      const res = await fetch(`${proxyUrl}/healthz`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      const latency = Date.now() - start;
-      const body = (await res.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-      >;
-      setHealthz({
-        ok: res.ok && body.ok === true,
-        pingedAt: Date.now(),
-        latencyMs: latency,
-        detail: res.ok
-          ? `transport=${body.transport ?? 'unknown'}, uptime_s=${body.uptime_s ?? '?'}`
-          : `HTTP ${res.status}`,
-      });
-    } catch (e) {
-      setHealthz({
-        ok: false,
-        pingedAt: Date.now(),
-        latencyMs: null,
-        detail: e instanceof Error ? e.message : 'network error',
-      });
-    }
-  }, [setHealthz]);
+    await rePingProxyHealthz();
+  }, []);
+  // Keep setHealthz reference imported above so a future revert is
+  // a smaller diff. (rePingProxyHealthz writes telemetry directly.)
+  void setHealthz;
 
   // v10.33 — auto-ping on mount so the reachability state appears
   // immediately. Without this the user has to tap PING to learn
@@ -240,7 +208,7 @@ export function AIDiagnosticsScreen() {
               the URL was correct and the proxy itself isn't running
               (run `npm run dev`, not `npm start`). */}
           <Row
-            label="proxy URL"
+            label="active URL"
             value={
               aiGateway.proxyUrl().length > 0
                 ? aiGateway.proxyUrl()
@@ -248,14 +216,14 @@ export function AIDiagnosticsScreen() {
             }
           />
           <Row
-            label="URL source"
+            label="active source"
             value={aiGateway.proxyUrlSource()}
             valueColor={
-              aiGateway.proxyUrlSource() === 'localhost-fallback'
-                ? palette.rust
-                : aiGateway.proxyUrlSource() === 'none'
-                ? palette.rust
-                : palette.ink
+              aiGateway.proxyUrlSource() === 'metro-middleware' ||
+              aiGateway.proxyUrlSource() === 'direct-port' ||
+              aiGateway.proxyUrlSource() === 'override'
+                ? palette.mossDeep
+                : palette.rust
             }
           />
           <Row
@@ -267,6 +235,24 @@ export function AIDiagnosticsScreen() {
                 : 'no'
             }
           />
+        </View>
+
+        {/* v10.36 — list every URL the probe tries so the dev sees
+            WHICH candidate is winning vs failing. Tapping the panel
+            re-runs the probe. */}
+        <SectionHeader title="Probe candidates" />
+        <View style={styles.card}>
+          {getProxyCandidates().map((c, i) => {
+            const active = c.url === aiGateway.proxyUrl();
+            return (
+              <Row
+                key={`${c.source}-${i}`}
+                label={`${i + 1}. ${c.source}`}
+                value={c.url}
+                valueColor={active ? palette.mossDeep : palette.inkSecondary}
+              />
+            );
+          })}
         </View>
 
         {/* ── /healthz ──────────────────────────────────────────── */}
