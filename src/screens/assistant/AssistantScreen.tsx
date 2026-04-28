@@ -178,15 +178,27 @@ export function AssistantScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        // v11.5 — real offset = tab bar height (when present). The
-        // legacy `64` constant left a strip of dead white space
-        // above the composer on every device. Using the live tab
-        // bar height makes the composer sit flush with the keyboard.
-        keyboardVerticalOffset={tabBarHeight}
-      >
+      {/* v11.6 — proper composer/keyboard geometry.
+        *
+        *   closed → outer View pushes content up by tabBarHeight so
+        *            the composer sits ABOVE the tab bar.
+        *   open   → KeyboardAvoidingView adds (keyboard - tabBarHeight)
+        *            of internal padding so total bottom offset =
+        *            tabBarHeight (outer) + (keyboard - tabBarHeight)
+        *            (inner) = keyboard_height. Composer flush with
+        *            keyboard top. Zero dead air.
+        *
+        * v11.5's `paddingBottom` on the KAV was overridden by KAV's
+        * own behavior=padding logic (StyleSheet.flatten — last
+        * paddingBottom wins) so the static value never applied
+        * when the keyboard was closed. Putting it on a wrapper
+        * View OUTSIDE KAV is the correct pattern. */}
+      <View style={[styles.flex, { paddingBottom: tabBarHeight }]}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={tabBarHeight}
+        >
         <FlatList
           ref={listRef}
           data={items}
@@ -324,7 +336,8 @@ export function AssistantScreen() {
             />
           </View>
         ) : null}
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

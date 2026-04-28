@@ -1,8 +1,38 @@
 # Pura AI — local setup
 
-You have a working app shell out of the box. To get the **real AI path
-live** (assistant + scan + matching + progress + suggestions all
-backed by OpenAI / `gpt-5-mini` + `gpt-5`) you need two things:
+## v11.6 — IMPORTANT: this app now requires a custom dev build
+
+As of v11.6 the scan flow uses **real on-device face detection** via
+`react-native-vision-camera` + `vision-camera-face-detector`. Those
+are native modules that **do not exist in Expo Go**. You need to
+produce a custom dev build once:
+
+```bash
+npm install
+npx expo prebuild --clean
+npx expo run:ios     # or `run:android` on Windows / Linux
+```
+
+After that first build, day-to-day dev uses:
+
+```bash
+npx expo run:ios     # rebuild + launch
+# or
+npx expo start --dev-client   # skip rebuild, attach to last build
+```
+
+**Expo Go fallback**: if you don't run `prebuild` and you launch in
+Expo Go, the scan screen detects the missing native modules at
+runtime (`useFaceDetection.ts::nativeFaceDetectionAvailable === false`)
+and falls back to the legacy `expo-camera` path with manual capture
++ post-capture condition-aware failure (no live face guidance). The
+app still runs end-to-end, but the real-time guidance only lights up
+in the dev build. This fallback exists so a teammate browsing the
+repo can still launch it.
+
+To get the **real AI path live** (assistant + scan + matching +
+progress + suggestions all backed by OpenAI / `gpt-5-mini` + `gpt-5`)
+you also need:
 
 1. an OpenAI API key in `.env` (the `OPENAI_API_KEY` line)
 2. one terminal running **`npm start`** for local dev

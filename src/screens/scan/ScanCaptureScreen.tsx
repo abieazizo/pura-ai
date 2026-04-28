@@ -17,6 +17,7 @@ import {
   useFaceScanState,
   COUNTDOWN_MS,
 } from '@/screens/scan/hooks/useFaceScanState';
+import { useFaceDetection } from '@/screens/scan/hooks/useFaceDetection';
 import type { ReticleMode } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
 import type { ZoomValue } from '@/components/scan/ZoomToggle';
@@ -142,6 +143,14 @@ export function ScanCaptureScreen({
     isFaceMode: mode === 'face',
   });
 
+  // v11.6 — real face detection via vision-camera + ML-Kit. The
+  // hook is a no-op in Expo Go (returns available:false); in a
+  // custom dev build it streams ML-Kit detections through a
+  // worklet to faceScan.report() per frame.
+  const detection = useFaceDetection({ onReport: faceScan.report });
+  const visionCameraRef = useRef<unknown>(null);
+  const useVisionCamera = detection.available && mode === 'face';
+
   const onCapture = useCallback(async () => {
     if (!cameraRef.current || capturing) return;
     if (mode !== 'face') {
@@ -168,19 +177,33 @@ export function ScanCaptureScreen({
     return () => clearTimeout(t);
 
     async function runCapture() {
-      if (!cameraRef.current) return;
       setCapturing(true);
       // §2.3 — 30% opacity paper flash across the whole screen for 120ms.
       flashOverlay.value = withTiming(0.3, { duration: 60 }, () => {
         flashOverlay.value = withTiming(0, { duration: 60 });
       });
       try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.85,
-          skipProcessing: true,
-        });
-        if (photo?.uri) {
-          onCaptured(photo.uri, toAnalysisMode(mode));
+        let uri: string | undefined;
+        if (useVisionCamera && visionCameraRef.current) {
+          // VisionCamera v5: takePhoto returns { path }; convert to file:// uri.
+          const ref = visionCameraRef.current as {
+            takePhoto: (opts: object) => Promise<{ path: string }>;
+          };
+          const photo = await ref.takePhoto({ flash: 'off' });
+          uri = photo?.path
+            ? photo.path.startsWith('file://')
+              ? photo.path
+              : `file://${photo.path}`
+            : undefined;
+        } else if (cameraRef.current) {
+          const photo = await cameraRef.current.takePictureAsync({
+            quality: 0.85,
+            skipProcessing: true,
+          });
+          uri = photo?.uri;
+        }
+        if (uri) {
+          onCaptured(uri, toAnalysisMode(mode));
         } else {
           setCapturing(false);
           faceScan.reset();
@@ -271,29 +294,53 @@ export function ScanCaptureScreen({
   // face mode doesn't support torch — we gracefully ignore.
   const flashOn = flashMode === 'on';
 
+  // v11.6 — render either VisionCamera (real face detection,
+  // requires custom dev build) or expo-camera CameraView (legacy
+  // path that still works in Expo Go without face detection).
+  // useVisionCamera = (detection.available && mode === 'face').
+  // Other modes always use expo-camera since the barcode scanner
+  // and product capture don't need vision-camera.
+  const VisionCameraComponent = detection.Camera as
+    | React.ComponentType<{
+        ref: React.MutableRefObject<unknown>;
+        style: object;
+        device: unknown;
+        isActive: boolean;
+        photo: boolean;
+        frameProcessor?: unknown;
+      }>
+    | null;
+
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFillObject}
-        facing={mode === 'face' ? 'front' : 'back'}
-        animateShutter={false}
-        enableTorch={flashOn && mode !== 'face'}
-        zoom={zoomValue}
-        // v10.32 — only stream barcode-scanner frames when the user
-        // is in barcode mode. Outside of that mode, expo-camera skips
-        // the decoder entirely, so face / product capture pays no
-        // perf cost.
-        barcodeScannerSettings={
-          mode === 'barcode'
-            ? { barcodeTypes: [...BARCODE_TYPES] }
-            : undefined
-        }
-        onBarcodeScanned={
-          mode === 'barcode' ? handleBarcodeScanned : undefined
-        }
-      />
+      {useVisionCamera && VisionCameraComponent && detection.device ? (
+        <VisionCameraComponent
+          ref={visionCameraRef}
+          style={StyleSheet.absoluteFillObject}
+          device={detection.device}
+          isActive={true}
+          photo={true}
+          frameProcessor={detection.frameProcessor}
+        />
+      ) : (
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFillObject}
+          facing={mode === 'face' ? 'front' : 'back'}
+          animateShutter={false}
+          enableTorch={flashOn && mode !== 'face'}
+          zoom={zoomValue}
+          barcodeScannerSettings={
+            mode === 'barcode'
+              ? { barcodeTypes: [...BARCODE_TYPES] }
+              : undefined
+          }
+          onBarcodeScanned={
+            mode === 'barcode' ? handleBarcodeScanned : undefined
+          }
+        />
+      )}
 
       <Animated.View
         style={[StyleSheet.absoluteFillObject, fadeStyle]}
