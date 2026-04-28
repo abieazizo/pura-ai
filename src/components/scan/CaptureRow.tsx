@@ -45,6 +45,12 @@ export interface CaptureRowProps {
    * real commit moment before the photo fires.
    */
   countdown?: number | null;
+  /**
+   * v11.8 — when true, the side buttons (flash / gallery) fade to
+   * a soft alpha so the user's eye locks onto the shutter during
+   * the hold-steady countdown. The shutter itself is unaffected.
+   */
+  dimSecondary?: boolean;
 }
 
 /**
@@ -65,10 +71,28 @@ export function CaptureRow({
   autoMode = false,
   autoModeLabel = 'Scanning…',
   countdown = null,
+  dimSecondary = false,
 }: CaptureRowProps) {
+  // v11.8 — coordinated dim animation. When dimSecondary flips on
+  // (countdown is running), the flash + gallery sides fade to ~38%
+  // opacity so the shutter and the on-screen guidance pill carry
+  // the moment.
+  const dim = useSharedValue(0);
+  React.useEffect(() => {
+    dim.value = withTiming(dimSecondary ? 1 : 0, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [dimSecondary, dim]);
+  const sideStyle = useAnimatedStyle(() => ({
+    opacity: 1 - dim.value * 0.62,
+  }));
+
   return (
     <View style={styles.row}>
-      <FlashButton mode={flashMode} onPress={onChangeFlash} />
+      <Animated.View style={sideStyle} pointerEvents={dimSecondary ? 'none' : 'auto'}>
+        <FlashButton mode={flashMode} onPress={onChangeFlash} />
+      </Animated.View>
       {autoMode ? (
         <ScanningIndicator label={autoModeLabel} />
       ) : (
@@ -78,7 +102,9 @@ export function CaptureRow({
           countdown={countdown}
         />
       )}
-      <GalleryButton onPick={onGalleryPick} />
+      <Animated.View style={sideStyle} pointerEvents={dimSecondary ? 'none' : 'auto'}>
+        <GalleryButton onPick={onGalleryPick} />
+      </Animated.View>
     </View>
   );
 }

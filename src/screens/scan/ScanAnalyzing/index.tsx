@@ -1,16 +1,34 @@
 /**
- * Cinematic analyzing screen (v7.7). Orchestrates the 7-beat choreography
- * against the real AI call and surfaces the reveal footer once both have
- * completed.
+ * Cinematic analyzing screen (v11.8).
  *
- * Props follow the host pattern used by `AnalyzingScreenHost` in
- * `ScanModalStack.tsx`. The host supplies:
- *   • `photoUri`           — what the user captured
- *   • `previousScan`       — for day-number bookkeeping in the AI call
- *   • `dayNumber`          — ditto
- *   • `onComplete(scanId)` — user tapped "See your results"
- *   • `onRetry()`          — user tapped "Take another scan" / "Try again"
- *   • `onCancel()`         — user hit X
+ * v11.7 wired preflight as a backend-only short-circuit: the user saw the
+ * 7-beat choreography start, then watched it rip away to a full-screen
+ * ErrorState if the photo turned out to be unusable. Disorienting, and
+ * the dead-end ErrorState forced them out of the scan flow.
+ *
+ * v11.8 makes preflight a VISIBLE beat:
+ *
+ *   STAGE 0 — photo arrives with a subtle scale/opacity entrance
+ *             (PhotoStage handles this itself)
+ *   STAGE 1 — "Checking image quality…" caption while the cheap
+ *             vision-preflight call is in flight (~1–1.5s typical).
+ *             The 7-beat choreography is paused on the implicit
+ *             ARRIVE beat during this window.
+ *   STAGE 2A — preflight passes → choreography releases → full 7-beat
+ *              cinematic timeline runs
+ *   STAGE 2B — preflight fails → screen replaces with PreflightRetry
+ *              (the captured photo + named reason + Retake CTA),
+ *              keeping the user in the scan flow rather than in the
+ *              full-screen ErrorState wall.
+ *
+ * If the AI gateway is unavailable, preflight returns null and we
+ * proceed straight into analyze (the deterministic-fallback path
+ * already in place since v8.1).
+ *
+ * The full-screen ErrorState remains the destination for genuine
+ * network / proxy / validation failures of the analyze call itself —
+ * those aren't "your photo was bad", they're "the service couldn't
+ * answer", and that distinction matters for the retry copy.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -19,12 +37,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { analyzeFaceScan } from '@/api';
 import { preflightFaceScan } from '@/api/scan';
+import { aiGateway } from '@/ai/aiGateway';
 import type { ScanPreflightReason } from '@/ai/ai-contracts';
 import { useAppStore, useScanCount } from '@/store/useAppStore';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { palette } from '@/theme';
 import type { Scan } from '@/types';
 import {
+  CAPTION_COPY,
   PHOTO_HEIGHT_ACTIVE,
   PHOTO_Y_ACTIVE,
   getBeatTiming,
@@ -37,6 +57,7 @@ import { AnalysisHeader } from './components/AnalysisHeader';
 import { AnalysisCaption } from './components/AnalysisCaption';
 import { RevealFooter } from './components/RevealFooter';
 import { ErrorState, type ErrorStateReason } from './components/ErrorState';
+import { PreflightRetry } from './components/PreflightRetry';
 import { scanToScanResult } from './lib/scanToResult';
 
 export interface ScanAnalyzingFaceScreenProps {
@@ -48,6 +69,12 @@ export interface ScanAnalyzingFaceScreenProps {
   onRetry: () => void;
   onCancel: () => void;
 }
+
+type PreflightStatus =
+  | { kind: 'pending' }
+  | { kind: 'pass' }
+  | { kind: 'skipped' } // gateway unavailable — fall through to analyze
+  | { kind: 'fail'; reason: ScanPreflightReason; retryMessage?: string };
 
 export function ScanAnalyzingFaceScreen({
   photoUri,
@@ -64,19 +91,28 @@ export function ScanAnalyzingFaceScreen({
   const stageRef = useRef<View>(null);
   const completedScanRef = useRef<Scan | null>(null);
   const apiErroredRef = useRef(false);
-  // v11.3 — failure reason carried through to ErrorState. Set when
-  // either the AI flagged image_quality.usable=false (mapped to a
-  // specific issue from image_quality.issues), or the AI call itself
-  // threw (network / timeout / 5xx → 'network'), or validation failed
-  // (→ 'unknown').
+  // Failure reason for the full-screen ErrorState wall. Reserved for
+  // analyze-call failures (network / 5xx / validation) and the rarer
+  // "AI flagged the photo unusable AFTER analyze ran" path. Preflight
+  // failures route through PreflightRetry, NOT through this ref.
   const errorReasonRef = useRef<ErrorStateReason>('unknown');
 
   const [beatTiming] = useState(() => getBeatTiming(scanCount));
+  const [preflight, setPreflight] = useState<PreflightStatus>(
+    aiGateway.isAvailable() ? { kind: 'pending' } : { kind: 'skipped' }
+  );
+
+  // Hold the choreography on the implicit ARRIVE beat until preflight
+  // resolves. `pass` and `skipped` both release it; `fail` keeps it
+  // paused (the screen replaces with PreflightRetry anyway).
+  const choreographyPaused =
+    preflight.kind === 'pending' || preflight.kind === 'fail';
 
   const choreography = useAnalysisChoreography({
     photoUri,
     reduceMotion,
     beatTiming,
+    paused: choreographyPaused,
   });
 
   const ai = useAIReadiness();
@@ -88,49 +124,65 @@ export function ScanAnalyzingFaceScreen({
     result: ai.result,
   });
 
-  // ---- Kick off the real analysis in parallel with the animation ----
+  // ---- Stage 1: preflight ----
   useEffect(() => {
+    if (!aiGateway.isAvailable()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await preflightFaceScan({ photoUri });
+        if (cancelled) return;
+        if (!result) {
+          // Gateway became unreachable mid-call — proceed without
+          // preflight rather than blocking the user.
+          setPreflight({ kind: 'skipped' });
+          return;
+        }
+        if (result.reason === 'ok') {
+          setPreflight({ kind: 'pass' });
+        } else {
+          setPreflight({
+            kind: 'fail',
+            reason: result.reason,
+            retryMessage: result.retry_message,
+          });
+        }
+      } catch {
+        if (cancelled) return;
+        // Preflight call itself errored — don't block on it. Fall
+        // through to the analyze pass; if that also fails, the user
+        // gets the network ErrorState. We never let preflight block
+        // the user from reaching their actual scan reading.
+        setPreflight({ kind: 'skipped' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [photoUri]);
+
+  // ---- Stage 2: kick off the real analysis once preflight clears ----
+  useEffect(() => {
+    if (preflight.kind !== 'pass' && preflight.kind !== 'skipped') return;
+
     const startScan = useAppStore.getState().startScan;
     const addScan = useAppStore.getState().addScan;
     const setScanResult = useAppStore.getState().setScanResult;
     startScan(photoUri);
 
     let cancelled = false;
-
     (async () => {
       try {
-        // v11.7 — capture-first, validate-immediately. Run a fast,
-        // cheap preflight pass on the captured photo BEFORE the
-        // expensive analyzeFaceScan call. If preflight fails (no face,
-        // partial face, too dark, blurry, off-center), short-circuit
-        // straight to ErrorState with the matching reason so the user
-        // gets actionable feedback in seconds rather than waiting on
-        // the full analysis just to be told their photo is unusable.
-        //
-        // Preflight returns null when the AI gateway is unavailable —
-        // in that case we skip preflight and fall through to the
-        // (deterministic-fallback or full AI) analyze pass, which
-        // matches the existing fallback contract.
-        const preflight = await preflightFaceScan({ photoUri });
-        if (cancelled) return;
-        if (preflight && preflight.reason !== 'ok') {
-          errorReasonRef.current = mapPreflightReason(preflight.reason);
-          apiErroredRef.current = true;
-          return;
-        }
-
         const scan = await analyzeFaceScan({
           photoUri,
           previousScan,
           dayNumber,
         });
         if (cancelled) return;
-        // v11.3 — interrogate the AI's image_quality output. When
-        // `usable=false`, refuse to surface the result and route to
-        // ErrorState with the most relevant condition. We pick the
-        // first matching issue in priority order so the user sees the
-        // most actionable problem first (lighting beats angle beats
-        // generic-occluded).
+        // The AI's full analysis still owns the FINAL "is this photo
+        // good enough" check. Preflight's job is the cheap gate; the
+        // analyze pass can still flag image_quality.usable=false if
+        // its richer signal disagrees.
         const aiAnalysis = scan.aiAnalysis;
         if (aiAnalysis && aiAnalysis.image_quality?.usable === false) {
           errorReasonRef.current = inferReasonFromIssues(
@@ -145,19 +197,14 @@ export function ScanAnalyzingFaceScreen({
         setScanResult(scanToScanResult(scan, useAppStore.getState().scans.length));
       } catch {
         if (cancelled) return;
-        // Network / timeout / proxy failure. Validation failures land
-        // here too via the gateway's AIValidationError throw — both
-        // paths surface a clear "service unreachable" reason instead
-        // of a vague generic message.
         errorReasonRef.current = 'network';
         apiErroredRef.current = true;
       }
     })();
-
     return () => {
       cancelled = true;
     };
-  }, [photoUri, previousScan, dayNumber]);
+  }, [preflight.kind, photoUri, previousScan, dayNumber]);
 
   // ---- If the AI has overshot Beat 6 by 800ms, swap caption to waiting ----
   useEffect(() => {
@@ -198,6 +245,22 @@ export function ScanAnalyzingFaceScreen({
     onRetry();
   }, [onRetry]);
 
+  // ---- Routing: preflight fail comes BEFORE the network ErrorState ----
+  // The PreflightRetry screen is an in-flow correction loop (photo +
+  // smart reason + Retake CTA). It keeps the user in the scan
+  // headspace rather than dropping them to a full-screen wall.
+  if (preflight.kind === 'fail') {
+    return (
+      <PreflightRetry
+        photoUri={photoUri}
+        reason={preflight.reason}
+        retryMessageFromModel={preflight.retryMessage}
+        onRetry={handleRetry}
+        onCancel={handleCancel}
+      />
+    );
+  }
+
   if (showError) {
     return (
       <ErrorState
@@ -213,6 +276,15 @@ export function ScanAnalyzingFaceScreen({
   // Caption sits at photo bottom + 24pt. In reveal mode we hide the
   // caption (the reveal footer headline replaces it).
   const captionTop = PHOTO_Y_ACTIVE + PHOTO_HEIGHT_ACTIVE + 24;
+
+  // v11.8 — while preflight is pending, the choreography is held on
+  // ARRIVE so its caption is empty. We override with the curated
+  // "Checking image quality…" line so the screen never reads as a
+  // dead spinner.
+  const renderedCaption =
+    preflight.kind === 'pending' ? CAPTION_COPY.preflight : choreography.captionText;
+  const renderedCaptionVariant =
+    preflight.kind === 'pending' ? 'italic' : choreography.captionStyle;
 
   return (
     <View style={styles.root}>
@@ -238,8 +310,8 @@ export function ScanAnalyzingFaceScreen({
 
       {!canReveal ? (
         <AnalysisCaption
-          text={choreography.captionText}
-          variant={choreography.captionStyle}
+          text={renderedCaption}
+          variant={renderedCaptionVariant}
           topOffset={captionTop}
           reduceMotion={reduceMotion}
         />
@@ -271,11 +343,7 @@ const styles = StyleSheet.create({
  * v11.3 — pick the most actionable error reason from the AI's
  * image_quality.issues array. Order matters: the user benefits more
  * from "no face detected" than "blurry" if both are flagged
- * (correcting framing usually fixes blurriness too). When no issue
- * matches but the analysis still failed, fall through to
- * 'no_face_detected' for the empty-findings case (the AI saw a
- * usable image but found zero zones, which is structurally
- * indistinguishable from "I'm not looking at a face").
+ * (correcting framing usually fixes blurriness too).
  */
 function inferReasonFromIssues(
   issues: ReadonlyArray<string>,
@@ -288,31 +356,6 @@ function inferReasonFromIssues(
   if (issues.includes('occluded')) return 'no_face_detected';
   if (findingsCount === 0) return 'no_face_detected';
   return 'unknown';
-}
-
-/**
- * v11.7 — map a `ScanPreflightReason` (from the cheap vision-preflight
- * pass) onto our existing `ErrorStateReason` vocabulary. The preflight
- * model is intentionally narrower than the full analysis: it only
- * decides whether the captured frame is usable AT ALL, so we don't
- * carry an `angled` bucket here — `not_centered` covers framing.
- */
-function mapPreflightReason(r: ScanPreflightReason): ErrorStateReason {
-  switch (r) {
-    case 'no_face':
-      return 'no_face_detected';
-    case 'partial_face':
-      return 'partial_face';
-    case 'too_dark':
-      return 'poor_lighting';
-    case 'too_blurry':
-      return 'blurry';
-    case 'not_centered':
-      return 'partial_face';
-    case 'unknown':
-    default:
-      return 'unknown';
-  }
 }
 
 export type { Beat };

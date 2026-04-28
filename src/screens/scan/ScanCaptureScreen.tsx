@@ -15,7 +15,6 @@ import { hapt } from '@/utils/haptics';
 import { ScanOverlay } from '@/screens/scan/ScanOverlay';
 import type { ReticleMode, FrameState } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
-import type { ZoomValue } from '@/components/scan/ZoomToggle';
 import { palette, space, type as typography } from '@/theme';
 import { common, scan } from '@/copy/strings';
 import type { ScanModalMode } from '@/navigation/types';
@@ -84,7 +83,6 @@ export function ScanCaptureScreen({
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<ReticleMode>(toOverlayMode(initialMode));
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
-  const [zoom, setZoom] = useState<ZoomValue>('1');
   const [capturing, setCapturing] = useState(false);
   // v11.7 — single source of truth for the reticle/caption visual
   // state. 'idle' on mount; flips to 'preparing' for COUNTDOWN_MS
@@ -289,11 +287,6 @@ export function ScanCaptureScreen({
     );
   }
 
-  // Zoom: expo-camera's `zoom` prop is 0 (1×) to 1 (max). Rough mapping for
-  // our two-position toggle — 0 = 1×, 0.5 for a wider framing is not
-  // possible natively, so ".5×" falls back to 0 on single-lens devices.
-  const zoomValue = zoom === '0.5' ? 0 : 0;
-
   // expo-camera `enableTorch` is the on-flash analogue; front camera in
   // face mode doesn't support torch — we gracefully ignore.
   const flashOn = flashMode === 'on';
@@ -307,7 +300,6 @@ export function ScanCaptureScreen({
         facing={mode === 'face' ? 'front' : 'back'}
         animateShutter={false}
         enableTorch={flashOn && mode !== 'face'}
-        zoom={zoomValue}
         barcodeScannerSettings={
           mode === 'barcode' ? { barcodeTypes: [...BARCODE_TYPES] } : undefined
         }
@@ -323,8 +315,6 @@ export function ScanCaptureScreen({
           onChangeMode={setMode}
           flashMode={flashMode}
           onChangeFlash={setFlashMode}
-          zoom={zoom}
-          onChangeZoom={setZoom}
           onCapture={onCapture}
           onGalleryPick={onGalleryPick}
           onExit={onClose}

@@ -5,14 +5,18 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Question, X } from 'phosphor-react-native';
 import { Reticle, type ReticleMode, type FrameState } from '@/components/scan/Reticle';
-import { Caption } from '@/components/scan/Caption';
-import { ZoomToggle, type ZoomValue } from '@/components/scan/ZoomToggle';
+import { GuidanceCard } from '@/components/scan/GuidanceCard';
 import { ModeSelector } from '@/components/scan/ModeSelector';
-import { OnDeviceKicker } from '@/components/scan/OnDeviceKicker';
 import { CaptureRow, type FlashMode } from '@/components/scan/CaptureRow';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
@@ -22,8 +26,6 @@ export interface ScanOverlayProps {
   onChangeMode: (m: ReticleMode) => void;
   flashMode: FlashMode;
   onChangeFlash: (f: FlashMode) => void;
-  zoom: ZoomValue;
-  onChangeZoom: (v: ZoomValue) => void;
   onCapture: () => void;
   onGalleryPick: (uri: string) => void;
   onExit: () => void;
@@ -31,45 +33,48 @@ export interface ScanOverlayProps {
   /** True while capture is in-flight; drives the analysis ring. */
   analyzing?: boolean;
   /**
-   * v11.7 — simple two-state frame model. `idle` is the resting
+   * v11.7+ — simple two-state frame model. `idle` is the resting
    * state. `preparing` flips on for the 2-second hold-steady
-   * countdown after the user taps capture. No faked face-detection
-   * states, because the platform (Expo Go + expo-camera@17) cannot
-   * actually detect a face.
+   * countdown after the user taps capture. Drives both the reticle
+   * halo AND the dim animation on secondary chrome (mode selector,
+   * flash, gallery) so the capture moment reads as one focused
+   * gesture.
    */
   frameState?: FrameState;
-  /**
-   * v11.7 — countdown number rendered inside the shutter during
-   * preparing. null when not preparing.
-   */
+  /** Countdown number rendered inside the shutter during preparing. */
   countdown?: number | null;
 }
 
 /**
- * v11.7 scan overlay. Lives as an absolute layer on top of the camera
- * feed.
+ * v11.8 scan overlay.
  *
- * Chrome system (unchanged from v10):
- * - Top-left: single X close button in a frosted-ink pill.
- * - Top-right: ? help button, same treatment.
- * - Ink scrims (top 120pt, bottom 280pt) at 60% for legibility.
- * - Bottom dock: zoom → mode → ON-DEVICE → capture, each on its own
- *   row with explicit gaps.
+ * What changed in v11.8 vs v11.7:
+ *   • Dropped ZoomToggle (functionally dead — `zoomValue` was already
+ *     hard-coded to 0 in either branch in ScanCaptureScreen) and
+ *     OnDeviceKicker (extra row with no payload) so the bottom dock
+ *     collapses from THREE stacked rows to just ModeSelector + Capture.
+ *     ~140pt of vertical chrome reclaimed for the guidance card.
+ *   • The rotating-tips Caption is replaced with a structured 3-tip
+ *     GuidanceCard. Mode-aware (face / product / barcode), all tips
+ *     visible at once, doesn't preach.
+ *   • During preparing, the secondary chrome (mode selector + flash +
+ *     gallery via the analyzing-state on CaptureRow) softens via a
+ *     coordinated opacity transition so the user's eye locks on the
+ *     shutter + the guidance pill.
  *
- * What changed in v11.7: dropped the FaceScanModel / OverlayTone
- * vocabulary and the 14-state machine that produced it, because Expo
- * Go cannot drive that machine truthfully. The overlay now takes a
- * simple `frameState` ('idle' | 'preparing') + `countdown` pair from
- * the parent, which is itself driven by user taps rather than
- * pretend-detection.
+ * Layout zones (top to bottom):
+ *   • Top bar — close (left) + help (right). Nothing else.
+ *   • Camera zone — face oval / product frame / barcode rect with
+ *     gentle pulse, no chrome over the subject region.
+ *   • Guidance zone — 3-tip card sits 28pt below reticle bottom.
+ *   • Mode selector — single row, ~60pt tall.
+ *   • Capture row — flash | shutter | gallery.
  */
 export function ScanOverlay({
   mode,
   onChangeMode,
   flashMode,
   onChangeFlash,
-  zoom,
-  onChangeZoom,
   onCapture,
   onGalleryPick,
   onExit,
@@ -91,23 +96,38 @@ export function ScanOverlay({
     onHelp();
   };
 
-  // Caption sits 32pt below the reticle lower edge by default. On
-  // small phones the bottom dock can crowd the caption out of legible
-  // space, so we clamp the caption to AT LEAST 56pt above the bottom
-  // dock top.
-  const reticleHalf =
-    mode === 'face'
-      ? Math.round(height * 0.25)
-      : mode === 'product'
-      ? Math.round(height * 0.225)
-      : 60; // barcode is 120pt tall
-  const reticleBottomY = Math.round(height / 2) + reticleHalf;
-  // The bottom-stack starts at: bottom = insets.bottom + 40 + 84 + 24.
-  // Convert to Y-from-top: height - (insets.bottom + 148).
-  const dockTopY = height - (insets.bottom + 148);
-  const captionTopRaw = reticleBottomY + 32;
-  const captionTopMax = dockTopY - 56;
-  const captionTop = Math.min(captionTopRaw, captionTopMax);
+  // ── Dim animation ──
+  // When preparing, secondary chrome fades to ~38% so the user's eye
+  // lands on the shutter + the guidance pill. Reverts on idle. The
+  // shutter and the GuidanceCard are NOT affected — they own the
+  // capture moment.
+  const dim = useSharedValue(0);
+  React.useEffect(() => {
+    dim.value = withTiming(frameState === 'preparing' ? 1 : 0, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [frameState, dim]);
+
+  const dimSecondaryStyle = useAnimatedStyle(() => ({
+    opacity: 1 - dim.value * 0.62,
+  }));
+
+  // v11.8 — geometry stack (bottom-up):
+  //   [ insets.bottom ]
+  //   40pt buffer
+  //   84pt CaptureRow
+  //   24pt gap
+  //   60pt ModeSelector
+  //   12pt gap
+  //   GuidanceCard (~96pt)
+  //   ↑ camera region above
+  //
+  // Anchoring the guidance card here (instead of below the reticle)
+  // keeps the camera region uncluttered AND places the guidance in
+  // the user's natural attention zone — right above the controls
+  // they're about to tap.
+  const guidanceCardBottom = insets.bottom + 40 + 84 + 24 + 60 + 12;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -123,8 +143,12 @@ export function ScanOverlay({
         frameState={frameState}
       />
 
-      {/* Caption 32pt below reticle lower edge */}
-      <Caption mode={mode} top={captionTop} frameState={frameState} />
+      {/* Guidance card — sits inline above the mode selector */}
+      <GuidanceCard
+        mode={mode}
+        bottom={guidanceCardBottom}
+        frameState={frameState}
+      />
 
       {/* Top-left — clean X close */}
       <Pressable
@@ -141,7 +165,7 @@ export function ScanOverlay({
         <X size={18} color={palette.bg} weight="bold" />
       </Pressable>
 
-      {/* Top-right — Help button (same chip) */}
+      {/* Top-right — Help */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open scan tutorial"
@@ -156,23 +180,21 @@ export function ScanOverlay({
         <Question size={18} color={palette.bg} weight="duotone" />
       </Pressable>
 
-      {/* Bottom dock: zoom → mode → ON-DEVICE → capture. */}
-      <View
-        pointerEvents="box-none"
+      {/* Mode selector — sole secondary control row above capture.
+          Dims during preparing so the shutter + guidance pill carry
+          the moment. */}
+      <Animated.View
+        pointerEvents={frameState === 'preparing' ? 'none' : 'box-none'}
         style={[
-          styles.bottomStack,
-          { bottom: insets.bottom + 40 + 84 + 24 }, // above capture row
+          styles.modeStack,
+          { bottom: insets.bottom + 40 + 84 + 24 },
+          dimSecondaryStyle,
         ]}
       >
-        <View style={styles.zoomWrap}>
-          <ZoomToggle value={zoom} onChange={onChangeZoom} />
-        </View>
-        <View style={{ height: 12 }} />
         <ModeSelector mode={mode} onChange={onChangeMode} />
-        <View style={{ height: 8 }} />
-        <OnDeviceKicker />
-      </View>
+      </Animated.View>
 
+      {/* Capture row — flash + shutter + gallery. */}
       <View
         pointerEvents="box-none"
         style={[styles.captureDock, { bottom: insets.bottom + 40 }]}
@@ -184,6 +206,7 @@ export function ScanOverlay({
           onGalleryPick={onGalleryPick}
           analyzing={analyzing}
           countdown={countdown}
+          dimSecondary={frameState === 'preparing'}
           autoMode={mode === 'barcode'}
           autoModeLabel={analyzing ? 'Found.' : 'Scanning…'}
         />
@@ -211,10 +234,7 @@ function Scrim({
       pointerEvents="none"
       width={width}
       height={height}
-      style={[
-        styles.scrim,
-        placement === 'top' ? { top: 0 } : { bottom: 0 },
-      ]}
+      style={[styles.scrim, placement === 'top' ? { top: 0 } : { bottom: 0 }]}
     >
       <Defs>
         <LinearGradient
@@ -254,13 +274,14 @@ const styles = StyleSheet.create({
     opacity: 0.88,
     transform: [{ scale: 0.96 }],
   },
-  bottomStack: {
+  // v11.8 — single mode-row stack, no zoom toggle and no on-device
+  // kicker. Reclaims ~64pt of vertical space.
+  modeStack: {
     position: 'absolute',
     left: 0,
     right: 0,
     alignItems: 'center',
   },
-  zoomWrap: {},
   captureDock: {
     position: 'absolute',
     left: 0,

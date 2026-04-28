@@ -701,6 +701,7 @@ function MessageLine({
                   : a === 'products'
                   ? onOpenProducts
                   : onOpenRoutine;
+              const isPrimary = a === 'scan' && !hasScanned;
               return (
                 <Pressable
                   key={a}
@@ -712,15 +713,27 @@ function MessageLine({
                   accessibilityLabel={ACTION_LABELS[a]}
                   style={({ pressed }) => [
                     messageStyles.actionChip,
-                    pressed && { opacity: 0.88 },
+                    isPrimary && messageStyles.actionChipPrimary,
+                    pressed && {
+                      opacity: 0.92,
+                      transform: [{ scale: 0.985 }],
+                    },
                   ]}
                 >
                   <Text
-                    style={messageStyles.actionChipText}
+                    style={[
+                      messageStyles.actionChipText,
+                      isPrimary && messageStyles.actionChipTextPrimary,
+                    ]}
                     maxFontSizeMultiplier={1.1}
                   >
                     {ACTION_LABELS[a]}
                   </Text>
+                  <CaretRight
+                    size={12}
+                    weight="bold"
+                    color={isPrimary ? palette.bg : palette.inkSecondary}
+                  />
                 </Pressable>
               );
             })}
@@ -733,10 +746,14 @@ function MessageLine({
 
 type ActionChip = 'scan' | 'products' | 'routine';
 
+// v11.8 — drop the inline unicode arrow from each label; the chip
+// renders a proper Phosphor CaretRight on the right edge so the
+// "this is tappable, this is the next step" affordance reads as a
+// real button, not a sentence with an arrow appended.
 const ACTION_LABELS: Record<ActionChip, string> = {
-  scan: 'Take a face scan →',
-  products: 'View matched products →',
-  routine: 'Open routine →',
+  scan: 'Take a face scan',
+  products: 'View matched products',
+  routine: 'Open routine',
 };
 
 /**
@@ -1109,30 +1126,41 @@ const messageStyles = StyleSheet.create({
     color: palette.clay,
     textTransform: 'uppercase',
   },
-  // v11.4 — contextual action chips beneath assistant messages.
-  // Reduce typing burden for the highest-value next steps (scan,
-  // products, routine).
+  // v11.8 — action chips refined: paired CaretRight icon, larger
+  // tap target (38pt), clean fill instead of hairline border. The
+  // first 'scan' chip when no scan exists upgrades to a clay-filled
+  // primary variant since that's the highest-value next step.
   actionRow: {
-    marginTop: 10,
+    marginTop: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   actionChip: {
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: palette.hairline,
+    paddingHorizontal: 14,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: palette.bgDeep,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+  },
+  actionChipPrimary: {
+    backgroundColor: palette.ink,
+    shadowColor: palette.ink,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   actionChipText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
+    fontSize: 13,
     letterSpacing: 0.1,
     color: palette.ink,
+  },
+  actionChipTextPrimary: {
+    color: palette.bg,
   },
 });

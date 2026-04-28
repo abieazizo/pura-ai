@@ -264,7 +264,10 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 // v11.5 \u2014 analyzing-stage labels rewritten to feel like the system
 // is genuinely doing skincare-grade analysis (per the v11.5 spec).
 // Order: features \u2192 texture \u2192 tone \u2192 hydration/breakouts \u2192 result.
+// v11.8 \u2014 added `preflight` caption for the visible image-quality
+// validation beat that runs BEFORE the 7-beat choreography starts.
 export const CAPTION_COPY = {
+  preflight: 'Checking image quality\u2026',
   locate: 'Aligning features\u2026',
   partition: 'Reading skin texture\u2026',
   detect: 'Checking tone balance\u2026',
@@ -278,6 +281,7 @@ export const CAPTION_COPY = {
 // ------------------------------------------------------------------
 
 export const A11Y_ANNOUNCEMENTS = {
+  preflight: 'Checking image quality.',
   locate: 'Reading skin texture.',
   partition: 'Checking for breakouts.',
   detect: 'Measuring hydration.',

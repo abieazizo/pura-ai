@@ -149,13 +149,17 @@ export function Reticle({
         haloIntensity: 0,
       };
 
-  // Face oval: 75% width × 50% height, centered
-  const faceW = Math.round(screenWidth * 0.75);
-  const faceH = Math.round(screenHeight * 0.5);
+  // v11.8 — face oval shrunk from 75%×50% to 76%×42% to leave
+  // room for the inline GuidanceCard above the bottom dock on
+  // small phones (iPhone SE-class). Aspect ratio is now closer to
+  // a real portrait face.
+  const faceW = Math.round(screenWidth * 0.76);
+  const faceH = Math.round(screenHeight * 0.42);
 
-  // Product frame: 80% width × 45% height, centered
+  // Product frame: 80% width × 38% height, centered. Same scale
+  // adjustment as the face oval.
   const prodW = Math.round(screenWidth * 0.8);
-  const prodH = Math.round(screenHeight * 0.45);
+  const prodH = Math.round(screenHeight * 0.38);
 
   // Barcode frame: 80% width, 120pt tall, centered vertically
   const barW = Math.round(screenWidth * 0.8);

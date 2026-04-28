@@ -37,6 +37,14 @@ export interface ChoreographyArgs {
   photoUri: string;
   reduceMotion: boolean;
   beatTiming: BeatTiming;
+  /**
+   * v11.8 — when true, the timeline does not advance past the implicit
+   * ARRIVE beat. Used to hold the screen on the captured-photo entrance
+   * transition while preflight validation is in flight. Once the parent
+   * flips this to false, the LOCATE → PARTITION → DETECT → SCORE → SETTLE
+   * timeline runs in full.
+   */
+  paused?: boolean;
 }
 
 export interface ChoreographyState {
@@ -59,6 +67,7 @@ export function useAnalysisChoreography({
   photoUri,
   reduceMotion,
   beatTiming,
+  paused = false,
 }: ChoreographyArgs): ChoreographyState {
   const [beat, setBeat] = useState<Beat>('arrive');
   const [captionText, setCaptionText] = useState<string>('');
@@ -72,6 +81,17 @@ export function useAnalysisChoreography({
     // Fresh run — clear anything residual.
     timers.current.forEach(clearTimeout);
     timers.current = [];
+
+    // v11.8 — hold on the implicit ARRIVE beat while preflight is in
+    // flight. The parent screen surfaces a "Checking image quality"
+    // caption during this window. Once `paused` flips false the
+    // timeline runs from the top.
+    if (paused) {
+      return () => {
+        timers.current.forEach(clearTimeout);
+        timers.current = [];
+      };
+    }
 
     const schedule = (ms: number, fn: () => void) => {
       const t = setTimeout(fn, ms);
@@ -185,7 +205,7 @@ export function useAnalysisChoreography({
       timers.current.forEach(clearTimeout);
       timers.current = [];
     };
-  }, [photoUri, reduceMotion, beatTiming]);
+  }, [photoUri, reduceMotion, beatTiming, paused]);
 
   const setWaiting = (v: boolean) => {
     if (v) {
