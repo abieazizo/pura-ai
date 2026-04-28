@@ -1,42 +1,180 @@
 /**
  * Pura AI — end-to-end verification.
  *
- * Smoke-tests every public AI flow against the running proxy server.
- * Exits non-zero on first failure so it can be wired into CI.
+ * Pure-Node script. Talks to a running proxy server over HTTP using
+ * the built-in `fetch`. Imports only TypeScript TYPES from
+ * `src/ai/ai-contracts.ts` (which has zero runtime imports), so this
+ * file pulls in zero React Native / Expo / client-only modules.
+ *
+ *   v11.2 — refactored from the legacy gateway-import path. The
+ *   previous version imported `aiGateway` from `src/`, which pulled
+ *   `expo-constants → react-native` into the Node bundle and broke
+ *   tsx with `Unexpected "typeof"` at react-native/index.js:27.
  *
  * Run:
  *   # 1. boot the proxy in another shell:
  *   OPENAI_API_KEY=sk-... npm run server:ai
  *
  *   # 2. then run verification:
- *   EXPO_PUBLIC_PURA_AI_PROXY_URL=http://localhost:8787 \
- *   EXPO_PUBLIC_PURA_AI_PROXY_TOKEN=$PURA_AI_PROXY_TOKEN \
  *   npm run verify:ai
  *
- * The verification script uses the same client gateway the RN app
- * uses, so passing here means the production fetch path works end-
- * to-end — request shapes, validation, retries, and response parsing.
+ *   # Optional env overrides:
+ *   #   PURA_AI_PROXY_URL          — defaults to EXPO_PUBLIC_PURA_AI_PROXY_URL
+ *   #                                or http://localhost:8787
+ *   #   PURA_AI_PROXY_TOKEN        — defaults to .env value
  *
- * Coverage spans the brief's required scenarios:
- *   • first face scan
- *   • repeat face scan (delta context)
- *   • product image scan
- *   • barcode lookup
- *   • best-for-you matching
+ * Coverage spans every public AI flow:
+ *   • first face scan (vision)
+ *   • repeat face scan with comparison
+ *   • product image scan (composite)
+ *   • barcode resolution
+ *   • product matching
  *   • routine recommendation
- *   • progress + score explanation
- *   • assistant grounded answer
+ *   • skin score + progress explanation
+ *   • assistant grounded answer (with grounding assertion)
  *   • search suggestions
+ *   • composite buildFullScanToPlanBundle
+ *   • composite buildProgressBundle
  */
 
-import { aiGateway } from '../src/ai/aiGateway';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type {
   AssistantContext,
+  BarcodeResolution,
   FaceScanAnalysis,
+  ProductIdentity,
+  ProductMatchResult,
+  ProgressExplanation,
+  RoutineRecommendation,
+  SearchSuggestionResult,
+  SkinScoreExplanation,
 } from '../src/ai/ai-contracts';
 
 // ---------------------------------------------------------------------------
-// Tiny 1x1 transparent PNG, base64-encoded. Smallest possible valid
+// .env loader (Node-safe, no deps).
+// Reads .env into process.env without overriding values already set in the
+// shell. Mirrors the explicit-override loader in `server/aiProxy.ts` but
+// here we treat shell env as authoritative so a CI runner can pass an
+// override-URL without touching .env.
+// ---------------------------------------------------------------------------
+
+(function loadDotenv() {
+  const envPath = path.resolve(process.cwd(), '.env');
+  if (!fs.existsSync(envPath)) return;
+  let raw: string;
+  try {
+    raw = fs.readFileSync(envPath, 'utf8');
+  } catch {
+    return;
+  }
+  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined || process.env[key] === '') {
+      process.env[key] = value;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Proxy client.
+// ---------------------------------------------------------------------------
+
+const PROXY_URL = (
+  process.env.PURA_AI_PROXY_URL ??
+  process.env.EXPO_PUBLIC_PURA_AI_PROXY_URL ??
+  `http://localhost:${process.env.PURA_AI_PROXY_PORT ?? 8787}`
+).replace(/\/+$/, '');
+
+const PROXY_TOKEN = (
+  process.env.PURA_AI_PROXY_TOKEN ??
+  process.env.EXPO_PUBLIC_PURA_AI_PROXY_TOKEN ??
+  ''
+).trim();
+
+class ProxyError extends Error {
+  constructor(
+    public readonly method: string,
+    public readonly status: number,
+    public readonly body: string
+  ) {
+    super(`${method}: HTTP ${status} ${body.slice(0, 240)}`);
+    this.name = 'ProxyError';
+  }
+}
+
+async function call<T>(method: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json; charset=utf-8',
+    Accept: 'application/json',
+  };
+  if (PROXY_TOKEN.length > 0) {
+    headers.Authorization = `Bearer ${PROXY_TOKEN}`;
+  }
+  // 90 s timeout — the composite full-scan bundle runs 4 sequential calls.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  let res: Response;
+  try {
+    res = await fetch(`${PROXY_URL}/${method}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    throw new ProxyError(method, res.status, text);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch (e) {
+    throw new ProxyError(
+      method,
+      res.status,
+      `JSON parse failed: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+}
+
+async function pingHealth(): Promise<{ ok: boolean; transport?: string }> {
+  try {
+    const res = await fetch(`${PROXY_URL}/healthz`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return { ok: false };
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    return {
+      ok: body.ok === true,
+      transport:
+        typeof body.transport === 'string' ? body.transport : undefined,
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tiny 1×1 transparent PNG, base64-encoded. Smallest possible valid
 // image so the verification script can exercise vision endpoints
 // without shipping image assets.
 // ---------------------------------------------------------------------------
@@ -128,11 +266,12 @@ function expect(condition: boolean, message: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Individual checks.
+// Individual checks. Each one POSTs raw JSON to a proxy method and
+// asserts the structural / semantic correctness of the response.
 // ---------------------------------------------------------------------------
 
 async function checkFirstFaceScan(): Promise<FaceScanAnalysis> {
-  const result = await aiGateway.analyzeFaceScan({
+  const result = await call<FaceScanAnalysis>('analyzeFaceScan', {
     imageBase64: TINY_PNG_B64,
     mediaType: 'image/png',
     scanId: 'verify-scan-1',
@@ -140,17 +279,18 @@ async function checkFirstFaceScan(): Promise<FaceScanAnalysis> {
   });
   expect(typeof result.scan_id === 'string', 'scan_id is string');
   expect(
-    typeof result.skin_score.value === 'number' &&
+    typeof result.skin_score?.value === 'number' &&
       result.skin_score.value >= 0 &&
       result.skin_score.value <= 100,
     'skin_score.value in 0..100'
   );
   expect(Array.isArray(result.findings), 'findings is array');
+  expect(typeof result.skin_score?.why_line === 'string', 'why_line string');
   return result;
 }
 
 async function checkRepeatFaceScan(prev: FaceScanAnalysis): Promise<void> {
-  const result = await aiGateway.analyzeFaceScan({
+  const result = await call<FaceScanAnalysis>('analyzeFaceScan', {
     imageBase64: TINY_PNG_B64,
     mediaType: 'image/png',
     scanId: 'verify-scan-2',
@@ -165,7 +305,10 @@ async function checkRepeatFaceScan(prev: FaceScanAnalysis): Promise<void> {
 }
 
 async function checkProductImageScan(): Promise<void> {
-  const result = await aiGateway.analyzeScannedProductAgainstUser({
+  const result = await call<{
+    identity: ProductIdentity;
+    fit: ProductMatchResult;
+  }>('analyzeScannedProductAgainstUser', {
     imageBase64: TINY_PNG_B64,
     mediaType: 'image/png',
     userContextSummary: USER_PROFILE_SUMMARY,
@@ -174,14 +317,11 @@ async function checkProductImageScan(): Promise<void> {
     typeof result.identity.product_category === 'string',
     'identity.product_category is set'
   );
-  expect(
-    Array.isArray(result.fit.matches),
-    'fit.matches is an array'
-  );
+  expect(Array.isArray(result.fit.matches), 'fit.matches is an array');
 }
 
 async function checkBarcodeResolution(): Promise<void> {
-  const result = await aiGateway.normalizeBarcodeResolution({
+  const result = await call<BarcodeResolution>('normalizeBarcodeResolution', {
     barcodeValue: 'gentle-foam-cleanser',
   });
   expect(
@@ -192,7 +332,7 @@ async function checkBarcodeResolution(): Promise<void> {
 }
 
 async function checkProductMatching(scan: FaceScanAnalysis): Promise<void> {
-  const result = await aiGateway.matchProductsForUser({
+  const result = await call<ProductMatchResult>('matchProductsForUser', {
     userId: 'verify-user',
     basedOnScanId: scan.scan_id,
     skinStateSummary: JSON.stringify({ scan }),
@@ -202,36 +342,45 @@ async function checkProductMatching(scan: FaceScanAnalysis): Promise<void> {
   expect(
     result.matches.every(
       (m) =>
+        typeof m.match_score === 'number' &&
         m.match_score >= 0 &&
         m.match_score <= 100 &&
         ['weak', 'fair', 'strong', 'excellent'].includes(m.match_band)
     ),
-    'matches have integer 0..100 scores + valid bands'
+    'every match has integer 0..100 score + valid band'
   );
 }
 
 async function checkRoutineRecommendation(
   scan: FaceScanAnalysis
 ): Promise<void> {
-  const matches = await aiGateway.matchProductsForUser({
+  const matches = await call<ProductMatchResult>('matchProductsForUser', {
     userId: 'verify-user',
     basedOnScanId: scan.scan_id,
     skinStateSummary: JSON.stringify({ scan }),
     candidateProductsJson: CANDIDATE_PRODUCTS_JSON,
   });
-  const result = await aiGateway.generateRoutineRecommendation({
-    scanSummary: JSON.stringify({ scan }),
-    matchedProductsJson: JSON.stringify(matches),
-    existingRoutineJson: EXISTING_ROUTINE_JSON,
-    basedOnScanId: scan.scan_id,
-  });
+  const result = await call<RoutineRecommendation>(
+    'generateRoutineRecommendation',
+    {
+      scanSummary: JSON.stringify({ scan }),
+      matchedProductsJson: JSON.stringify(matches),
+      existingRoutineJson: EXISTING_ROUTINE_JSON,
+      basedOnScanId: scan.scan_id,
+    }
+  );
   expect(typeof result.headline === 'string', 'routine headline string');
   expect(Array.isArray(result.morning), 'morning array');
   expect(Array.isArray(result.evening), 'evening array');
+  expect(
+    typeof result.tonight_focus === 'string' &&
+      result.tonight_focus.length > 0,
+    'tonight_focus non-empty'
+  );
 }
 
 async function checkScoreAndProgress(): Promise<void> {
-  const score = await aiGateway.explainSkinScore({
+  const score = await call<SkinScoreExplanation>('explainSkinScore', {
     score: 73,
     deltaReference: 'previous_scan',
     deltaValue: 4,
@@ -242,8 +391,9 @@ async function checkScoreAndProgress(): Promise<void> {
   });
   expect(score.score >= 0 && score.score <= 100, 'score 0..100');
   expect(['poor', 'fair', 'good', 'great'].includes(score.band), 'valid band');
+  expect(typeof score.coach_line === 'string', 'coach_line string');
 
-  const progress = await aiGateway.explainProgress({
+  const progress = await call<ProgressExplanation>('explainProgress', {
     baselineSummary: JSON.stringify({ score: 60, top_concern: 'breakouts' }),
     latestSummary: JSON.stringify({ score: 73, top_concern: 'hydration' }),
     concernMovementsJson: JSON.stringify({
@@ -275,32 +425,52 @@ async function checkAssistant(scan: FaceScanAnalysis): Promise<void> {
     top_matches: [],
     active_product_identity: null,
   };
-  const text = await aiGateway.answerAssistant({
+  const text = await call<string>('answerAssistant', {
     context: ctx,
     userQuestion: 'Should I add a serum to my evening routine tonight?',
   });
   expect(typeof text === 'string' && text.length > 0, 'assistant answered');
-  // v11.1 — assert grounding signal. A grounded answer should mention
-  // at least one of the user's actual context fields (skin type,
-  // routine product, or scan-derived concept). Pure filler answers
-  // would never reference these.
-  const groundingTokens = ['combination', 'cleanser', 'serum', 'evening', 'routine', 'fragrance'];
+  // Grounding assertion — answer must reference at least one user-context
+  // token. Pure filler answers would never include any of these.
+  const groundingTokens = [
+    'combination',
+    'cleanser',
+    'serum',
+    'evening',
+    'routine',
+    'fragrance',
+  ];
   const lower = text.toLowerCase();
   expect(
     groundingTokens.some((t) => lower.includes(t)),
     `assistant answer references at least one context token (${groundingTokens.join(', ')})`
   );
   expect(
-    !/^great question/i.test(text.trim()),
+    !/^\s*great question/i.test(text),
     'assistant does not lead with "Great question" filler'
   );
 }
 
+async function checkSearchSuggestions(): Promise<void> {
+  const result = await call<SearchSuggestionResult>('buildSearchSuggestions', {
+    latestScanSummary: JSON.stringify({ primary_concern: 'breakouts' }),
+    routineSummary: EXISTING_ROUTINE_JSON,
+    pageContext: 'products',
+  });
+  expect(
+    typeof result.prefill_placeholder === 'string',
+    'prefill_placeholder string'
+  );
+  expect(Array.isArray(result.suggestion_chips), 'suggestion_chips array');
+}
+
 async function checkBundleFullScanToPlan(): Promise<void> {
-  // The composite bundle endpoint exercises 4 sequential calls in
-  // one request: face scan → matching + score (parallel) → routine.
-  // Verifies the end-to-end pipeline a real face scan triggers.
-  const result = await aiGateway.buildFullScanToPlanBundle({
+  const result = await call<{
+    analysis: FaceScanAnalysis;
+    matches: ProductMatchResult;
+    routine: RoutineRecommendation;
+    score: SkinScoreExplanation;
+  }>('buildFullScanToPlanBundle', {
     imageBase64: TINY_PNG_B64,
     mediaType: 'image/png',
     scanId: 'verify-bundle-scan',
@@ -315,31 +485,24 @@ async function checkBundleFullScanToPlan(): Promise<void> {
 }
 
 async function checkBundleProgress(): Promise<void> {
-  const result = await aiGateway.buildProgressBundle({
+  const result = await call<{
+    progress: ProgressExplanation;
+    score: SkinScoreExplanation;
+  }>('buildProgressBundle', {
     baselineSummary: JSON.stringify({ score: 60, top_concern: 'breakouts' }),
     latestSummary: JSON.stringify({ score: 73, top_concern: 'hydration' }),
-    concernMovementsJson: JSON.stringify({ breakouts: 'better', hydration: 'worse' }),
+    concernMovementsJson: JSON.stringify({
+      breakouts: 'better',
+      hydration: 'worse',
+    }),
     score: 73,
     deltaValue: 13,
   });
-  expect(typeof result.progress.short_narrative === 'string', 'bundle.progress.short_narrative');
+  expect(
+    typeof result.progress.short_narrative === 'string',
+    'bundle.progress.short_narrative'
+  );
   expect(typeof result.score.score === 'number', 'bundle.score.score');
-}
-
-async function checkSearchSuggestions(): Promise<void> {
-  const result = await aiGateway.buildSearchSuggestions({
-    latestScanSummary: JSON.stringify({ primary_concern: 'breakouts' }),
-    routineSummary: EXISTING_ROUTINE_JSON,
-    pageContext: 'products',
-  });
-  expect(
-    typeof result.prefill_placeholder === 'string',
-    'prefill_placeholder string'
-  );
-  expect(
-    Array.isArray(result.suggestion_chips),
-    'suggestion_chips array'
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -348,21 +511,25 @@ async function checkSearchSuggestions(): Promise<void> {
 
 async function main(): Promise<void> {
   // eslint-disable-next-line no-console
-  console.log(
-    `[verify:ai] transport=${aiGateway.transport()}, available=${aiGateway.isAvailable()}`
-  );
-  if (!aiGateway.isAvailable()) {
+  console.log(`[verify:ai] proxy=${PROXY_URL} token=${PROXY_TOKEN ? 'on' : 'off'}`);
+
+  const health = await pingHealth();
+  if (!health.ok) {
     // eslint-disable-next-line no-console
     console.error(
-      '[verify:ai] ABORT: no AI transport configured. Set ' +
-        'EXPO_PUBLIC_PURA_AI_PROXY_URL to your running proxy ' +
-        '(`npm run server:ai` boots a local one on http://localhost:8787).'
+      `[verify:ai] ABORT: /healthz unreachable at ${PROXY_URL}. Boot the ` +
+        `proxy with \`npm run server:ai\` (or set PURA_AI_PROXY_URL to ` +
+        `your deployed proxy).`
     );
     process.exit(2);
   }
+  // eslint-disable-next-line no-console
+  console.log(
+    `[verify:ai] /healthz ok (transport=${health.transport ?? '?'})`
+  );
 
-  // Run sequentially so prior outputs feed later checks. Each check
-  // is wrapped so a failure doesn't abort the rest.
+  // Sequential so prior outputs feed later checks. Each check is wrapped
+  // so a failure doesn't abort the rest.
   let firstScan: FaceScanAnalysis | null = null;
   const checks: CheckResult[] = [];
 
@@ -412,9 +579,7 @@ async function main(): Promise<void> {
       )
     );
     checks.push(
-      await check('composite: progress bundle', () =>
-        checkBundleProgress()
-      )
+      await check('composite: progress bundle', () => checkBundleProgress())
     );
   }
 
