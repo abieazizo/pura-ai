@@ -50,28 +50,7 @@
         }
       ],
       "expo-asset",
-      "expo-secure-store",
-      [
-        "react-native-vision-camera",
-        {
-          "cameraPermissionText": "Pura AI uses your camera for real-time face guidance during scans.",
-          "enableMicrophonePermission": false,
-          "enableCodeScanner": true
-        }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "deploymentTarget": "15.1"
-          },
-          "android": {
-            "minSdkVersion": 26,
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35
-          }
-        }
-      ]
+      "expo-secure-store"
     ]
   }
 }

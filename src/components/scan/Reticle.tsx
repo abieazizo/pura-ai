@@ -1,3 +1,24 @@
+/**
+ * Camera reticle (v11.7).
+ *
+ * The previous version (v11.5–v11.6) carried an `OverlayTone` vocabulary
+ * — neutral / warning / ready / committing — that mirrored a 14-state
+ * face-detection machine. That machine required real on-device face
+ * detection, which Expo Go cannot provide. v11.7 collapses the vocabulary
+ * back to two honest states:
+ *
+ *   • idle      — quiet clay stroke + gentle pulse. Default at all times.
+ *   • preparing — moss-tinted halo + sheen pulse. Only flips ON during
+ *                 the 2-second countdown after the user taps capture.
+ *
+ * No fake "ready" cue. No green ring claiming a face has been detected
+ * — because we don't know, and saying we do would be a lie.
+ *
+ * Once the user has tapped the shutter, the moss halo is HONEST: it
+ * tells them "I'm preparing to capture, hold steady." After capture,
+ * the analyzing screen takes over and the camera unmounts.
+ */
+
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
@@ -10,27 +31,25 @@ import Animated, {
 } from 'react-native-reanimated';
 import { palette, radius } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import type { OverlayTone } from '@/screens/scan/hooks/useFaceScanState';
 
 export type ReticleMode = 'face' | 'product' | 'barcode';
-export type { OverlayTone };
+
+/**
+ * v11.7 — the only two states a reticle should claim about itself
+ * when the platform can't actually see what's in the frame.
+ */
+export type FrameState = 'idle' | 'preparing';
 
 export interface ReticleProps {
   mode: ReticleMode;
   screenWidth: number;
   screenHeight: number;
   /**
-   * v11.5 — overlay tone derived from the face-scan state machine.
-   *   neutral    — quiet stroke, gentle pulse (NO_FACE / boot)
-   *   warning    — sand stroke, slightly stronger (any FACE_OFF_*,
-   *                FACE_PARTIAL, FACE_TOO_*, FACE_LOW_LIGHT,
-   *                FACE_UNSTABLE)
-   *   ready      — moss-tinted ring + slow sheen sweep + halo
-   *                (FACE_READY)
-   *   committing — strong moss + glow + thick stroke
-   *                (FACE_COUNTDOWN, FACE_CAPTURING, FACE_ANALYZING)
+   * v11.7 — drives the visual state. `idle` is the default (clay
+   * stroke, gentle pulse). `preparing` flips on for the 2-second
+   * countdown after the user taps capture (moss halo + sheen).
    */
-  overlayTone?: OverlayTone;
+  frameState?: FrameState;
 }
 
 const CORNER_EXT = 16;
@@ -41,7 +60,7 @@ export function Reticle({
   mode,
   screenWidth,
   screenHeight,
-  overlayTone = 'neutral',
+  frameState = 'idle',
 }: ReticleProps) {
   const reduceMotion = useReduceMotion();
   const pulse = useSharedValue(0);
@@ -64,11 +83,11 @@ export function Reticle({
     return () => cancelAnimation(pulse);
   }, [reduceMotion, pulse, scanLine, sheen]);
 
-  // v11.5 — sheen pulse only animates on ready/committing. Slow
-  // 1.6s sweep that travels across the oval rim by mapping into
-  // a halo ring opacity.
+  // v11.7 — sheen pulse only animates while preparing. Slow 1.6s
+  // sweep that travels across the oval rim by mapping into a halo
+  // ring opacity.
   useEffect(() => {
-    if (overlayTone !== 'ready' && overlayTone !== 'committing') {
+    if (frameState !== 'preparing') {
       cancelAnimation(sheen);
       sheen.value = 0;
       return;
@@ -84,7 +103,7 @@ export function Reticle({
       true
     );
     return () => cancelAnimation(sheen);
-  }, [overlayTone, reduceMotion, sheen]);
+  }, [frameState, reduceMotion, sheen]);
 
   // Barcode scan line.
   useEffect(() => {
@@ -110,54 +129,25 @@ export function Reticle({
     transform: [{ scale: 1.0 + 0.04 * sheen.value }],
   }));
 
-  // ────────────────────────────────────────────────────────────────
-  // Tone → stroke + halo presets. Single source of truth for the
-  // four overlay states.
-  // ────────────────────────────────────────────────────────────────
-  const tonePreset = (() => {
-    if (mode !== 'face') {
-      return {
+  // Tone preset: only face mode flips between idle and preparing;
+  // product and barcode keep the clean clay stroke at all times
+  // (those modes never enter a countdown).
+  const isFacePreparing = mode === 'face' && frameState === 'preparing';
+  const tonePreset = isFacePreparing
+    ? {
+        borderColor: palette.mossDeep,
+        borderWidth: 2,
+        haloEnabled: true,
+        haloColor: palette.mossDeep,
+        haloIntensity: 0.45,
+      }
+    : {
         borderColor: palette.clay,
         borderWidth: STROKE,
         haloEnabled: false,
         haloColor: palette.clay,
+        haloIntensity: 0,
       };
-    }
-    switch (overlayTone) {
-      case 'committing':
-        return {
-          borderColor: palette.mossDeep,
-          borderWidth: 3,
-          haloEnabled: true,
-          haloColor: palette.mossDeep,
-          haloIntensity: 0.65,
-        };
-      case 'ready':
-        return {
-          borderColor: palette.mossDeep,
-          borderWidth: 2,
-          haloEnabled: true,
-          haloColor: palette.mossDeep,
-          haloIntensity: 0.4,
-        };
-      case 'warning':
-        // Subtle amber/sand. Visible without screaming.
-        return {
-          borderColor: palette.amber,
-          borderWidth: 1.5,
-          haloEnabled: false,
-          haloColor: palette.amber,
-        };
-      case 'neutral':
-      default:
-        return {
-          borderColor: palette.clay,
-          borderWidth: STROKE,
-          haloEnabled: false,
-          haloColor: palette.clay,
-        };
-    }
-  })();
 
   // Face oval: 75% width × 50% height, centered
   const faceW = Math.round(screenWidth * 0.75);
@@ -180,10 +170,9 @@ export function Reticle({
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {mode === 'face' ? (
         <Animated.View style={[styles.center, pulseStyle]}>
-          {/* v11.5 — soft outer halo only on ready / committing. The
-              halo sits BEHIND the oval and grows with the sheen
-              pulse so the ready moment reads as expensive premium
-              light, not a neon outline. */}
+          {/* Soft outer halo only when preparing. Sits BEHIND the oval
+              and grows with the sheen pulse so the commit moment reads
+              as expensive premium light, not a neon outline. */}
           {tonePreset.haloEnabled ? (
             <Animated.View
               style={[
@@ -193,11 +182,9 @@ export function Reticle({
                   height: faceH + 24,
                   borderRadius: (faceW + 24) / 2,
                   shadowColor: tonePreset.haloColor,
-                  shadowOpacity:
-                    tonePreset.haloIntensity ?? 0.4,
-                  shadowRadius:
-                    overlayTone === 'committing' ? 24 : 14,
-                  elevation: overlayTone === 'committing' ? 14 : 8,
+                  shadowOpacity: tonePreset.haloIntensity,
+                  shadowRadius: 16,
+                  elevation: 10,
                   borderColor: tonePreset.haloColor,
                   borderWidth: 1,
                 },
@@ -316,8 +303,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // v11.5 — halo behind the oval. Position absolute so its size
-  // doesn't push the oval. Inherits sheen scale from sheenStyle.
+  // v11.7 — halo behind the oval. Position absolute so its size doesn't
+  // push the oval. Inherits sheen scale from sheenStyle. Only renders
+  // while preparing.
   halo: {
     position: 'absolute',
     backgroundColor: 'transparent',

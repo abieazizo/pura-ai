@@ -36,6 +36,8 @@ import type {
   RoutineAction,
   RoutineRecommendation,
   RoutineSlot,
+  ScanPreflightReason,
+  ScanPreflightResult,
   SearchSuggestionResult,
   Severity,
   SkinScoreExplanation,
@@ -368,6 +370,60 @@ export function validateBarcodeResolution(
       : null,
     identity,
     fallback_needed: isBool(v.fallback_needed) ? v.fallback_needed : true,
+  };
+}
+
+// v11.7 — preflight result validator. Strict-mode JSON schema means
+// the model's output is already shape-correct, but we still defend
+// against null / missing fields the same way every other validator
+// does.
+const SCAN_PREFLIGHT_REASONS: readonly ScanPreflightReason[] = [
+  'ok',
+  'no_face',
+  'partial_face',
+  'too_dark',
+  'too_blurry',
+  'not_centered',
+  'unknown',
+];
+
+export function validateScanPreflightResult(
+  v: unknown
+): ScanPreflightResult | null {
+  if (!isObject(v)) {
+    aiLog.warn('validateScanPreflightResult', 'not an object');
+    return null;
+  }
+  if (!inEnum(v.reason, SCAN_PREFLIGHT_REASONS)) {
+    aiLog.warn('validateScanPreflightResult', 'bad reason');
+    return null;
+  }
+  let face_box: ScanPreflightResult['face_box'] = null;
+  if (isObject(v.face_box)) {
+    const fb = v.face_box;
+    if (
+      isFiniteNumber(fb.x) &&
+      isFiniteNumber(fb.y) &&
+      isFiniteNumber(fb.width) &&
+      isFiniteNumber(fb.height)
+    ) {
+      face_box = {
+        x: Math.max(0, Math.min(1, fb.x)),
+        y: Math.max(0, Math.min(1, fb.y)),
+        width: Math.max(0, Math.min(1, fb.width)),
+        height: Math.max(0, Math.min(1, fb.height)),
+      };
+    }
+  }
+  return {
+    face_present: isBool(v.face_present) ? v.face_present : false,
+    full_face_visible: isBool(v.full_face_visible) ? v.full_face_visible : false,
+    centered_enough: isBool(v.centered_enough) ? v.centered_enough : false,
+    lighting_ok: isBool(v.lighting_ok) ? v.lighting_ok : false,
+    blur_ok: isBool(v.blur_ok) ? v.blur_ok : false,
+    face_box,
+    reason: v.reason,
+    retry_message: isString(v.retry_message) ? v.retry_message : '',
   };
 }
 

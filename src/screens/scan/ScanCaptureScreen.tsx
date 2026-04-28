@@ -13,12 +13,7 @@ import { X } from 'phosphor-react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { hapt } from '@/utils/haptics';
 import { ScanOverlay } from '@/screens/scan/ScanOverlay';
-import {
-  useFaceScanState,
-  COUNTDOWN_MS,
-} from '@/screens/scan/hooks/useFaceScanState';
-import { useFaceDetection } from '@/screens/scan/hooks/useFaceDetection';
-import type { ReticleMode } from '@/components/scan/Reticle';
+import type { ReticleMode, FrameState } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
 import type { ZoomValue } from '@/components/scan/ZoomToggle';
 import { palette, space, type as typography } from '@/theme';
@@ -59,8 +54,25 @@ const BARCODE_TYPES: ReadonlyArray<
 > = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128'];
 
 /**
- * v6 scan capture. The camera permission flow (§1 read-only) is preserved
- * verbatim. The overlay chrome is now owned by `<ScanOverlay />`.
+ * v11.7 — duration of the post-tap "hold steady" countdown that runs
+ * before the photo actually fires. The countdown gives users a beat
+ * to settle the camera and reframe if they realise they're crooked.
+ * 2s feels like a deliberate beat without dragging.
+ */
+const COUNTDOWN_MS = 2000;
+
+/**
+ * Scan capture screen (v11.7).
+ *
+ * Honest Expo Go flow. We do NOT pretend to detect a face in real
+ * time — Expo Go + expo-camera@17 ships no detector and we removed
+ * the vision-camera dev-build path that briefly existed in v11.6.
+ *
+ * The model is now: user frames their face → user taps capture →
+ * a 2s countdown runs (frameState='preparing', moss halo visible) →
+ * the photo is taken → the analyzing screen runs a fast preflight
+ * pass on the captured frame, and either continues to full analysis
+ * or routes to ErrorState with a smart, specific reason.
  */
 export function ScanCaptureScreen({
   onClose,
@@ -74,6 +86,11 @@ export function ScanCaptureScreen({
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
   const [zoom, setZoom] = useState<ZoomValue>('1');
   const [capturing, setCapturing] = useState(false);
+  // v11.7 — single source of truth for the reticle/caption visual
+  // state. 'idle' on mount; flips to 'preparing' for COUNTDOWN_MS
+  // after the user taps capture; resets to 'idle' if capture fails.
+  const [frameState, setFrameState] = useState<FrameState>('idle');
+  const [countdownValue, setCountdownValue] = useState<number | null>(null);
   const cameraRef = useRef<CameraView | null>(null);
   const requestedRef = useRef(false);
   const fade = useSharedValue(0);
@@ -97,8 +114,6 @@ export function ScanCaptureScreen({
   //   • the user has scanned before (not their very first scan),
   //   • their last scan was on a different calendar day,
   //   • they haven't already answered today's check-in.
-  // The provider handles the 600ms delay after mount so the camera is
-  // clearly visible before the sheet enters.
   const scansCount = useAppStore((s) => s.scans.length);
   const lastScanIso = useAppStore(
     (s) => s.scans[s.scans.length - 1]?.capturedAt ?? null
@@ -127,54 +142,54 @@ export function ScanCaptureScreen({
     requestTodaySheet,
   ]);
 
+  // Reset frame state any time the mode changes — countdown only
+  // belongs to the face flow.
+  useEffect(() => {
+    setFrameState('idle');
+    setCountdownValue(null);
+  }, [mode]);
+
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOverlay.value }));
 
-  // v11.5 — face-scan state machine (single source of truth).
-  // The hook owns NO_FACE / FACE_READY / FACE_COUNTDOWN / etc.
-  // Without on-device face detection (expo-camera@17 in Expo Go
-  // ships none), the truthful subset emitted today is:
-  //   NO_FACE → FACE_READY → FACE_COUNTDOWN → FACE_CAPTURING.
-  // The full vocabulary is available the moment a detector is wired
-  // (call faceScan.report({...}) on each detector frame — see
-  // useFaceScanState.ts).
-  const faceScan = useFaceScanState({
-    permissionGranted: !!permission?.granted,
-    isFaceMode: mode === 'face',
-  });
-
-  // v11.6 — real face detection via vision-camera + ML-Kit. The
-  // hook is a no-op in Expo Go (returns available:false); in a
-  // custom dev build it streams ML-Kit detections through a
-  // worklet to faceScan.report() per frame.
-  const detection = useFaceDetection({ onReport: faceScan.report });
-  const visionCameraRef = useRef<unknown>(null);
-  const useVisionCamera = detection.available && mode === 'face';
-
   const onCapture = useCallback(async () => {
     if (!cameraRef.current || capturing) return;
+    if (frameState === 'preparing') return; // already counting down
+
     if (mode !== 'face') {
       // Product / barcode skip the prepare ceremony — the user is
       // pointing at an inanimate object and expects an instant
       // shutter response.
+      hapt.tap();
       return runCapture();
     }
-    // Face mode: gate on canCapture from the state machine. If the
-    // user taps when not ready, the live guidance message already
-    // tells them what to fix (model.message) — we just no-op the
-    // shutter to avoid wasting tokens on a known-bad frame.
-    if (!faceScan.model.canCapture) {
-      hapt.warning();
-      return;
-    }
+
+    // Face mode: tap → 2s "hold steady" countdown → fire. The
+    // countdown is deliberate; even though we can't validate the
+    // frame on-device, we want to give the user a beat to settle
+    // the camera and reframe if they realise they're crooked. The
+    // post-capture preflight call (in ScanAnalyzing) catches the
+    // bad photos.
     hapt.tap();
-    faceScan.startCountdown();
+    setFrameState('preparing');
+    const startedAt = Date.now();
+    setCountdownValue(Math.ceil(COUNTDOWN_MS / 1000));
+    const tickId = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const remainingMs = Math.max(0, COUNTDOWN_MS - elapsed);
+      const next = Math.ceil(remainingMs / 1000);
+      setCountdownValue(next > 0 ? next : null);
+    }, 200);
     const t = setTimeout(async () => {
-      faceScan.markCapturing();
+      clearInterval(tickId);
+      setCountdownValue(null);
       hapt.medium();
       await runCapture();
     }, COUNTDOWN_MS);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      clearInterval(tickId);
+    };
 
     async function runCapture() {
       setCapturing(true);
@@ -184,18 +199,7 @@ export function ScanCaptureScreen({
       });
       try {
         let uri: string | undefined;
-        if (useVisionCamera && visionCameraRef.current) {
-          // VisionCamera v5: takePhoto returns { path }; convert to file:// uri.
-          const ref = visionCameraRef.current as {
-            takePhoto: (opts: object) => Promise<{ path: string }>;
-          };
-          const photo = await ref.takePhoto({ flash: 'off' });
-          uri = photo?.path
-            ? photo.path.startsWith('file://')
-              ? photo.path
-              : `file://${photo.path}`
-            : undefined;
-        } else if (cameraRef.current) {
+        if (cameraRef.current) {
           const photo = await cameraRef.current.takePictureAsync({
             quality: 0.85,
             skipProcessing: true,
@@ -206,14 +210,16 @@ export function ScanCaptureScreen({
           onCaptured(uri, toAnalysisMode(mode));
         } else {
           setCapturing(false);
-          faceScan.reset();
+          setFrameState('idle');
+          setCountdownValue(null);
         }
       } catch {
         setCapturing(false);
-        faceScan.reset();
+        setFrameState('idle');
+        setCountdownValue(null);
       }
     }
-  }, [capturing, faceScan, flashOverlay, onCaptured, mode]);
+  }, [capturing, flashOverlay, frameState, mode, onCaptured]);
 
   const onGalleryPick = useCallback(
     (uri: string) => {
@@ -226,8 +232,7 @@ export function ScanCaptureScreen({
    * v10.32 — barcode auto-fire. expo-camera streams every detection
    * frame so we debounce on `capturing` to make sure we navigate
    * away on the first valid hit and never re-fire while leaving the
-   * screen. The ref-based scannedRef is belt-and-braces — React's
-   * batched setState can lag behind the rapid frame callbacks.
+   * screen.
    */
   const scannedRef = useRef(false);
   const handleBarcodeScanned = useCallback(
@@ -286,61 +291,28 @@ export function ScanCaptureScreen({
 
   // Zoom: expo-camera's `zoom` prop is 0 (1×) to 1 (max). Rough mapping for
   // our two-position toggle — 0 = 1×, 0.5 for a wider framing is not
-  // possible natively, so ".5×" falls back to 0 on single-lens devices. We
-  // render the toggle per spec anyway.
+  // possible natively, so ".5×" falls back to 0 on single-lens devices.
   const zoomValue = zoom === '0.5' ? 0 : 0;
 
   // expo-camera `enableTorch` is the on-flash analogue; front camera in
   // face mode doesn't support torch — we gracefully ignore.
   const flashOn = flashMode === 'on';
 
-  // v11.6 — render either VisionCamera (real face detection,
-  // requires custom dev build) or expo-camera CameraView (legacy
-  // path that still works in Expo Go without face detection).
-  // useVisionCamera = (detection.available && mode === 'face').
-  // Other modes always use expo-camera since the barcode scanner
-  // and product capture don't need vision-camera.
-  const VisionCameraComponent = detection.Camera as
-    | React.ComponentType<{
-        ref: React.MutableRefObject<unknown>;
-        style: object;
-        device: unknown;
-        isActive: boolean;
-        photo: boolean;
-        frameProcessor?: unknown;
-      }>
-    | null;
-
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      {useVisionCamera && VisionCameraComponent && detection.device ? (
-        <VisionCameraComponent
-          ref={visionCameraRef}
-          style={StyleSheet.absoluteFillObject}
-          device={detection.device}
-          isActive={true}
-          photo={true}
-          frameProcessor={detection.frameProcessor}
-        />
-      ) : (
-        <CameraView
-          ref={cameraRef}
-          style={StyleSheet.absoluteFillObject}
-          facing={mode === 'face' ? 'front' : 'back'}
-          animateShutter={false}
-          enableTorch={flashOn && mode !== 'face'}
-          zoom={zoomValue}
-          barcodeScannerSettings={
-            mode === 'barcode'
-              ? { barcodeTypes: [...BARCODE_TYPES] }
-              : undefined
-          }
-          onBarcodeScanned={
-            mode === 'barcode' ? handleBarcodeScanned : undefined
-          }
-        />
-      )}
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFillObject}
+        facing={mode === 'face' ? 'front' : 'back'}
+        animateShutter={false}
+        enableTorch={flashOn && mode !== 'face'}
+        zoom={zoomValue}
+        barcodeScannerSettings={
+          mode === 'barcode' ? { barcodeTypes: [...BARCODE_TYPES] } : undefined
+        }
+        onBarcodeScanned={mode === 'barcode' ? handleBarcodeScanned : undefined}
+      />
 
       <Animated.View
         style={[StyleSheet.absoluteFillObject, fadeStyle]}
@@ -358,7 +330,8 @@ export function ScanCaptureScreen({
           onExit={onClose}
           onHelp={onOpenHelp}
           analyzing={capturing}
-          faceModel={mode === 'face' ? faceScan.model : null}
+          frameState={frameState}
+          countdown={countdownValue}
         />
       </Animated.View>
 

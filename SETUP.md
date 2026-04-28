@@ -1,38 +1,34 @@
 # Pura AI — local setup
 
-## v11.6 — IMPORTANT: this app now requires a custom dev build
+## v11.7 — runs in Expo Go
 
-As of v11.6 the scan flow uses **real on-device face detection** via
-`react-native-vision-camera` + `vision-camera-face-detector`. Those
-are native modules that **do not exist in Expo Go**. You need to
-produce a custom dev build once:
+The app launches in stock **Expo Go** — no `prebuild`, no custom dev
+build, no native modules to install. `npm install` followed by
+`npm start` is everything you need to boot the bundle on a real phone.
 
-```bash
-npm install
-npx expo prebuild --clean
-npx expo run:ios     # or `run:android` on Windows / Linux
-```
+Honest note about the scan flow: Expo Go (and the version of
+`expo-camera` Expo Go ships) does not expose an on-device face
+detector, so we don't pretend to do live face tracking. Instead the
+flow is **capture-first, validate-immediately**:
 
-After that first build, day-to-day dev uses:
+1. The user frames their face inside the oval and taps the shutter.
+2. A 2-second "hold steady" countdown plays so the user can settle.
+3. The photo is captured.
+4. A fast OpenAI Vision **preflight** call checks the captured image
+   for a present, full, centered, in-focus, well-lit face.
+5. If preflight fails, the user lands on a smart, condition-specific
+   error screen (no face / partial face / poor lighting / blurry)
+   without paying for the full skin analysis.
+6. If preflight passes, the full analysis runs as before.
 
-```bash
-npx expo run:ios     # rebuild + launch
-# or
-npx expo start --dev-client   # skip rebuild, attach to last build
-```
+This costs one extra cheap vision call per scan but means the user
+gets actionable feedback in seconds when their photo is unusable —
+and the experience is *truthful*: we never claim to detect things we
+can't.
 
-**Expo Go fallback**: if you don't run `prebuild` and you launch in
-Expo Go, the scan screen detects the missing native modules at
-runtime (`useFaceDetection.ts::nativeFaceDetectionAvailable === false`)
-and falls back to the legacy `expo-camera` path with manual capture
-+ post-capture condition-aware failure (no live face guidance). The
-app still runs end-to-end, but the real-time guidance only lights up
-in the dev build. This fallback exists so a teammate browsing the
-repo can still launch it.
-
-To get the **real AI path live** (assistant + scan + matching +
-progress + suggestions all backed by OpenAI / `gpt-5-mini` + `gpt-5`)
-you also need:
+To get the **real AI path live** (assistant + scan + preflight +
+matching + progress + suggestions, all backed by OpenAI /
+`gpt-5-mini` + `gpt-5`) you need:
 
 1. an OpenAI API key in `.env` (the `OPENAI_API_KEY` line)
 2. one terminal running **`npm start`** for local dev
@@ -157,7 +153,7 @@ curl http://localhost:8787/healthz
 # {"ok":true,"transport":"proxy","uptime_s":12}
 ```
 
-If `ok` is `false`, the server failed to start. Check `ANTHROPIC_API_KEY`.
+If `ok` is `false`, the server failed to start. Check `OPENAI_API_KEY`.
 
 ### B. The verification script
 
@@ -324,6 +320,6 @@ header.
 | Home banner: **AI proxy unreachable** | Proxy not running, or wrong URL | `npm run server:ai`; check the URL points at it |
 | `verify:ai` 401 errors | Token mismatch | Ensure `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN` (client) matches `PURA_AI_PROXY_TOKEN` (server) |
 | All replies start with "Live AI isn't connected…" | Same as above; gateway is in fallback | Check `/healthz` from the host first |
-| Server logs `cannot start: ANTHROPIC_API_KEY is missing` | The key isn't exported in the shell launching the proxy AND `.env` hasn't been loaded | Put the key in `.env` (auto-loaded by the proxy at boot) |
+| Server logs `cannot start: OPENAI_API_KEY is missing` | The key isn't exported in the shell launching the proxy AND `.env` hasn't been loaded | Put the key in `.env` (auto-loaded by the proxy at boot) |
 | Phone can't reach proxy | Wrong proxy URL on the client (still pointing at localhost) | `npm run lanip` to get the LAN URL, paste into `.env`, restart Expo |
 | Barcode scan returns "no match" for a real product barcode | Open Beauty Facts doesn't have it indexed | Expected — the AI surfaces `fallback_needed: true` and the UX nudges the user to take a product image instead |

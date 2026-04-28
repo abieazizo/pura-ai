@@ -8,11 +8,7 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Question, X } from 'phosphor-react-native';
-import { Reticle, type ReticleMode } from '@/components/scan/Reticle';
-import type {
-  FaceScanModel,
-  OverlayTone,
-} from '@/screens/scan/hooks/useFaceScanState';
+import { Reticle, type ReticleMode, type FrameState } from '@/components/scan/Reticle';
 import { Caption } from '@/components/scan/Caption';
 import { ZoomToggle, type ZoomValue } from '@/components/scan/ZoomToggle';
 import { ModeSelector } from '@/components/scan/ModeSelector';
@@ -35,29 +31,37 @@ export interface ScanOverlayProps {
   /** True while capture is in-flight; drives the analysis ring. */
   analyzing?: boolean;
   /**
-   * v11.5 — the face-scan state machine model. When mode === 'face',
-   * the overlay reads `tone`, `message`, `countdownValue`, and
-   * `canCapture` from this single object. Other modes pass null
-   * because the machine doesn't apply.
+   * v11.7 — simple two-state frame model. `idle` is the resting
+   * state. `preparing` flips on for the 2-second hold-steady
+   * countdown after the user taps capture. No faked face-detection
+   * states, because the platform (Expo Go + expo-camera@17) cannot
+   * actually detect a face.
    */
-  faceModel?: FaceScanModel | null;
+  frameState?: FrameState;
+  /**
+   * v11.7 — countdown number rendered inside the shutter during
+   * preparing. null when not preparing.
+   */
+  countdown?: number | null;
 }
 
 /**
- * v10 scan overlay. Lives as an absolute layer on top of the camera feed.
+ * v11.7 scan overlay. Lives as an absolute layer on top of the camera
+ * feed.
  *
- * Chrome system (v10):
- * - Top-left: single X close button in a frosted-ink pill (cool ink @ 45% +
- *   1pt white hairline). No PuraMark-with-× overloading the brand mark.
- * - Top-right: ? help button, same treatment. Both buttons read as "camera
- *   chrome" rather than "branded utility buttons".
- * - Exit taps fire immediately. No Alert.alert — the user taps the close
- *   icon with clear intent; confirming it would be the opposite of premium
- *   camera behavior. Haptic lands the decision.
- * - Ink scrims (top 120pt, bottom 280pt) preserved at 60% for legibility.
+ * Chrome system (unchanged from v10):
+ * - Top-left: single X close button in a frosted-ink pill.
+ * - Top-right: ? help button, same treatment.
+ * - Ink scrims (top 120pt, bottom 280pt) at 60% for legibility.
+ * - Bottom dock: zoom → mode → ON-DEVICE → capture, each on its own
+ *   row with explicit gaps.
  *
- * Dock order unchanged: zoom → mode → ON-DEVICE → capture, each on its own
- * row with explicit gaps.
+ * What changed in v11.7: dropped the FaceScanModel / OverlayTone
+ * vocabulary and the 14-state machine that produced it, because Expo
+ * Go cannot drive that machine truthfully. The overlay now takes a
+ * simple `frameState` ('idle' | 'preparing') + `countdown` pair from
+ * the parent, which is itself driven by user taps rather than
+ * pretend-detection.
  */
 export function ScanOverlay({
   mode,
@@ -71,11 +75,9 @@ export function ScanOverlay({
   onExit,
   onHelp,
   analyzing,
-  faceModel = null,
+  frameState = 'idle',
+  countdown = null,
 }: ScanOverlayProps) {
-  const overlayTone: OverlayTone = faceModel?.overlayTone ?? 'neutral';
-  const captionMessage = faceModel?.message;
-  const countdown = faceModel?.countdownValue ?? null;
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
@@ -90,9 +92,9 @@ export function ScanOverlay({
   };
 
   // Caption sits 32pt below the reticle lower edge by default. On
-  // small phones the bottom dock (zoom + mode + ON-DEVICE + capture)
-  // can crowd the caption out of legible space, so v11.4 clamps the
-  // caption to AT LEAST 56pt above the bottom dock top.
+  // small phones the bottom dock can crowd the caption out of legible
+  // space, so we clamp the caption to AT LEAST 56pt above the bottom
+  // dock top.
   const reticleHalf =
     mode === 'face'
       ? Math.round(height * 0.25)
@@ -109,34 +111,20 @@ export function ScanOverlay({
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {/* Ink scrims (§2.3): top 120pt fades down, bottom 280pt fades up.
-          SVG lets us do an actual gradient without expo-linear. */}
-      <Scrim
-        placement="top"
-        width={width}
-        height={120}
-      />
-      <Scrim
-        placement="bottom"
-        width={width}
-        height={280}
-      />
+      {/* Ink scrims: top 120pt fades down, bottom 280pt fades up. */}
+      <Scrim placement="top" width={width} height={120} />
+      <Scrim placement="bottom" width={width} height={280} />
 
       {/* Reticle layer */}
       <Reticle
         mode={mode}
         screenWidth={width}
         screenHeight={height}
-        overlayTone={overlayTone}
+        frameState={frameState}
       />
 
-      {/* Caption 40pt below reticle lower edge */}
-      <Caption
-        mode={mode}
-        top={captionTop}
-        message={captionMessage}
-        overlayTone={overlayTone}
-      />
+      {/* Caption 32pt below reticle lower edge */}
+      <Caption mode={mode} top={captionTop} frameState={frameState} />
 
       {/* Top-left — clean X close */}
       <Pressable
@@ -168,8 +156,7 @@ export function ScanOverlay({
         <Question size={18} color={palette.bg} weight="duotone" />
       </Pressable>
 
-      {/* Bottom dock (§2.3): zoom → mode → ON-DEVICE → capture, each its
-          own row with explicit gaps. Nothing overlaps. */}
+      {/* Bottom dock: zoom → mode → ON-DEVICE → capture. */}
       <View
         pointerEvents="box-none"
         style={[
@@ -207,8 +194,7 @@ export function ScanOverlay({
 
 /**
  * Single SVG scrim. Placement `top` fades ink @ 60% down to transparent;
- * `bottom` fades ink @ 60% up. Uses `palette.ink` (cool ink #0B1220 in v8+),
- * never pure black.
+ * `bottom` fades ink @ 60% up.
  */
 function Scrim({
   placement,
@@ -247,14 +233,6 @@ function Scrim({
   );
 }
 
-// v10 — scan camera chrome redesigned. The prior treatment (warm-sand
-// pill backgrounds + PuraMark-with-clay-× for close) had three problems:
-// brand mark overloaded with a destructive action, tint color from the
-// v5/v6 palette still leaking into v8+ cool surfaces, and an Alert.alert
-// confirm that violated the app-wide no-Alert rule. Replaced with frosted
-// cool-ink chips (ink @ 45% + 1pt white hairline) and a single-tap close.
-// Matches premium iOS / health-tech camera language — the chrome reads as
-// "system utility", not "branded marketing".
 const styles = StyleSheet.create({
   scrim: {
     position: 'absolute',

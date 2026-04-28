@@ -43,6 +43,7 @@ import type {
   ProductMatchResult,
   ProgressExplanation,
   RoutineRecommendation,
+  ScanPreflightResult,
   SearchSuggestionResult,
   SkinScoreExplanation,
   SupportedImageMediaType,
@@ -57,6 +58,7 @@ import {
   PRODUCT_MATCH_RESULT_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
   ROUTINE_RECOMMENDATION_SCHEMA,
+  SCAN_PREFLIGHT_RESULT_SCHEMA,
   SEARCH_SUGGESTION_RESULT_SCHEMA,
   SKIN_SCORE_EXPLANATION_SCHEMA,
 } from '../../src/ai/ai-contracts';
@@ -220,6 +222,70 @@ export class OpenAIClient {
         }`
       );
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // 0. Scan preflight (v11.7).
+  //
+  // Fast vision call that runs IMMEDIATELY after capture, before
+  // analyzeFaceScan. Returns a tight structured judgement on whether
+  // the photo is usable for the expensive analysis pass. Saves
+  // tokens on obviously bad captures and powers the smart
+  // condition-aware error UI in Expo Go (where we can't truthfully
+  // pre-validate before capture).
+  // --------------------------------------------------------------------------
+
+  async validateScanPreflight(params: {
+    imageBase64: string;
+    mediaType: SupportedImageMediaType;
+  }): Promise<ScanPreflightResult> {
+    const system =
+      'You are the face-scan preflight validator for Pura AI. Your ' +
+      'job is fast: look at the supplied photo and decide whether it ' +
+      'is usable for a structured skin analysis. You return EXACTLY ' +
+      'the JSON object specified by the schema. No prose.\n\n' +
+      'Hard rules:\n' +
+      '• face_present — true if a human face is clearly visible.\n' +
+      '• full_face_visible — true only if forehead, both cheeks, and ' +
+      'chin are all inside the frame. False if any of those is cut ' +
+      'off at an edge.\n' +
+      '• centered_enough — true if the face center is within roughly ' +
+      'the middle third of both axes.\n' +
+      '• lighting_ok — true if the face is evenly lit and skin ' +
+      'features are readable. False if too dark, too bright, or ' +
+      'heavily shadowed.\n' +
+      '• blur_ok — true if facial features are sharp enough to read ' +
+      'skin texture. False if the photo is motion-blurred or ' +
+      'out of focus.\n' +
+      '• face_box — when face_present is true, return the face ' +
+      'bounding box normalised to [0, 1] over the photo width/height. ' +
+      'When false, return null.\n' +
+      '• reason — pick the SINGLE most-actionable failure, in this ' +
+      'priority order: no_face → partial_face → too_dark → ' +
+      'too_blurry → not_centered → unknown. Use "ok" only when every ' +
+      'other field above is true.\n' +
+      '• retry_message — one short, calm, premium sentence the user ' +
+      'reads on the retry screen ("Try again with your full face ' +
+      'centered in the frame."). Empty string when reason is "ok".\n' +
+      '• Be conservative on lighting_ok / blur_ok: only fail when a ' +
+      'human would also struggle to read the photo. The downstream ' +
+      'analyzer is robust to mild conditions.';
+
+    const userContent = this.buildImageUserContent(
+      params.imageBase64,
+      params.mediaType,
+      'Validate this photo for a face-scan analysis and return the ' +
+        'structured ScanPreflightResult.'
+    );
+
+    return this.runStrictStructured<ScanPreflightResult>({
+      system,
+      userContent,
+      schemaName: 'scan_preflight_result',
+      schema: SCAN_PREFLIGHT_RESULT_SCHEMA,
+      // Smaller cap — preflight is intentionally tight.
+      maxTokens: 400,
+    });
   }
 
   // --------------------------------------------------------------------------

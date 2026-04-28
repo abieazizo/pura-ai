@@ -170,6 +170,56 @@ export interface BarcodeResolution {
 }
 
 // ============================================================================
+// v11.7 — Scan preflight.
+//
+// Expo Go cannot do real-time face detection (no native ML-Kit / no
+// vision-camera in Expo Go). Instead of pretending to know face
+// alignment BEFORE capture, the app captures, then runs a fast
+// vision call to validate the photo BEFORE spending tokens on the
+// full FaceScanAnalysis path. If the preflight rejects the photo,
+// the UI surfaces a smart condition-aware error instead of running
+// the expensive analysis on a known-bad capture.
+// ============================================================================
+
+export type ScanPreflightReason =
+  | 'ok'
+  | 'no_face'
+  | 'partial_face'
+  | 'too_dark'
+  | 'too_blurry'
+  | 'not_centered'
+  | 'unknown';
+
+export interface ScanPreflightResult {
+  /** Whether a face is visible at all in the captured photo. */
+  face_present: boolean;
+  /** Whether the visible face has all key features (forehead, both
+   *  cheeks, chin) inside the frame. False = cropped at an edge. */
+  full_face_visible: boolean;
+  /** Whether the face is roughly centered (center within the
+   *  middle third of both axes). False = significantly off-center. */
+  centered_enough: boolean;
+  /** Whether the photo's lighting is acceptable for analysis. */
+  lighting_ok: boolean;
+  /** Whether the photo is sharp enough to read skin texture from. */
+  blur_ok: boolean;
+  /** Face bounds normalised to [0, 1] of the photo's natural width
+   *  and height. Null when no face was detected. The analyzing
+   *  screen uses this to anchor region overlays (cheeks, chin, etc)
+   *  to the actual face position. */
+  face_box: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+  /** Single most-actionable reason. UI maps this to copy. */
+  reason: ScanPreflightReason;
+  /** Short user-facing retry message — already friendly + premium. */
+  retry_message: string;
+}
+
+// ============================================================================
 // Product matching — ranks a set of candidate products against the user.
 // ============================================================================
 
@@ -687,6 +737,62 @@ export const BARCODE_RESOLUTION_SCHEMA: JsonSchema = {
 };
 
 // ----------------------------------------------------------------------------
+// v11.7 — Scan preflight schema.
+// Strict JSON schema for the fast vision call that validates a
+// captured photo before the expensive FaceScanAnalysis fires.
+// ----------------------------------------------------------------------------
+
+const PREFLIGHT_REASON_ENUM: readonly ScanPreflightReason[] = [
+  'ok',
+  'no_face',
+  'partial_face',
+  'too_dark',
+  'too_blurry',
+  'not_centered',
+  'unknown',
+];
+
+export const SCAN_PREFLIGHT_RESULT_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'face_present',
+    'full_face_visible',
+    'centered_enough',
+    'lighting_ok',
+    'blur_ok',
+    'face_box',
+    'reason',
+    'retry_message',
+  ],
+  properties: {
+    face_present: { type: 'boolean' },
+    full_face_visible: { type: 'boolean' },
+    centered_enough: { type: 'boolean' },
+    lighting_ok: { type: 'boolean' },
+    blur_ok: { type: 'boolean' },
+    face_box: {
+      oneOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['x', 'y', 'width', 'height'],
+          properties: {
+            x: { type: 'number', minimum: 0, maximum: 1 },
+            y: { type: 'number', minimum: 0, maximum: 1 },
+            width: { type: 'number', minimum: 0, maximum: 1 },
+            height: { type: 'number', minimum: 0, maximum: 1 },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
+    reason: { type: 'string', enum: [...PREFLIGHT_REASON_ENUM] },
+    retry_message: { type: 'string' },
+  },
+};
+
+// ----------------------------------------------------------------------------
 // Product matching result schema.
 // ----------------------------------------------------------------------------
 
@@ -879,6 +985,7 @@ export interface AIStructuredSchemas {
   PRODUCT_IDENTITY_SCHEMA: JsonSchema;
   BARCODE_LOOKUP_TOOL_SCHEMA: JsonSchema;
   BARCODE_RESOLUTION_SCHEMA: JsonSchema;
+  SCAN_PREFLIGHT_RESULT_SCHEMA: JsonSchema;
   PRODUCT_MATCH_RESULT_SCHEMA: JsonSchema;
   ROUTINE_RECOMMENDATION_SCHEMA: JsonSchema;
   SKIN_SCORE_EXPLANATION_SCHEMA: JsonSchema;
@@ -891,6 +998,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   PRODUCT_IDENTITY_SCHEMA,
   BARCODE_LOOKUP_TOOL_SCHEMA,
   BARCODE_RESOLUTION_SCHEMA,
+  SCAN_PREFLIGHT_RESULT_SCHEMA,
   PRODUCT_MATCH_RESULT_SCHEMA,
   ROUTINE_RECOMMENDATION_SCHEMA,
   SKIN_SCORE_EXPLANATION_SCHEMA,

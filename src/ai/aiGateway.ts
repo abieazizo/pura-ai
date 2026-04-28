@@ -55,6 +55,7 @@ import type {
   ProductMatchResult,
   ProgressExplanation,
   RoutineRecommendation,
+  ScanPreflightResult,
   SearchSuggestionResult,
   SkinScoreExplanation,
   SupportedImageMediaType,
@@ -70,6 +71,7 @@ import {
   validateProgressBundle,
   validateProgressExplanation,
   validateRoutineRecommendation,
+  validateScanPreflightResult,
   validateScanToPlanBundle,
   validateScannedProductFit,
   validateSearchSuggestionResult,
@@ -129,6 +131,8 @@ export class AIValidationError extends Error {
 // ---------------------------------------------------------------------------
 
 const TIMEOUT_MS = {
+  // v11.7 — preflight: tight budget. The whole point is fast.
+  validateScanPreflight: 12_000,
   analyzeFaceScan: 60_000,
   identifyProductFromImage: 45_000,
   normalizeBarcodeResolution: 30_000,
@@ -500,6 +504,18 @@ export interface AIGateway {
   proxyUrl(): string;
   proxyUrlSource(): ProxySource;
 
+  /**
+   * v11.7 — fast preflight to validate the captured photo BEFORE
+   * the expensive analyzeFaceScan call. Returns a structured
+   * ScanPreflightResult with face_box + reason; UI uses the reason
+   * to short-circuit obviously bad captures into the
+   * condition-aware retry screen.
+   */
+  validateScanPreflight(params: {
+    imageBase64: string;
+    mediaType: SupportedImageMediaType;
+  }): Promise<ScanPreflightResult>;
+
   analyzeFaceScan(params: {
     imageBase64: string;
     mediaType: SupportedImageMediaType;
@@ -605,6 +621,15 @@ const gateway: AIGateway = {
   },
   proxyUrlSource() {
     return _activeCandidate.source;
+  },
+
+  async validateScanPreflight(params) {
+    ensureAvailable();
+    return runMethod({
+      method: 'validateScanPreflight',
+      body: params,
+      validate: validateScanPreflightResult,
+    });
   },
 
   async analyzeFaceScan(params) {

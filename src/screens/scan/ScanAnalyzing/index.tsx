@@ -18,6 +18,8 @@ import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { analyzeFaceScan } from '@/api';
+import { preflightFaceScan } from '@/api/scan';
+import type { ScanPreflightReason } from '@/ai/ai-contracts';
 import { useAppStore, useScanCount } from '@/store/useAppStore';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { palette } from '@/theme';
@@ -97,6 +99,26 @@ export function ScanAnalyzingFaceScreen({
 
     (async () => {
       try {
+        // v11.7 — capture-first, validate-immediately. Run a fast,
+        // cheap preflight pass on the captured photo BEFORE the
+        // expensive analyzeFaceScan call. If preflight fails (no face,
+        // partial face, too dark, blurry, off-center), short-circuit
+        // straight to ErrorState with the matching reason so the user
+        // gets actionable feedback in seconds rather than waiting on
+        // the full analysis just to be told their photo is unusable.
+        //
+        // Preflight returns null when the AI gateway is unavailable —
+        // in that case we skip preflight and fall through to the
+        // (deterministic-fallback or full AI) analyze pass, which
+        // matches the existing fallback contract.
+        const preflight = await preflightFaceScan({ photoUri });
+        if (cancelled) return;
+        if (preflight && preflight.reason !== 'ok') {
+          errorReasonRef.current = mapPreflightReason(preflight.reason);
+          apiErroredRef.current = true;
+          return;
+        }
+
         const scan = await analyzeFaceScan({
           photoUri,
           previousScan,
@@ -266,6 +288,31 @@ function inferReasonFromIssues(
   if (issues.includes('occluded')) return 'no_face_detected';
   if (findingsCount === 0) return 'no_face_detected';
   return 'unknown';
+}
+
+/**
+ * v11.7 — map a `ScanPreflightReason` (from the cheap vision-preflight
+ * pass) onto our existing `ErrorStateReason` vocabulary. The preflight
+ * model is intentionally narrower than the full analysis: it only
+ * decides whether the captured frame is usable AT ALL, so we don't
+ * carry an `angled` bucket here — `not_centered` covers framing.
+ */
+function mapPreflightReason(r: ScanPreflightReason): ErrorStateReason {
+  switch (r) {
+    case 'no_face':
+      return 'no_face_detected';
+    case 'partial_face':
+      return 'partial_face';
+    case 'too_dark':
+      return 'poor_lighting';
+    case 'too_blurry':
+      return 'blurry';
+    case 'not_centered':
+      return 'partial_face';
+    case 'unknown':
+    default:
+      return 'unknown';
+  }
 }
 
 export type { Beat };

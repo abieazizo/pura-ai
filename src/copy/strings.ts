@@ -193,7 +193,10 @@ export const scan = {
   modeProduct: 'Product',
   closeLabel: 'Close scan',
   shutterLabel: 'Capture scan',
-  hintFace: 'Soft light. Steady hand. Thirty seconds.',
+  // v11.7 — honest face-mode hint. The Caption component owns the
+  // rotating in-camera tips; this short line is reserved for any
+  // ambient surface (e.g. tutorials) that needs a single one-liner.
+  hintFace: 'Center your full face. We’ll check the photo before analyzing.',
   hintProduct: 'Frame the label or barcode.',
   analyzing: {
     // §4.6 — a single quiet line during analysis. The Mark's pulse does the

@@ -75,6 +75,35 @@ async function readImageAsBase64(photoUri: string): Promise<string> {
 // Face scan.
 // ---------------------------------------------------------------------------
 
+/**
+ * v11.7 — fast preflight on a captured photo. Validates face
+ * presence / centering / lighting / blur via a single low-token
+ * vision call BEFORE the expensive analyzeFaceScan path. Returns
+ * null when the AI gateway is unavailable (caller decides whether
+ * to skip preflight or block).
+ */
+export async function preflightFaceScan(args: {
+  photoUri: string;
+}): Promise<import('@/ai/ai-contracts').ScanPreflightResult | null> {
+  if (!aiGateway.isAvailable()) return null;
+  let imageBase64: string | null = null;
+  try {
+    imageBase64 = await readImageAsBase64(args.photoUri);
+  } catch (e) {
+    aiLog.warn('preflightFaceScan', 'failed to read image bytes', {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+  if (!imageBase64) return null;
+  const result = await tryAi(() =>
+    aiGateway.validateScanPreflight({
+      imageBase64,
+      mediaType: 'image/jpeg',
+    })
+  );
+  return result;
+}
+
 export async function analyzeFaceScan(args: {
   photoUri: string;
   previousScan?: Scan;

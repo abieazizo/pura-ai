@@ -21,6 +21,7 @@ import {
   validateProgressBundle,
   validateProgressExplanation,
   validateRoutineRecommendation,
+  validateScanPreflightResult,
   validateScanToPlanBundle,
   validateScannedProductFit,
   validateSearchSuggestionResult,
@@ -153,6 +154,17 @@ export type Handler = (
 ) => Promise<unknown>;
 
 export const HANDLERS: Record<string, Handler> = {
+  async validateScanPreflight(client, body) {
+    const params = {
+      imageBase64: reqString(body, 'imageBase64'),
+      mediaType: reqMediaType(body, 'mediaType'),
+    };
+    const result = await client.validateScanPreflight(params);
+    const validated = validateScanPreflightResult(result);
+    if (!validated) aiBad('validateScanPreflight');
+    return validated;
+  },
+
   async analyzeFaceScan(client, body) {
     const params = {
       imageBase64: reqString(body, 'imageBase64'),
