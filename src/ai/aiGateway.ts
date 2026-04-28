@@ -3,17 +3,17 @@
  *
  * This file is the only thing the React Native bundle imports when it
  * needs AI. It is strictly fetch-based:
- *   • no `@anthropic-ai/sdk` import (the SDK pulls Node-only resources
+ *   • no provider SDK import (the OpenAI SDK pulls Node-only resources
  *     and a beta path Metro can't resolve, so it MUST stay server-only)
  *   • no import of any file under `server/`
- *   • no instantiation of the Anthropic SDK at any branch, ever
+ *   • no instantiation of any provider SDK at any branch, ever
  *
  * Two transports:
  *
  *   1. PROXY (production / dev)
  *      Active when `EXPO_PUBLIC_PURA_AI_PROXY_URL` is set. Every method
  *      POSTs JSON to `<proxy_url>/<method-name>`. The proxy server
- *      (see `server/aiProxy.ts`) holds the Anthropic API key, runs
+ *      (see `server/aiProxy.ts`) holds the OpenAI API key, runs
  *      the SDK server-side, validates the structured output, and
  *      returns it. The client adds an `Authorization: Bearer <token>`
  *      header from `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN` when present.
@@ -40,7 +40,7 @@
  *   • Bearer-token auth header on every proxy call.
  *
  * The "direct" SDK transport that previously lived here was removed
- * in v10.24 — embedding the Anthropic SDK in the RN bundle is
+ * in v10.24 — embedding any provider SDK in the RN bundle is
  * infeasible (Metro can't resolve the SDK's beta resource paths) and
  * exposes the API key. Local development now uses the same proxy
  * (`npm run server:ai`).
@@ -174,7 +174,7 @@ function envString(name: string): string {
  *     its own loopback. No firewall changes needed.
  *
  * Result: zero env config required for dev. Phone reaches Metro on
- * 8081 → Metro forwards to local proxy → Anthropic. The same path
+ * 8081 → Metro forwards to local proxy → OpenAI. The same path
  * the bundle takes.
  *
  * Order of precedence:
@@ -203,7 +203,7 @@ interface ProxyCandidate {
  * v10.39 — build the list of plausible proxy URLs.
  *
  * As of v10.39 the metro-middleware path serves AI responses
- * IN-PROCESS (Metro itself loads the Anthropic SDK and answers
+ * IN-PROCESS (Metro itself loads the OpenAI SDK and answers
  * /__pura_ai__/* directly — see metro.config.js). The direct-port
  * candidate is kept around for the standalone server/aiProxy.ts
  * (used by `npm run verify:ai` and other scripts), but normal

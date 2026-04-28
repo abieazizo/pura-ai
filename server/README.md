@@ -1,12 +1,12 @@
 # Pura AI proxy server
 
-Production proxy for the Pura AI app. Holds the Anthropic API key
-server-side, runs the centralised `ClaudeClient`, validates every
+Production proxy for the Pura AI app. Holds the OpenAI API key
+server-side, runs the centralised `OpenAIClient`, validates every
 structured AI response, and serves the result to the RN client.
 
 ## Why this exists
 
-Embedding an Anthropic API key in a shipped React Native bundle
+Embedding an OpenAI API key in a shipped React Native bundle
 exposes it to anyone who decompiles the app. The proxy keeps the key
 on a server you control. The RN client targets the proxy in production;
 direct-SDK mode is only for local development.
@@ -15,13 +15,13 @@ direct-SDK mode is only for local development.
 
 ```
 npm install
-ANTHROPIC_API_KEY=sk-ant-... npm run server:ai
+OPENAI_API_KEY=sk-... npm run server:ai
 ```
 
 Or with all the knobs:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-... \
+OPENAI_API_KEY=sk-... \
 PURA_AI_PROXY_HOST=0.0.0.0 \
 PURA_AI_PROXY_PORT=8787 \
 PURA_AI_PROXY_TOKEN=$(openssl rand -hex 32) \
@@ -46,7 +46,7 @@ mode automatically. No code change required.
 
 | name | default | required | purpose |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | — | **yes** | Anthropic API key |
+| `OPENAI_API_KEY` | — | **yes** | OpenAI API key |
 | `PURA_AI_PROXY_PORT` | `8787` | no | Listen port |
 | `PURA_AI_PROXY_HOST` | `127.0.0.1` | no | Bind host (use `0.0.0.0` to accept external traffic) |
 | `PURA_AI_PROXY_TOKEN` | — | no but recommended | Shared bearer token; clients must send `Authorization: Bearer <token>` |
@@ -56,7 +56,7 @@ mode automatically. No code change required.
 ## Endpoints
 
 All AI endpoints are `POST` with a JSON body matching the
-corresponding `ClaudeClient` method's `params` argument and return
+corresponding `OpenAIClient` method's `params` argument and return
 the validated structured result as JSON.
 
 | route | input shape | output shape |

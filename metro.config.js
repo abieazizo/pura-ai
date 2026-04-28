@@ -19,7 +19,7 @@ const config = getDefaultConfig(__dirname);
  * answers AI calls. When a request to `/__pura_ai__/<method>` lands
  * on Metro's HTTP server, this middleware loads the same handlers
  * that `server/lib/handlers.ts` uses, calls them in-process, and
- * writes the response directly. The Anthropic SDK runs inside
+ * writes the response directly. The OpenAI SDK runs inside
  * Metro's Node process. The phone only ever reaches Metro on its
  * already-firewall-allowed port (8081).
  *
@@ -93,14 +93,15 @@ function loadHandlersBundle() {
   require('tsx/cjs');
   const startedAt = Date.now();
   const handlersMod = require('./server/lib/handlers');
-  const clientMod = require('./server/anthropic/claude-client');
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+  const clientMod = require('./server/openai/openai-client');
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey.trim().length === 0) {
     throw new Error(
-      'ANTHROPIC_API_KEY is missing or malformed in .env (expected `sk-ant-...`).'
+      'OPENAI_API_KEY is missing in .env. Add OPENAI_API_KEY=sk-... ' +
+        'to .env at the project root and restart Metro.'
     );
   }
-  const client = new clientMod.ClaudeClient({ apiKey });
+  const client = new clientMod.OpenAIClient({ apiKey });
   _handlersBundle = {
     HANDLERS: handlersMod.HANDLERS,
     HandlerError: handlersMod.HandlerError,
@@ -179,7 +180,7 @@ async function handleAi(req, res) {
       middleware_alive: true,
       version: MARKER_VERSION,
       mode: 'in-process',
-      proxy_target: 'in-process (Anthropic SDK loaded inside Metro)',
+      proxy_target: 'in-process (OpenAI SDK loaded inside Metro)',
       time: Date.now(),
     });
     return;

@@ -4,7 +4,7 @@ You have a working app shell out of the box. To get the **real AI path
 live** (assistant + scan + matching + progress + suggestions all
 backed by Claude) you need two things:
 
-1. an Anthropic API key in `.env`
+1. an OpenAI API key in `.env`
 2. one terminal running **`npm run dev`** — that's it
 
 `npm run dev` starts BOTH the AI proxy and the Expo bundler at the
@@ -14,7 +14,7 @@ deterministic demo response.
 
 > v10.39 — AI now runs IN-PROCESS inside Metro itself.
 > When the phone calls `http://<bundle-host>:8081/__pura_ai__/<method>`,
-> Metro's middleware (see `metro.config.js`) loads the Anthropic SDK
+> Metro's middleware (see `metro.config.js`) loads the OpenAI SDK
 > directly into Metro's Node process and answers the call inline.
 > No separate proxy server, no port 8787, no firewall changes, no
 > `npm run dev`. Just `npm start` and the AI works.
@@ -43,7 +43,7 @@ trying and pings `/healthz` automatically.
 npm install
 ```
 
-This installs both client and server dependencies (`@anthropic-ai/sdk`
+This installs both client and server dependencies (`openai`
 is in the same `package.json` but is **only** loaded by the server —
 the React Native bundle never sees it).
 
@@ -61,7 +61,7 @@ Open `.env` and fill in:
 
 ```dotenv
 # Server-only — never expose this to the client.
-ANTHROPIC_API_KEY=sk-ant-XXXXXXXXXXXXXXXXXXXX
+OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXXXX
 
 # Client. Default works for `npm run dev` on the same machine.
 EXPO_PUBLIC_PURA_AI_PROXY_URL=http://localhost:8787
@@ -255,7 +255,7 @@ every request carries an `Authorization: Bearer <token>` header.
 ## 8. Barcode flow
 
 The barcode resolution path (`POST /normalizeBarcodeResolution` →
-two-step Anthropic tool loop → server-side product lookup) is wired
+two-step provider tool loop → server-side product lookup) is wired
 to the **Open Beauty Facts** public API
 (`https://world.openbeautyfacts.org/api/v2/product/<barcode>.json`).
 

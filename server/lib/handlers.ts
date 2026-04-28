@@ -3,7 +3,7 @@
  *
  * Each handler:
  *   1. Validates the inbound JSON body (rejects missing required fields).
- *   2. Calls the corresponding ClaudeClient method.
+ *   2. Calls the corresponding OpenAIClient method.
  *   3. Validates the AI's structured output before returning.
  *   4. Wraps everything with a per-method timeout.
  *
@@ -11,7 +11,7 @@
  * `aiProxy.ts` translates that into a clean HTTP error response.
  */
 
-import { ClaudeClient } from '../anthropic/claude-client';
+import { OpenAIClient } from '../openai/openai-client';
 import {
   validateAssistantContext,
   validateBarcodeResolution,
@@ -148,7 +148,7 @@ function repairSkinScoreExplanation(
 // ---------------------------------------------------------------------------
 
 export type Handler = (
-  client: ClaudeClient,
+  client: OpenAIClient,
   body: Record<string, unknown>
 ) => Promise<unknown>;
 

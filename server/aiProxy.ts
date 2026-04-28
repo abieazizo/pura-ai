@@ -2,7 +2,7 @@
  * Pura AI — production proxy server.
  *
  * Receives JSON from the RN client, calls the centralized
- * ClaudeClient with a server-held API key, validates the structured
+ * OpenAIClient with a server-held API key, validates the structured
  * output, and returns it. The client-side gateway (see
  * `src/ai/aiGateway.ts`) targets this server in proxy mode.
  *
@@ -10,7 +10,7 @@
  *   npm run server:ai
  *
  * Required env:
- *   ANTHROPIC_API_KEY            — Anthropic API key (held server-side)
+ *   OPENAI_API_KEY               — OpenAI API key (held server-side, never sent to client)
  *
  * Optional env:
  *   PURA_AI_PROXY_PORT           — listen port (default 8787)
@@ -49,7 +49,7 @@ import { URL } from 'node:url';
 // .env loader — runs BEFORE any module that reads process.env.
 //
 // Node's `--env-file` flag does NOT override variables that are
-// already set in the parent shell. So an empty `ANTHROPIC_API_KEY=""`
+// already set in the parent shell. So an empty `OPENAI_API_KEY=""`
 // inherited from a parent process beats the value we wrote to `.env`,
 // silently. This loader explicitly overrides whatever was in the
 // shell with whatever the local `.env` has, which is the right
@@ -91,9 +91,9 @@ import { URL } from 'node:url';
 })();
 
 import {
-  createClaudeClientFromEnv,
-  type ClaudeClient,
-} from './anthropic/claude-client';
+  createOpenAIClientFromEnv,
+  type OpenAIClient,
+} from './openai/openai-client';
 import { aiLog } from '../src/ai/aiLog';
 import { HandlerError, HANDLERS } from './lib/handlers';
 
@@ -223,9 +223,9 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
 // Main handler.
 // ---------------------------------------------------------------------------
 
-let _client: ClaudeClient | null = null;
-function getClient(): ClaudeClient {
-  if (!_client) _client = createClaudeClientFromEnv();
+let _client: OpenAIClient | null = null;
+function getClient(): OpenAIClient {
+  if (!_client) _client = createOpenAIClientFromEnv();
   return _client;
 }
 
@@ -397,7 +397,7 @@ function main(): void {
   // Fail fast if the API key is missing — better here than on the
   // first request.
   try {
-    createClaudeClientFromEnv();
+    createOpenAIClientFromEnv();
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error(

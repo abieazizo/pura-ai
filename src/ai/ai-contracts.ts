@@ -3,18 +3,19 @@
  *
  * This file is **client-safe**. It contains nothing but TypeScript
  * types, JSON schema literals, and configuration constants. It does
- * NOT import the Anthropic SDK or any Node-only module, so it can be
+ * NOT import any provider SDK or Node-only module, so it can be
  * bundled by Metro into the React Native app and re-imported by the
- * server-only `claude-client.ts` at the same time.
+ * server-only `openai-client.ts` at the same time.
  *
  * It defines:
  *   1. The user-facing TypeScript types every consumer reads.
- *   2. The strict JSON schemas Claude returns through tool_use.
+ *   2. The strict JSON schemas the AI provider returns under
+ *      structured-output / response_format=json_schema.
  *   3. The model + decoding configuration each flow uses.
  *
  * No prompt logic lives here — only contracts. The prompts and the
- * actual API calls live in `server/anthropic/claude-client.ts` (server-
- * only). UI screens and stores never see the Anthropic SDK; they go
+ * actual API calls live in `server/openai/openai-client.ts` (server-
+ * only). UI screens and stores never see the OpenAI SDK; they go
  * through `src/ai/aiGateway.ts` which talks to the proxy via fetch.
  *
  * Keep schemas and TS types in lockstep — every required field on a
@@ -296,17 +297,35 @@ export interface SearchSuggestionResult {
 // Model + decoding configuration.
 // ============================================================================
 
-export interface ClaudeModelConfig {
-  extraction: 'claude-sonnet-4-6';
-  assistant: 'claude-opus-4-7';
+/**
+ * Provider model configuration.
+ *
+ * v11.0 — provider migrated from Anthropic to OpenAI. The exported
+ * symbols keep their `CLAUDE_*` names purely for backward-compat
+ * across the existing import surface; the values are OpenAI model
+ * identifiers. Aliases `AI_MODELS` / `AI_DEFAULTS` are exported for
+ * call sites that prefer provider-neutral names.
+ *
+ * Model strategy:
+ *   • `extraction` (gpt-5-mini) — fast, vision-capable, cheap, runs
+ *     every structured workflow (face scan, product image, barcode
+ *     normalization, product matching, routine, skin score, progress,
+ *     search suggestions). Strict JSON-schema response_format keeps
+ *     output validated.
+ *   • `assistant` (gpt-5) — strongest reasoning for the freeform
+ *     grounded assistant answers.
+ */
+export interface AIModelConfig {
+  extraction: 'gpt-5-mini';
+  assistant: 'gpt-5';
 }
 
-export const CLAUDE_MODELS: ClaudeModelConfig = {
-  extraction: 'claude-sonnet-4-6',
-  assistant: 'claude-opus-4-7',
+export const AI_MODELS: AIModelConfig = {
+  extraction: 'gpt-5-mini',
+  assistant: 'gpt-5',
 };
 
-export const CLAUDE_DEFAULTS = {
+export const AI_DEFAULTS = {
   extraction: {
     temperature: 0,
     max_tokens: 4096,
@@ -317,6 +336,13 @@ export const CLAUDE_DEFAULTS = {
     max_tokens: 1500,
   },
 } as const;
+
+// Legacy aliases — kept so existing imports compile during the
+// provider migration. Prefer the provider-neutral `AI_MODELS` /
+// `AI_DEFAULTS` in new code.
+export type ClaudeModelConfig = AIModelConfig;
+export const CLAUDE_MODELS: AIModelConfig = AI_MODELS;
+export const CLAUDE_DEFAULTS = AI_DEFAULTS;
 
 // ============================================================================
 // JSON schemas — strict tool input contracts.
@@ -848,7 +874,7 @@ export const SEARCH_SUGGESTION_RESULT_SCHEMA: JsonSchema = {
 // schemas (e.g. a dev console "show all AI schemas" panel).
 // ============================================================================
 
-export interface ClaudeStructuredSchemas {
+export interface AIStructuredSchemas {
   FACE_SCAN_ANALYSIS_SCHEMA: JsonSchema;
   PRODUCT_IDENTITY_SCHEMA: JsonSchema;
   BARCODE_LOOKUP_TOOL_SCHEMA: JsonSchema;
@@ -860,7 +886,7 @@ export interface ClaudeStructuredSchemas {
   SEARCH_SUGGESTION_RESULT_SCHEMA: JsonSchema;
 }
 
-export const CLAUDE_STRUCTURED_SCHEMAS: ClaudeStructuredSchemas = {
+export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   FACE_SCAN_ANALYSIS_SCHEMA,
   PRODUCT_IDENTITY_SCHEMA,
   BARCODE_LOOKUP_TOOL_SCHEMA,
@@ -872,9 +898,13 @@ export const CLAUDE_STRUCTURED_SCHEMAS: ClaudeStructuredSchemas = {
   SEARCH_SUGGESTION_RESULT_SCHEMA,
 };
 
+// Legacy alias — kept so prior imports compile.
+export type ClaudeStructuredSchemas = AIStructuredSchemas;
+export const CLAUDE_STRUCTURED_SCHEMAS = AI_STRUCTURED_SCHEMAS;
+
 // ============================================================================
 // Cross-boundary shared types — used by both client gateway (proxy
-// request shapes) and server claude-client. Defined here because they
+// request shapes) and server openai-client. Defined here because they
 // describe wire-level data, not SDK-specific shapes.
 // ============================================================================
 
@@ -882,9 +912,9 @@ export const CLAUDE_STRUCTURED_SCHEMAS: ClaudeStructuredSchemas = {
 export type SupportedImageMediaType = 'image/jpeg' | 'image/png';
 
 /**
- * Result the host's barcode lookup function returns to the AI's
- * tool-call inside `normalizeBarcodeResolution`. Lives in this file
- * (not in `claude-client.ts`) because both the server proxy's
+ * Result the host's barcode lookup function returns to the AI
+ * inside `normalizeBarcodeResolution`. Lives in this file (not in
+ * the provider client) because both the server proxy's
  * `lib/barcodeLookup.ts` and the validators here reference it.
  */
 export interface BarcodeLookupResult {

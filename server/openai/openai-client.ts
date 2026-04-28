@@ -1,33 +1,39 @@
 /**
- * Pura AI — Claude client. **SERVER-ONLY.**
+ * Pura AI — OpenAI client. **SERVER-ONLY.**
  *
- * This file imports `@anthropic-ai/sdk`, which means it pulls in
- * Node-only resources and beta resource paths that Metro cannot
- * resolve. It MUST NOT be imported by any code under `src/` (the
- * Expo / React Native bundle). The only legitimate consumers are:
+ * This file imports `openai`, which means it pulls in Node-only
+ * resources (streams, http internals, fs for some helpers) that
+ * Metro cannot resolve when bundling the React Native app. It MUST
+ * NOT be imported by any code under `src/`. The only legitimate
+ * consumers are:
  *
  *   • `server/aiProxy.ts`          (HTTP proxy entrypoint)
  *   • `server/lib/handlers.ts`     (per-method handlers)
+ *   • `metro.config.js`            (loads handlers in-process at dev)
  *   • Other files under `server/`
  *
- * The client app reaches Claude exclusively through HTTP fetch to
+ * The Expo client reaches OpenAI exclusively through HTTP fetch to
  * the proxy server (see `src/ai/aiGateway.ts`). The client never
- * instantiates the SDK and never sees the API key.
+ * instantiates the SDK and never sees `OPENAI_API_KEY`.
  *
  * Design rules:
- *   • Every flow that produces structured output uses tool_use with a
- *     strict input_schema, temperature 0, disable_parallel_tool_use,
- *     and tool_choice forcing exactly one tool call. Thinking is
- *     never enabled when a tool is forced.
- *   • The freeform assistant flow uses temperature 0.2, no forced
- *     tool, and returns the first text block as a string.
- *   • Every method takes a top-level `system` prompt (not a system
- *     message in the array) so prompt logic stays out of the message
- *     content channel.
+ *   • Every flow that produces structured output uses Chat
+ *     Completions `response_format: { type: 'json_schema', strict:
+ *     true }`. The same JSON schemas the legacy Anthropic client
+ *     used (defined in `src/ai/ai-contracts.ts`) are passed
+ *     through after a small `oneOf → anyOf` transform — strict
+ *     mode is otherwise satisfied by every existing schema.
+ *   • The freeform assistant flow uses GPT-5 freeform Chat
+ *     Completions and returns the model's text content.
+ *   • Vision flows attach the image as a base-64 data URI in the
+ *     same `messages.content` array as the text instruction.
  *   • All prompt logic lives here. UI never composes prompts.
+ *   • API keys are read from `process.env.OPENAI_API_KEY` only.
+ *     The constructor accepts an explicit key for testability but
+ *     never logs it.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import type {
   AssistantContext,
   BarcodeLookupResult,
@@ -43,10 +49,9 @@ import type {
   JsonSchema,
 } from '../../src/ai/ai-contracts';
 import {
-  BARCODE_LOOKUP_TOOL_SCHEMA,
   BARCODE_RESOLUTION_SCHEMA,
-  CLAUDE_DEFAULTS,
-  CLAUDE_MODELS,
+  CLAUDE_DEFAULTS as AI_DEFAULTS,
+  CLAUDE_MODELS as AI_MODELS,
   FACE_SCAN_ANALYSIS_SCHEMA,
   PRODUCT_IDENTITY_SCHEMA,
   PRODUCT_MATCH_RESULT_SCHEMA,
@@ -56,48 +61,74 @@ import {
   SKIN_SCORE_EXPLANATION_SCHEMA,
 } from '../../src/ai/ai-contracts';
 
-// Re-export for server consumers that still want to reach these from
-// `claude-client.ts` rather than the contracts file.
+// Re-export for server consumers that previously reached these from
+// the legacy Claude client path.
 export type { BarcodeLookupResult, SupportedImageMediaType };
-
-// ----------------------------------------------------------------------------
-// Local SDK aliases.
-// ----------------------------------------------------------------------------
-//
-// The Anthropic SDK exposes everything under `Anthropic.Messages.*`. We
-// alias the few types we touch so the call sites read cleanly and so a
-// future SDK reorganisation is one find-and-replace away.
-
-type SdkMessage = Anthropic.Messages.Message;
-type SdkContentBlock = Anthropic.Messages.ContentBlock;
-type SdkToolUseBlock = Anthropic.Messages.ToolUseBlock;
-type SdkMessageParam = Anthropic.Messages.MessageParam;
-type SdkContentBlockParam = Anthropic.Messages.ContentBlockParam;
-type SdkTool = Anthropic.Messages.Tool;
-type SdkToolInputSchema = Anthropic.Messages.Tool.InputSchema;
 
 // ----------------------------------------------------------------------------
 // Public types.
 // ----------------------------------------------------------------------------
 
-export interface ClaudeClientConfig {
+export interface OpenAIClientConfig {
   apiKey: string;
 }
 
 // ----------------------------------------------------------------------------
-// ClaudeClient.
+// Schema transform — OpenAI strict-mode adjustments.
 // ----------------------------------------------------------------------------
 
-export class ClaudeClient {
-  private anthropic: Anthropic;
+/**
+ * OpenAI strict mode rejects `oneOf` at any depth and prefers
+ * `anyOf`. The pre-existing JSON schemas in `ai-contracts.ts` use
+ * `oneOf` for nullable-object fields (e.g. primary_concern). This
+ * transform recursively rewrites `oneOf` → `anyOf` and otherwise
+ * leaves the schema intact.
+ *
+ * We do this at runtime rather than rewriting `ai-contracts.ts` so
+ * the contracts file stays a clean JSON-Schema canonical and any
+ * other validator (Ajv, Zod schemas, etc.) keeps working.
+ */
+function toStrictSchema(input: JsonSchema): JsonSchema {
+  if (Array.isArray(input)) {
+    return (input as unknown as unknown[]).map((v) =>
+      typeof v === 'object' && v !== null
+        ? toStrictSchema(v as JsonSchema)
+        : v
+    ) as unknown as JsonSchema;
+  }
+  if (input === null || typeof input !== 'object') return input;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    const key = k === 'oneOf' ? 'anyOf' : k;
+    if (Array.isArray(v)) {
+      out[key] = v.map((item) =>
+        typeof item === 'object' && item !== null
+          ? toStrictSchema(item as JsonSchema)
+          : item
+      );
+    } else if (typeof v === 'object' && v !== null) {
+      out[key] = toStrictSchema(v as JsonSchema);
+    } else {
+      out[key] = v;
+    }
+  }
+  return out as JsonSchema;
+}
 
-  constructor(config: ClaudeClientConfig) {
+// ----------------------------------------------------------------------------
+// OpenAIClient.
+// ----------------------------------------------------------------------------
+
+export class OpenAIClient {
+  private openai: OpenAI;
+
+  constructor(config: OpenAIClientConfig) {
     if (!config.apiKey || config.apiKey.trim().length === 0) {
       throw new Error(
-        'ClaudeClient: apiKey is required and must be non-empty.'
+        'OpenAIClient: apiKey is required and must be non-empty.'
       );
     }
-    this.anthropic = new Anthropic({ apiKey: config.apiKey });
+    this.openai = new OpenAI({ apiKey: config.apiKey });
   }
 
   // --------------------------------------------------------------------------
@@ -105,22 +136,21 @@ export class ClaudeClient {
   // --------------------------------------------------------------------------
 
   /**
-   * Build a user message content array carrying an image + a text
-   * instruction. Returns the array so it can be embedded inside a full
-   * message (callers may concatenate additional context blocks).
+   * Build the user-message content array carrying an image + a
+   * text instruction. Returns the array so callers may concatenate
+   * additional context blocks before sending.
    */
   private buildImageUserContent(
     imageBase64: string,
     mediaType: SupportedImageMediaType,
     instruction: string
-  ): SdkContentBlockParam[] {
+  ): OpenAI.Chat.Completions.ChatCompletionContentPart[] {
     return [
       {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: mediaType,
-          data: imageBase64,
+        type: 'image_url',
+        image_url: {
+          url: `data:${mediaType};base64,${imageBase64}`,
+          detail: 'auto',
         },
       },
       {
@@ -131,86 +161,65 @@ export class ClaudeClient {
   }
 
   /**
-   * Walk an Anthropic message's content blocks looking for a single
-   * tool_use block matching `toolName`, and return its `input` cast to
-   * the requested type. Throws if zero or multiple matching blocks are
-   * present (the latter should be impossible with
-   * disable_parallel_tool_use, but we defend against it).
+   * Run a strict structured-output call: one user message,
+   * `response_format: json_schema (strict)`. Returns the parsed JSON
+   * cast to T. Throws if the model returned non-JSON or the
+   * content was empty.
    */
-  private assertSingleToolResult<T>(
-    response: SdkMessage,
-    toolName: string
-  ): T {
-    const blocks = response.content.filter(
-      (b: SdkContentBlock): b is SdkToolUseBlock =>
-        b.type === 'tool_use' && b.name === toolName
-    );
-    if (blocks.length === 0) {
-      throw new Error(
-        `ClaudeClient: expected a tool_use block for "${toolName}" but found none. ` +
-          `stop_reason=${response.stop_reason ?? 'unknown'}`
-      );
-    }
-    if (blocks.length > 1) {
-      throw new Error(
-        `ClaudeClient: received ${blocks.length} tool_use blocks for "${toolName}"; ` +
-          `expected exactly one. disable_parallel_tool_use must be set.`
-      );
-    }
-    return blocks[0].input as T;
-  }
-
-  /**
-   * Run a strict structured-output call: one user message, exactly one
-   * tool registered, tool_choice forced to that tool by name,
-   * temperature 0, parallel tool use disabled. Returns the parsed tool
-   * input as T.
-   *
-   * `userContent` may be a plain string (a single text block is
-   * synthesised) or a pre-assembled array of content blocks (e.g. an
-   * image + text pair from `buildImageUserContent`).
-   */
-  private async runStrictTool<T>(params: {
+  private async runStrictStructured<T>(params: {
     system: string;
-    userContent: string | SdkContentBlockParam[];
-    toolName: string;
-    toolDescription: string;
-    inputSchema: JsonSchema;
-    /** Override max_tokens; defaults to extraction default. */
+    userContent:
+      | string
+      | OpenAI.Chat.Completions.ChatCompletionContentPart[];
+    schemaName: string;
+    schema: JsonSchema;
+    model?: string;
+    /** Override max output tokens; defaults to extraction default. */
     maxTokens?: number;
   }): Promise<T> {
-    const tool: SdkTool = {
-      name: params.toolName,
-      description: params.toolDescription,
-      input_schema: params.inputSchema as SdkToolInputSchema,
+    const userContent: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+      role: 'user',
+      content:
+        typeof params.userContent === 'string'
+          ? params.userContent
+          : params.userContent,
     };
 
-    const messages: SdkMessageParam[] = [
-      {
-        role: 'user',
-        content:
-          typeof params.userContent === 'string'
-            ? [{ type: 'text', text: params.userContent }]
-            : params.userContent,
+    const response = await this.openai.chat.completions.create({
+      model: params.model ?? AI_MODELS.extraction,
+      max_completion_tokens:
+        params.maxTokens ?? AI_DEFAULTS.extraction.max_tokens,
+      messages: [
+        { role: 'system', content: params.system },
+        userContent,
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: params.schemaName,
+          strict: true,
+          schema: toStrictSchema(params.schema) as Record<string, unknown>,
+        },
       },
-    ];
-
-    const response = await this.anthropic.messages.create({
-      model: CLAUDE_MODELS.extraction,
-      max_tokens: params.maxTokens ?? CLAUDE_DEFAULTS.extraction.max_tokens,
-      temperature: CLAUDE_DEFAULTS.extraction.temperature,
-      system: params.system,
-      tools: [tool],
-      tool_choice: {
-        type: 'tool',
-        name: params.toolName,
-        disable_parallel_tool_use:
-          CLAUDE_DEFAULTS.extraction.disable_parallel_tool_use,
-      },
-      messages,
     });
 
-    return this.assertSingleToolResult<T>(response, params.toolName);
+    const message = response.choices[0]?.message;
+    const text = message?.content;
+    if (typeof text !== 'string' || text.length === 0) {
+      throw new Error(
+        `OpenAIClient: empty content for ${params.schemaName} ` +
+          `(finish_reason=${response.choices[0]?.finish_reason ?? 'unknown'})`
+      );
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch (e) {
+      throw new Error(
+        `OpenAIClient: JSON parse failed for ${params.schemaName}: ${
+          e instanceof Error ? e.message : String(e)
+        }`
+      );
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -229,12 +238,10 @@ export class ClaudeClient {
       'skincare product. Your job is to read a single user-uploaded ' +
       'face photograph and return a structured skin analysis.\n\n' +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_face_scan_analysis".\n' +
-      '• Use only the provided schema. Do not invent fields.\n' +
-      '• Do not write prose outside the tool. No preamble, no apology.\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
       '• ALWAYS echo the `scan_id` value from the user message into ' +
-      'the tool output exactly as given. Set `analyzed_at_iso` to ' +
-      'the current UTC time in ISO-8601.\n' +
+      'the output exactly as given. Set `analyzed_at_iso` to the ' +
+      'current UTC time in ISO-8601.\n' +
       '• Be conservative. Only flag concerns the image visually ' +
       'supports — never invent breakouts, redness, or marks that are ' +
       'not visible.\n' +
@@ -262,18 +269,15 @@ export class ClaudeClient {
         `user_profile: ${params.userProfileSummary}`,
         `previous_summary: ${params.previousSummary ?? 'none'}`,
         '',
-        'Analyze this face image and return the exact structured ' +
-          'skincare analysis via the return_face_scan_analysis tool.',
+        'Analyze this face image and return the structured skincare analysis.',
       ].join('\n')
     );
 
-    return this.runStrictTool<FaceScanAnalysis>({
+    return this.runStrictStructured<FaceScanAnalysis>({
       system,
       userContent,
-      toolName: 'return_face_scan_analysis',
-      toolDescription:
-        'Return the full structured face scan analysis for the user-uploaded photo.',
-      inputSchema: FACE_SCAN_ANALYSIS_SCHEMA,
+      schemaName: 'face_scan_analysis',
+      schema: FACE_SCAN_ANALYSIS_SCHEMA,
     });
   }
 
@@ -291,9 +295,7 @@ export class ClaudeClient {
       'bottle, tube, jar, or carton) and resolve its identity as ' +
       'specifically as possible from visible packaging.\n\n' +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_product_identity".\n' +
-      '• Use only the provided schema. Do not write prose outside the ' +
-      'tool.\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
       '• Resolve as specifically as possible from visible text and ' +
       'design cues: brand wordmark, product name, claims, sizing, ' +
       'colour scheme.\n' +
@@ -315,22 +317,24 @@ export class ClaudeClient {
       params.imageBase64,
       params.mediaType,
       'Identify this product as specifically as the visible packaging ' +
-        'allows and return the structured identity via the ' +
-        'return_product_identity tool.'
+        'allows and return the structured identity.'
     );
 
-    return this.runStrictTool<ProductIdentity>({
+    return this.runStrictStructured<ProductIdentity>({
       system,
       userContent,
-      toolName: 'return_product_identity',
-      toolDescription:
-        'Return a structured identity for the product photographed.',
-      inputSchema: PRODUCT_IDENTITY_SCHEMA,
+      schemaName: 'product_identity',
+      schema: PRODUCT_IDENTITY_SCHEMA,
     });
   }
 
   // --------------------------------------------------------------------------
-  // 3. Barcode resolution — two-step tool loop.
+  // 3. Barcode resolution.
+  //
+  // Simpler than the legacy two-step tool loop: the server already
+  // owns `lookupBarcode` (Open Beauty Facts + local catalog) so we
+  // do that lookup synchronously in TypeScript and pass the result
+  // straight to the model for normalization. One round-trip total.
   // --------------------------------------------------------------------------
 
   async normalizeBarcodeResolution(params: {
@@ -339,111 +343,19 @@ export class ClaudeClient {
       barcodeValue: string
     ) => Promise<BarcodeLookupResult | null>;
   }): Promise<BarcodeResolution> {
-    // ---- First call: register lookup_barcode tool, allow tool_choice "any". ----
-    const firstSystem =
-      'You are the barcode resolution engine for Pura AI. The user ' +
-      'just scanned a barcode and you must resolve which product it ' +
-      'is.\n\n' +
-      'Hard rules:\n' +
-      '• Always call the lookup_barcode tool first with the supplied ' +
-      'barcode_value. Do not answer directly before tool use.\n' +
-      '• Pass through the exact barcode_value you were given — do not ' +
-      'modify, pad, or strip digits.';
-
-    const lookupTool: SdkTool = {
-      name: 'lookup_barcode',
-      description:
-        'Look the barcode value up against the host catalog and return ' +
-        'whatever the lookup yields (or null if nothing matches).',
-      input_schema: BARCODE_LOOKUP_TOOL_SCHEMA as SdkToolInputSchema,
-    };
-
-    const firstUserMessage: SdkMessageParam = {
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text:
-            `barcode_value: ${params.barcodeValue}\n\n` +
-            'Resolve this barcode by calling the lookup_barcode tool ' +
-            'with the exact barcode_value above.',
-        },
-      ],
-    };
-
-    const firstResponse = await this.anthropic.messages.create({
-      model: CLAUDE_MODELS.extraction,
-      max_tokens: CLAUDE_DEFAULTS.extraction.max_tokens,
-      temperature: CLAUDE_DEFAULTS.extraction.temperature,
-      system: firstSystem,
-      tools: [lookupTool],
-      tool_choice: {
-        type: 'any',
-        disable_parallel_tool_use:
-          CLAUDE_DEFAULTS.extraction.disable_parallel_tool_use,
-      },
-      messages: [firstUserMessage],
-    });
-
-    const lookupCall = firstResponse.content.find(
-      (b: SdkContentBlock): b is SdkToolUseBlock =>
-        b.type === 'tool_use' && b.name === 'lookup_barcode'
-    );
-
-    if (!lookupCall) {
-      // Claude declined to call the tool. Fall back to a normalisation-
-      // only flow with a null lookup so the second call still produces
-      // a canonical resolution shape.
-      return this.normalizeBarcodeWithLookup(params.barcodeValue, null, null);
-    }
-
-    const requestedBarcodeRaw = (lookupCall.input as { barcode_value?: unknown })
-      .barcode_value;
-    const requestedBarcode =
-      typeof requestedBarcodeRaw === 'string' && requestedBarcodeRaw.length > 0
-        ? requestedBarcodeRaw
-        : params.barcodeValue;
-
     let lookupResult: BarcodeLookupResult | null = null;
     try {
-      lookupResult = await params.lookupBarcode(requestedBarcode);
+      lookupResult = await params.lookupBarcode(params.barcodeValue);
     } catch {
-      // Lookup failure is treated as "no result" — the normalisation
-      // call below will mark fallback_needed=true and identity=null.
       lookupResult = null;
     }
 
-    return this.normalizeBarcodeWithLookup(
-      params.barcodeValue,
-      lookupCall.id,
-      lookupResult
-    );
-  }
-
-  /**
-   * Second leg of the barcode resolution loop. Given the lookup result
-   * (or null), force Claude to emit the canonical BarcodeResolution
-   * via return_barcode_resolution.
-   *
-   * `firstCallToolUseId` is the id of the first call's lookup_barcode
-   * tool_use block; it's stitched back as a tool_result so Claude has
-   * the lookup output in conversation. When the first call never
-   * produced a lookup (Claude declined), we send a synthetic
-   * "no lookup performed" user message instead.
-   */
-  private async normalizeBarcodeWithLookup(
-    barcodeValue: string,
-    firstCallToolUseId: string | null,
-    lookupResult: BarcodeLookupResult | null
-  ): Promise<BarcodeResolution> {
-    const secondSystem =
+    const system =
       'You are the barcode normalization engine for Pura AI. Convert ' +
       'the lookup output into a canonical BarcodeResolution object.\n\n' +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_barcode_resolution".\n' +
-      '• Use only the provided schema. Do not write prose outside the ' +
-      'tool.\n' +
-      '• If the lookup failed (no result returned), set ' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
+      '• If the lookup failed (lookup_result is null), set ' +
       'fallback_needed=true, found=false, identity=null, and ' +
       'matched_catalog_product_id=null. Preserve the original ' +
       'barcode_value as supplied.\n' +
@@ -455,105 +367,21 @@ export class ClaudeClient {
       'omitted brand or product_name, leave those null.\n' +
       '• Echo the original barcode_value exactly.';
 
-    const lookupSerialized = lookupResult
-      ? JSON.stringify(lookupResult)
-      : 'null';
+    const userText = [
+      `barcode_value: ${params.barcodeValue}`,
+      `lookup_succeeded: ${lookupResult !== null}`,
+      'lookup_result:',
+      lookupResult ? JSON.stringify(lookupResult, null, 2) : 'null',
+      '',
+      'Return the canonical BarcodeResolution.',
+    ].join('\n');
 
-    let secondMessages: SdkMessageParam[];
-
-    if (firstCallToolUseId) {
-      secondMessages = [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text:
-                `barcode_value: ${barcodeValue}\n\n` +
-                'Resolve this barcode by calling the lookup_barcode ' +
-                'tool with the exact barcode_value above.',
-            },
-          ],
-        },
-        {
-          role: 'assistant',
-          content: [
-            {
-              type: 'tool_use',
-              id: firstCallToolUseId,
-              name: 'lookup_barcode',
-              input: { barcode_value: barcodeValue },
-            },
-          ],
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: firstCallToolUseId,
-              content: lookupSerialized,
-            },
-            {
-              type: 'text',
-              text:
-                `original_barcode_value: ${barcodeValue}\n` +
-                `lookup_succeeded: ${lookupResult !== null}\n\n` +
-                'Now return the canonical BarcodeResolution via the ' +
-                'return_barcode_resolution tool.',
-            },
-          ],
-        },
-      ];
-    } else {
-      // Claude never called the lookup tool in step 1. Synthesise a
-      // single user message describing the situation so the strict
-      // tool call still has the data it needs.
-      secondMessages = [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text:
-                `barcode_value: ${barcodeValue}\n` +
-                'lookup_succeeded: false\n' +
-                'lookup_result: null\n\n' +
-                'Return the canonical BarcodeResolution via the ' +
-                'return_barcode_resolution tool. Mark ' +
-                'fallback_needed=true and identity=null.',
-            },
-          ],
-        },
-      ];
-    }
-
-    const tool: SdkTool = {
-      name: 'return_barcode_resolution',
-      description:
-        'Return the canonical structured BarcodeResolution after the host has performed the lookup.',
-      input_schema: BARCODE_RESOLUTION_SCHEMA as SdkToolInputSchema,
-    };
-
-    const response = await this.anthropic.messages.create({
-      model: CLAUDE_MODELS.extraction,
-      max_tokens: CLAUDE_DEFAULTS.extraction.max_tokens,
-      temperature: CLAUDE_DEFAULTS.extraction.temperature,
-      system: secondSystem,
-      tools: [tool],
-      tool_choice: {
-        type: 'tool',
-        name: 'return_barcode_resolution',
-        disable_parallel_tool_use:
-          CLAUDE_DEFAULTS.extraction.disable_parallel_tool_use,
-      },
-      messages: secondMessages,
+    return this.runStrictStructured<BarcodeResolution>({
+      system,
+      userContent: userText,
+      schemaName: 'barcode_resolution',
+      schema: BARCODE_RESOLUTION_SCHEMA,
     });
-
-    return this.assertSingleToolResult<BarcodeResolution>(
-      response,
-      'return_barcode_resolution'
-    );
   }
 
   // --------------------------------------------------------------------------
@@ -571,7 +399,7 @@ export class ClaudeClient {
       'fixed candidate set of skincare products against a single ' +
       "user's current skin state.\n\n" +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_product_match_result".\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
       '• Rank ONLY the candidate products provided in ' +
       'candidate_products_json. Do not invent products. Every ' +
       'product_id you emit must exist in the candidate set.\n' +
@@ -598,17 +426,14 @@ export class ClaudeClient {
       'candidate_products_json:',
       params.candidateProductsJson,
       '',
-      'Rank the candidates and return the structured ProductMatchResult ' +
-        'via the return_product_match_result tool.',
+      'Rank the candidates and return the structured ProductMatchResult.',
     ].join('\n');
 
-    return this.runStrictTool<ProductMatchResult>({
+    return this.runStrictStructured<ProductMatchResult>({
       system,
       userContent,
-      toolName: 'return_product_match_result',
-      toolDescription:
-        'Return the ranked product match result for this user against the candidate set.',
-      inputSchema: PRODUCT_MATCH_RESULT_SCHEMA,
+      schemaName: 'product_match_result',
+      schema: PRODUCT_MATCH_RESULT_SCHEMA,
     });
   }
 
@@ -627,7 +452,7 @@ export class ClaudeClient {
       "concise, actionable routine grounded in the user's real scan " +
       'findings and the products that have been matched to them.\n\n' +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_routine_recommendation".\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
       '• Do NOT recommend any product that is not present in ' +
       'matched_products_json. linked_product_id must reference a ' +
       'product in that JSON, or be null for steps that are not tied to ' +
@@ -641,8 +466,7 @@ export class ClaudeClient {
       "(e.g. \"Skip actives tonight, calm the chin.\")\n" +
       '• headline is short ("Tonight: barrier repair, no actives.").\n' +
       '• reminder_recommended=true when the user has at least one ' +
-      'meaningful evening step that benefits from consistency ' +
-      '(prescription-style actives, daily SPF reinforcement).\n' +
+      'meaningful evening step that benefits from consistency.\n' +
       "• Respect existing_routine_json: if the user already uses a " +
       'product, prefer keeping it over swapping unless the scan ' +
       'directly contradicts it.';
@@ -658,17 +482,14 @@ export class ClaudeClient {
       'existing_routine_json:',
       params.existingRoutineJson,
       '',
-      'Return the structured RoutineRecommendation via the ' +
-        'return_routine_recommendation tool.',
+      'Return the structured RoutineRecommendation.',
     ].join('\n');
 
-    return this.runStrictTool<RoutineRecommendation>({
+    return this.runStrictStructured<RoutineRecommendation>({
       system,
       userContent,
-      toolName: 'return_routine_recommendation',
-      toolDescription:
-        'Return the structured routine recommendation tied to the scan and matched products.',
-      inputSchema: ROUTINE_RECOMMENDATION_SCHEMA,
+      schemaName: 'routine_recommendation',
+      schema: ROUTINE_RECOMMENDATION_SCHEMA,
     });
   }
 
@@ -688,10 +509,9 @@ export class ClaudeClient {
       "baseline, and the user's concern movements, and return a " +
       'plain-English explanation.\n\n' +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_skin_score_explanation".\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
       '• ALWAYS echo the `score`, `delta_reference`, and `delta_value` ' +
-      'values from the user message into the tool output exactly as ' +
-      'given. The schema requires them — do not omit them.\n' +
+      'values from the user message into the output exactly as given.\n' +
       '• Never return a naked number without a reason. why_line names ' +
       "the concrete concern that moved (\"Breakouts calming, hydration " +
       'still needs work.").\n' +
@@ -710,17 +530,14 @@ export class ClaudeClient {
       'concern_movements_json:',
       params.concernMovementsJson,
       '',
-      'Return the structured SkinScoreExplanation via the ' +
-        'return_skin_score_explanation tool.',
+      'Return the structured SkinScoreExplanation.',
     ].join('\n');
 
-    return this.runStrictTool<SkinScoreExplanation>({
+    return this.runStrictStructured<SkinScoreExplanation>({
       system,
       userContent,
-      toolName: 'return_skin_score_explanation',
-      toolDescription:
-        'Return the plain-English explanation of the user’s current Skin Score.',
-      inputSchema: SKIN_SCORE_EXPLANATION_SCHEMA,
+      schemaName: 'skin_score_explanation',
+      schema: SKIN_SCORE_EXPLANATION_SCHEMA,
     });
   }
 
@@ -739,7 +556,7 @@ export class ClaudeClient {
       'return a user-facing summary of what improved, what worsened, ' +
       'and what stayed the same.\n\n' +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_progress_explanation".\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
       "• Be specific. Don't say \"things are improving\" when you can " +
       'say "Breakouts moved from moderate to mild."\n' +
       '• strongest_improvement names a single concrete win.\n' +
@@ -762,17 +579,14 @@ export class ClaudeClient {
       'concern_movements_json:',
       params.concernMovementsJson,
       '',
-      'Return the structured ProgressExplanation via the ' +
-        'return_progress_explanation tool.',
+      'Return the structured ProgressExplanation.',
     ].join('\n');
 
-    return this.runStrictTool<ProgressExplanation>({
+    return this.runStrictStructured<ProgressExplanation>({
       system,
       userContent,
-      toolName: 'return_progress_explanation',
-      toolDescription:
-        'Return the structured progress explanation for the Progress destination.',
-      inputSchema: PROGRESS_EXPLANATION_SCHEMA,
+      schemaName: 'progress_explanation',
+      schema: PROGRESS_EXPLANATION_SCHEMA,
     });
   }
 
@@ -791,7 +605,7 @@ export class ClaudeClient {
       'tap-to-search suggestion chips, and a small set of refinement ' +
       'chips, all grounded in the user’s current state.\n\n' +
       'Hard rules:\n' +
-      '• Return EXACTLY ONE tool call to "return_search_suggestions".\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
       '• Suggestions must reflect the supplied context — do not ' +
       'produce generic filler ("best moisturizer", "skincare 101").\n' +
       '• Each chip is a short search phrase (≤ 4 words), not a ' +
@@ -812,22 +626,24 @@ export class ClaudeClient {
       'routine_summary:',
       params.routineSummary,
       '',
-      'Return the structured SearchSuggestionResult via the ' +
-        'return_search_suggestions tool.',
+      'Return the structured SearchSuggestionResult.',
     ].join('\n');
 
-    return this.runStrictTool<SearchSuggestionResult>({
+    return this.runStrictStructured<SearchSuggestionResult>({
       system,
       userContent,
-      toolName: 'return_search_suggestions',
-      toolDescription:
-        'Return contextual search suggestions for the current page and user state.',
-      inputSchema: SEARCH_SUGGESTION_RESULT_SCHEMA,
+      schemaName: 'search_suggestion_result',
+      schema: SEARCH_SUGGESTION_RESULT_SCHEMA,
     });
   }
 
   // --------------------------------------------------------------------------
   // 9. Assistant freeform answer.
+  //
+  // Uses the stronger reasoning model for grounded answers. NOT
+  // structured output — the assistant returns plain prose. The
+  // entire assistant_context is JSON-stringified into the user
+  // message so the model has the full grounding surface.
   // --------------------------------------------------------------------------
 
   async answerAssistant(params: {
@@ -849,54 +665,32 @@ export class ClaudeClient {
       "(\"I don't have a recent scan yet — \") and continue " +
       'helpfully with what you do have.\n' +
       '• Do not invent products that are not in top_matches or ' +
-      'active_product_identity, unless the user explicitly asks for ' +
-      'general options. When asked for general options, name ' +
+      'active_product_identity. When asked for general options, name ' +
       'categories ("a salicylic acid cleanser") rather than fictional ' +
       'specific products.\n' +
       '• Keep answers under ~160 words unless the user asked for ' +
       'depth.\n' +
-      '• Output plain prose. No tool calls. No JSON. No code fences.';
+      '• Output plain prose. No JSON. No code fences.';
 
     const payload = {
       assistant_context: params.context,
       user_question: params.userQuestion,
     };
 
-    // v10.40 — `claude-opus-4-7` rejects the `temperature` parameter
-    // ("`temperature` is deprecated for this model.") and returns 400
-    // invalid_request_error. The model bakes its own temperature in
-    // via internal reasoning, so we must omit the field entirely for
-    // opus-4-7+. This was the root cause of the v10.39 assistant
-    // failures the user kept hitting in production.
-    const usesDeprecatedTemperature = /^claude-opus-4-/.test(
-      CLAUDE_MODELS.assistant
-    );
-    const requestParams: Anthropic.Messages.MessageCreateParamsNonStreaming = {
-      model: CLAUDE_MODELS.assistant,
-      max_tokens: CLAUDE_DEFAULTS.assistant.max_tokens,
-      system,
+    const response = await this.openai.chat.completions.create({
+      model: AI_MODELS.assistant,
+      max_completion_tokens: AI_DEFAULTS.assistant.max_tokens,
       messages: [
+        { role: 'system', content: system },
         {
           role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(payload),
-            },
-          ],
+          content: JSON.stringify(payload),
         },
       ],
-    };
-    if (!usesDeprecatedTemperature) {
-      requestParams.temperature = CLAUDE_DEFAULTS.assistant.temperature;
-    }
-    const response = await this.anthropic.messages.create(requestParams);
+    });
 
-    const firstText = response.content.find(
-      (b: SdkContentBlock): b is Anthropic.Messages.TextBlock =>
-        b.type === 'text'
-    );
-    return firstText ? firstText.text : '';
+    const text = response.choices[0]?.message?.content;
+    return typeof text === 'string' ? text : '';
   }
 
   // --------------------------------------------------------------------------
@@ -1060,19 +854,17 @@ export class ClaudeClient {
 // ----------------------------------------------------------------------------
 
 /**
- * Read ANTHROPIC_API_KEY from the environment and return a configured
- * ClaudeClient. Throws if the env var is missing or blank.
+ * Read OPENAI_API_KEY from the environment and return a configured
+ * OpenAIClient. Throws if the env var is missing or blank.
  *
- * The expectation is that this runs in a Node environment (server,
- * Expo dev tools, etc.). React Native screens should not call this
- * directly — they should hit a backend that proxies to ClaudeClient.
+ * Runs in Node only. RN screens reach OpenAI through the proxy.
  */
-export function createClaudeClientFromEnv(): ClaudeClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+export function createOpenAIClientFromEnv(): OpenAIClient {
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error(
-      'createClaudeClientFromEnv: ANTHROPIC_API_KEY is missing or blank.'
+      'createOpenAIClientFromEnv: OPENAI_API_KEY is missing or blank.'
     );
   }
-  return new ClaudeClient({ apiKey });
+  return new OpenAIClient({ apiKey });
 }

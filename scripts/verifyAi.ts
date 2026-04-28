@@ -6,7 +6,7 @@
  *
  * Run:
  *   # 1. boot the proxy in another shell:
- *   ANTHROPIC_API_KEY=sk-ant-... npm run server:ai
+ *   OPENAI_API_KEY=sk-... npm run server:ai
  *
  *   # 2. then run verification:
  *   EXPO_PUBLIC_PURA_AI_PROXY_URL=http://localhost:8787 \
