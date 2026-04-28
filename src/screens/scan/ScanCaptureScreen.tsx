@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { X } from 'phosphor-react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { hapt } from '@/utils/haptics';
 import { ScanOverlay } from '@/screens/scan/ScanOverlay';
 import type { ReticleMode } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
@@ -124,60 +125,86 @@ export function ScanCaptureScreen({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOverlay.value }));
 
-  // v11.3 — frame-confidence stability gate.
+  // v11.4 — honest pre-capture countdown.
   //
-  // expo-camera v17 doesn't ship face detection in Expo Go (the
+  // expo-camera v17 ships no face detection in Expo Go (the
   // expo-face-detector package was removed in SDK 50, and ML-Kit
-  // requires a custom dev build the user isn't using). So we proxy
-  // "is this frame trustworthy" with a stability heuristic: once the
-  // user has held the camera open in face mode for ≥ 2.5 seconds
-  // without changing modes or losing permission, promote the reticle
-  // from `seeking` to `ready` (border turns moss-green, caption
-  // shifts to "Hold steady — ready when you are"). The user gets a
-  // confident "I'm seeing you" cue before they commit to capture.
+  // requires a custom dev build). The previous v11.3 implementation
+  // tried to fake this by promoting the reticle to "ready" 2.5s
+  // after mount — but it never reset (we have no way to know when
+  // the face leaves frame), so the green state was a lie.
   //
-  // The cue is advisory, not gating: the capture button stays live
-  // because expo-camera's lack of face detection means we can't
-  // BLOCK genuinely bad captures from the client. The post-capture
-  // failure screen carries the condition-aware "no face detected /
-  // poor lighting / blurry" guidance using the AI's
-  // image_quality.issues output (see ErrorState.tsx).
-  const [frameState, setFrameState] = useState<'seeking' | 'ready'>(
+  // v11.4 replaces the fake-ready timer with a real commit moment:
+  // when the user taps capture, we enter a 2-second "preparing"
+  // state with a strong moss-green ring + glow + "HOLD STEADY"
+  // caption + countdown. THEN the photo fires. This gives the user
+  // a true premium moment that ALSO produces better photos by
+  // letting the camera focus and the user steady their hand.
+  const [frameState, setFrameState] = useState<'seeking' | 'preparing'>(
     'seeking'
   );
+  const [countdown, setCountdown] = useState<number | null>(null);
+  // Reset commit state on mode/zoom/flash change so a user
+  // reframing their shot can't accidentally fire mid-prep.
   useEffect(() => {
-    if (mode !== 'face' || !permission?.granted) {
-      setFrameState('seeking');
-      return;
-    }
     setFrameState('seeking');
-    const t = setTimeout(() => setFrameState('ready'), 2500);
-    return () => clearTimeout(t);
-  }, [mode, permission?.granted]);
+    setCountdown(null);
+  }, [mode, zoom, flashMode]);
+
+  const PREPARE_MS = 2000;
 
   const onCapture = useCallback(async () => {
     if (!cameraRef.current || capturing) return;
-    setCapturing(true);
-
-    // §2.3 — 30% opacity paper flash across the whole screen for 120ms.
-    flashOverlay.value = withTiming(0.3, { duration: 60 }, () => {
-      flashOverlay.value = withTiming(0, { duration: 60 });
-    });
-
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
-        skipProcessing: true,
-      });
-      if (photo?.uri) {
-        onCaptured(photo.uri, toAnalysisMode(mode));
-      } else {
-        setCapturing(false);
-      }
-    } catch {
-      setCapturing(false);
+    if (frameState === 'preparing') return; // already in flight
+    if (mode !== 'face') {
+      // Product / barcode skip the prepare ceremony — the user is
+      // pointing at an inanimate object and expects an instant
+      // shutter response.
+      return runCapture();
     }
-  }, [capturing, flashOverlay, onCaptured, mode]);
+
+    // Face mode: 2-second hold-steady countdown.
+    setFrameState('preparing');
+    setCountdown(2);
+    hapt.tap();
+    const t1 = setTimeout(() => setCountdown(1), 1000);
+    const t2 = setTimeout(() => setCountdown(null), 1900);
+    const t3 = setTimeout(async () => {
+      hapt.medium();
+      await runCapture();
+    }, PREPARE_MS);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+
+    async function runCapture() {
+      if (!cameraRef.current) return;
+      setCapturing(true);
+      // §2.3 — 30% opacity paper flash across the whole screen for 120ms.
+      flashOverlay.value = withTiming(0.3, { duration: 60 }, () => {
+        flashOverlay.value = withTiming(0, { duration: 60 });
+      });
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.85,
+          skipProcessing: true,
+        });
+        if (photo?.uri) {
+          onCaptured(photo.uri, toAnalysisMode(mode));
+        } else {
+          setCapturing(false);
+          setFrameState('seeking');
+          setCountdown(null);
+        }
+      } catch {
+        setCapturing(false);
+        setFrameState('seeking');
+        setCountdown(null);
+      }
+    }
+  }, [capturing, frameState, flashOverlay, onCaptured, mode]);
 
   const onGalleryPick = useCallback(
     (uri: string) => {
@@ -299,6 +326,7 @@ export function ScanCaptureScreen({
           onHelp={onOpenHelp}
           analyzing={capturing}
           frameState={frameState}
+          countdown={countdown}
         />
       </Animated.View>
 

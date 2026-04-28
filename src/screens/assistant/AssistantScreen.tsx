@@ -119,10 +119,27 @@ export function AssistantScreen() {
           suggestions={suggestions}
           opening={openingMessage}
           onPick={(t) => send(t, [])}
+          hasScanned={hasScanned}
+          onScan={() => nav.navigate('ScanModal')}
         />
       );
     }
-    return <MessageLine message={item.message} />;
+    return (
+      <MessageLine
+        message={item.message}
+        hasScanned={hasScanned}
+        onScan={() => nav.navigate('ScanModal')}
+        onOpenProducts={() => {
+          // ProductsTab is in the bottom Tabs navigator
+          // @ts-expect-error nested tab navigation typing
+          nav.navigate('Tabs', { screen: 'ProductsTab' });
+        }}
+        onOpenRoutine={() => {
+          // @ts-expect-error nested tab navigation typing
+          nav.navigate('Tabs', { screen: 'RoutineTab' });
+        }}
+      />
+    );
   };
 
   return (
@@ -144,7 +161,7 @@ export function AssistantScreen() {
             variant={typing ? 'thinking' : 'idle'}
           />
           <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
-            Pura AI
+            AI Assistant
           </Text>
         </View>
       </View>
@@ -338,21 +355,67 @@ function EmptyChatBody({
   suggestions,
   onPick,
   opening,
+  hasScanned,
+  onScan,
 }: {
   suggestions: string[];
   onPick: (text: string) => void;
   opening: string | null;
+  hasScanned: boolean;
+  onScan: () => void;
 }) {
   const reduceMotion = useReduceMotion();
-  // v11.3 — show 3 prompts (was 4) so the page isn't dominated by a
-  // grid; rotation cadence kept at 7s.
   const visible = useRotatingPrompts(suggestions, 3, 7000, reduceMotion);
 
-  // v11.3 — the empty body collapses to a single warm line + scan-
-  // grounded follow-up (when available) + 3 prompt chips. The
-  // previous design stacked: PuraMark md + emptyTitle + emptyBody +
-  // ProactiveOpening + "TRY ASKING" rule + 4×74pt chips + attach
-  // hint = 7 visual blocks before the user typed a thing.
+  // v11.4 — when no scan exists, the empty body now leads with a
+  // primary "Scan your face" action button instead of asking the
+  // user to type a question and hoping the AI suggests scanning.
+  // The assistant's grounded answers are massively better with scan
+  // data in hand, so the CTA short-circuits the user to the highest-
+  // value next step. 2 scan-free prompts ("How does the Skin Score
+  // work?" / "What's the difference between a serum and a toner?")
+  // remain available below.
+  if (!hasScanned) {
+    return (
+      <View style={emptyStyles.root}>
+        <Text style={emptyStyles.title} maxFontSizeMultiplier={1.15}>
+          {strings.emptyTitle}
+        </Text>
+        <Text style={emptyStyles.body}>
+          I don’t have a recent scan yet. Want to start there?
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Take a face scan"
+          onPress={() => {
+            hapt.tap();
+            onScan();
+          }}
+          style={({ pressed }) => [
+            emptyStyles.primaryCta,
+            pressed && { opacity: 0.92, transform: [{ scale: 0.985 }] },
+          ]}
+        >
+          <Camera size={16} color={palette.inkInverse} weight="duotone" />
+          <Text
+            style={emptyStyles.primaryCtaLabel}
+            maxFontSizeMultiplier={1.15}
+          >
+            Take a face scan
+          </Text>
+        </Pressable>
+        <Text style={emptyStyles.orLine} maxFontSizeMultiplier={1.1}>
+          OR ASK
+        </Text>
+        <View style={emptyStyles.promptGrid}>
+          {visible.slice(0, 2).map((s) => (
+            <PromptChip key={s} text={s} onPick={onPick} />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={emptyStyles.root}>
       <Text style={emptyStyles.title} maxFontSizeMultiplier={1.15}>
@@ -518,7 +581,19 @@ function buildProactiveOpening(
   return 'Your first reading is in. Ask me anything about what you\u2019re seeing — I\u2019ll answer from your scan, not generalities.';
 }
 
-function MessageLine({ message }: { message: AssistantMessage }) {
+function MessageLine({
+  message,
+  hasScanned,
+  onScan,
+  onOpenProducts,
+  onOpenRoutine,
+}: {
+  message: AssistantMessage;
+  hasScanned: boolean;
+  onScan: () => void;
+  onOpenProducts: () => void;
+  onOpenRoutine: () => void;
+}) {
   const isUser = message.role === 'user';
   const attachedProducts: Product[] = (message.attachedProductIds ?? [])
     .map((id) => seedProducts.find((p) => p.id === id))
@@ -541,10 +616,15 @@ function MessageLine({ message }: { message: AssistantMessage }) {
     );
   }
 
-  // Assistant — NO bubble. Mark xs to the left of raw text.
-  // v10.26 — when the API wrapper recorded grounding sources for this
-  // message, render a small "Grounded in: …" attribution line under
-  // the text so the user can see the answer was tied to their state.
+  // v11.4 — derive contextual action chips for assistant messages.
+  // We scan the response text for intent keywords and render the
+  // matching chips as tappable next steps, so the user gets an
+  // actionable thread instead of a paragraph that ends.
+  const actions = deriveActionChips({
+    text: message.text,
+    hasScanned,
+  });
+
   return (
     <View style={messageStyles.assistantRow}>
       <View style={messageStyles.assistantMark}>
@@ -561,9 +641,90 @@ function MessageLine({ message }: { message: AssistantMessage }) {
             {`Grounded in: ${message.groundedFrom.join(' · ')}`}
           </Text>
         ) : null}
+        {actions.length > 0 ? (
+          <View style={messageStyles.actionRow}>
+            {actions.map((a) => {
+              const onPress =
+                a === 'scan'
+                  ? onScan
+                  : a === 'products'
+                  ? onOpenProducts
+                  : onOpenRoutine;
+              return (
+                <Pressable
+                  key={a}
+                  onPress={() => {
+                    hapt.select();
+                    onPress();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={ACTION_LABELS[a]}
+                  style={({ pressed }) => [
+                    messageStyles.actionChip,
+                    pressed && { opacity: 0.88 },
+                  ]}
+                >
+                  <Text
+                    style={messageStyles.actionChipText}
+                    maxFontSizeMultiplier={1.1}
+                  >
+                    {ACTION_LABELS[a]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
     </View>
   );
+}
+
+type ActionChip = 'scan' | 'products' | 'routine';
+
+const ACTION_LABELS: Record<ActionChip, string> = {
+  scan: 'Take a face scan →',
+  products: 'View matched products →',
+  routine: 'Open routine →',
+};
+
+/**
+ * v11.4 — light keyword-based intent extraction. Two rules:
+ *
+ *   1. If the assistant said "I don't have a recent scan" (or the
+ *      response is missing scan grounding and the user hasn't
+ *      scanned yet), surface a Scan chip — this is the highest-value
+ *      next step in that state.
+ *   2. Otherwise scan the body for product/routine references and
+ *      surface the matching chips. Cap at 2 so the UI doesn't read
+ *      as a button menu.
+ */
+function deriveActionChips({
+  text,
+  hasScanned,
+}: {
+  text: string;
+  hasScanned: boolean;
+}): ActionChip[] {
+  const lower = text.toLowerCase();
+  const out: ActionChip[] = [];
+  const noScanSignaled =
+    /don’t have a recent scan|don't have a recent scan|no recent scan|once you scan|after you scan|take a scan/i.test(
+      text
+    ) || (!hasScanned && !/scan/i.test(text));
+  if (noScanSignaled) out.push('scan');
+  if (
+    /\bproduct(s)?\b|matches|recommend|cleanser|serum|moisturizer|spf|toner/i.test(
+      text
+    )
+  ) {
+    out.push('products');
+  }
+  if (/\broutine\b|morning|evening|tonight|step/i.test(text)) {
+    out.push('routine');
+  }
+  // Dedupe and cap at 2 so the message stays scannable.
+  return Array.from(new Set(out)).slice(0, 2);
 }
 
 // v11.3 — LiveStatusDot removed. The previous design rendered
@@ -793,6 +954,34 @@ const emptyStyles = StyleSheet.create({
     letterSpacing: -0.1,
     color: palette.ink,
   },
+  // v11.4 — primary "Take a face scan" CTA on the empty body.
+  // Replaces the prompt-only experience when no scan exists.
+  primaryCta: {
+    marginTop: space.xs,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: palette.ink,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    alignSelf: 'flex-start',
+  },
+  primaryCtaLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    letterSpacing: 0.1,
+    color: palette.inkInverse,
+  },
+  orLine: {
+    marginTop: space.lg,
+    marginBottom: space.sm,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+  },
 });
 
 const messageStyles = StyleSheet.create({
@@ -839,5 +1028,31 @@ const messageStyles = StyleSheet.create({
     letterSpacing: 0.6,
     color: palette.clay,
     textTransform: 'uppercase',
+  },
+  // v11.4 — contextual action chips beneath assistant messages.
+  // Reduce typing burden for the highest-value next steps (scan,
+  // products, routine).
+  actionRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  actionChip: {
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bgDeep,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionChipText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.1,
+    color: palette.ink,
   },
 });

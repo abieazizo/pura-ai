@@ -37,6 +37,9 @@ export interface ScanOverlayProps {
   /** v11.3 — face-mode confidence state. Drives reticle colour +
    *  Caption copy ("Hold steady…" → "Ready when you are"). */
   frameState?: ReticleFrameState;
+  /** v11.4 — when not null, the capture button renders this number
+   *  inside the shutter while the pre-capture countdown runs. */
+  countdown?: number | null;
 }
 
 /**
@@ -68,6 +71,7 @@ export function ScanOverlay({
   onHelp,
   analyzing,
   frameState = 'seeking',
+  countdown = null,
 }: ScanOverlayProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -82,19 +86,23 @@ export function ScanOverlay({
     onHelp();
   };
 
-  // Caption sits 40pt below the reticle lower edge. Reticle centers on the
-  // screen; its height varies by mode. We treat "reticle center = screen
-  // center" and "caption just below reticle" as: caption top = (screen
-  // center) + (reticle height / 2) + 40. For the half-height we average the
-  // face (50%) vs product/barcode (45% or 120pt) cases. On tall screens the
-  // caption sits above the dock with room to breathe.
+  // Caption sits 32pt below the reticle lower edge by default. On
+  // small phones the bottom dock (zoom + mode + ON-DEVICE + capture)
+  // can crowd the caption out of legible space, so v11.4 clamps the
+  // caption to AT LEAST 56pt above the bottom dock top.
   const reticleHalf =
     mode === 'face'
       ? Math.round(height * 0.25)
       : mode === 'product'
       ? Math.round(height * 0.225)
       : 60; // barcode is 120pt tall
-  const captionTop = Math.round(height / 2) + reticleHalf + 40;
+  const reticleBottomY = Math.round(height / 2) + reticleHalf;
+  // The bottom-stack starts at: bottom = insets.bottom + 40 + 84 + 24.
+  // Convert to Y-from-top: height - (insets.bottom + 148).
+  const dockTopY = height - (insets.bottom + 148);
+  const captionTopRaw = reticleBottomY + 32;
+  const captionTopMax = dockTopY - 56;
+  const captionTop = Math.min(captionTopRaw, captionTopMax);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -180,6 +188,7 @@ export function ScanOverlay({
           onCapture={onCapture}
           onGalleryPick={onGalleryPick}
           analyzing={analyzing}
+          countdown={countdown}
           autoMode={mode === 'barcode'}
           autoModeLabel={analyzing ? 'Found.' : 'Scanning…'}
         />

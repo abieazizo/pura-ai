@@ -14,14 +14,24 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 export type ReticleMode = 'face' | 'product' | 'barcode';
 
 /**
- * v11.3 — frame-confidence states. Only `face` mode uses these
- * today (the costly analyzeFaceScan path); `product` and `barcode`
- * leave it at the default `seeking`. The state changes the reticle
- * border colour and the captured-pulse cadence so the user gets
- * real-time confidence the camera is "seeing them" before they
- * commit to capture.
+ * v11.4 — honest readiness states. expo-camera v17 ships no face
+ * detection in Expo Go, so we don't pretend we're seeing the user's
+ * face. Instead readiness is tied to user intent + capture
+ * preparation:
+ *
+ *   • seeking   — default. Clay border, gentle pulse. Caption rotates
+ *                 through live framing tips.
+ *   • preparing — fired when the user TAPS the capture button. We
+ *                 enter a 2-second hold-steady countdown with a
+ *                 strong moss-green ring + glow + thicker stroke
+ *                 before the photo actually fires. Reads as a real
+ *                 commit moment instead of a fake "we see you" lie.
+ *
+ * This replaces the v11.3 timer-based "ready" state which silently
+ * promoted to green after 2.5s regardless of what was on camera —
+ * and never reset, because there was no signal to reset on.
  */
-export type ReticleFrameState = 'seeking' | 'ready';
+export type ReticleFrameState = 'seeking' | 'preparing';
 
 export interface ReticleProps {
   mode: ReticleMode;
@@ -54,11 +64,12 @@ export function Reticle({
   const reduceMotion = useReduceMotion();
   const pulse = useSharedValue(0);
   const scanLine = useSharedValue(0);
-  // v11.3 — colour the reticle moss-green when the user has held the
-  // camera steady long enough to be a confident capture target. Only
-  // the `face` mode promotes; `product` and `barcode` stay clay.
-  const borderColor =
-    mode === 'face' && frameState === 'ready' ? palette.mossDeep : palette.clay;
+  // v11.4 — strong moss-green commit treatment during the
+  // pre-capture hold-steady countdown. Only `face` mode triggers
+  // this; `product` and `barcode` keep clay throughout.
+  const isPreparing = mode === 'face' && frameState === 'preparing';
+  const borderColor = isPreparing ? palette.mossDeep : palette.clay;
+  const borderWidth = isPreparing ? 3 : STROKE;
 
   useEffect(() => {
     if (reduceMotion) {
@@ -114,13 +125,26 @@ export function Reticle({
       {mode === 'face' ? (
         <Animated.View style={[styles.center, pulseStyle]}>
           <View
-            style={{
-              width: faceW,
-              height: faceH,
-              borderRadius: faceW / 2,
-              borderWidth: frameState === 'ready' ? 2 : STROKE,
-              borderColor,
-            }}
+            style={[
+              {
+                width: faceW,
+                height: faceH,
+                borderRadius: faceW / 2,
+                borderWidth,
+                borderColor,
+              },
+              // v11.4 — premium glow halo around the moss-green ring
+              // during the pre-capture countdown. Reads as "we're
+              // committing to this capture now" — far stronger than
+              // a 1pt → 2pt stroke shift.
+              isPreparing && {
+                shadowColor: palette.mossDeep,
+                shadowOpacity: 0.45,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 0 },
+                elevation: 10,
+              },
+            ]}
           />
         </Animated.View>
       ) : null}
