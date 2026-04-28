@@ -1,22 +1,128 @@
 /**
- * Warm-tone failure UI. Fires when AI takes longer than 12s or the
- * analysis call rejects. No alerts, no cold red — the error is framed as
- * "photo is safe, try again."
+ * Condition-aware face-scan failure state (v11.3).
+ *
+ * The previous version showed the same "I couldn't finish this
+ * reading. Sometimes the analysis doesn't come through." regardless
+ * of why the AI couldn't make sense of the photo. v11.3 reads the
+ * actual failure reason — derived from `image_quality.issues` on the
+ * AI response when validation succeeds-but-flags the photo, OR from
+ * an explicit `network` / `unknown` reason when the AI call itself
+ * fell over — and shows headline + body + CTA copy that names the
+ * specific problem and the specific next action.
+ *
+ * The reasons we recognise:
+ *   • no_face_detected — image_quality.issues includes 'partial_face'
+ *     or 'occluded' AND no findings detected a face region. Or the
+ *     AI returned a usable=false with no findings.
+ *   • partial_face    — face detected but cropped at one or more edges
+ *   • poor_lighting   — image_quality.issues includes 'low_light'
+ *   • blurry          — image_quality.issues includes 'blurry'
+ *   • angled          — image_quality.issues includes 'angled'
+ *   • network         — AI call itself errored (timeout / 5xx / no
+ *     response from the proxy)
+ *   • unknown         — fall-through, generic copy
  */
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CloudSlash, ArrowRight, X } from 'phosphor-react-native';
+import {
+  ArrowRight,
+  CloudSlash,
+  Crop,
+  EyeSlash,
+  Lightbulb,
+  Person,
+  WaveSawtooth,
+  X,
+  type IconProps as PhosphorIconProps,
+} from 'phosphor-react-native';
 import { palette, scanTypography } from '@/theme';
 import { hapt } from '@/utils/haptics';
+
+export type ErrorStateReason =
+  | 'no_face_detected'
+  | 'partial_face'
+  | 'poor_lighting'
+  | 'blurry'
+  | 'angled'
+  | 'network'
+  | 'unknown';
 
 export interface ErrorStateProps {
   onRetry: () => void;
   onAbort: () => void;
+  /**
+   * Why the scan didn't produce a usable reading. When omitted, we
+   * fall back to the generic "I couldn't finish this reading." copy,
+   * matching legacy v11.2 behaviour.
+   */
+  reason?: ErrorStateReason;
 }
 
-export function ErrorState({ onRetry, onAbort }: ErrorStateProps) {
+interface ReasonCopy {
+  Icon: React.FC<PhosphorIconProps>;
+  headline: string;
+  body: string;
+  cta: string;
+}
+
+/**
+ * Per-reason copy + icon. The headline names the specific problem
+ * (so the user immediately understands why); the body offers ONE
+ * concrete next action (so they know what to do); the CTA inherits
+ * a verb that matches the action.
+ */
+const REASON_COPY: Record<ErrorStateReason, ReasonCopy> = {
+  no_face_detected: {
+    Icon: Person as React.FC<PhosphorIconProps>,
+    headline: 'I didn’t see a face.',
+    body: 'Center your face in the frame and make sure your full face is visible.',
+    cta: 'Try again',
+  },
+  partial_face: {
+    Icon: Crop as React.FC<PhosphorIconProps>,
+    headline: 'Your face was cropped.',
+    body: 'Move back a little so your forehead, cheeks, and chin all fit inside the oval.',
+    cta: 'Try again',
+  },
+  poor_lighting: {
+    Icon: Lightbulb as React.FC<PhosphorIconProps>,
+    headline: 'It was too dark to read.',
+    body: 'Turn toward a soft light source and retake the photo.',
+    cta: 'Retake in better light',
+  },
+  blurry: {
+    Icon: WaveSawtooth as React.FC<PhosphorIconProps>,
+    headline: 'The photo was blurry.',
+    body: 'Hold the camera steady and let it focus before you tap.',
+    cta: 'Try again',
+  },
+  angled: {
+    Icon: EyeSlash as React.FC<PhosphorIconProps>,
+    headline: 'The angle was a little off.',
+    body: 'Hold the camera at eye level and look straight ahead.',
+    cta: 'Try again',
+  },
+  network: {
+    Icon: CloudSlash as React.FC<PhosphorIconProps>,
+    headline: 'I couldn’t reach the analysis service.',
+    body: 'Your photo is safe. Check your connection and try again.',
+    cta: 'Try another scan',
+  },
+  unknown: {
+    Icon: CloudSlash as React.FC<PhosphorIconProps>,
+    headline: 'I couldn’t finish this reading.',
+    body: 'Sometimes the analysis doesn’t come through. Your photo is safe — let’s try again.',
+    cta: 'Try another scan',
+  },
+};
+
+export function ErrorState({
+  onRetry,
+  onAbort,
+  reason = 'unknown',
+}: ErrorStateProps) {
   const handleRetry = () => {
     hapt.medium();
     onRetry();
@@ -25,6 +131,9 @@ export function ErrorState({ onRetry, onAbort }: ErrorStateProps) {
     hapt.select();
     onAbort();
   };
+
+  const copy = REASON_COPY[reason];
+  const Icon = copy.Icon;
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -43,8 +152,8 @@ export function ErrorState({ onRetry, onAbort }: ErrorStateProps) {
 
       <View style={styles.body}>
         <View style={styles.iconWrap}>
-          <CloudSlash
-            size={48}
+          <Icon
+            size={44}
             weight="duotone"
             color={palette.inkSecondary}
           />
@@ -55,22 +164,21 @@ export function ErrorState({ onRetry, onAbort }: ErrorStateProps) {
           maxFontSizeMultiplier={1.2}
           accessibilityRole="header"
         >
-          I couldn't finish this reading.
+          {copy.headline}
         </Text>
 
         <Text style={styles.bodyText} maxFontSizeMultiplier={1.2}>
-          Sometimes the analysis doesn't come through. Your photo is safe —
-          let's try again.
+          {copy.body}
         </Text>
 
         <Pressable
           onPress={handleRetry}
           style={({ pressed }) => [styles.primaryCta, pressed && { opacity: 0.92 }]}
           accessibilityRole="button"
-          accessibilityLabel="Try another scan"
+          accessibilityLabel={copy.cta}
         >
           <Text style={styles.primaryCtaLabel} maxFontSizeMultiplier={1.15}>
-            Try another scan
+            {copy.cta}
           </Text>
           <ArrowRight size={18} weight="duotone" color={palette.bg} />
         </Pressable>
@@ -120,17 +228,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconWrap: {
-    marginBottom: 32,
+    marginBottom: 24,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headline: {
     ...scanTypography.errorHeadline,
     color: palette.ink,
-    marginBottom: 16,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   bodyText: {
     ...scanTypography.errorBody,
     color: palette.inkSecondary,
-    marginBottom: 40,
+    marginBottom: 36,
+    textAlign: 'center',
   },
   primaryCta: {
     height: 56,

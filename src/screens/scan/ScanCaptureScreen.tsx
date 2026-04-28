@@ -124,6 +124,37 @@ export function ScanCaptureScreen({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOverlay.value }));
 
+  // v11.3 — frame-confidence stability gate.
+  //
+  // expo-camera v17 doesn't ship face detection in Expo Go (the
+  // expo-face-detector package was removed in SDK 50, and ML-Kit
+  // requires a custom dev build the user isn't using). So we proxy
+  // "is this frame trustworthy" with a stability heuristic: once the
+  // user has held the camera open in face mode for ≥ 2.5 seconds
+  // without changing modes or losing permission, promote the reticle
+  // from `seeking` to `ready` (border turns moss-green, caption
+  // shifts to "Hold steady — ready when you are"). The user gets a
+  // confident "I'm seeing you" cue before they commit to capture.
+  //
+  // The cue is advisory, not gating: the capture button stays live
+  // because expo-camera's lack of face detection means we can't
+  // BLOCK genuinely bad captures from the client. The post-capture
+  // failure screen carries the condition-aware "no face detected /
+  // poor lighting / blurry" guidance using the AI's
+  // image_quality.issues output (see ErrorState.tsx).
+  const [frameState, setFrameState] = useState<'seeking' | 'ready'>(
+    'seeking'
+  );
+  useEffect(() => {
+    if (mode !== 'face' || !permission?.granted) {
+      setFrameState('seeking');
+      return;
+    }
+    setFrameState('seeking');
+    const t = setTimeout(() => setFrameState('ready'), 2500);
+    return () => clearTimeout(t);
+  }, [mode, permission?.granted]);
+
   const onCapture = useCallback(async () => {
     if (!cameraRef.current || capturing) return;
     setCapturing(true);
@@ -267,6 +298,7 @@ export function ScanCaptureScreen({
           onExit={onClose}
           onHelp={onOpenHelp}
           analyzing={capturing}
+          frameState={frameState}
         />
       </Animated.View>
 

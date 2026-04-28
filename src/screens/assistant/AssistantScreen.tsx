@@ -34,7 +34,6 @@ import {
   ShieldCheck,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
-import { EditorialRule } from '@/components/EditorialRule';
 import { PuraMark } from '@/components/PuraMark';
 import { TypingDots } from '@/components/TypingDots';
 import { ProductCard } from '@/components/ProductCard';
@@ -131,30 +130,23 @@ export function AssistantScreen() {
       <StatusBar style="dark" />
       <AISourceBadge feature="assistant" />
 
-      {/* v10.3 — branded chat header with a live status dot. The dot
-          gently pulses when the assistant is ready (reads as "listening,
-          alive") and flips to clay with a faster pulse while thinking.
-          Reduce-motion disables the pulse. */}
+      {/* v11.3 — single calm header bar. The redundant top-right
+          status pill (READY/THINKING) is gone — the PuraMark already
+          communicates state via its `variant` prop, and a duplicate
+          status indicator was the visible-clutter problem on the
+          previous AI Assist screen. The 40pt "Ask." hero is replaced
+          with a tighter inline title that lets the empty-body opener
+          carry the warmth. */}
       <View style={styles.brandBar}>
         <View style={styles.brandLeft}>
-          <PuraMark size={26} variant={typing ? 'thinking' : 'idle'} />
+          <PuraMark
+            size={22}
+            variant={typing ? 'thinking' : 'idle'}
+          />
           <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
             Pura AI
           </Text>
         </View>
-        <View style={styles.brandStatus}>
-          <LiveStatusDot active={typing} />
-          <Text style={styles.brandStatusText} maxFontSizeMultiplier={1.1}>
-            {typing ? strings.statusThinking : strings.statusReady}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.header}>
-        <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-          Ask<Text style={{ color: palette.clay }}>.</Text>
-        </Text>
-        <Text style={styles.subtitle}>{strings.subtitle}</Text>
       </View>
 
       <KeyboardAvoidingView
@@ -185,24 +177,31 @@ export function AssistantScreen() {
 
         {attached.length > 0 ? (
           <View style={styles.attachedRow}>
+            {/* v11.3 — slim attached pills replace the heavy
+                ProductCard chip variant. Each pill: brand caps · name,
+                tap-to-remove. Footprint dropped from ~80pt rows to a
+                28pt single line. */}
             {attached.map((id) => {
               const p = seedProducts.find((x) => x.id === id);
               if (!p) return null;
               return (
-                <View key={id} style={styles.attachedChip}>
-                  <ProductCard
-                    product={p}
-                    variant="chip"
-                    onPress={() => removeAttached(id)}
-                  />
-                  <Pressable
-                    onPress={() => removeAttached(id)}
-                    hitSlop={6}
-                    style={styles.chipRemove}
+                <Pressable
+                  key={id}
+                  onPress={() => removeAttached(id)}
+                  hitSlop={6}
+                  style={styles.attachedPill}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${p.brand} ${p.name}`}
+                >
+                  <Text
+                    style={styles.attachedPillText}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={1.1}
                   >
-                    <X size={12} color={palette.inkSecondary} weight="regular" />
-                  </Pressable>
-                </View>
+                    {`${p.brand.toUpperCase()} · ${p.name}`}
+                  </Text>
+                  <X size={11} color={palette.inkTertiary} weight="bold" />
+                </Pressable>
               );
             })}
           </View>
@@ -255,19 +254,39 @@ export function AssistantScreen() {
 
         {showPicker ? (
           <View style={styles.picker}>
+            {/* v11.3 — picker tray rebuilt as slim horizontal pills
+                instead of full ProductCard chips. Saves ~110pt of
+                vertical space on the lower screen and stops the tray
+                from dominating the composer. */}
             <Text style={styles.pickerLabel}>ATTACH A PRODUCT</Text>
             <FlatList
               data={seedProducts.slice(0, 10)}
               horizontal
               keyExtractor={(p) => p.id}
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: space.sm }}
+              contentContainerStyle={styles.pickerRow}
               renderItem={({ item }) => (
-                <ProductCard
-                  product={item}
-                  variant="chip"
+                <Pressable
                   onPress={() => attachProduct(item.id)}
-                />
+                  style={styles.pickerPill}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Attach ${item.brand} ${item.name}`}
+                >
+                  <Text
+                    style={styles.pickerPillBrand}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={1.1}
+                  >
+                    {item.brand.toUpperCase()}
+                  </Text>
+                  <Text
+                    style={styles.pickerPillName}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={1.1}
+                  >
+                    {item.name}
+                  </Text>
+                </Pressable>
               )}
             />
           </View>
@@ -325,72 +344,42 @@ function EmptyChatBody({
   opening: string | null;
 }) {
   const reduceMotion = useReduceMotion();
-  const visible = useRotatingPrompts(suggestions, 4, 7000, reduceMotion);
+  // v11.3 — show 3 prompts (was 4) so the page isn't dominated by a
+  // grid; rotation cadence kept at 7s.
+  const visible = useRotatingPrompts(suggestions, 3, 7000, reduceMotion);
 
+  // v11.3 — the empty body collapses to a single warm line + scan-
+  // grounded follow-up (when available) + 3 prompt chips. The
+  // previous design stacked: PuraMark md + emptyTitle + emptyBody +
+  // ProactiveOpening + "TRY ASKING" rule + 4×74pt chips + attach
+  // hint = 7 visual blocks before the user typed a thing.
   return (
     <View style={emptyStyles.root}>
-      <View style={emptyStyles.markWrap}>
-        <PuraMark variant="idle" size="md" />
-      </View>
       <Text style={emptyStyles.title} maxFontSizeMultiplier={1.15}>
         {strings.emptyTitle}
       </Text>
-      <Text style={emptyStyles.body}>{strings.emptyBody}</Text>
-
-      {/* v10.4 — proactive opening. When Pura has scan data in hand, it
-          speaks first. Uses the same Mark xs + raw-ink-text pattern as
-          assistant MessageLine so it reads as an actual Pura message,
-          not a banner. Falls back to silent empty state when no scan. */}
-      {opening ? <ProactiveOpening text={opening} /> : null}
-
-      <View style={emptyStyles.kickerRow}>
-        <Text style={emptyStyles.kickerText} maxFontSizeMultiplier={1.1}>
-          TRY ASKING
+      {opening ? (
+        <Text style={emptyStyles.opening} maxFontSizeMultiplier={1.2}>
+          {opening}
         </Text>
-        <View style={emptyStyles.kickerRule} />
-      </View>
+      ) : (
+        <Text style={emptyStyles.body}>{strings.emptyBody}</Text>
+      )}
 
       <View style={emptyStyles.promptGrid}>
         {visible.map((s) => (
           <PromptChip key={s} text={s} onPick={onPick} />
         ))}
       </View>
-
-      <Text style={emptyStyles.hintText}>{strings.attachHint}</Text>
     </View>
   );
 }
 
-/**
- * v10.4 — proactive opening. Pura speaks first with a scan-grounded
- * line so the assistant reads as attentive, not idle. Rendered as the
- * assistant-voice pattern (Mark xs left, raw ink text right, no
- * bubble) — visually continuous with real assistant replies.
- */
-function ProactiveOpening({ text }: { text: string }) {
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(6);
-  useEffect(() => {
-    opacity.value = withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) });
-    translateY.value = withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) });
-  }, [opacity, translateY]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  return (
-    <Animated.View style={[emptyStyles.openingWrap, animatedStyle]}>
-      <View style={emptyStyles.openingMark}>
-        <PuraMark variant="idle" size="xs" />
-      </View>
-      <Text style={emptyStyles.openingText} maxFontSizeMultiplier={1.2}>
-        {text}
-      </Text>
-    </Animated.View>
-  );
-}
+// v11.3 — ProactiveOpening removed. The opening line now renders
+// inline inside EmptyChatBody as the body sentence, replacing the
+// generic "Ask about your scan…" copy when scan data is in hand.
+// Removing the Mark + animated bounce wrap collapsed three stacked
+// blocks (mark / opening / try-asking-rule) into one calm line.
 
 /**
  * One chip. Renders with a gentle fade-in on mount via Reanimated so the
@@ -577,66 +566,10 @@ function MessageLine({ message }: { message: AssistantMessage }) {
   );
 }
 
-/**
- * v10.3 — live brand-status dot. The dot breathes with a slow sine
- * (opacity 0.45 → 1.0) when ready; it pulses faster and stays full
- * opacity with a tiny scale bounce while the assistant is thinking.
- * Reduce-motion holds it static at full opacity. Tiny footprint,
- * huge "alive" cue.
- */
-function LiveStatusDot({ active }: { active: boolean }) {
-  const reduceMotion = useReduceMotion();
-  const pulse = useSharedValue(1);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      pulse.value = 1;
-      return;
-    }
-    if (active) {
-      // Thinking — quicker, scale bounce
-      pulse.value = withRepeat(
-        withSequence(
-          withTiming(1.25, { duration: 520, easing: Easing.inOut(Easing.sin) }),
-          withTiming(1, { duration: 520, easing: Easing.inOut(Easing.sin) })
-        ),
-        -1,
-        false
-      );
-    } else {
-      // Ready — slow breath via opacity
-      pulse.value = withRepeat(
-        withSequence(
-          withTiming(0.45, {
-            duration: 1400,
-            easing: Easing.inOut(Easing.sin),
-          }),
-          withTiming(1, {
-            duration: 1400,
-            easing: Easing.inOut(Easing.sin),
-          })
-        ),
-        -1,
-        false
-      );
-    }
-  }, [active, pulse, reduceMotion]);
-
-  const dotStyle = useAnimatedStyle(() => {
-    if (active) return { transform: [{ scale: pulse.value }] };
-    return { opacity: pulse.value };
-  });
-
-  return (
-    <Animated.View
-      style={[
-        styles.brandStatusDot,
-        { backgroundColor: active ? palette.clay : palette.moss },
-        dotStyle,
-      ]}
-    />
-  );
-}
+// v11.3 — LiveStatusDot removed. The previous design rendered
+// a redundant READY/THINKING pill in the top-right of the assistant
+// header alongside the PuraMark thinking variant. The two indicators
+// said the same thing twice; the pill is gone.
 
 type ListItem =
   | { kind: 'empty' }
@@ -646,66 +579,26 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
 
-  // v9.6 — branded chat header
+  // v11.3 — single calm header row. The legacy brandStatus pill +
+  // 40pt "Ask." hero + italic subtitle were replaced with a slim
+  // brand bar; the warm "Hey — what do you need?" empty body now
+  // carries the personality.
   brandBar: {
-    height: 56,
+    height: 48,
     paddingHorizontal: space.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
   brandLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   brandWord: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 20,
-    letterSpacing: -0.3,
+    fontSize: 18,
+    letterSpacing: -0.2,
     color: palette.ink,
-  },
-  brandStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: palette.bgDeep,
-  },
-  brandStatusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  brandStatusText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.0,
-    color: palette.inkSecondary,
-    textTransform: 'uppercase',
-  },
-
-  header: {
-    paddingTop: space.md,
-    paddingHorizontal: space.lg,
-    paddingBottom: space.md,
-  },
-  // v10.3 — explicit lineHeight so the 40pt serif "Ask." renders without
-  // clipping the tail on the "k". The token's default (36pt) was designed
-  // for 32pt fontSize and can't host a 40pt override.
-  title: {
-    ...typography.titleSerif,
-    color: palette.ink,
-    fontSize: 40,
-    lineHeight: 46,
-    letterSpacing: -1.0,
-  },
-  subtitle: {
-    ...typography.italicLead,
-    color: palette.inkSecondary,
-    marginTop: space.sm,
   },
   listContent: {
     paddingHorizontal: space.lg,
@@ -726,19 +619,27 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
-  attachedChip: { position: 'relative' },
-  chipRemove: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: palette.bg,
+  // v11.3 — slim attached pill. ~28pt tall, single line. Replaces
+  // the ProductCard chip variant which carried tile + brand + name +
+  // remove dot per attached product (~80pt rows).
+  attachedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: palette.bgDeep,
     borderWidth: 1,
     borderColor: palette.hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
+    maxWidth: '100%',
+  },
+  attachedPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.2,
+    color: palette.inkSecondary,
+    flexShrink: 1,
   },
 
   composer: {
@@ -776,7 +677,7 @@ const styles = StyleSheet.create({
 
   picker: {
     paddingHorizontal: space.lg,
-    paddingBottom: space.md,
+    paddingBottom: space.sm,
     backgroundColor: colors.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: palette.hairline,
@@ -785,108 +686,112 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: palette.inkTertiary,
     marginTop: space.sm,
-    marginBottom: space.sm,
+    marginBottom: 8,
+  },
+  // v11.3 — picker tray was a horizontal FlatList of full ProductCard
+  // chips (~92pt tall). Replaced with slim 2-line pills (~52pt) that
+  // show brand caps on top + product name below.
+  pickerRow: {
+    gap: 8,
+    paddingRight: space.lg,
+  },
+  pickerPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+    minWidth: 140,
+    maxWidth: 200,
+  },
+  pickerPillBrand: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: palette.inkTertiary,
+    marginBottom: 2,
+  },
+  pickerPillName: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: -0.2,
+    color: palette.ink,
   },
 });
 
 const emptyStyles = StyleSheet.create({
-  root: { alignItems: 'center', paddingTop: space.lg },
-  markWrap: { marginBottom: space.lg },
+  // v11.3 — empty body collapses to title + opener + 3 prompt chips.
+  // Removed: PuraMark md (redundant with the brandBar mark), the
+  // emptyTitle/emptyBody dual-text stack, "TRY ASKING" kicker rule,
+  // and the standalone "Attach a product. I'll read the label." hint
+  // (the "+" composer button already communicates that).
+  root: {
+    alignItems: 'flex-start',
+    paddingTop: space.md,
+    paddingHorizontal: 4,
+  },
   title: {
-    ...typography.titleSerif,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.4,
     color: palette.ink,
-    textAlign: 'center',
+    marginBottom: 8,
   },
   body: {
-    ...typography.body,
-    color: palette.inkSecondary,
-    textAlign: 'center',
-    paddingHorizontal: space.lg,
-    marginTop: space.sm,
-  },
-  // v10.4 — proactive opening row. Mark xs left, raw-ink text right,
-  // matching the existing assistant MessageLine look so the opening
-  // reads as a real first line from Pura.
-  openingWrap: {
-    marginTop: space.xl,
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: space.sm,
-    paddingHorizontal: 4,
-  },
-  openingMark: {
-    marginTop: 4,
-  },
-  openingText: {
-    flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    lineHeight: 22,
-    letterSpacing: -0.1,
-    color: palette.ink,
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.inkSecondary,
+    marginBottom: space.lg,
   },
-  // v9.3 — concierge grid
-  kickerRow: {
-    marginTop: space.xl,
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingHorizontal: 4,
-  },
-  kickerText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-  },
-  kickerRule: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: palette.hairline,
+  // v11.3 — when a scan exists, the proactive opening REPLACES the
+  // generic body line so the user sees one warm sentence grounded in
+  // their actual scan, not stacked greeting + body + grounded line.
+  opening: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.inkSecondary,
+    marginBottom: space.lg,
   },
   promptGrid: {
     alignSelf: 'stretch',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: space.md,
+    flexDirection: 'column',
+    gap: 8,
   },
-  // v10.3 — flex props moved to the Animated.View wrapper so each chip
-  // mounts with its own fade-in opacity. The inner chip just renders
-  // content; the wrapper handles layout width.
+  // v11.3 — flatter chip shape. The previous 74pt min-height + icon
+  // wrapper made each chip a card; v11.3 chips are 48pt full-width
+  // pills that read as "tap to ask".
   promptChip: {
-    minHeight: 74,
-    paddingVertical: 12,
+    minHeight: 48,
+    paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: palette.hairline,
     backgroundColor: palette.bg,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
   promptIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
     backgroundColor: palette.clayPaper,
     alignItems: 'center',
     justifyContent: 'center',
   },
   promptText: {
+    flex: 1,
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 15,
-    lineHeight: 19,
-    letterSpacing: -0.2,
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.1,
     color: palette.ink,
-  },
-  hintText: {
-    ...typography.caption,
-    color: palette.inkTertiary,
-    textAlign: 'center',
-    marginTop: space.xl,
   },
 });
 

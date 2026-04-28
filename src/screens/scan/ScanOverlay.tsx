@@ -8,7 +8,11 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Question, X } from 'phosphor-react-native';
-import { Reticle, type ReticleMode } from '@/components/scan/Reticle';
+import {
+  Reticle,
+  type ReticleMode,
+  type ReticleFrameState,
+} from '@/components/scan/Reticle';
 import { Caption } from '@/components/scan/Caption';
 import { ZoomToggle, type ZoomValue } from '@/components/scan/ZoomToggle';
 import { ModeSelector } from '@/components/scan/ModeSelector';
@@ -30,6 +34,9 @@ export interface ScanOverlayProps {
   onHelp: () => void;
   /** True while capture is in-flight; drives the analysis ring. */
   analyzing?: boolean;
+  /** v11.3 — face-mode confidence state. Drives reticle colour +
+   *  Caption copy ("Hold steady…" → "Ready when you are"). */
+  frameState?: ReticleFrameState;
 }
 
 /**
@@ -60,6 +67,7 @@ export function ScanOverlay({
   onExit,
   onHelp,
   analyzing,
+  frameState = 'seeking',
 }: ScanOverlayProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -104,10 +112,15 @@ export function ScanOverlay({
       />
 
       {/* Reticle layer */}
-      <Reticle mode={mode} screenWidth={width} screenHeight={height} />
+      <Reticle
+        mode={mode}
+        screenWidth={width}
+        screenHeight={height}
+        frameState={frameState}
+      />
 
       {/* Caption 40pt below reticle lower edge */}
-      <Caption mode={mode} top={captionTop} />
+      <Caption mode={mode} top={captionTop} frameState={frameState} />
 
       {/* Top-left — clean X close */}
       <Pressable

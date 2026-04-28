@@ -231,12 +231,15 @@ export const assistant = {
   // v10 — subtitles retuned. "I've been watching" was too vague and
   // verging on uncanny. Each subtitle now points at the evidence base
   // (the scan) so the assistant reads as grounded, not voyeuristic.
-  subtitle: 'Grounded in your last scan.',
-  emptyTitle: 'Ask me anything.',
-  emptyBody:
-    'I answer from your last scan, your plan, and your routine \u2014 not general skincare chatter.',
-  attachHint: 'Attach a product. I\u2019ll read the label.',
-  composerPlaceholder: 'Write your question\u2026',
+  // v11.3 — chrome trimmed. Title + (former) subtitle were stacked
+  // even on first open; now only the warm empty-body greeting remains.
+  subtitle: '',
+  emptyTitle: 'Hey \u2014 what do you need?',
+  emptyBody: 'Ask about your scan, your routine, or any product.',
+  // v11.3 \u2014 attach hint removed; the "+" icon in the composer
+  // already communicates the affordance.
+  attachHint: '',
+  composerPlaceholder: 'Ask anything\u2026',
   forYouLabel: 'FOR YOU',
   // v10.3 — expanded rotating pool. The UI picks 4 at a time (shuffled
   // per mount, plus a slow rotation) so the assistant feels alive without

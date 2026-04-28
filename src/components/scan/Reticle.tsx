@@ -13,10 +13,22 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 export type ReticleMode = 'face' | 'product' | 'barcode';
 
+/**
+ * v11.3 — frame-confidence states. Only `face` mode uses these
+ * today (the costly analyzeFaceScan path); `product` and `barcode`
+ * leave it at the default `seeking`. The state changes the reticle
+ * border colour and the captured-pulse cadence so the user gets
+ * real-time confidence the camera is "seeing them" before they
+ * commit to capture.
+ */
+export type ReticleFrameState = 'seeking' | 'ready';
+
 export interface ReticleProps {
   mode: ReticleMode;
   screenWidth: number;
   screenHeight: number;
+  /** Default: 'seeking'. */
+  frameState?: ReticleFrameState;
 }
 
 const CORNER_EXT = 16;
@@ -33,10 +45,20 @@ const STROKE = 1;
  * 180ms). We expose three render blocks and let the parent swap them with
  * opacity transitions.
  */
-export function Reticle({ mode, screenWidth, screenHeight }: ReticleProps) {
+export function Reticle({
+  mode,
+  screenWidth,
+  screenHeight,
+  frameState = 'seeking',
+}: ReticleProps) {
   const reduceMotion = useReduceMotion();
   const pulse = useSharedValue(0);
   const scanLine = useSharedValue(0);
+  // v11.3 — colour the reticle moss-green when the user has held the
+  // camera steady long enough to be a confident capture target. Only
+  // the `face` mode promotes; `product` and `barcode` stay clay.
+  const borderColor =
+    mode === 'face' && frameState === 'ready' ? palette.mossDeep : palette.clay;
 
   useEffect(() => {
     if (reduceMotion) {
@@ -96,8 +118,8 @@ export function Reticle({ mode, screenWidth, screenHeight }: ReticleProps) {
               width: faceW,
               height: faceH,
               borderRadius: faceW / 2,
-              borderWidth: STROKE,
-              borderColor: palette.clay,
+              borderWidth: frameState === 'ready' ? 2 : STROKE,
+              borderColor,
             }}
           />
         </Animated.View>
