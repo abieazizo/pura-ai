@@ -280,6 +280,50 @@ async function checkAssistant(scan: FaceScanAnalysis): Promise<void> {
     userQuestion: 'Should I add a serum to my evening routine tonight?',
   });
   expect(typeof text === 'string' && text.length > 0, 'assistant answered');
+  // v11.1 — assert grounding signal. A grounded answer should mention
+  // at least one of the user's actual context fields (skin type,
+  // routine product, or scan-derived concept). Pure filler answers
+  // would never reference these.
+  const groundingTokens = ['combination', 'cleanser', 'serum', 'evening', 'routine', 'fragrance'];
+  const lower = text.toLowerCase();
+  expect(
+    groundingTokens.some((t) => lower.includes(t)),
+    `assistant answer references at least one context token (${groundingTokens.join(', ')})`
+  );
+  expect(
+    !/^great question/i.test(text.trim()),
+    'assistant does not lead with "Great question" filler'
+  );
+}
+
+async function checkBundleFullScanToPlan(): Promise<void> {
+  // The composite bundle endpoint exercises 4 sequential calls in
+  // one request: face scan → matching + score (parallel) → routine.
+  // Verifies the end-to-end pipeline a real face scan triggers.
+  const result = await aiGateway.buildFullScanToPlanBundle({
+    imageBase64: TINY_PNG_B64,
+    mediaType: 'image/png',
+    scanId: 'verify-bundle-scan',
+    userProfileSummary: USER_PROFILE_SUMMARY,
+    candidateProductsJson: CANDIDATE_PRODUCTS_JSON,
+    existingRoutineJson: EXISTING_ROUTINE_JSON,
+  });
+  expect(typeof result.analysis.scan_id === 'string', 'bundle.analysis.scan_id');
+  expect(Array.isArray(result.matches.matches), 'bundle.matches array');
+  expect(typeof result.routine.headline === 'string', 'bundle.routine.headline');
+  expect(typeof result.score.score === 'number', 'bundle.score.score');
+}
+
+async function checkBundleProgress(): Promise<void> {
+  const result = await aiGateway.buildProgressBundle({
+    baselineSummary: JSON.stringify({ score: 60, top_concern: 'breakouts' }),
+    latestSummary: JSON.stringify({ score: 73, top_concern: 'hydration' }),
+    concernMovementsJson: JSON.stringify({ breakouts: 'better', hydration: 'worse' }),
+    score: 73,
+    deltaValue: 13,
+  });
+  expect(typeof result.progress.short_narrative === 'string', 'bundle.progress.short_narrative');
+  expect(typeof result.score.score === 'number', 'bundle.score.score');
 }
 
 async function checkSearchSuggestions(): Promise<void> {
@@ -361,6 +405,16 @@ async function main(): Promise<void> {
     );
     checks.push(
       await check('search suggestions', () => checkSearchSuggestions())
+    );
+    checks.push(
+      await check('composite: full scan → plan bundle', () =>
+        checkBundleFullScanToPlan()
+      )
+    );
+    checks.push(
+      await check('composite: progress bundle', () =>
+        checkBundleProgress()
+      )
     );
   }
 

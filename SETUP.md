@@ -2,26 +2,35 @@
 
 You have a working app shell out of the box. To get the **real AI path
 live** (assistant + scan + matching + progress + suggestions all
-backed by Claude) you need two things:
+backed by OpenAI / `gpt-5-mini` + `gpt-5`) you need two things:
 
-1. an OpenAI API key in `.env`
-2. one terminal running **`npm run dev`** — that's it
+1. an OpenAI API key in `.env` (the `OPENAI_API_KEY` line)
+2. one terminal running **`npm start`** for local dev
 
-`npm run dev` starts BOTH the AI proxy and the Expo bundler at the
-same time (via `concurrently`). If you only run `npm start`, the
-proxy isn't running and every AI screen falls through to the
-deterministic demo response.
+## v11.0+ transport modes (one source of truth)
 
-> v10.39 — AI now runs IN-PROCESS inside Metro itself.
-> When the phone calls `http://<bundle-host>:8081/__pura_ai__/<method>`,
-> Metro's middleware (see `metro.config.js`) loads the OpenAI SDK
-> directly into Metro's Node process and answers the call inline.
-> No separate proxy server, no port 8787, no firewall changes, no
-> `npm run dev`. Just `npm start` and the AI works.
->
-> The standalone proxy at `server/aiProxy.ts` is still available for
-> `npm run verify:ai` and other CLI testing scripts, but is no longer
-> on the phone's request path.
+The client gateway is HTTP fetch-only and provider-agnostic. There are
+two transport modes the proxy URL can resolve to. Both are supported,
+with **different deployment intents**:
+
+| mode | path | when to use | files |
+|---|---|---|---|
+| **In-process (DEV ONLY)** | Phone → Metro `http://<bundle-host>:8081/__pura_ai__/*` → OpenAI SDK loaded into Metro's Node process | Local dev. `npm start` is sufficient. No second server, no port 8787, no firewall change. | `metro.config.js` |
+| **Standalone proxy (PRODUCTION)** | Phone → `https://your-deployed-proxy.example.com/*` → OpenAI | Production deployment. Real HTTPS, behind your own infra (Cloudflare / nginx / Railway / Fly etc). | `server/aiProxy.ts` |
+
+For **local dev**: just `npm start`. Metro answers AI calls directly.
+
+For **production**: deploy `server/aiProxy.ts` somewhere with HTTPS,
+set `OPENAI_API_KEY` and `PURA_AI_PROXY_TOKEN` as server env vars,
+and set `EXPO_PUBLIC_PURA_AI_PROXY_URL` + `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN`
+in the client env to point at it. The standalone proxy carries the
+full hardening surface — bearer-token auth, per-IP rate limit, body
+size cap, request-id propagation, structured logging, CORS preflight,
+graceful shutdown — and is what you actually ship.
+
+The verification script (`npm run verify:ai`) targets whichever URL
+`EXPO_PUBLIC_PURA_AI_PROXY_URL` resolves to, so you can prove either
+path works against a real OpenAI key end-to-end before shipping.
 
 > v10.34 — the 8 catalog products with real photography are now
 > **bundled locally** as `require()`'d assets in `assets/products/`.
@@ -68,13 +77,15 @@ EXPO_PUBLIC_PURA_AI_PROXY_URL=http://localhost:8787
 EXPO_PUBLIC_PURA_AI_PROXY_TOKEN=   # leave blank for local dev
 ```
 
-**Critical security rule:** `ANTHROPIC_API_KEY` must NOT be prefixed
+**Critical security rule:** `OPENAI_API_KEY` must NOT be prefixed
 with `EXPO_PUBLIC_`. The `EXPO_PUBLIC_` prefix is the Expo babel
 plugin's signal to inline a value into the React Native JavaScript
 bundle. A key inlined into the bundle can be extracted from any
 shipped build and used until rate-limited or revoked. **Keep the
-prefix off the API key.** The proxy server reads `ANTHROPIC_API_KEY`
-directly from `process.env` at server start.
+prefix off the API key.** The proxy server (or Metro middleware in
+local dev) reads `OPENAI_API_KEY` directly from `process.env` at
+boot. There is exactly one place the key is read; nothing under
+`src/` ever sees it.
 
 ---
 

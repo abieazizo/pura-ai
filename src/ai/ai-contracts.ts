@@ -300,11 +300,10 @@ export interface SearchSuggestionResult {
 /**
  * Provider model configuration.
  *
- * v11.0 — provider migrated from Anthropic to OpenAI. The exported
- * symbols keep their `CLAUDE_*` names purely for backward-compat
- * across the existing import surface; the values are OpenAI model
- * identifiers. Aliases `AI_MODELS` / `AI_DEFAULTS` are exported for
- * call sites that prefer provider-neutral names.
+ * v11.1 — legacy `CLAUDE_*` aliases removed. Single source of truth
+ * is now `AI_MODELS` / `AI_DEFAULTS`. Any future provider swap
+ * happens here in one place; no shim layer hides which provider is
+ * actually live.
  *
  * Model strategy:
  *   • `extraction` (gpt-5-mini) — fast, vision-capable, cheap, runs
@@ -313,7 +312,9 @@ export interface SearchSuggestionResult {
  *     search suggestions). Strict JSON-schema response_format keeps
  *     output validated.
  *   • `assistant` (gpt-5) — strongest reasoning for the freeform
- *     grounded assistant answers.
+ *     grounded assistant answers. NOTE: gpt-5 rejects the
+ *     `temperature` parameter (it bakes its own internal reasoning
+ *     temperature in), so the OpenAI client omits it for that model.
  */
 export interface AIModelConfig {
   extraction: 'gpt-5-mini';
@@ -329,6 +330,12 @@ export const AI_DEFAULTS = {
   extraction: {
     temperature: 0,
     max_tokens: 4096,
+    /**
+     * Carried over for parity with the legacy interface. Not used by
+     * the OpenAI client — strict json_schema response_format implies
+     * single-call structured output. Kept on the type so existing
+     * server-side handlers that read it still compile.
+     */
     disable_parallel_tool_use: true,
   },
   assistant: {
@@ -336,13 +343,6 @@ export const AI_DEFAULTS = {
     max_tokens: 1500,
   },
 } as const;
-
-// Legacy aliases — kept so existing imports compile during the
-// provider migration. Prefer the provider-neutral `AI_MODELS` /
-// `AI_DEFAULTS` in new code.
-export type ClaudeModelConfig = AIModelConfig;
-export const CLAUDE_MODELS: AIModelConfig = AI_MODELS;
-export const CLAUDE_DEFAULTS = AI_DEFAULTS;
 
 // ============================================================================
 // JSON schemas — strict tool input contracts.
@@ -898,9 +898,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   SEARCH_SUGGESTION_RESULT_SCHEMA,
 };
 
-// Legacy alias — kept so prior imports compile.
-export type ClaudeStructuredSchemas = AIStructuredSchemas;
-export const CLAUDE_STRUCTURED_SCHEMAS = AI_STRUCTURED_SCHEMAS;
+// v11.1 — legacy `Claude*` schema aliases removed.
 
 // ============================================================================
 // Cross-boundary shared types — used by both client gateway (proxy
