@@ -12,14 +12,16 @@ same time (via `concurrently`). If you only run `npm start`, the
 proxy isn't running and every AI screen falls through to the
 deterministic demo response.
 
-> v10.34 — the AI now travels through Metro's dev server.
-> Phone hits `http://<bundle-host>:8081/__pura_ai__/<method>` (Metro's
-> port — already firewall-allowed because the JS bundle loads
-> through it). Metro's middleware (see `metro.config.js`) forwards
-> the request to the AI proxy on `127.0.0.1:8787` (loopback, no
-> firewall hassle). Net effect: AI works on a real phone with
-> ZERO env config and ZERO firewall changes. Set
-> `EXPO_PUBLIC_PURA_AI_PROXY_URL` only for production deployments.
+> v10.39 — AI now runs IN-PROCESS inside Metro itself.
+> When the phone calls `http://<bundle-host>:8081/__pura_ai__/<method>`,
+> Metro's middleware (see `metro.config.js`) loads the Anthropic SDK
+> directly into Metro's Node process and answers the call inline.
+> No separate proxy server, no port 8787, no firewall changes, no
+> `npm run dev`. Just `npm start` and the AI works.
+>
+> The standalone proxy at `server/aiProxy.ts` is still available for
+> `npm run verify:ai` and other CLI testing scripts, but is no longer
+> on the phone's request path.
 
 > v10.34 — the 8 catalog products with real photography are now
 > **bundled locally** as `require()`'d assets in `assets/products/`.

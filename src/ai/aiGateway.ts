@@ -200,14 +200,17 @@ interface ProxyCandidate {
 }
 
 /**
- * v10.36 — build the FULL list of plausible proxy URLs and let the
- * runtime probe each one to find the live transport. Solves a
- * regression seen on real phones in v10.34/35: if the dev didn't
- * fully restart Metro after pulling, the metro.config.js middleware
- * isn't loaded, so `/__pura_ai__/*` paths go to a default Metro
- * handler instead of being forwarded to the proxy. By probing the
- * direct proxy port (8787) too, we recover automatically when the
- * middleware path is dead but the proxy itself is reachable.
+ * v10.39 — build the list of plausible proxy URLs.
+ *
+ * As of v10.39 the metro-middleware path serves AI responses
+ * IN-PROCESS (Metro itself loads the Anthropic SDK and answers
+ * /__pura_ai__/* directly — see metro.config.js). The direct-port
+ * candidate is kept around for the standalone server/aiProxy.ts
+ * (used by `npm run verify:ai` and other scripts), but normal
+ * dev workflows no longer need it.
+ *
+ * Net: `npm start` is now sufficient. No separate `npm run dev`,
+ * no port-8787 firewall, no second process to babysit.
  */
 function listProxyCandidates(): ProxyCandidate[] {
   const out: ProxyCandidate[] = [];
