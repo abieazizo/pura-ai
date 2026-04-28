@@ -261,12 +261,15 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 // / score / settle / reveal) but only four carry text.
 // ------------------------------------------------------------------
 
+// v11.5 \u2014 analyzing-stage labels rewritten to feel like the system
+// is genuinely doing skincare-grade analysis (per the v11.5 spec).
+// Order: features \u2192 texture \u2192 tone \u2192 hydration/breakouts \u2192 result.
 export const CAPTION_COPY = {
-  locate: 'Reading skin texture.',
-  partition: 'Checking for breakouts.',
-  detect: 'Measuring hydration.',
-  score: 'Preparing your result.',
-  waiting: 'One moment\u2026',
+  locate: 'Aligning features\u2026',
+  partition: 'Reading skin texture\u2026',
+  detect: 'Checking tone balance\u2026',
+  score: 'Mapping hydration and breakouts\u2026',
+  waiting: 'Building your result\u2026',
   reveal: 'Ready.',
 } as const;
 

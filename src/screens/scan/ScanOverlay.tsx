@@ -8,11 +8,11 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Question, X } from 'phosphor-react-native';
-import {
-  Reticle,
-  type ReticleMode,
-  type ReticleFrameState,
-} from '@/components/scan/Reticle';
+import { Reticle, type ReticleMode } from '@/components/scan/Reticle';
+import type {
+  FaceScanModel,
+  OverlayTone,
+} from '@/screens/scan/hooks/useFaceScanState';
 import { Caption } from '@/components/scan/Caption';
 import { ZoomToggle, type ZoomValue } from '@/components/scan/ZoomToggle';
 import { ModeSelector } from '@/components/scan/ModeSelector';
@@ -34,12 +34,13 @@ export interface ScanOverlayProps {
   onHelp: () => void;
   /** True while capture is in-flight; drives the analysis ring. */
   analyzing?: boolean;
-  /** v11.3 — face-mode confidence state. Drives reticle colour +
-   *  Caption copy ("Hold steady…" → "Ready when you are"). */
-  frameState?: ReticleFrameState;
-  /** v11.4 — when not null, the capture button renders this number
-   *  inside the shutter while the pre-capture countdown runs. */
-  countdown?: number | null;
+  /**
+   * v11.5 — the face-scan state machine model. When mode === 'face',
+   * the overlay reads `tone`, `message`, `countdownValue`, and
+   * `canCapture` from this single object. Other modes pass null
+   * because the machine doesn't apply.
+   */
+  faceModel?: FaceScanModel | null;
 }
 
 /**
@@ -70,9 +71,11 @@ export function ScanOverlay({
   onExit,
   onHelp,
   analyzing,
-  frameState = 'seeking',
-  countdown = null,
+  faceModel = null,
 }: ScanOverlayProps) {
+  const overlayTone: OverlayTone = faceModel?.overlayTone ?? 'neutral';
+  const captionMessage = faceModel?.message;
+  const countdown = faceModel?.countdownValue ?? null;
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
@@ -124,11 +127,16 @@ export function ScanOverlay({
         mode={mode}
         screenWidth={width}
         screenHeight={height}
-        frameState={frameState}
+        overlayTone={overlayTone}
       />
 
       {/* Caption 40pt below reticle lower edge */}
-      <Caption mode={mode} top={captionTop} frameState={frameState} />
+      <Caption
+        mode={mode}
+        top={captionTop}
+        message={captionMessage}
+        overlayTone={overlayTone}
+      />
 
       {/* Top-left — clean X close */}
       <Pressable

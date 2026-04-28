@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import Animated, {
   Easing,
@@ -47,6 +48,10 @@ import { assistant as strings } from '@/copy/strings';
 import { hapt } from '@/utils/haptics';
 import type { AssistantMessage, Product } from '@/types';
 import type { RootStackParamList } from '@/navigation/types';
+import {
+  shapeAssistantText,
+  type ShapedTextBlock,
+} from '@/utils/shapeAssistantText';
 
 /**
  * v5 Assistant. Title `Ask.` with italic lede. Assistant messages render
@@ -62,6 +67,13 @@ export function AssistantScreen() {
   const latestScan = useAppStore((s) => s.scans[s.scans.length - 1]);
   const hasScanned = useAppStore((s) => s.scans.length > 0);
   const sendMessage = useAppStore((s) => s.sendMessage);
+  // v11.5 — kill the dead air above the composer when the keyboard
+  // is up. The previous fixed `keyboardVerticalOffset={64}` was
+  // wrong: the actual offset = the live tab-bar height (varies per
+  // device — ~83 with home indicator, ~49 without). AssistantScreen
+  // always renders inside the bottom Tab navigator (see
+  // navigation/TabNavigator.tsx), so this hook is always callable.
+  const tabBarHeight = useBottomTabBarHeight();
 
   const listRef = useRef<FlatList<ListItem>>(null);
   const [draft, setDraft] = useState('');
@@ -168,8 +180,12 @@ export function AssistantScreen() {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        // v11.5 — real offset = tab bar height (when present). The
+        // legacy `64` constant left a strip of dead white space
+        // above the composer on every device. Using the live tab
+        // bar height makes the composer sit flush with the keyboard.
+        keyboardVerticalOffset={tabBarHeight}
       >
         <FlatList
           ref={listRef}
@@ -625,13 +641,35 @@ function MessageLine({
     hasScanned,
   });
 
+  // v11.5 — shape the raw model response into a lead + ordered
+  // blocks before rendering. Long paragraphs split at sentence
+  // boundaries, bullets become their own renderable kind, markdown
+  // markers stripped.
+  const shaped = shapeAssistantText(message.text);
+
   return (
     <View style={messageStyles.assistantRow}>
       <View style={messageStyles.assistantMark}>
         <PuraMark variant="idle" size="xs" />
       </View>
       <View style={messageStyles.assistantContent}>
-        <Text style={messageStyles.assistantText}>{message.text}</Text>
+        {shaped.lead.length > 0 ? (
+          <Text style={messageStyles.assistantLead}>{shaped.lead}</Text>
+        ) : (
+          <Text style={messageStyles.assistantText}>{message.text}</Text>
+        )}
+        {shaped.blocks.map((b: ShapedTextBlock, i) =>
+          b.kind === 'bullet' ? (
+            <View key={i} style={messageStyles.bulletRow}>
+              <Text style={messageStyles.bulletDot}>•</Text>
+              <Text style={messageStyles.bulletText}>{b.text}</Text>
+            </View>
+          ) : (
+            <Text key={i} style={messageStyles.assistantText}>
+              {b.text}
+            </Text>
+          )
+        )}
         {message.groundedFrom && message.groundedFrom.length > 0 ? (
           <Text
             style={messageStyles.assistantGrounding}
@@ -1015,9 +1053,38 @@ const messageStyles = StyleSheet.create({
   },
   assistantContent: {
     flex: 1,
+    gap: 8,
+  },
+  // v11.5 — lead sentence is heavier than follow-up paragraphs so
+  // the eye lands on the answer first.
+  assistantLead: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    lineHeight: 22,
+    letterSpacing: -0.1,
+    color: palette.ink,
   },
   assistantText: {
     ...typography.body,
+    color: palette.inkSecondary,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  bulletDot: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    lineHeight: 22,
+    color: palette.clay,
+    marginTop: 0,
+  },
+  bulletText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 20,
     color: palette.ink,
   },
   // v10.26 — small grounding attribution under AI-driven replies.

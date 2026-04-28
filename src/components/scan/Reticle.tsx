@@ -10,71 +10,50 @@ import Animated, {
 } from 'react-native-reanimated';
 import { palette, radius } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import type { OverlayTone } from '@/screens/scan/hooks/useFaceScanState';
 
 export type ReticleMode = 'face' | 'product' | 'barcode';
-
-/**
- * v11.4 — honest readiness states. expo-camera v17 ships no face
- * detection in Expo Go, so we don't pretend we're seeing the user's
- * face. Instead readiness is tied to user intent + capture
- * preparation:
- *
- *   • seeking   — default. Clay border, gentle pulse. Caption rotates
- *                 through live framing tips.
- *   • preparing — fired when the user TAPS the capture button. We
- *                 enter a 2-second hold-steady countdown with a
- *                 strong moss-green ring + glow + thicker stroke
- *                 before the photo actually fires. Reads as a real
- *                 commit moment instead of a fake "we see you" lie.
- *
- * This replaces the v11.3 timer-based "ready" state which silently
- * promoted to green after 2.5s regardless of what was on camera —
- * and never reset, because there was no signal to reset on.
- */
-export type ReticleFrameState = 'seeking' | 'preparing';
+export type { OverlayTone };
 
 export interface ReticleProps {
   mode: ReticleMode;
   screenWidth: number;
   screenHeight: number;
-  /** Default: 'seeking'. */
-  frameState?: ReticleFrameState;
+  /**
+   * v11.5 — overlay tone derived from the face-scan state machine.
+   *   neutral    — quiet stroke, gentle pulse (NO_FACE / boot)
+   *   warning    — sand stroke, slightly stronger (any FACE_OFF_*,
+   *                FACE_PARTIAL, FACE_TOO_*, FACE_LOW_LIGHT,
+   *                FACE_UNSTABLE)
+   *   ready      — moss-tinted ring + slow sheen sweep + halo
+   *                (FACE_READY)
+   *   committing — strong moss + glow + thick stroke
+   *                (FACE_COUNTDOWN, FACE_CAPTURING, FACE_ANALYZING)
+   */
+  overlayTone?: OverlayTone;
 }
 
 const CORNER_EXT = 16;
 const CORNER_LEN = 22;
 const STROKE = 1;
 
-/**
- * §2.3 — single confident hairline reticle. One stroke, opacity pulses
- * 0.4 → 0.6 → 0.4 over 2.2s. Face = oval. Product = rounded rect + corner
- * brackets extending 16px beyond each corner. Barcode = narrow horizontal
- * rect + corner brackets + a scan line that translates top→bottom over 2s.
- *
- * Mode cross-fades are driven at the wrapper level (§2.3 spec calls for
- * 180ms). We expose three render blocks and let the parent swap them with
- * opacity transitions.
- */
 export function Reticle({
   mode,
   screenWidth,
   screenHeight,
-  frameState = 'seeking',
+  overlayTone = 'neutral',
 }: ReticleProps) {
   const reduceMotion = useReduceMotion();
   const pulse = useSharedValue(0);
   const scanLine = useSharedValue(0);
-  // v11.4 — strong moss-green commit treatment during the
-  // pre-capture hold-steady countdown. Only `face` mode triggers
-  // this; `product` and `barcode` keep clay throughout.
-  const isPreparing = mode === 'face' && frameState === 'preparing';
-  const borderColor = isPreparing ? palette.mossDeep : palette.clay;
-  const borderWidth = isPreparing ? 3 : STROKE;
+  const sheen = useSharedValue(0);
 
+  // Continuous gentle pulse on the reticle border opacity.
   useEffect(() => {
     if (reduceMotion) {
       pulse.value = 0.5;
       scanLine.value = 0;
+      sheen.value = 0;
       return;
     }
     pulse.value = withRepeat(
@@ -83,8 +62,31 @@ export function Reticle({
       true
     );
     return () => cancelAnimation(pulse);
-  }, [reduceMotion, pulse, scanLine]);
+  }, [reduceMotion, pulse, scanLine, sheen]);
 
+  // v11.5 — sheen pulse only animates on ready/committing. Slow
+  // 1.6s sweep that travels across the oval rim by mapping into
+  // a halo ring opacity.
+  useEffect(() => {
+    if (overlayTone !== 'ready' && overlayTone !== 'committing') {
+      cancelAnimation(sheen);
+      sheen.value = 0;
+      return;
+    }
+    if (reduceMotion) {
+      sheen.value = 1;
+      return;
+    }
+    sheen.value = 0;
+    sheen.value = withRepeat(
+      withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+    return () => cancelAnimation(sheen);
+  }, [overlayTone, reduceMotion, sheen]);
+
+  // Barcode scan line.
   useEffect(() => {
     if (mode !== 'barcode' || reduceMotion) {
       cancelAnimation(scanLine);
@@ -102,6 +104,60 @@ export function Reticle({
   const pulseStyle = useAnimatedStyle(() => ({
     opacity: 0.4 + 0.2 * pulse.value,
   }));
+
+  const sheenStyle = useAnimatedStyle(() => ({
+    opacity: 0.25 + 0.55 * sheen.value,
+    transform: [{ scale: 1.0 + 0.04 * sheen.value }],
+  }));
+
+  // ────────────────────────────────────────────────────────────────
+  // Tone → stroke + halo presets. Single source of truth for the
+  // four overlay states.
+  // ────────────────────────────────────────────────────────────────
+  const tonePreset = (() => {
+    if (mode !== 'face') {
+      return {
+        borderColor: palette.clay,
+        borderWidth: STROKE,
+        haloEnabled: false,
+        haloColor: palette.clay,
+      };
+    }
+    switch (overlayTone) {
+      case 'committing':
+        return {
+          borderColor: palette.mossDeep,
+          borderWidth: 3,
+          haloEnabled: true,
+          haloColor: palette.mossDeep,
+          haloIntensity: 0.65,
+        };
+      case 'ready':
+        return {
+          borderColor: palette.mossDeep,
+          borderWidth: 2,
+          haloEnabled: true,
+          haloColor: palette.mossDeep,
+          haloIntensity: 0.4,
+        };
+      case 'warning':
+        // Subtle amber/sand. Visible without screaming.
+        return {
+          borderColor: palette.amber,
+          borderWidth: 1.5,
+          haloEnabled: false,
+          haloColor: palette.amber,
+        };
+      case 'neutral':
+      default:
+        return {
+          borderColor: palette.clay,
+          borderWidth: STROKE,
+          haloEnabled: false,
+          haloColor: palette.clay,
+        };
+    }
+  })();
 
   // Face oval: 75% width × 50% height, centered
   const faceW = Math.round(screenWidth * 0.75);
@@ -124,27 +180,39 @@ export function Reticle({
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {mode === 'face' ? (
         <Animated.View style={[styles.center, pulseStyle]}>
+          {/* v11.5 — soft outer halo only on ready / committing. The
+              halo sits BEHIND the oval and grows with the sheen
+              pulse so the ready moment reads as expensive premium
+              light, not a neon outline. */}
+          {tonePreset.haloEnabled ? (
+            <Animated.View
+              style={[
+                styles.halo,
+                {
+                  width: faceW + 24,
+                  height: faceH + 24,
+                  borderRadius: (faceW + 24) / 2,
+                  shadowColor: tonePreset.haloColor,
+                  shadowOpacity:
+                    tonePreset.haloIntensity ?? 0.4,
+                  shadowRadius:
+                    overlayTone === 'committing' ? 24 : 14,
+                  elevation: overlayTone === 'committing' ? 14 : 8,
+                  borderColor: tonePreset.haloColor,
+                  borderWidth: 1,
+                },
+                sheenStyle,
+              ]}
+            />
+          ) : null}
           <View
-            style={[
-              {
-                width: faceW,
-                height: faceH,
-                borderRadius: faceW / 2,
-                borderWidth,
-                borderColor,
-              },
-              // v11.4 — premium glow halo around the moss-green ring
-              // during the pre-capture countdown. Reads as "we're
-              // committing to this capture now" — far stronger than
-              // a 1pt → 2pt stroke shift.
-              isPreparing && {
-                shadowColor: palette.mossDeep,
-                shadowOpacity: 0.45,
-                shadowRadius: 18,
-                shadowOffset: { width: 0, height: 0 },
-                elevation: 10,
-              },
-            ]}
+            style={{
+              width: faceW,
+              height: faceH,
+              borderRadius: faceW / 2,
+              borderWidth: tonePreset.borderWidth,
+              borderColor: tonePreset.borderColor,
+            }}
           />
         </Animated.View>
       ) : null}
@@ -194,10 +262,6 @@ export function Reticle({
   );
 }
 
-/**
- * Four corner brackets extending `extend`pt beyond each corner of a frame.
- * They attach at the outer edges of the reticle.
- */
 function Corners({
   width,
   height,
@@ -251,6 +315,13 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // v11.5 — halo behind the oval. Position absolute so its size
+  // doesn't push the oval. Inherits sheen scale from sheenStyle.
+  halo: {
+    position: 'absolute',
+    backgroundColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
   },
   scanLine: {
     position: 'absolute',

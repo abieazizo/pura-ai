@@ -13,6 +13,10 @@ import { X } from 'phosphor-react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { hapt } from '@/utils/haptics';
 import { ScanOverlay } from '@/screens/scan/ScanOverlay';
+import {
+  useFaceScanState,
+  COUNTDOWN_MS,
+} from '@/screens/scan/hooks/useFaceScanState';
 import type { ReticleMode } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
 import type { ZoomValue } from '@/components/scan/ZoomToggle';
@@ -125,59 +129,43 @@ export function ScanCaptureScreen({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOverlay.value }));
 
-  // v11.4 — honest pre-capture countdown.
-  //
-  // expo-camera v17 ships no face detection in Expo Go (the
-  // expo-face-detector package was removed in SDK 50, and ML-Kit
-  // requires a custom dev build). The previous v11.3 implementation
-  // tried to fake this by promoting the reticle to "ready" 2.5s
-  // after mount — but it never reset (we have no way to know when
-  // the face leaves frame), so the green state was a lie.
-  //
-  // v11.4 replaces the fake-ready timer with a real commit moment:
-  // when the user taps capture, we enter a 2-second "preparing"
-  // state with a strong moss-green ring + glow + "HOLD STEADY"
-  // caption + countdown. THEN the photo fires. This gives the user
-  // a true premium moment that ALSO produces better photos by
-  // letting the camera focus and the user steady their hand.
-  const [frameState, setFrameState] = useState<'seeking' | 'preparing'>(
-    'seeking'
-  );
-  const [countdown, setCountdown] = useState<number | null>(null);
-  // Reset commit state on mode/zoom/flash change so a user
-  // reframing their shot can't accidentally fire mid-prep.
-  useEffect(() => {
-    setFrameState('seeking');
-    setCountdown(null);
-  }, [mode, zoom, flashMode]);
-
-  const PREPARE_MS = 2000;
+  // v11.5 — face-scan state machine (single source of truth).
+  // The hook owns NO_FACE / FACE_READY / FACE_COUNTDOWN / etc.
+  // Without on-device face detection (expo-camera@17 in Expo Go
+  // ships none), the truthful subset emitted today is:
+  //   NO_FACE → FACE_READY → FACE_COUNTDOWN → FACE_CAPTURING.
+  // The full vocabulary is available the moment a detector is wired
+  // (call faceScan.report({...}) on each detector frame — see
+  // useFaceScanState.ts).
+  const faceScan = useFaceScanState({
+    permissionGranted: !!permission?.granted,
+    isFaceMode: mode === 'face',
+  });
 
   const onCapture = useCallback(async () => {
     if (!cameraRef.current || capturing) return;
-    if (frameState === 'preparing') return; // already in flight
     if (mode !== 'face') {
       // Product / barcode skip the prepare ceremony — the user is
       // pointing at an inanimate object and expects an instant
       // shutter response.
       return runCapture();
     }
-
-    // Face mode: 2-second hold-steady countdown.
-    setFrameState('preparing');
-    setCountdown(2);
+    // Face mode: gate on canCapture from the state machine. If the
+    // user taps when not ready, the live guidance message already
+    // tells them what to fix (model.message) — we just no-op the
+    // shutter to avoid wasting tokens on a known-bad frame.
+    if (!faceScan.model.canCapture) {
+      hapt.warning();
+      return;
+    }
     hapt.tap();
-    const t1 = setTimeout(() => setCountdown(1), 1000);
-    const t2 = setTimeout(() => setCountdown(null), 1900);
-    const t3 = setTimeout(async () => {
+    faceScan.startCountdown();
+    const t = setTimeout(async () => {
+      faceScan.markCapturing();
       hapt.medium();
       await runCapture();
-    }, PREPARE_MS);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
+    }, COUNTDOWN_MS);
+    return () => clearTimeout(t);
 
     async function runCapture() {
       if (!cameraRef.current) return;
@@ -195,16 +183,14 @@ export function ScanCaptureScreen({
           onCaptured(photo.uri, toAnalysisMode(mode));
         } else {
           setCapturing(false);
-          setFrameState('seeking');
-          setCountdown(null);
+          faceScan.reset();
         }
       } catch {
         setCapturing(false);
-        setFrameState('seeking');
-        setCountdown(null);
+        faceScan.reset();
       }
     }
-  }, [capturing, frameState, flashOverlay, onCaptured, mode]);
+  }, [capturing, faceScan, flashOverlay, onCaptured, mode]);
 
   const onGalleryPick = useCallback(
     (uri: string) => {
@@ -325,8 +311,7 @@ export function ScanCaptureScreen({
           onExit={onClose}
           onHelp={onOpenHelp}
           analyzing={capturing}
-          frameState={frameState}
-          countdown={countdown}
+          faceModel={mode === 'face' ? faceScan.model : null}
         />
       </Animated.View>
 
