@@ -862,10 +862,18 @@ export class ClaudeClient {
       user_question: params.userQuestion,
     };
 
-    const response = await this.anthropic.messages.create({
+    // v10.40 — `claude-opus-4-7` rejects the `temperature` parameter
+    // ("`temperature` is deprecated for this model.") and returns 400
+    // invalid_request_error. The model bakes its own temperature in
+    // via internal reasoning, so we must omit the field entirely for
+    // opus-4-7+. This was the root cause of the v10.39 assistant
+    // failures the user kept hitting in production.
+    const usesDeprecatedTemperature = /^claude-opus-4-/.test(
+      CLAUDE_MODELS.assistant
+    );
+    const requestParams: Anthropic.Messages.MessageCreateParamsNonStreaming = {
       model: CLAUDE_MODELS.assistant,
       max_tokens: CLAUDE_DEFAULTS.assistant.max_tokens,
-      temperature: CLAUDE_DEFAULTS.assistant.temperature,
       system,
       messages: [
         {
@@ -878,7 +886,11 @@ export class ClaudeClient {
           ],
         },
       ],
-    });
+    };
+    if (!usesDeprecatedTemperature) {
+      requestParams.temperature = CLAUDE_DEFAULTS.assistant.temperature;
+    }
+    const response = await this.anthropic.messages.create(requestParams);
 
     const firstText = response.content.find(
       (b: SdkContentBlock): b is Anthropic.Messages.TextBlock =>
