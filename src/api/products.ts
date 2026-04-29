@@ -57,9 +57,89 @@ export async function getProduct(id: string): Promise<Product | undefined> {
 // ordering they already use.
 // ---------------------------------------------------------------------------
 
+// v15.0 — explicit per-product concern coverage. Hand-curated against
+// the 24 seed products so the matching engine has real signal, not
+// just ingredient-string heuristics. Listed concerns are ordered by
+// how directly the product addresses them (primary first).
 const PRODUCT_CONCERN_HINTS: Record<string, ConcernType[]> = {
-  // Maps product seed IDs → likely concern coverage. Rough mapping;
-  // fine for ranking, doesn't have to be perfect.
+  'cerave-hydrating-cleanser': ['hydration', 'sensitivity'],
+  'la-roche-posay-toleriane-cleanser': ['sensitivity', 'redness', 'hydration'],
+  'beauty-of-joseon-ginseng-cleanser': ['oiliness', 'pores'],
+  'anua-heartleaf-toner': ['redness', 'sensitivity', 'oiliness'],
+  'paulas-choice-2-bha': ['breakouts', 'pores', 'texture'],
+  'biotherm-skin-oxygen-toner': ['hydration', 'oiliness'],
+  'the-ordinary-niacinamide': ['oiliness', 'pores', 'breakouts'],
+  'good-molecules-discoloration': ['dark_marks'],
+  'the-ordinary-retinal': ['texture', 'dark_marks'],
+  'elf-vitamin-c-serum': ['dark_marks', 'texture'],
+  'cerave-pm-lotion': ['hydration', 'sensitivity'],
+  'illiyoon-ceramide-cream': ['hydration', 'sensitivity'],
+  'la-roche-posay-toleriane-dd': ['hydration', 'sensitivity'],
+  'beauty-of-joseon-relief-sun': ['sensitivity', 'redness'],
+  'bonajour-green-tea-sun': ['oiliness', 'sensitivity'],
+  'its-skin-collagen-ampoule': ['hydration'],
+  'paulas-choice-azelaic': ['redness', 'dark_marks', 'breakouts'],
+  'the-ordinary-lactic-acid': ['texture', 'dark_marks'],
+  'beauty-of-joseon-rice-mask': ['hydration', 'sensitivity'],
+  'its-skin-power-mask': ['hydration', 'pores'],
+  'cosrx-snail-essence': ['hydration', 'sensitivity', 'redness'],
+  'kiehls-ultra-facial-cream': ['hydration'],
+  'supergoop-unseen': ['hydration'],
+  'youth-to-the-people-kale': ['hydration', 'sensitivity'],
+};
+
+// v15.0 — per-product short match reasons used by the deterministic
+// fallback matcher. One concrete sentence per product that names the
+// active mechanism. Falls back to concern-axis generic copy only when
+// no entry exists for a product id.
+const PRODUCT_REASON_MAP: Record<string, string> = {
+  'cerave-hydrating-cleanser':
+    'Hydrating, non-stripping cleanser with ceramides and hyaluronic acid for a balanced barrier.',
+  'la-roche-posay-toleriane-cleanser':
+    'Gentle, low-foam cleanser tested for sensitive skin — keeps the barrier intact.',
+  'beauty-of-joseon-ginseng-cleanser':
+    'Mild foaming cleanser that controls T-zone shine without over-drying.',
+  'anua-heartleaf-toner':
+    'Heartleaf-based toner that calms redness and visible reactivity overnight.',
+  'paulas-choice-2-bha':
+    'Salicylic acid liquid exfoliant — clears clogged pores and active breakouts.',
+  'biotherm-skin-oxygen-toner':
+    'Light hydrating toner that preps oily skin without leaving residue.',
+  'the-ordinary-niacinamide':
+    'Niacinamide and zinc to balance oil and visibly reduce congestion.',
+  'good-molecules-discoloration':
+    'Tranexamic-acid serum that fades stubborn dark marks over weeks of use.',
+  'the-ordinary-retinal':
+    'Granactive retinoid for texture and dark marks — start two nights a week.',
+  'elf-vitamin-c-serum':
+    'Affordable vitamin-C blend for everyday tone evening.',
+  'cerave-pm-lotion':
+    'Niacinamide-rich PM moisturizer — barrier-supporting, fragrance-free.',
+  'illiyoon-ceramide-cream':
+    'Multi-ceramide cream for very dry or barrier-compromised skin.',
+  'la-roche-posay-toleriane-dd':
+    'Lightweight daily moisturizer with prebiotic thermal water — calms reactive skin.',
+  'beauty-of-joseon-relief-sun':
+    'SPF 50+ rice + probiotic sunscreen — calm, no white cast, gentle on sensitive skin.',
+  'bonajour-green-tea-sun':
+    'Green-tea-based daily SPF — lightweight finish, comfortable on oily skin.',
+  'its-skin-collagen-ampoule':
+    'Hydrating collagen ampoule for plumper, more bounced-back skin.',
+  'paulas-choice-azelaic':
+    'Azelaic acid booster — works on redness, dark marks, and clogged pores at once.',
+  'the-ordinary-lactic-acid':
+    'Lactic acid + hyaluronic acid for gentle texture smoothing without dryness.',
+  'beauty-of-joseon-rice-mask':
+    'Rice and arbutin mask for radiance and softer skin overnight.',
+  'its-skin-power-mask':
+    'Sheet mask formats for instant hydration spikes when skin reads tight.',
+  'cosrx-snail-essence':
+    'Snail mucin essence — cult favorite for hydration, calming, and barrier repair.',
+  'kiehls-ultra-facial-cream':
+    'Twenty-four-hour hydrating cream — reliable daily moisturizer.',
+  'supergoop-unseen': "Invisible daily SPF that wears like a primer — pairs with any routine.",
+  'youth-to-the-people-kale':
+    'Antioxidant-rich gel cleanser — clean, fragrance-free, layers well in any routine.',
 };
 
 function inferConcerns(p: Product): ConcernType[] {
@@ -288,16 +368,31 @@ function topConcernAxesFor(
 
 function buildFallbackReasons(p: Product, topConcerns: ConcernType[]): string[] {
   const reasons: string[] = [];
+
+  // v15.0 — prefer the curated per-product reason. It's specific
+  // to the product's actual mechanism (e.g. "Salicylic acid liquid
+  // exfoliant — clears clogged pores and active breakouts.") rather
+  // than the generic concern-axis line.
+  const curated = PRODUCT_REASON_MAP[p.id];
+  if (curated) reasons.push(curated);
+
+  // If the user's top concern lines up with this product's coverage,
+  // surface a quick concern-grounding line so the card carries both
+  // the product mechanism AND why it fits the user's scan.
   const productConcerns = inferConcerns(p);
-  // Reason 1: name the user's concern this product addresses.
   for (const c of topConcerns) {
     if (productConcerns.includes(c)) {
-      reasons.push(reasonForConcern(c, p));
+      const concernLine = reasonForConcern(c, p);
+      if (!curated || curated.toLowerCase() !== concernLine.toLowerCase()) {
+        reasons.push(concernLine);
+      }
       break;
     }
   }
-  // Reason 2: surface a key ingredient the user should know about.
-  if (p.keyIngredients && p.keyIngredients.length > 0) {
+
+  // Last-resort key-ingredient line if neither curated nor concern
+  // matched. Keeps every product carrying at least one reason.
+  if (reasons.length === 0 && p.keyIngredients && p.keyIngredients.length > 0) {
     reasons.push(`${p.keyIngredients[0]} as the lead ingredient.`);
   }
   if (reasons.length === 0) {

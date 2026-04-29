@@ -151,43 +151,65 @@ function matchesHint(product: Product, hints: string[]): boolean {
   return hints.some((h) => haystack.includes(h));
 }
 
-export function getGoalBreakouts(): Product[] {
-  return [...seedProducts]
-    .filter((p) => matchesHint(p, BREAKOUT_HINTS))
-    .sort((a, b) => b.matchScore - a.matchScore)
+// v15.0 — when a user has scanned, prefer the AI/deterministic
+// matching ranking even on the goal-specific feeds. Filter the
+// candidate set by the goal's hints, then re-order using the user's
+// aiTopMatches sequence so the most relevant pick for THEIR skin
+// floats to the top of every goal page (breakouts / hydration /
+// texture / etc.). Falls back to the deterministic seed-score order
+// when no scan / no AI ranking is in the store.
+function rankByAiOrSeed(filtered: Product[]): Product[] {
+  const aiMatches = useAppStore.getState().aiTopMatches;
+  if (aiMatches.length === 0) {
+    return [...filtered]
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, ROW_LIMIT);
+  }
+  // Build an order index from aiTopMatches.
+  const orderIndex = new Map<string, number>();
+  aiMatches.forEach((m, i) => orderIndex.set(m.product_id, i));
+  return [...filtered]
+    .sort((a, b) => {
+      const ai = orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+      const bi = orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+      if (ai !== bi) return ai - bi;
+      return b.matchScore - a.matchScore;
+    })
     .slice(0, ROW_LIMIT);
+}
+
+export function getGoalBreakouts(): Product[] {
+  return rankByAiOrSeed(
+    seedProducts.filter((p) => matchesHint(p, BREAKOUT_HINTS))
+  );
 }
 
 export function getGoalHydration(): Product[] {
-  return [...seedProducts]
-    .filter((p) => matchesHint(p, HYDRATION_HINTS))
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, ROW_LIMIT);
+  return rankByAiOrSeed(
+    seedProducts.filter((p) => matchesHint(p, HYDRATION_HINTS))
+  );
 }
 
 export function getGoalTexture(): Product[] {
-  return [...seedProducts]
-    .filter((p) => matchesHint(p, TEXTURE_HINTS))
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, ROW_LIMIT);
+  return rankByAiOrSeed(
+    seedProducts.filter((p) => matchesHint(p, TEXTURE_HINTS))
+  );
 }
 
 export function getGoalDarkMarks(): Product[] {
-  return [...seedProducts]
-    .filter((p) => matchesHint(p, DARK_MARK_HINTS))
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, ROW_LIMIT);
+  return rankByAiOrSeed(
+    seedProducts.filter((p) => matchesHint(p, DARK_MARK_HINTS))
+  );
 }
 
 export function getGoalSensitive(): Product[] {
-  return [...seedProducts]
-    .filter(
+  return rankByAiOrSeed(
+    seedProducts.filter(
       (p) =>
         p.tags.includes('sensitive-safe') ||
         p.tags.includes('fragrance-free')
     )
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, ROW_LIMIT);
+  );
 }
 
 /**

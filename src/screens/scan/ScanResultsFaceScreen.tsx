@@ -59,7 +59,11 @@ import {
   getConcerns,
   severityLabel,
 } from '@/utils/concerns';
-import { computeSkinScore, formatDelta } from '@/utils/skinScore';
+import {
+  computeSkinScore,
+  formatDelta,
+  tierLabel as tierLabelFor,
+} from '@/utils/skinScore';
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
@@ -242,6 +246,11 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             understanding. */}
 
         {/* ── 1. Compact identity ──────────────────────────────────── */}
+        {/* v15.0 — score module rebuilt as editorial layout. Big
+             serif number is the hero; the dial drops to a small
+             status accent below the kicker. Reads as "Skin Score 85
+             · Good · +4 since last scan" — clearer hierarchy than
+             the previous chart-first treatment. */}
         <View style={styles.topModule}>
           <View style={styles.portraitFrame}>
             <Image
@@ -255,21 +264,31 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             <Text style={styles.scoreKicker} maxFontSizeMultiplier={1.1}>
               SKIN SCORE
             </Text>
-            <View style={styles.scoreDialWrap}>
-              <SkinScoreDial
-                value={score.value}
-                size={88}
-                showTier={false}
-                previousValue={previousScoreValue}
-                deltaCaption={null}
-                delay={120}
-                onRevealComplete={handleRevealComplete}
-              />
+            <View style={styles.scoreValueRow}>
+              <Text
+                style={styles.scoreValue}
+                maxFontSizeMultiplier={1.1}
+                allowFontScaling={false}
+              >
+                {score.value}
+              </Text>
+              <View style={styles.scoreDialMini}>
+                <SkinScoreDial
+                  value={score.value}
+                  size={42}
+                  showTier={false}
+                  previousValue={previousScoreValue}
+                  deltaCaption={null}
+                  delay={120}
+                  onRevealComplete={handleRevealComplete}
+                />
+              </View>
             </View>
-            <Text style={styles.scoreDelta} maxFontSizeMultiplier={1.15}>
+            <Text style={styles.scoreTier} maxFontSizeMultiplier={1.15}>
+              {tierLabelFor(score.tier)}
               {score.deltaSinceLast !== null
-                ? `${formatDelta(score.deltaSinceLast)} since last scan`
-                : 'First reading'}
+                ? `  ·  ${formatDelta(score.deltaSinceLast)} since last`
+                : '  ·  First reading'}
             </Text>
           </View>
         </View>
@@ -1000,15 +1019,32 @@ const styles = StyleSheet.create({
     letterSpacing: 1.6,
     color: palette.inkTertiary,
     textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  // v15.0 — editorial score-value row. Big serif number on the
+  // left, small dial on the right as a secondary visual accent.
+  scoreValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
     marginBottom: 8,
   },
-  scoreDialWrap: {
-    marginBottom: 8,
+  scoreValue: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 56,
+    lineHeight: 60,
+    letterSpacing: -2,
+    color: palette.ink,
+    fontVariant: ['tabular-nums'],
   },
-  scoreDelta: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 14,
-    lineHeight: 18,
+  scoreDialMini: {
+    width: 42,
+    height: 42,
+  },
+  scoreTier: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.4,
     color: palette.inkSecondary,
   },
 
