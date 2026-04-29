@@ -45,13 +45,14 @@ import { palette } from '@/theme';
 import type { Scan } from '@/types';
 import {
   CAPTION_COPY,
+  MAX_TOTAL_WAIT,
   PHOTO_HEIGHT_ACTIVE,
   PHOTO_Y_ACTIVE,
   getBeatTiming,
 } from './constants';
 import { useAnalysisChoreography, type Beat } from './hooks/useAnalysisChoreography';
-import { useAIReadiness } from './hooks/useAIReadiness';
 import { usePhotoComposite } from './hooks/usePhotoComposite';
+import type { ScanResult } from '@/types';
 import { PhotoStage } from './components/PhotoStage';
 import { AnalysisHeader } from './components/AnalysisHeader';
 import { AnalysisCaption } from './components/AnalysisCaption';
@@ -115,13 +116,29 @@ export function ScanAnalyzingFaceScreen({
     paused: choreographyPaused,
   });
 
-  const ai = useAIReadiness();
+  // v11.13 — local readiness state owned by THIS screen.
+  //
+  // The previous `useAIReadiness` hook compared `result.timestamp`
+  // (server's `analyzed_at_iso` from the AI response) against
+  // `inFlightScan.startedAt` (device's `Date.now()`). Two different
+  // clocks: even sub-second skew between the AI server and the
+  // phone made `resultT >= runStart` evaluate false, so the hook
+  // never flipped to `'ready'`. The 12 s timeout then forced
+  // `'failed'`, routing every successful scan to ErrorState with the
+  // generic "I couldn't finish this reading." copy.
+  //
+  // Fix: drive the readiness state from the analyze useEffect's
+  // ACTUAL outcome — we already know whether the analysis succeeded
+  // or failed at the moment it returns. No cross-clock comparison.
+  type Readiness = 'pending' | 'ready' | 'failed';
+  const [readiness, setReadiness] = useState<Readiness>('pending');
+  const [analysisResult, setAnalysisResult] = useState<ScanResult | null>(null);
 
   // Composite save — fires once when Beat 6 lands with a result in hand.
   usePhotoComposite({
     stageRef,
     beat: choreography.beat,
-    result: ai.result,
+    result: analysisResult,
   });
 
   // ---- Stage 1: preflight ----
@@ -190,15 +207,26 @@ export function ScanAnalyzingFaceScreen({
             aiAnalysis.findings?.length ?? 0
           );
           apiErroredRef.current = true;
+          setReadiness('failed');
           return;
         }
+        // Success path — translate to the result shape, persist to
+        // the store (so other screens can read it), AND set the
+        // local readiness state so this screen can reveal.
         addScan(scan);
         completedScanRef.current = scan;
-        setScanResult(scanToScanResult(scan, useAppStore.getState().scans.length));
+        const nextResult = scanToScanResult(
+          scan,
+          useAppStore.getState().scans.length
+        );
+        setScanResult(nextResult);
+        setAnalysisResult(nextResult);
+        setReadiness('ready');
       } catch {
         if (cancelled) return;
         errorReasonRef.current = 'network';
         apiErroredRef.current = true;
+        setReadiness('failed');
       }
     })();
     return () => {
@@ -206,27 +234,59 @@ export function ScanAnalyzingFaceScreen({
     };
   }, [preflight.kind, photoUri, previousScan, dayNumber]);
 
-  // ---- If the AI has overshot Beat 6 by 800ms, swap caption to waiting ----
+  // ---- Hard timeout — local clock only, no cross-clock compare ----
+  // True outer-bound guard. MAX_TOTAL_WAIT (70 s) is set above the
+  // gateway's analyzeFaceScan timeout (60 s) so a slow-but-valid AI
+  // run is never preempted. If we still haven't seen a ready/failed
+  // signal after that, force `failed` so the screen doesn't hang.
+  // The user can also cancel anytime via the X close button.
+  useEffect(() => {
+    if (readiness !== 'pending') return;
+    const t = setTimeout(() => {
+      setReadiness((prev) => {
+        if (prev !== 'pending') return prev;
+        // Only set the generic 'unknown' reason if no more specific
+        // reason was already captured. Preserves preflight/network/
+        // image-quality classifications.
+        if (!apiErroredRef.current) {
+          errorReasonRef.current = 'unknown';
+        }
+        return 'failed';
+      });
+    }, MAX_TOTAL_WAIT);
+    return () => clearTimeout(t);
+  }, [readiness]);
+
+  // ---- If the analysis has overshot Beat 6 by 800ms, swap caption to waiting ----
   useEffect(() => {
     if (choreography.beat !== 'settle') return;
-    if (ai.status !== 'pending') return;
+    if (readiness !== 'pending') return;
     const t = setTimeout(() => {
-      if (ai.status === 'pending') {
+      if (readiness === 'pending') {
         choreography.setWaiting(true);
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [choreography.beat, ai.status, choreography]);
+  }, [choreography.beat, readiness, choreography]);
 
   // ---- Terminal state gates ----
+  // Show ErrorState when:
+  //   - the analysis explicitly failed AND the choreography has
+  //     reached settle (so we don't rip the screen away mid-animation)
+  //   - the 12s timeout fired (readiness === 'failed' from the
+  //     timeout effect; same condition)
   const showError =
-    ai.status === 'failed' ||
-    (apiErroredRef.current && choreography.beat === 'settle');
+    readiness === 'failed' && choreography.beat === 'settle';
 
+  // Reveal the results only when:
+  //   - the analyze useEffect set readiness to 'ready'
+  //   - the choreography has reached its settle beat (so the user
+  //     sees the full visual treatment before the reveal)
+  //   - we have a concrete ScanResult in local state
   const canReveal =
     choreography.beat === 'settle' &&
-    ai.status === 'ready' &&
-    ai.result !== null;
+    readiness === 'ready' &&
+    analysisResult !== null;
 
   const handleCancel = useCallback(() => {
     useAppStore.getState().clearInFlightScan();
@@ -271,7 +331,7 @@ export function ScanAnalyzingFaceScreen({
     );
   }
 
-  const result = ai.result;
+  const result = analysisResult;
 
   // Caption sits at photo bottom + 24pt. In reveal mode we hide the
   // caption (the reveal footer headline replaces it).

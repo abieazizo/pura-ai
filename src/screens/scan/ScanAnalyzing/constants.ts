@@ -77,7 +77,14 @@ export function getBeatTiming(scanCount: number): BeatTiming {
 }
 
 export const MARKER_INTERVAL = 350; // ms between each of the 4 detection markers
-export const MAX_TOTAL_WAIT = 12_000; // cutoff before ErrorState if AI hasn't returned
+// v11.13 — bumped from 12s → 70s. The previous 12s cutoff fired
+// while the gateway's analyzeFaceScan call (which has a 60s timeout
+// in TIMEOUT_MS) was still in flight, so a successful slow AI run
+// would still flip the screen to ErrorState. 70s = gateway timeout +
+// 10s safety margin. This is a TRUE outer-bound guard against
+// runaway promises; the user can cancel anytime via the close
+// button if they don't want to wait.
+export const MAX_TOTAL_WAIT = 70_000;
 export const PHOTO_MARGIN_H = 24;
 
 // ------------------------------------------------------------------
