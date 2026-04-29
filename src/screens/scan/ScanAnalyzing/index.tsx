@@ -60,6 +60,17 @@ import { AnalysisCaption } from './components/AnalysisCaption';
 // your results" button. Kept in source tree for any future use.
 // import { RevealFooter } from './components/RevealFooter';
 import { ErrorState, type ErrorStateReason } from './components/ErrorState';
+
+// v12.1 — dev-only structured checkpoint logger for the face-scan
+// pipeline. Lets us see EXACTLY which stage failed in a real run
+// without dumping anything into the consumer UI. In production
+// builds (where __DEV__ is false) every call is a no-op.
+declare const __DEV__: boolean | undefined;
+function debugCheckpoint(stage: string, data?: Record<string, unknown>): void {
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) return;
+  // eslint-disable-next-line no-console
+  console.log(`[scan:${stage}]`, data ?? {});
+}
 import { PreflightRetry } from './components/PreflightRetry';
 import { scanToScanResult } from './lib/scanToResult';
 
@@ -145,12 +156,23 @@ export function ScanAnalyzingFaceScreen({
 
   // ---- Stage 1: preflight ----
   useEffect(() => {
-    if (!aiGateway.isAvailable()) return;
+    debugCheckpoint('preflight_started', {
+      gatewayAvailable: aiGateway.isAvailable(),
+      photoUri,
+    });
+    if (!aiGateway.isAvailable()) {
+      debugCheckpoint('preflight_skipped_gateway_unavailable');
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
         const result = await preflightFaceScan({ photoUri });
-        if (cancelled) return;
+        if (cancelled) {
+          debugCheckpoint('preflight_cancelled');
+          return;
+        }
+        debugCheckpoint('preflight_result', { result });
         if (!result) {
           // Gateway became unreachable mid-call — proceed without
           // preflight rather than blocking the user.
@@ -166,8 +188,10 @@ export function ScanAnalyzingFaceScreen({
             retryMessage: result.retry_message,
           });
         }
-      } catch {
+      } catch (e) {
         if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        debugCheckpoint('preflight_threw', { error: msg });
         // Preflight call itself errored — don't block on it. Fall
         // through to the analyze pass; if that also fails, the user
         // gets the network ErrorState. We never let preflight block
@@ -190,6 +214,7 @@ export function ScanAnalyzingFaceScreen({
     startScan(photoUri);
 
     let cancelled = false;
+    debugCheckpoint('analyze_started', { photoUri });
     (async () => {
       try {
         const scan = await analyzeFaceScan({
@@ -197,24 +222,33 @@ export function ScanAnalyzingFaceScreen({
           previousScan,
           dayNumber,
         });
-        if (cancelled) return;
-        // The AI's full analysis still owns the FINAL "is this photo
-        // good enough" check. Preflight's job is the cheap gate; the
-        // analyze pass can still flag image_quality.usable=false if
-        // its richer signal disagrees.
-        const aiAnalysis = scan.aiAnalysis;
-        if (aiAnalysis && aiAnalysis.image_quality?.usable === false) {
-          errorReasonRef.current = inferReasonFromIssues(
-            aiAnalysis.image_quality.issues ?? [],
-            aiAnalysis.findings?.length ?? 0
-          );
-          apiErroredRef.current = true;
-          setReadiness('failed');
+        if (cancelled) {
+          debugCheckpoint('analyze_cancelled');
           return;
         }
-        // Success path — translate to the result shape, persist to
-        // the store (so other screens can read it), AND set the
-        // local readiness state so this screen can reveal.
+        debugCheckpoint('analyze_completed', {
+          hasAiAnalysis: !!scan.aiAnalysis,
+          overallScore: scan.overallScore,
+          concernCount: scan.concerns?.length ?? 0,
+          imageQualityUsable: scan.aiAnalysis?.image_quality?.usable,
+          imageQualityIssues: scan.aiAnalysis?.image_quality?.issues,
+        });
+
+        // v12.1 — CRITICAL FIX: do NOT route image_quality.usable=false
+        // to the failure screen. A low-quality but otherwise valid
+        // photo should still produce a result screen (with a quality
+        // note in the result UI). This is the "minimum valid result"
+        // rule — if we got a Scan back from analyzeFaceScan, we
+        // surface it. The result screen already renders an "IMAGE
+        // QUALITY" card when the analysis flags low quality, so the
+        // user gets the soft warning without being kicked out of the
+        // flow.
+        //
+        // Previous v12.0 behavior treated usable=false as a hard
+        // failure → ErrorState with reason 'unknown' → "I couldn't
+        // finish this reading." The user reported reaching this
+        // screen on valid scans; this is the path that produced it.
+
         addScan(scan);
         completedScanRef.current = scan;
         const nextResult = scanToScanResult(
@@ -224,8 +258,14 @@ export function ScanAnalyzingFaceScreen({
         setScanResult(nextResult);
         setAnalysisResult(nextResult);
         setReadiness('ready');
-      } catch {
+        debugCheckpoint('result_ready_for_ui', {
+          scanId: scan.id,
+          renderableConcernCount: nextResult.findings.length,
+        });
+      } catch (e) {
         if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        debugCheckpoint('analyze_threw', { error: msg });
         errorReasonRef.current = 'network';
         apiErroredRef.current = true;
         setReadiness('failed');
@@ -253,6 +293,10 @@ export function ScanAnalyzingFaceScreen({
         if (!apiErroredRef.current) {
           errorReasonRef.current = 'unknown';
         }
+        debugCheckpoint('hard_timeout_fired', {
+          reason: errorReasonRef.current,
+          apiErrored: apiErroredRef.current,
+        });
         return 'failed';
       });
     }, MAX_TOTAL_WAIT);
@@ -272,11 +316,9 @@ export function ScanAnalyzingFaceScreen({
   }, [choreography.beat, readiness, choreography]);
 
   // ---- Terminal state gates ----
-  // Show ErrorState when:
-  //   - the analysis explicitly failed AND the choreography has
-  //     reached settle (so we don't rip the screen away mid-animation)
-  //   - the 12s timeout fired (readiness === 'failed' from the
-  //     timeout effect; same condition)
+  // Show ErrorState when the analysis explicitly failed AND the
+  // choreography has reached settle (so we don't rip the screen
+  // away mid-animation).
   const showError =
     readiness === 'failed' && choreography.beat === 'settle';
 
@@ -289,6 +331,18 @@ export function ScanAnalyzingFaceScreen({
     choreography.beat === 'settle' &&
     readiness === 'ready' &&
     analysisResult !== null;
+
+  // v12.1 — log every transition of the canReveal / showError gates.
+  // Lets us see in console whether the gates ever flip true.
+  useEffect(() => {
+    debugCheckpoint('gate_state', {
+      beat: choreography.beat,
+      readiness,
+      hasResult: analysisResult !== null,
+      canReveal,
+      showError,
+    });
+  }, [choreography.beat, readiness, analysisResult, canReveal, showError]);
 
   const handleCancel = useCallback(() => {
     useAppStore.getState().clearInFlightScan();
@@ -303,15 +357,28 @@ export function ScanAnalyzingFaceScreen({
     onRetry();
   }, [onRetry]);
 
-  // v12.0 — AUTO-navigate to the results screen once both gates open.
-  // Previous flow showed a "See your results" button (RevealFooter)
-  // and required a manual tap. The brief explicitly calls for
-  // automatic transition: "When analysis completes successfully,
-  // automatically navigate to the redesigned results page."
+  // v12.1 — AUTO-navigate to the results screen once both gates open.
   //
-  // We give the choreography its full SETTLE beat (the existing
-  // micro-pause that sells "the result has landed") and then fire
-  // the navigation once both signals are go.
+  // BUG FIX from v12.0:
+  //   The previous version had `[canReveal, onComplete]` as deps and
+  //   relied on a `clearTimeout` cleanup. But `AnalyzingScreenHost`
+  //   creates `onComplete` inline (no useCallback), so its reference
+  //   changes on every parent render. Cleanup → clearTimeout → next
+  //   render → ref guard early-returns → timeout never reschedules.
+  //   Net effect: onComplete was never called and the user sat on
+  //   the analyzing screen until the 70 s outer timeout fired
+  //   "failed" → ErrorState with the generic copy.
+  //
+  // FIX: capture onComplete in a ref. The effect depends ONLY on
+  // canReveal, so it only re-runs when canReveal flips. The
+  // setTimeout fires onCompleteRef.current(...) at the time of
+  // firing — so even if the prop reference has changed since, we
+  // still call the LATEST handler.
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
   const autoNavigateFiredRef = useRef(false);
   useEffect(() => {
     if (!canReveal) return;
@@ -319,15 +386,14 @@ export function ScanAnalyzingFaceScreen({
     const scan = completedScanRef.current;
     if (!scan) return;
     autoNavigateFiredRef.current = true;
-    // Brief beat (480ms) so the dial settle isn't immediately
-    // ripped away. Long enough to read as "result landed" but short
-    // enough that the user doesn't feel they have to wait for a CTA.
+    debugCheckpoint('auto_navigate_scheduled', { scanId: scan.id });
     const t = setTimeout(() => {
+      debugCheckpoint('auto_navigate_firing', { scanId: scan.id });
       useAppStore.getState().clearInFlightScan();
-      onComplete(scan.id);
+      onCompleteRef.current(scan.id);
     }, 480);
     return () => clearTimeout(t);
-  }, [canReveal, onComplete]);
+  }, [canReveal]);
 
   // ---- Routing: preflight fail comes BEFORE the network ErrorState ----
   // The PreflightRetry screen is an in-flow correction loop (photo +
