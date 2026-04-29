@@ -188,26 +188,65 @@ function AnalyzingScreenHost() {
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<ScanStackParamList, 'ScanAnalyzing'>>();
   const { photoUri, mode } = route.params;
-  const scans = useAppStore((s) => s.scans);
+
+  // v12.4 — STABILITY: snapshot the previousScan + dayNumber at MOUNT
+  // time, not on every render.
+  //
+  // Bug fix: previously this read `scans[scans.length - 1]` inline on
+  // every render and passed it as `previousScan` to ScanAnalyzingFaceScreen.
+  // After a successful analyze fired `addScan(scan)`, the scans array
+  // updated → AnalyzingScreenHost re-rendered → `previous` was a NEW
+  // reference → ScanAnalyzingFaceScreen received a new `previousScan`
+  // prop → its Stage-2 useEffect deps changed → cleanup fired (the
+  // just-completed analyze) → effect re-ran → kicked off a SECOND
+  // analyzeFaceScan with the just-added scan as the new previousScan.
+  //
+  // That second analyze added a duplicate scan to the store and could
+  // race with the auto-nav timeout. Snapshotting at mount stabilises
+  // the props for the lifetime of the analyzing screen — exactly what
+  // we want, since the "previous scan" for THIS run is fixed when the
+  // user takes the photo.
+  const initialScansRef = React.useRef<{
+    previous: ReturnType<typeof useAppStore.getState>['scans'][number] | undefined;
+    dayNumber: number;
+  } | null>(null);
+  if (initialScansRef.current === null) {
+    const snapshotScans = useAppStore.getState().scans;
+    const prev = snapshotScans[snapshotScans.length - 1];
+    initialScansRef.current = {
+      previous: prev,
+      dayNumber: prev ? prev.dayNumber + 1 : 1,
+    };
+  }
 
   const handleCancel = useCallback(() => {
     rootNav.getParent()?.goBack();
   }, [rootNav]);
 
+  // v12.4 — onComplete + onRetry stabilised with useCallback so the
+  // child's auto-nav effect (which depends on `onComplete`'s ref via
+  // an internal ref capture in v12.1) gets a single stable reference.
+  // Avoids any subtle re-run risk if the v12.1 ref-capture is removed
+  // in the future.
+  const handleComplete = useCallback(
+    (scanId: string) => {
+      scanNav.replace('ScanResultsFace', { scanId });
+    },
+    [scanNav]
+  );
+  const handleRetry = useCallback(() => {
+    scanNav.replace('ScanCapture');
+  }, [scanNav]);
+
   if (mode === 'face') {
-    const previous = scans[scans.length - 1];
-    const nextDay = previous ? previous.dayNumber + 1 : 1;
+    const { previous, dayNumber } = initialScansRef.current;
     return (
       <ScanAnalyzingFaceScreen
         photoUri={photoUri}
         previousScan={previous}
-        dayNumber={nextDay}
-        onComplete={(scanId) => {
-          scanNav.replace('ScanResultsFace', { scanId });
-        }}
-        onRetry={() => {
-          scanNav.replace('ScanCapture');
-        }}
+        dayNumber={dayNumber}
+        onComplete={handleComplete}
+        onRetry={handleRetry}
         onCancel={handleCancel}
       />
     );
