@@ -314,7 +314,14 @@ export class OpenAIClient {
       'delta_vs_baseline to null.\n' +
       '• score_factors must be 0..100 integers calibrated to the ' +
       'overall skin_score.value. Default toward 70-80 for a normal ' +
-      'photo with no clearly visible problem on that axis.\n\n' +
+      'photo with no clearly visible problem on that axis.\n' +
+      '• SCORE DISCIPLINE: skin_score.value should sit in 72-86 for ' +
+      'an ordinary clear photo with no obvious concerns. Reserve ' +
+      'scores below 65 for photos with multiple high-confidence ' +
+      'visible issues. Reserve scores above 90 for photos where the ' +
+      'skin reads as exceptionally clear with no visible texture, ' +
+      'redness, breakouts, or marks of any kind. Do not produce ' +
+      'wide swings on routine photos.\n\n' +
       'CONSERVATISM (the most important rule set):\n' +
       '• Only return a finding when the photograph SHOWS the issue. ' +
       'Do not infer from age, demographics, lighting, or generic ' +

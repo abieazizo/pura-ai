@@ -145,6 +145,9 @@ export async function analyzeFaceScan(args: {
           photoUri,
           dayNumber,
           scanId,
+          // v12.2 — pass the prior score so deriveDefensibleScore
+          // can smooth the new value against it (cap +/- 15 points).
+          previousScore: previousScan?.overallScore ?? null,
         });
       }
       aiLog.warn(

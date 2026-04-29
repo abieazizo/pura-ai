@@ -183,6 +183,7 @@ function regionPhrase(regions: FaceRegion[]): string {
  * the photo had enough quality to support.
  */
 const MIN_CONFIDENCE = 0.55;
+const MIN_CONFIDENCE_LOW_QUALITY = 0.70; // v12.2: stricter when photo is bad
 const STRONG_CONFIDENCE = 0.75;
 
 function downgradeSeverity(s: AISeverity): AISeverity {
@@ -203,7 +204,12 @@ function applyConfidenceClamp(
   finding: FaceConcernFinding,
   imageQualityLow: boolean
 ): FaceConcernFinding | null {
-  if (finding.confidence < MIN_CONFIDENCE) return null;
+  // v12.2 — when the photo is low quality, raise the confidence
+  // floor so we only surface findings the model is genuinely sure
+  // of. This is the strongest defence against false positives on
+  // poorly-lit / angled / blurry shots.
+  const floor = imageQualityLow ? MIN_CONFIDENCE_LOW_QUALITY : MIN_CONFIDENCE;
+  if (finding.confidence < floor) return null;
 
   let severity = finding.severity;
   // Medium-confidence findings can't claim moderate+. Cap at mild.
@@ -294,7 +300,10 @@ function buildConcernsFromAI(analysis: FaceScanAnalysis): Concern[] {
       rank: 0,
       region: 'across the face',
       hotspots: ZONE_HOTSPOT_CANON.forehead,
-      finding: `${capitalize(category)} are settled in this scan.`,
+      // v12.2 — copy fix. Previous "Hydration are settled" was a
+      // grammar bug (singular noun + plural verb). Per-category
+      // calm copy reads cleanly now.
+      finding: calmCopyFor(category),
       interpretation: 'No work needed here today.',
       nextStep: 'Stay the course tonight.',
       trend: 'unchanged' as ConcernTrend,
@@ -308,6 +317,24 @@ function buildConcernsFromAI(analysis: FaceScanAnalysis): Concern[] {
 
 function capitalize(s: string): string {
   return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * v12.2 — per-category copy for calm rows. Each line uses the right
+ * singular/plural verb form and reads as a calm narration rather
+ * than a fill-in-the-blank template.
+ */
+function calmCopyFor(category: ConcernCategory): string {
+  switch (category) {
+    case 'breakouts':
+      return 'No active breakouts visible in this scan.';
+    case 'hydration':
+      return 'Hydration looks balanced overall.';
+    case 'texture':
+      return 'Skin texture reads as smooth in this photo.';
+    case 'tone':
+      return 'Skin tone reads as even in this photo.';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +459,12 @@ export interface TranslateAnalysisInput {
   dayNumber: number;
   /** Existing scan id to keep stable (otherwise derived from analysis). */
   scanId?: string;
+  /**
+   * v12.2 — when present, the score is smoothed against this baseline
+   * to avoid arbitrary swings between consecutive scans. Pass the
+   * previous scan's overallScore here.
+   */
+  previousScore?: number | null;
 }
 
 /**
@@ -445,8 +478,18 @@ export function translateAnalysisToScan(
   const { analysis, photoUri, dayNumber, scanId } = input;
   // v12.0 — pre-normalize next_focus strings so any raw token leaks
   // (e.g. "gentle_exfoliation_chemical_1-2x") never reach the UI.
+  // v12.2 — also override the AI's reported skin_score with a more
+  // defensible derivation (deriveDefensibleScore) before any
+  // downstream consumer reads it. Keeps the AI's inputs but
+  // smooths the output against image quality and prior history.
+  const previousScore = input.previousScore ?? null;
+  const defensibleScore = deriveDefensibleScore(analysis, previousScore);
   const normalizedAnalysis: FaceScanAnalysis = {
     ...analysis,
+    skin_score: {
+      ...analysis.skin_score,
+      value: defensibleScore,
+    },
     next_focus: {
       tonight: analysis.next_focus.tonight.map(humanizeRoutineString),
       avoid: analysis.next_focus.avoid.map(humanizeRoutineString),
@@ -481,6 +524,85 @@ export function translateAnalysisToScan(
     concerns,
     aiAnalysis: normalizedAnalysis,
   };
+}
+
+// ---------------------------------------------------------------------------
+// v12.2 — defensible score derivation.
+//
+// The previous flow used the AI's raw `skin_score.value` directly.
+// That can feel arbitrary to users — one scan reports 72, the next
+// reports 64 with the same face under slightly different lighting.
+//
+// `deriveDefensibleScore` blends three sources to produce a score
+// that:
+//   • reflects the AI's overall judgement (60% weight)
+//   • reflects the AI's structured score_factors (40% weight) so
+//     no single intuitive call drags the number too far
+//   • is pulled toward 75 (the "typical-healthy default") in
+//     proportion to (1 - image_quality.confidence) — bad photos
+//     get a cautious centring, not a confident extreme value
+//   • is smoothed against the previous scan's score so the delta
+//     never exceeds MAX_SWING points
+//
+// All math is deterministic over the AI input + previousScore — no
+// randomness, no time-based jitter. The same analysis + same prior
+// yields the same final score every time.
+// ---------------------------------------------------------------------------
+
+const TYPICAL_HEALTHY_DEFAULT = 75;
+const MAX_SWING_PER_SCAN = 15;
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function meanScoreFactors(
+  analysis: FaceScanAnalysis
+): number {
+  const sf = analysis.score_factors;
+  const values = [
+    sf.breakouts,
+    sf.hydration,
+    sf.texture,
+    sf.dark_marks,
+    sf.redness,
+    sf.oiliness,
+    sf.sensitivity,
+    sf.pores,
+  ];
+  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+}
+
+export function deriveDefensibleScore(
+  analysis: FaceScanAnalysis,
+  previousScore: number | null
+): number {
+  const aiScore = clamp(Math.round(analysis.skin_score.value), 0, 100);
+  const factorsMean = meanScoreFactors(analysis);
+  const blended = Math.round(0.6 * aiScore + 0.4 * factorsMean);
+
+  // Image quality weight: 1.0 = full trust in the blended value;
+  // 0.0 = pull entirely toward the typical-healthy default. Clamped
+  // to [0.4, 1.0] so a low-quality image still produces SOME signal,
+  // it just gets pulled toward 75 by up to 60%.
+  const qualityConf = clamp(analysis.image_quality.confidence, 0, 1);
+  const trustWeight = clamp(qualityConf, 0.4, 1.0);
+  const qualityAdjusted = Math.round(
+    trustWeight * blended + (1 - trustWeight) * TYPICAL_HEALTHY_DEFAULT
+  );
+
+  // Smooth vs previous scan: if a prior scan exists, cap the delta
+  // so a single weak signal can't move the score wildly.
+  if (previousScore !== null && previousScore !== undefined) {
+    const delta = qualityAdjusted - previousScore;
+    if (Math.abs(delta) > MAX_SWING_PER_SCAN) {
+      const capped =
+        previousScore + Math.sign(delta) * MAX_SWING_PER_SCAN;
+      return clamp(capped, 0, 100);
+    }
+  }
+
+  return clamp(qualityAdjusted, 0, 100);
 }
 
 // ---------------------------------------------------------------------------
