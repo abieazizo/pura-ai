@@ -1,28 +1,20 @@
 /**
- * GuidanceCard (v11.8).
+ * GuidanceCard (v11.9).
  *
- * The pre-capture guidance surface that sits below the reticle. Replaces
- * the v11.7 rotating-tips Caption — that pattern was generic and lazy.
+ * Honest pre-capture guidance. Lives INSIDE the bottom panel slot in
+ * ScanOverlay v11.9 (no longer absolutely positioned against window
+ * dimensions). Sized to fill its slot.
  *
- * Design intent
- * -------------
- * Show three SHORT, ICON-LED tips at once. Don't rotate them. Don't
- * preach. The user reads the card in roughly 1.5s and intuits exactly
- * what a good scan needs:
- *
- *   ⌾  Center your full face
- *   ☼  Even, soft light
- *   ✓  Hold still — we'll check the photo
- *
- * When the user taps the shutter and the camera enters the 2s "hold
- * steady" countdown (frameState='preparing'), the card collapses into
- * a single, calmer line — "Hold still… checking image quality" — to
- * focus attention on the capture moment without ripping the chrome
- * away.
+ * Two visual states:
+ *   • idle      — three short, icon-led tips visible at once. Doesn't
+ *                 rotate. Doesn't preach. The user reads them in
+ *                 ~1.5s and intuits exactly what a good scan needs.
+ *   • preparing — collapses into a single moss-tinted "Hold still…"
+ *                 pill while the 2s post-tap countdown runs.
  *
  * This is the honest answer to "Expo Go has no live face detection":
- * give the user a clear visual model of what the system needs BEFORE
- * they capture, then validate immediately AFTER.
+ * give the user a clear visual model BEFORE they capture, then run the
+ * preflight validation immediately AFTER capture.
  */
 
 import React from 'react';
@@ -51,7 +43,7 @@ interface Tip {
 }
 
 const FACE_TIPS: ReadonlyArray<Tip> = [
-  { Icon: CircleHalf as React.FC<PhosphorIconProps>, text: 'Center your full face' },
+  { Icon: CircleHalf as React.FC<PhosphorIconProps>, text: 'Center your full face in the oval' },
   { Icon: Sun as React.FC<PhosphorIconProps>, text: 'Use even, soft light' },
   { Icon: Sparkle as React.FC<PhosphorIconProps>, text: 'Hold still — we’ll check the photo' },
 ];
@@ -71,24 +63,17 @@ const BARCODE_TIPS: ReadonlyArray<Tip> = [
 export interface GuidanceCardProps {
   mode: ReticleMode;
   /**
-   * v11.8 — bottom offset from screen bottom. The card anchors
-   * INLINE above the mode selector in the bottom dock stack so
-   * the camera region stays uncluttered and the guidance sits in
-   * the user's natural attention zone right above the controls.
-   */
-  bottom: number;
-  /**
    * v11.8 — when 'preparing' the card collapses into a single
    * "Hold still…" line so the capture moment reads cleanly.
    */
   frameState?: FrameState;
 }
 
-export function GuidanceCard({ mode, bottom, frameState = 'idle' }: GuidanceCardProps) {
+export function GuidanceCard({ mode, frameState = 'idle' }: GuidanceCardProps) {
   const tips =
     mode === 'product' ? PRODUCT_TIPS : mode === 'barcode' ? BARCODE_TIPS : FACE_TIPS;
 
-  // Smooth crossfade between idle (3 tips) and preparing (1 line).
+  // Crossfade between idle (3 tips) and preparing (1 line).
   const phase = useSharedValue(frameState === 'preparing' ? 1 : 0);
   React.useEffect(() => {
     phase.value = withTiming(frameState === 'preparing' ? 1 : 0, {
@@ -107,22 +92,19 @@ export function GuidanceCard({ mode, bottom, frameState = 'idle' }: GuidanceCard
   }));
 
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents="none">
+    <View style={styles.wrap} pointerEvents="none">
       <Animated.View style={[styles.layer, idleStyle]}>
-        <View style={styles.card}>
+        <View style={styles.tipsRow}>
           {tips.map((tip, i) => {
             const Icon = tip.Icon;
             return (
-              <View
-                key={i}
-                style={[styles.row, i < tips.length - 1 && styles.rowDivider]}
-              >
+              <View key={i} style={styles.tipPill}>
                 <View style={styles.iconWrap}>
-                  <Icon size={14} weight="duotone" color="rgba(255,255,255,0.92)" />
+                  <Icon size={13} weight="duotone" color="rgba(255,255,255,0.92)" />
                 </View>
                 <Text
                   style={styles.tipText}
-                  numberOfLines={1}
+                  numberOfLines={2}
                   maxFontSizeMultiplier={1.15}
                 >
                   {tip.text}
@@ -151,58 +133,58 @@ export function GuidanceCard({ mode, bottom, frameState = 'idle' }: GuidanceCard
 
 const styles = StyleSheet.create({
   wrap: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
-    minHeight: 108,
+    justifyContent: 'center',
   },
   layer: {
     position: 'absolute',
+    top: 0,
     bottom: 0,
     left: 0,
     right: 0,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  // Card container — frosted ink with soft hairline. Width is
-  // intentionally < screen so the oval still reads dominant.
-  card: {
-    width: '100%',
+  // v11.9 — three pills in a horizontal row instead of stacked rows.
+  // Each pill is sized to its content; row wraps on narrow screens.
+  // Keeps the guidance "deliberate" without crowding vertical space.
+  tipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
     maxWidth: 360,
-    paddingVertical: 4,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    backgroundColor: 'rgba(11,18,32,0.55)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
   },
-  row: {
-    height: 32,
+  tipPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    gap: 8,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   iconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   tipText: {
-    flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     letterSpacing: 0.05,
-    color: 'rgba(255,255,255,0.92)',
+    color: 'rgba(255,255,255,0.95)',
   },
-  // Preparing layer — single moss-tinted pill, sized to its content.
+  // Preparing layer — single moss-tinted pill, sized to content.
   preparingPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -210,7 +192,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(11,18,32,0.65)',
+    backgroundColor: 'rgba(11,18,32,0.6)',
     borderWidth: 1,
     borderColor: palette.mossDeep,
   },

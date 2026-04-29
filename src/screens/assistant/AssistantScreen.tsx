@@ -206,8 +206,18 @@ export function AssistantScreen() {
             item.kind === 'message' ? item.message.id : `empty-${i}`
           }
           renderItem={renderItem}
+          // v11.9 — explicit flex:1 so the FlatList stretches to fill
+          // the KeyboardAvoidingView height. Without this, when the
+          // message list is short, the FlatList sizes to its content
+          // and leaves vertical slack ABOVE the composer when the
+          // keyboard is closed (the visible "white gap"). With flex:1
+          // the FlatList fills the space and pins the composer flush
+          // to the keyboard top (open) or the tab bar (closed).
+          style={styles.flex}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           ListFooterComponent={
             typing ? (
               <View style={styles.typingRow}>
@@ -257,36 +267,49 @@ export function AssistantScreen() {
             onPress={() => setShowPicker((v) => !v)}
             hitSlop={10}
             accessibilityLabel="Attach a product"
-            style={styles.composerIconBtn}
+            style={({ pressed }) => [
+              styles.composerIconBtn,
+              pressed && styles.composerIconBtnPressed,
+            ]}
           >
-            <Plus size={18} color={palette.moss} weight="duotone" />
+            <Plus size={18} color={palette.inkSecondary} weight="bold" />
           </Pressable>
           <Pressable
             onPress={() => nav.navigate('ScanModal')}
             hitSlop={10}
             accessibilityLabel="Scan to attach"
-            style={styles.composerIconBtn}
+            style={({ pressed }) => [
+              styles.composerIconBtn,
+              pressed && styles.composerIconBtnPressed,
+            ]}
           >
-            <Camera size={18} color={palette.ink} weight="duotone" />
+            <Camera size={18} color={palette.inkSecondary} weight="duotone" />
           </Pressable>
 
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder={strings.composerPlaceholder}
-            placeholderTextColor={palette.inkTertiary}
-            style={styles.input}
-            multiline
-          />
+          {/* v11.9 — input wrapped in a soft pill background. The
+              previous flat input bled into the row with no visual
+              container, leaving it ambiguous where to tap. The pill
+              gives it premium messaging-app structure. */}
+          <View style={styles.inputPill}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={strings.composerPlaceholder}
+              placeholderTextColor={palette.inkTertiary}
+              style={styles.input}
+              multiline
+            />
+          </View>
 
           <Pressable
             onPress={() => send(draft, attached)}
             disabled={!canSend}
             hitSlop={10}
             accessibilityLabel="Send"
-            style={[
+            style={({ pressed }) => [
               styles.sendBtn,
               { backgroundColor: canSend ? palette.clay : palette.bgDeep },
+              pressed && canSend && { opacity: 0.92 },
             ]}
           >
             <ArrowUp
@@ -871,13 +894,17 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
 
+  // v11.9 — composer tightened. Padding reduced from 16/16 to 12/12.
+  // Input now lives inside a bgDeep pill (was a bare flat field).
+  // Side icons read as inkSecondary (was full ink + clay accent on
+  // plus, which over-shouted). Consistent visual weight.
   composer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingHorizontal: space.lg,
-    paddingTop: space.md,
-    paddingBottom: space.md,
+    alignItems: 'flex-end',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: palette.hairline,
     backgroundColor: colors.bg,
@@ -885,16 +912,34 @@ const styles = StyleSheet.create({
   composerIconBtn: {
     width: 36,
     height: 36,
+    borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerIconBtnPressed: {
+    backgroundColor: palette.bgDeep,
+    transform: [{ scale: 0.95 }],
+  },
+  // Soft pill wrapper — gives the input visual presence without a
+  // border. min/max heights mirror the previous flat-input clamps.
+  inputPill: {
+    flex: 1,
+    backgroundColor: palette.bgDeep,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    minHeight: 40,
+    maxHeight: 120,
     justifyContent: 'center',
   },
   input: {
     ...typography.body,
-    flex: 1,
     color: palette.ink,
-    minHeight: 36,
-    maxHeight: 100,
-    paddingVertical: space.sm,
+    paddingVertical: 8,
+    // Reset platform default top inset that pushes the cursor down
+    // unevenly in multiline inputs.
+    paddingTop: 8,
+    margin: 0,
+    textAlignVertical: 'center',
   },
   sendBtn: {
     width: 36,

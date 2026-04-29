@@ -149,17 +149,26 @@ export function Reticle({
         haloIntensity: 0,
       };
 
-  // v11.8 — face oval shrunk from 75%×50% to 76%×42% to leave
-  // room for the inline GuidanceCard above the bottom dock on
-  // small phones (iPhone SE-class). Aspect ratio is now closer to
-  // a real portrait face.
-  const faceW = Math.round(screenWidth * 0.76);
-  const faceH = Math.round(screenHeight * 0.42);
+  // v11.9 — face oval scales to its container with a fixed 1.3:1
+  // height:width aspect ratio (matches a natural portrait face). The
+  // oval is sized so it fits comfortably within the parent container
+  // even on small phones where the camera region is short.
+  //
+  // ScanOverlay v11.9 wraps the reticle in a CAMERA REGION rect
+  // (height = window height - top bar - bottom panel) so the oval
+  // never overlaps the bottom dock chrome.
+  const faceW = Math.min(
+    Math.round(screenWidth * 0.78),
+    Math.round(screenHeight * 0.7)
+  );
+  const faceH = Math.round(faceW * 1.3);
 
-  // Product frame: 80% width × 38% height, centered. Same scale
-  // adjustment as the face oval.
-  const prodW = Math.round(screenWidth * 0.8);
-  const prodH = Math.round(screenHeight * 0.38);
+  // Product frame: similar scaling, slightly squarer aspect.
+  const prodW = Math.min(
+    Math.round(screenWidth * 0.82),
+    Math.round(screenHeight * 0.85)
+  );
+  const prodH = Math.round(prodW * 1.05);
 
   // Barcode frame: 80% width, 120pt tall, centered vertically
   const barW = Math.round(screenWidth * 0.8);

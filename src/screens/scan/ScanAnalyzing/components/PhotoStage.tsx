@@ -37,6 +37,7 @@ import { LandmarkDots } from './LandmarkDots';
 import { ZoneOverlay } from './ZoneOverlay';
 import { DetectionMarker } from './DetectionMarker';
 import { MeasuringSweep } from './MeasuringSweep';
+import { AnalysisMesh } from './AnalysisMesh';
 
 const WINDOW_W = Dimensions.get('window').width;
 const PHOTO_WIDTH = WINDOW_W - PHOTO_MARGIN_H * 2;
@@ -137,6 +138,17 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
           pointerEvents="none"
         >
           <FaceOutline
+            size={{ w: PHOTO_WIDTH, h: currentHeight }}
+            beat={beat}
+            reduceMotion={reduceMotion}
+          />
+
+          {/* v11.9 — soft azure analysis mesh sitting between the
+              face contour and the zone overlays. Fades in during
+              PARTITION/DETECT so the screen reads as "the system is
+              reasoning over the face" rather than a static portrait
+              with regions stacked on top. */}
+          <AnalysisMesh
             size={{ w: PHOTO_WIDTH, h: currentHeight }}
             beat={beat}
             reduceMotion={reduceMotion}
