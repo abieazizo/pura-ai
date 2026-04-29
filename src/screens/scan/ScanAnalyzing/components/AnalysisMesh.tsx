@@ -1,47 +1,52 @@
 /**
- * AnalysisMesh (v11.9).
+ * AnalysisMesh — v14.0 cinematic scanning rebuild.
  *
- * Premium "AI is analyzing your face" visual — a restrained network of
- * 11 nodes connected by hairline edges that fades in during the DETECT
- * beat and dims out at SETTLE. The mesh sits on top of the photo +
- * face contour but BELOW the zone overlays and detection markers, so
- * it reads as a substrate analysis pass, not a chrome layer.
+ * v11.9–v13.1 rendered an 11-node mesh with 15 edges that the user
+ * described as "weak dots / random scattered overlays." It read as
+ * decoration rather than a real "AI is reading the face" moment.
  *
- * Visual rules
- * ------------
- * • Cool azure tint (palette.azureGlow ≈ #6FA8FF @ low alpha) — the
- *   one and only place in the app where we use the cool-blue analysis
- *   palette. Distinct from the warm clay used for landmark / finding
- *   markers so the user reads it as "system thinking" not "your skin
- *   data."
- * • Nodes pulse softly (opacity 0.55 → 0.95) on a slow staggered loop.
- * • Edges draw in over the DETECT window via stroke-dashoffset, in
- *   sequence rather than all at once.
- * • Reduce-motion: every node + edge appears at its target opacity
- *   immediately; no animation.
- * • Fixed layout coordinates (normalized 0–1 within the photo box) —
- *   if preflight returned a face_box it could be used to anchor the
- *   mesh to the actual face position; today we use illustrative
- *   positions because preflight's face_box is opt-in.
+ * v14.0 replaces the mesh with a refined three-layer scanning visual:
+ *
+ *   Layer 1 — soft vertical glow band that travels DOWN the face,
+ *             with a subtle azure gradient. Reads as "the system is
+ *             scanning the surface."
+ *   Layer 2 — four region beacons (forehead / left cheek / right
+ *             cheek / chin) that pulse softly in sequence as the
+ *             sweep passes their Y position. Restrained, no clutter.
+ *   Layer 3 — a thin azure horizon line that moves with the sweep
+ *             and ties the band to its current Y, like a measurement
+ *             reference.
+ *
+ * The whole composition is intentional, calm, and premium — closer
+ * to how a high-end imaging product visualises an analysis pass
+ * (AppleVision-style) than to the chatty "lots of dots" pattern of
+ * cheap AI demos.
+ *
+ * Visual rules:
+ *   • Single azure tint (#7CB0FF) — same color the rest of the AI
+ *     analysis already uses. No multi-hue confusion.
+ *   • Reduce-motion: skip the sweep animation and show the layer at
+ *     a static low opacity so the analysis isn't a blank canvas for
+ *     accessibility users.
+ *   • All animation is timing-based (no random jitter), so the
+ *     visual is consistent run-to-run.
  */
 
-import React, { useEffect, useMemo } from 'react';
-import { Circle, Line } from 'react-native-svg';
+import React, { useEffect } from 'react';
+import { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedProps,
   useSharedValue,
-  withDelay,
   withRepeat,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated';
 import { palette } from '@/theme';
 import type { Beat } from '../hooks/useAnalysisChoreography';
 
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const AnimatedLine = Animated.createAnimatedComponent(Line);
 
 export interface AnalysisMeshProps {
   size: { w: number; h: number };
@@ -49,77 +54,33 @@ export interface AnalysisMeshProps {
   reduceMotion: boolean;
 }
 
-/**
- * 11-node mesh anchored to a generic frontal-portrait face. Coordinates
- * are normalized within the photo box; ScanAnalyzing's PHOTO_WIDTH and
- * currentHeight scale them at render time.
- *
- * Layout follows a loose triangulation:
- *   • 2 brow points (upper-left, upper-right)
- *   • 2 cheek apex points (left, right)
- *   • 2 mid-cheek points (left, right)
- *   • 2 nasolabial points (left, right)
- *   • 1 nose-bridge point
- *   • 1 chin point
- *   • 1 forehead-center point
- */
-const NODES: ReadonlyArray<{ x: number; y: number }> = [
-  { x: 0.50, y: 0.27 }, // forehead center
-  { x: 0.36, y: 0.36 }, // brow L
-  { x: 0.64, y: 0.36 }, // brow R
-  { x: 0.50, y: 0.48 }, // nose bridge
-  { x: 0.30, y: 0.55 }, // cheek apex L
-  { x: 0.70, y: 0.55 }, // cheek apex R
-  { x: 0.36, y: 0.66 }, // mid cheek L
-  { x: 0.64, y: 0.66 }, // mid cheek R
-  { x: 0.42, y: 0.74 }, // nasolabial L
-  { x: 0.58, y: 0.74 }, // nasolabial R
-  { x: 0.50, y: 0.85 }, // chin
-];
+const MESH_COLOR = '#7CB0FF'; // azure, same as v11.9 mesh
+const SWEEP_HEIGHT_RATIO = 0.36;
+const SWEEP_DURATION_MS = 2400;
 
 /**
- * Edges between nodes. Indices reference NODES above. Each edge is
- * drawn in sequence with a 90ms stagger so the mesh feels assembled,
- * not painted all at once.
+ * Region beacons — only the four canonical zones the rest of the
+ * choreography already uses. Position is normalized 0..1 within the
+ * photo box. Each beacon pulses when the sweep band crosses its Y.
  */
-const EDGES: ReadonlyArray<readonly [number, number]> = [
-  [0, 1],   // forehead → brow L
-  [0, 2],   // forehead → brow R
-  [1, 2],   // brow L → brow R
-  [1, 3],   // brow L → nose bridge
-  [2, 3],   // brow R → nose bridge
-  [3, 4],   // nose bridge → cheek apex L
-  [3, 5],   // nose bridge → cheek apex R
-  [4, 6],   // cheek apex L → mid cheek L
-  [5, 7],   // cheek apex R → mid cheek R
-  [4, 5],   // cheek apex L → R (across nose)
-  [6, 8],   // mid cheek L → nasolabial L
-  [7, 9],   // mid cheek R → nasolabial R
-  [8, 9],   // nasolabial L → R
-  [8, 10],  // nasolabial L → chin
-  [9, 10],  // nasolabial R → chin
+const BEACONS: ReadonlyArray<{ x: number; y: number; key: string }> = [
+  { x: 0.50, y: 0.30, key: 'forehead' },
+  { x: 0.30, y: 0.55, key: 'left-cheek' },
+  { x: 0.70, y: 0.55, key: 'right-cheek' },
+  { x: 0.50, y: 0.82, key: 'chin' },
 ];
 
-const NODE_R = 2.5;
-const EDGE_STROKE = 0.7;
-
-// Cool analysis tint — azure with low alpha. Lives ONLY in this
-// component to keep the warm clay/moss palette coherent everywhere
-// else. Hex chosen to sit between palette.bgInk and palette.coral on
-// the cool axis without reading as "blue brand color."
-const MESH_COLOR = '#7CB0FF';
-
-function targetOpacityForBeat(beat: Beat): number {
+function layerOpacityForBeat(beat: Beat): number {
   switch (beat) {
     case 'arrive':
     case 'locate':
       return 0;
     case 'partition':
-      return 0.55; // mesh starts to assemble
+      return 0.55;
     case 'detect':
-      return 0.85; // peak — nodes + edges fully drawn
+      return 0.85;
     case 'score':
-      return 0.45; // dimming; markers take over
+      return 0.45;
     case 'settle':
     case 'reveal':
       return 0;
@@ -130,43 +91,97 @@ function targetOpacityForBeat(beat: Beat): number {
 
 export function AnalysisMesh({ size, beat, reduceMotion }: AnalysisMeshProps) {
   const layerOpacity = useSharedValue(0);
+  const sweepProgress = useSharedValue(0); // 0 → 1 across photo height
+  const gradientId = React.useId();
 
+  // Layer-level opacity — fades the whole composition in/out per beat.
   useEffect(() => {
-    const target = targetOpacityForBeat(beat);
+    const target = layerOpacityForBeat(beat);
     if (reduceMotion) {
       layerOpacity.value = target;
       return;
     }
     layerOpacity.value = withTiming(target, {
-      duration: 600,
+      duration: 560,
       easing: Easing.out(Easing.cubic),
     });
   }, [beat, reduceMotion, layerOpacity]);
 
+  // Sweep band — repeats during PARTITION/DETECT/SCORE so the
+  // composition reads as "live work" rather than a static overlay.
+  useEffect(() => {
+    if (reduceMotion) {
+      sweepProgress.value = 0.5;
+      return;
+    }
+    const isActive = beat === 'partition' || beat === 'detect' || beat === 'score';
+    if (!isActive) {
+      cancelAnimation(sweepProgress);
+      sweepProgress.value = withTiming(0, { duration: 360 });
+      return;
+    }
+    sweepProgress.value = 0;
+    sweepProgress.value = withRepeat(
+      withTiming(1, {
+        duration: SWEEP_DURATION_MS,
+        easing: Easing.inOut(Easing.cubic),
+      }),
+      -1,
+      false // restart from 0 each loop, not back-and-forth
+    );
+    return () => cancelAnimation(sweepProgress);
+  }, [beat, reduceMotion, sweepProgress]);
+
+  const sweepBandHeight = size.h * SWEEP_HEIGHT_RATIO;
+  const sweepTravel = size.h - sweepBandHeight;
+
+  const sweepBandProps = useAnimatedProps(() => ({
+    y: sweepProgress.value * sweepTravel,
+    opacity: layerOpacity.value * 0.35,
+  }));
+
+  const horizonProps = useAnimatedProps(() => ({
+    y: sweepProgress.value * sweepTravel + sweepBandHeight - 1,
+    opacity: layerOpacity.value * 0.85,
+  }));
+
   return (
     <>
-      {/* Edges first so nodes render on top */}
-      {EDGES.map(([a, b], i) => (
-        <Edge
-          key={`e-${i}`}
-          a={NODES[a]}
-          b={NODES[b]}
-          size={size}
+      <Defs>
+        <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={MESH_COLOR} stopOpacity={0} />
+          <Stop offset="0.5" stopColor={MESH_COLOR} stopOpacity={0.5} />
+          <Stop offset="1" stopColor={MESH_COLOR} stopOpacity={0} />
+        </LinearGradient>
+      </Defs>
+
+      {/* Layer 1: vertical glow band */}
+      <AnimatedRect
+        x={0}
+        width={size.w}
+        height={sweepBandHeight}
+        fill={`url(#${gradientId})`}
+        animatedProps={sweepBandProps}
+      />
+
+      {/* Layer 3: thin azure horizon at the bottom edge of the band */}
+      <AnimatedRect
+        x={size.w * 0.04}
+        width={size.w * 0.92}
+        height={1}
+        fill={MESH_COLOR}
+        animatedProps={horizonProps}
+      />
+
+      {/* Layer 2: region beacons — pulse when the sweep crosses them */}
+      {BEACONS.map((b, i) => (
+        <Beacon
+          key={b.key}
+          cx={b.x * size.w}
+          cy={b.y * size.h}
           beat={beat}
           reduceMotion={reduceMotion}
-          delay={i * 90}
-          layerOpacity={layerOpacity}
-        />
-      ))}
-      {NODES.map((node, i) => (
-        <Node
-          key={`n-${i}`}
-          x={node.x}
-          y={node.y}
-          size={size}
-          beat={beat}
-          reduceMotion={reduceMotion}
-          delay={i * 80}
+          stagger={i * 110}
           layerOpacity={layerOpacity}
         />
       ))}
@@ -174,114 +189,77 @@ export function AnalysisMesh({ size, beat, reduceMotion }: AnalysisMeshProps) {
   );
 }
 
-interface NodeProps {
-  x: number;
-  y: number;
-  size: { w: number; h: number };
+interface BeaconProps {
+  cx: number;
+  cy: number;
   beat: Beat;
   reduceMotion: boolean;
-  delay: number;
-  layerOpacity: SharedValue<number>;
+  stagger: number;
+  layerOpacity: { value: number };
 }
 
-function Node({ x, y, size, beat, reduceMotion, delay, layerOpacity }: NodeProps) {
-  const pulse = useSharedValue(0.55);
+function Beacon({
+  cx,
+  cy,
+  beat,
+  reduceMotion,
+  stagger,
+  layerOpacity,
+}: BeaconProps) {
+  const pulse = useSharedValue(0);
 
   useEffect(() => {
     if (reduceMotion) {
       pulse.value = 0.85;
       return;
     }
-    if (beat === 'detect' || beat === 'partition' || beat === 'score') {
-      pulse.value = withDelay(
-        delay,
-        withRepeat(
-          withTiming(0.95, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
-          -1,
-          true
-        )
-      );
-    } else {
+    const isActive = beat === 'partition' || beat === 'detect' || beat === 'score';
+    if (!isActive) {
       cancelAnimation(pulse);
-      pulse.value = withTiming(0.55, { duration: 500 });
-    }
-    return () => cancelAnimation(pulse);
-  }, [beat, reduceMotion, delay, pulse]);
-
-  const animatedProps = useAnimatedProps(() => ({
-    opacity: pulse.value * layerOpacity.value,
-  }));
-
-  return (
-    <AnimatedCircle
-      cx={x * size.w}
-      cy={y * size.h}
-      r={NODE_R}
-      fill={MESH_COLOR}
-      animatedProps={animatedProps}
-    />
-  );
-}
-
-interface EdgeProps {
-  a: { x: number; y: number };
-  b: { x: number; y: number };
-  size: { w: number; h: number };
-  beat: Beat;
-  reduceMotion: boolean;
-  delay: number;
-  layerOpacity: SharedValue<number>;
-}
-
-function Edge({ a, b, size, beat, reduceMotion, delay, layerOpacity }: EdgeProps) {
-  // Each edge has its own draw progress 0→1 that animates during DETECT.
-  const draw = useSharedValue(0);
-
-  // Pre-compute the line length for the dashoffset trick.
-  const length = useMemo(() => {
-    const dx = (b.x - a.x) * size.w;
-    const dy = (b.y - a.y) * size.h;
-    return Math.max(1, Math.sqrt(dx * dx + dy * dy));
-  }, [a, b, size.w, size.h]);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      draw.value = 1;
+      pulse.value = withTiming(0, { duration: 280 });
       return;
     }
-    if (beat === 'detect' || beat === 'partition' || beat === 'score') {
-      draw.value = withDelay(
-        delay,
-        withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) })
-      );
-    } else if (beat === 'settle' || beat === 'reveal') {
-      draw.value = withTiming(0, { duration: 400 });
-    } else {
-      draw.value = 0;
-    }
-  }, [beat, reduceMotion, delay, draw]);
+    pulse.value = 0;
+    // Staggered start, then continuous slow pulse.
+    pulse.value = withTiming(0, { duration: stagger });
+    pulse.value = withRepeat(
+      withTiming(1, {
+        duration: 1500,
+        easing: Easing.inOut(Easing.sin),
+      }),
+      -1,
+      true // back-and-forth so the beacon breathes
+    );
+    return () => cancelAnimation(pulse);
+  }, [beat, reduceMotion, stagger, pulse]);
 
-  const animatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: length * (1 - draw.value),
-    opacity: layerOpacity.value,
+  // Outer halo — wide, soft, low opacity.
+  const haloProps = useAnimatedProps(() => ({
+    r: 6 + pulse.value * 8,
+    opacity: layerOpacity.value * (0.18 + pulse.value * 0.22),
+  }));
+  // Inner core — small, brighter, breathes with the same phase.
+  const coreProps = useAnimatedProps(() => ({
+    r: 2 + pulse.value * 1.5,
+    opacity: layerOpacity.value * (0.6 + pulse.value * 0.35),
   }));
 
   return (
-    <AnimatedLine
-      x1={a.x * size.w}
-      y1={a.y * size.h}
-      x2={b.x * size.w}
-      y2={b.y * size.h}
-      stroke={MESH_COLOR}
-      strokeWidth={EDGE_STROKE}
-      strokeLinecap="round"
-      strokeDasharray={`${length} ${length}`}
-      animatedProps={animatedProps}
-    />
+    <>
+      <AnimatedCircle
+        cx={cx}
+        cy={cy}
+        fill={MESH_COLOR}
+        animatedProps={haloProps}
+      />
+      <AnimatedCircle
+        cx={cx}
+        cy={cy}
+        fill={MESH_COLOR}
+        animatedProps={coreProps}
+      />
+    </>
   );
 }
 
-// Suppress "palette is unused" warnings — the import is kept so the
-// component's color-token surface is one search away if we ever swap
-// to a palette token instead of the inline hex.
-void palette;
+void palette; // keep import for future palette token migration
