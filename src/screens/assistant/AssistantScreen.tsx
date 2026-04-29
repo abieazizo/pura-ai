@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // v11.11 — useBottomTabBarHeight removed: keyboardVerticalOffset is
 // now 0 (the correct value with tabBarHideOnKeyboard:true). See the
@@ -44,7 +46,8 @@ import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import { seedProducts } from '@/data/seed';
+import { localProductImageFor, seedProducts } from '@/data/seed';
+import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
 import { colors, palette, radius, space, type as typography } from '@/theme';
 import { assistant as strings } from '@/copy/strings';
 import { hapt } from '@/utils/haptics';
@@ -144,13 +147,25 @@ export function AssistantScreen() {
         />
       );
     }
+    // v13.0 — inline product cards. We resolve the user-question
+    // intent against the latest scan and the seed catalog to surface
+    // 1–2 actual product cards inside the assistant message body
+    // when the question reads as product-shaped. Done here (in the
+    // parent) so we have full nav + store access; passed as props to
+    // MessageLine so the renderer stays simple.
+    const userQuestion = findPrecedingUserQuestion(messages, item.message.id);
+    const inlineProducts = resolveInlineProducts({
+      assistantText: item.message.text,
+      userQuestion,
+      latestScan,
+      hasScanned,
+    });
     return (
       <MessageLine
         message={item.message}
         hasScanned={hasScanned}
         onScan={() => nav.navigate('ScanModal')}
         onOpenProducts={() => {
-          // ProductsTab is in the bottom Tabs navigator
           // @ts-expect-error nested tab navigation typing
           nav.navigate('Tabs', { screen: 'ProductsTab' });
         }}
@@ -158,6 +173,20 @@ export function AssistantScreen() {
           // @ts-expect-error nested tab navigation typing
           nav.navigate('Tabs', { screen: 'RoutineTab' });
         }}
+        onOpenProductDetail={(productId) => {
+          // ProductDetail lives on the HomeStack inside Tabs.
+          // @ts-expect-error nested stack typing
+          nav.navigate('Tabs', {
+            screen: 'HomeTab',
+            params: { screen: 'ProductDetail', params: { productId } },
+          });
+        }}
+        onShopProduct={(url) => {
+          Linking.openURL(url).catch(() => {
+            /* swallow */
+          });
+        }}
+        inlineProducts={inlineProducts}
       />
     );
   };
@@ -690,12 +719,18 @@ function MessageLine({
   onScan,
   onOpenProducts,
   onOpenRoutine,
+  onOpenProductDetail,
+  onShopProduct,
+  inlineProducts,
 }: {
   message: AssistantMessage;
   hasScanned: boolean;
   onScan: () => void;
   onOpenProducts: () => void;
   onOpenRoutine: () => void;
+  onOpenProductDetail: (productId: string) => void;
+  onShopProduct: (url: string) => void;
+  inlineProducts: Product[];
 }) {
   const isUser = message.role === 'user';
   const attachedProducts: Product[] = (message.attachedProductIds ?? [])
@@ -765,6 +800,28 @@ function MessageLine({
           >
             {`Grounded in: ${message.groundedFrom.join(' · ')}`}
           </Text>
+        ) : null}
+        {/* v13.0 — inline product mini-cards. When the user asked
+            something product-shaped ("best moisturizer for dry skin",
+            "what serum should I add", etc.) the assistant now
+            surfaces 1–2 actual product cards under its short text
+            answer. Tapping the card opens the brand site directly;
+            tapping the body opens the in-app product detail. This
+            replaces the "wall of text + a chip" pattern with real
+            commerce-aware action surfaces. */}
+        {inlineProducts.length > 0 ? (
+          <View style={messageStyles.inlineProductRow}>
+            {inlineProducts.slice(0, 2).map((p) => (
+              <AssistantProductCard
+                key={p.id}
+                product={p}
+                onOpen={() => onOpenProductDetail(p.id)}
+                onShop={
+                  p.buyUrl ? () => onShopProduct(p.buyUrl!) : undefined
+                }
+              />
+            ))}
+          </View>
         ) : null}
         {actions.length > 0 ? (
           <View style={messageStyles.actionRow}>
@@ -873,6 +930,287 @@ function deriveActionChips({
 // a redundant READY/THINKING pill in the top-right of the assistant
 // header alongside the PuraMark thinking variant. The two indicators
 // said the same thing twice; the pill is gone.
+
+// ============================================================================
+// v13.0 — inline product cards
+//
+// When the user asks a product-shaped question ("best moisturizer for
+// dry skin", "should I add a serum", "recommend a gentle cleanser"),
+// the assistant should answer with a SHORT text reply + one or two
+// real product cards — not a wall of explanation. The cards open the
+// brand site directly via Linking, so the assistant becomes a
+// commerce-aware skincare guide, not just a chatbot.
+//
+// Detection: keyword scan over the user's preceding question + the
+// assistant's response text. Conservative — only trigger when the
+// language is clearly product-shaped, otherwise leave the cards off
+// so non-product questions stay clean.
+//
+// Resolution: pull from seedProducts via concern-driven category
+// preference (same logic the result screen uses). Match only against
+// products that have a real `buyUrl` so every card carries a real
+// shop action.
+// ============================================================================
+
+const PRODUCT_INTENT_PATTERNS: ReadonlyArray<RegExp> = [
+  /\b(best|recommend|suggest|pick|which|what)\b.*\b(product|serum|moisturizer|moisturiser|cleanser|toner|spf|sunscreen|exfoliant|retinol|niacinamide|salicylic)\b/i,
+  /\b(add|buy|shop|get)\b.*\b(serum|moisturizer|cleanser|toner|spf|sunscreen|product)\b/i,
+  /\b(serum|moisturizer|cleanser|toner|spf|sunscreen)\s+(for|to|that)\b/i,
+  /show me\b.*\b(product|serum|cleanser|moisturizer|spf)\b/i,
+];
+
+function looksLikeProductQuestion(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return false;
+  return PRODUCT_INTENT_PATTERNS.some((rx) => rx.test(trimmed));
+}
+
+function findPrecedingUserQuestion(
+  messages: AssistantMessage[],
+  assistantMessageId: string
+): string {
+  const idx = messages.findIndex((m) => m.id === assistantMessageId);
+  if (idx <= 0) return '';
+  for (let i = idx - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return messages[i].text;
+  }
+  return '';
+}
+
+function preferredCategoriesFor(
+  category: 'breakouts' | 'hydration' | 'texture' | 'tone' | undefined
+): Array<Product['category']> {
+  switch (category) {
+    case 'breakouts':
+      return ['serum', 'toner', 'spf', 'cleanser'];
+    case 'hydration':
+      return ['moisturizer', 'serum', 'toner'];
+    case 'texture':
+      return ['serum', 'mask', 'cleanser'];
+    case 'tone':
+      return ['serum', 'spf', 'moisturizer'];
+    default:
+      return ['serum', 'moisturizer'];
+  }
+}
+
+function categoriesFromQuery(text: string): Array<Product['category']> | null {
+  const t = text.toLowerCase();
+  if (/\bspf|sunscreen\b/.test(t)) return ['spf'];
+  if (/\bmoistur/.test(t)) return ['moisturizer'];
+  if (/\bclean/.test(t)) return ['cleanser'];
+  if (/\btoner\b/.test(t)) return ['toner'];
+  if (/\bserum|niacinamide|salicylic|retinol|vitamin c|exfoliant|active\b/.test(t)) {
+    return ['serum'];
+  }
+  if (/\bmask\b/.test(t)) return ['mask'];
+  return null;
+}
+
+function resolveInlineProducts({
+  assistantText,
+  userQuestion,
+  latestScan,
+  hasScanned,
+}: {
+  assistantText: string;
+  userQuestion: string;
+  latestScan: ReturnType<typeof useAppStore.getState>['scans'][number] | undefined;
+  hasScanned: boolean;
+}): Product[] {
+  // Trigger only on product-shaped intent, otherwise stay quiet.
+  if (
+    !looksLikeProductQuestion(userQuestion) &&
+    !looksLikeProductQuestion(assistantText)
+  ) {
+    return [];
+  }
+
+  // Choose preferred categories: explicit category in the question
+  // beats concern-driven inference. If no scan and no explicit
+  // category, fall back to the generic preference order.
+  const explicit = categoriesFromQuery(`${userQuestion} ${assistantText}`);
+  const concernCategory = hasScanned
+    ? latestScan?.concerns?.find((c) => c.severity !== 'calm')?.category
+    : undefined;
+  const preferred = explicit ?? preferredCategoriesFor(concernCategory);
+
+  const seen = new Set<string>();
+  const picks: Product[] = [];
+  for (const cat of preferred) {
+    for (const p of seedProducts) {
+      if (p.category !== cat) continue;
+      if (seen.has(p.id)) continue;
+      // Prefer products with a real buyUrl so the card carries a
+      // working Shop action.
+      if (!p.buyUrl) continue;
+      seen.add(p.id);
+      picks.push(p);
+      if (picks.length >= 2) break;
+    }
+    if (picks.length >= 2) break;
+  }
+  return picks;
+}
+
+/**
+ * Compact inline product card rendered inside an assistant message.
+ * Image + brand caps + serif name + price + tap-to-shop arrow.
+ * Tapping the body opens ProductDetail; tapping the Shop pill opens
+ * the brand site via Linking.openURL.
+ */
+function AssistantProductCard({
+  product,
+  onOpen,
+  onShop,
+}: {
+  product: Product;
+  onOpen: () => void;
+  onShop?: () => void;
+}) {
+  const localSrc = localProductImageFor(product.id);
+  return (
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`${product.brand} ${product.name}`}
+      style={({ pressed }) => [
+        inlineCardStyles.card,
+        pressed && { opacity: 0.94 },
+      ]}
+    >
+      <View style={inlineCardStyles.imageWrap}>
+        <ProductPlaceholderImage
+          product={product}
+          silhouetteSize={36}
+          showBrandWord
+          showMockupBadge={!localSrc}
+        />
+        {localSrc ? (
+          <ExpoImage
+            source={localSrc}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            transition={180}
+          />
+        ) : null}
+      </View>
+      <View style={inlineCardStyles.text}>
+        <Text style={inlineCardStyles.brand} maxFontSizeMultiplier={1.1}>
+          {product.brand.toUpperCase()}
+        </Text>
+        <Text
+          style={inlineCardStyles.name}
+          numberOfLines={2}
+          maxFontSizeMultiplier={1.15}
+        >
+          {product.name}
+        </Text>
+        <View style={inlineCardStyles.foot}>
+          {Number.isFinite(product.price) && product.price > 0 ? (
+            <Text style={inlineCardStyles.price} maxFontSizeMultiplier={1.1}>
+              {Number.isInteger(product.price)
+                ? `$${product.price}`
+                : `$${product.price.toFixed(2)}`}
+            </Text>
+          ) : (
+            <View />
+          )}
+          {onShop ? (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                hapt.select();
+                onShop();
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Shop ${product.brand}`}
+              style={({ pressed }) => [
+                inlineCardStyles.shopBtn,
+                pressed && { opacity: 0.92 },
+              ]}
+            >
+              <Text
+                style={inlineCardStyles.shopBtnLabel}
+                maxFontSizeMultiplier={1.1}
+              >
+                Shop
+              </Text>
+              <CaretRight size={11} color={palette.inkInverse} weight="bold" />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const inlineCardStyles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    width: '100%',
+  },
+  imageWrap: {
+    width: 64,
+    height: 80,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: palette.bgDeep,
+    position: 'relative',
+  },
+  text: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  brand: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: palette.inkTertiary,
+    marginBottom: 2,
+  },
+  name: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 14,
+    lineHeight: 17,
+    letterSpacing: -0.2,
+    color: palette.ink,
+  },
+  foot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  price: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 13,
+    color: palette.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  shopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 13,
+    backgroundColor: palette.clay,
+  },
+  shopBtnLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.3,
+    color: palette.inkInverse,
+  },
+});
 
 type ListItem =
   | { kind: 'empty' }
@@ -1250,6 +1588,11 @@ const messageStyles = StyleSheet.create({
   // tap target (38pt), clean fill instead of hairline border. The
   // first 'scan' chip when no scan exists upgrades to a clay-filled
   // primary variant since that's the highest-value next step.
+  // v13.0 — inline product mini-card row.
+  inlineProductRow: {
+    marginTop: 12,
+    gap: 8,
+  },
   actionRow: {
     marginTop: 12,
     flexDirection: 'row',

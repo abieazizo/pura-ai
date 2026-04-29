@@ -228,7 +228,20 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── 2. Top module — portrait + score ─────────────────────── */}
+        {/* ── v13.0 INFO HIERARCHY ──
+            1. Compact identity (portrait + score, side-by-side, calm)
+            2. Headline takeaway (one strong line)
+            3. YOUR NEXT MOVE — hero recommendation comes BEFORE findings
+               so the user knows what to do RIGHT NOW.
+            4. Alternatives — secondary picks, lighter weight.
+            5. WHAT'S VISIBLE — findings, supporting evidence.
+            6. TONIGHT — routine guidance, compact.
+            7. Image-quality note when relevant.
+            8. Subtle disclaimer.
+            The top sections drive action; the bottom sections drive
+            understanding. */}
+
+        {/* ── 1. Compact identity ──────────────────────────────────── */}
         <View style={styles.topModule}>
           <View style={styles.portraitFrame}>
             <Image
@@ -245,7 +258,7 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             <View style={styles.scoreDialWrap}>
               <SkinScoreDial
                 value={score.value}
-                size={96}
+                size={88}
                 showTier={false}
                 previousValue={previousScoreValue}
                 deltaCaption={null}
@@ -261,10 +274,10 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </View>
         </View>
 
-        {/* ── DEV-only DEMO READING banner. Hidden from consumer flow ─ */}
+        {/* DEV-only DEMO READING. Hidden from consumer flow. */}
         {DEV_BADGE_ENABLED && !scan.aiAnalysis ? <DemoReadingBanner /> : null}
 
-        {/* ── 3. Main takeaway ─────────────────────────────────────── */}
+        {/* ── 2. Headline takeaway ─────────────────────────────────── */}
         <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
           {headline}
         </Text>
@@ -274,10 +287,65 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </Text>
         ) : null}
 
-        {/* ── 4. Key findings ──────────────────────────────────────── */}
+        {/* ── 3. YOUR NEXT MOVE — hero recommendation ──────────────── */}
+        {recommendations.primary ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+              {nextMoveKickerFor(concerns)}
+            </Text>
+            <PrimaryRecCard
+              rec={recommendations.primary}
+              onOpen={() =>
+                openProductDetail(
+                  recommendations.primary!.product.id,
+                  recommendations.primary!.product.tint
+                )
+              }
+              onShop={
+                recommendations.primary.product.buyUrl
+                  ? () =>
+                      openMerchant(recommendations.primary!.product.buyUrl!)
+                  : undefined
+              }
+            />
+          </View>
+        ) : null}
+
+        {/* ── 4. Also matched ──────────────────────────────────────── */}
+        {recommendations.alternatives.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.recHeader}>
+              <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+                ALSO MATCHED
+              </Text>
+              <Pressable onPress={openProducts} hitSlop={8}>
+                <Text style={styles.seeAllLink} maxFontSizeMultiplier={1.1}>
+                  See all
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.altRow}
+            >
+              {recommendations.alternatives.map((rec) => (
+                <AltRecCard
+                  key={rec.product.id}
+                  rec={rec}
+                  onOpen={() =>
+                    openProductDetail(rec.product.id, rec.product.tint)
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* ── 5. What's visible — supporting findings ──────────────── */}
         <View style={styles.section}>
           <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-            KEY FINDINGS
+            WHAT’S VISIBLE
           </Text>
           <View style={styles.findings}>
             {visibleConcerns.map((concern, i) => (
@@ -292,23 +360,6 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </View>
         </View>
 
-        {/* ── 5. Image-quality note (only when relevant) ───────────── */}
-        {lowQuality && scan.aiAnalysis ? (
-          <View style={styles.qualityCard}>
-            <View style={styles.qualityRail} />
-            <Text style={styles.qualityKicker} maxFontSizeMultiplier={1.1}>
-              IMAGE QUALITY
-            </Text>
-            <Text
-              style={styles.qualityBody}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={3}
-            >
-              {qualityCopy(scan.aiAnalysis)}
-            </Text>
-          </View>
-        ) : null}
-
         {/* ── 6. Tonight ───────────────────────────────────────────── */}
         {tonight.length > 0 ? (
           <View style={styles.section}>
@@ -316,7 +367,7 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
               TONIGHT
             </Text>
             <View style={styles.tonightList}>
-              {tonight.map((step, i) => (
+              {tonight.slice(0, 3).map((step, i) => (
                 <View key={i} style={styles.tonightItem}>
                   <Text style={styles.tonightNum} maxFontSizeMultiplier={1.15}>
                     {i + 1}
@@ -334,54 +385,20 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </View>
         ) : null}
 
-        {/* ── 7. Recommended products ──────────────────────────────── */}
-        {recommendations.primary || recommendations.alternatives.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.recHeader}>
-              <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-                RECOMMENDED FOR THIS SCAN
-              </Text>
-              <Pressable onPress={openProducts} hitSlop={8}>
-                <Text style={styles.seeAllLink} maxFontSizeMultiplier={1.1}>
-                  See all
-                </Text>
-              </Pressable>
-            </View>
-
-            {recommendations.primary ? (
-              <PrimaryRecCard
-                rec={recommendations.primary}
-                onOpen={() =>
-                  openProductDetail(
-                    recommendations.primary!.product.id,
-                    recommendations.primary!.product.tint
-                  )
-                }
-                onShop={
-                  recommendations.primary.product.buyUrl
-                    ? () => openMerchant(recommendations.primary!.product.buyUrl!)
-                    : undefined
-                }
-              />
-            ) : null}
-
-            {recommendations.alternatives.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.altRow}
-              >
-                {recommendations.alternatives.map((rec) => (
-                  <AltRecCard
-                    key={rec.product.id}
-                    rec={rec}
-                    onOpen={() =>
-                      openProductDetail(rec.product.id, rec.product.tint)
-                    }
-                  />
-                ))}
-              </ScrollView>
-            ) : null}
+        {/* ── 7. Image-quality note (only when relevant) ───────────── */}
+        {lowQuality && scan.aiAnalysis ? (
+          <View style={styles.qualityCard}>
+            <View style={styles.qualityRail} />
+            <Text style={styles.qualityKicker} maxFontSizeMultiplier={1.1}>
+              IMAGE QUALITY
+            </Text>
+            <Text
+              style={styles.qualityBody}
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={3}
+            >
+              {qualityCopy(scan.aiAnalysis)}
+            </Text>
           </View>
         ) : null}
 
@@ -392,6 +409,27 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+/**
+ * v13.0 — dynamic kicker for the YOUR NEXT MOVE section.
+ * Reads the user's top concern and returns a section title that
+ * frames the recommendation as a direct answer to what was found.
+ * Falls back to a calm default for low-signal scans.
+ */
+function nextMoveKickerFor(concerns: Concern[]): string {
+  const top = concerns.find((c) => c.severity !== 'calm');
+  if (!top) return 'A GENTLE DAILY ADDITION';
+  switch (top.category) {
+    case 'breakouts':
+      return 'BEST FOR BREAKOUTS';
+    case 'hydration':
+      return 'BEST FOR HYDRATION';
+    case 'texture':
+      return 'BEST FOR TEXTURE';
+    case 'tone':
+      return 'BEST FOR TONE';
+  }
 }
 
 // ============================================================================
@@ -1139,19 +1177,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     color: palette.clay,
   },
+  // v13.0 — hero card. Increased visual weight via shadow + slightly
+  // taller image. The card is the primary action surface on the
+  // result screen now (above findings), so it earns more presence.
   primaryCard: {
     flexDirection: 'row',
     gap: 14,
     padding: 12,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: palette.bg,
     borderWidth: 1,
     borderColor: palette.hairline,
     marginBottom: 16,
+    shadowColor: palette.ink,
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   primaryImageWrap: {
-    width: 110,
-    height: 140,
+    width: 116,
+    height: 148,
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: palette.bgDeep,
@@ -1219,18 +1265,20 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontVariant: ['tabular-nums'],
   },
+  // v13.0 — stronger Shop CTA. Premium pill with a subtle clay
+  // accent so it reads as the primary action on the rec card.
   shopBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    height: 28,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: palette.ink,
+    gap: 5,
+    height: 32,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: palette.clay,
   },
   shopBtnLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: 0.3,
     color: palette.inkInverse,
   },

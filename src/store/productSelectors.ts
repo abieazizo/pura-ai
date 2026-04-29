@@ -197,11 +197,76 @@ export function getGoalSensitive(): Product[] {
 export function searchProducts(query: string): Product[] {
   const q = query.trim().toLowerCase();
   if (q.length === 0) return [];
-  return seedProducts.filter((p) => {
-    if (p.name.toLowerCase().includes(q)) return true;
-    if (p.brand.toLowerCase().includes(q)) return true;
-    if (p.category.toLowerCase().includes(q)) return true;
-    if (p.keyIngredients.some((k) => k.toLowerCase().includes(q))) return true;
-    return false;
-  });
+
+  // v13.0 — multi-token search.
+  //
+  // The previous implementation only matched the WHOLE query against
+  // four fields (name / brand / category / keyIngredients). Multi-
+  // word queries like "salicylic acid serum" or "SPF for oily skin"
+  // failed to find matches even though products in the catalog
+  // covered them.
+  //
+  // New behaviour: tokenize on whitespace, build a searchable
+  // haystack string per product across name, brand, category,
+  // keyIngredients, ingredients, tags, goodFor, and description.
+  // ALL tokens must appear somewhere in the haystack. A relevance
+  // score then ranks: brand/name match > category match > ingredient
+  // match > description match. Stop-word tokens (for / to / and /
+  // with) are ignored so "SPF for oily skin" reduces to "spf oily
+  // skin" — products are filtered on the meaningful tokens, not the
+  // grammar glue.
+  const STOP = new Set([
+    'for', 'to', 'with', 'and', 'or', 'a', 'an', 'the', 'of', 'in',
+    'on', 'my', 'me', 'i', 'is', 'has', 'have',
+  ]);
+  const tokens = q
+    .split(/\s+/)
+    .map((t) => t.replace(/[^a-z0-9-]/g, ''))
+    .filter((t) => t.length > 1 && !STOP.has(t));
+  if (tokens.length === 0) {
+    // Fall back to whole-query match for very short queries.
+    return seedProducts.filter((p) =>
+      `${p.name} ${p.brand} ${p.category}`.toLowerCase().includes(q)
+    );
+  }
+
+  function haystackFor(p: Product): string {
+    return [
+      p.name,
+      p.brand,
+      p.category,
+      (p.keyIngredients ?? []).join(' '),
+      (p.ingredients ?? []).join(' '),
+      (p.tags ?? []).join(' '),
+      (p.goodFor ?? []).join(' '),
+      p.description ?? '',
+    ]
+      .join(' ')
+      .toLowerCase();
+  }
+
+  function relevanceFor(p: Product, hay: string): number {
+    let score = 0;
+    for (const t of tokens) {
+      if (p.name.toLowerCase().includes(t)) score += 4;
+      if (p.brand.toLowerCase().includes(t)) score += 4;
+      if (p.category.toLowerCase().includes(t)) score += 3;
+      if ((p.keyIngredients ?? []).some((k) => k.toLowerCase().includes(t))) {
+        score += 3;
+      }
+      if (hay.includes(t)) score += 1;
+    }
+    return score;
+  }
+
+  const matches = seedProducts
+    .map((p) => {
+      const hay = haystackFor(p);
+      const allMatch = tokens.every((t) => hay.includes(t));
+      return allMatch ? { p, score: relevanceFor(p, hay) } : null;
+    })
+    .filter((x): x is { p: Product; score: number } => x !== null)
+    .sort((a, b) => b.score - a.score);
+
+  return matches.map((m) => m.p);
 }
