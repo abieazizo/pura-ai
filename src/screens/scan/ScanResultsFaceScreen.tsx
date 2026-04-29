@@ -62,7 +62,8 @@ import {
 import { computeSkinScore, formatDelta } from '@/utils/skinScore';
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
-import { seedProducts } from '@/data/seed';
+import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
+import { localProductImageFor, seedProducts } from '@/data/seed';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Concern, Product, Severity } from '@/types';
 import type {
@@ -671,6 +672,11 @@ function PrimaryRecCard({
   onShop?: () => void;
 }) {
   const { product, matchScore, reasons } = rec;
+  // v12.3 — real images. seedProducts.imageUri is empty; the actual
+  // photos are bundled assets resolved via localProductImageFor(id).
+  // When no real image is bundled, ProductPlaceholderImage renders a
+  // premium silhouette + brand wordmark instead of an empty box.
+  const localSrc = localProductImageFor(product.id);
   return (
     <Pressable
       onPress={onOpen}
@@ -681,16 +687,19 @@ function PrimaryRecCard({
         pressed && { opacity: 0.96 },
       ]}
     >
-      <View style={[styles.primaryImageWrap, { backgroundColor: tintForProduct(product) }]}>
-        {product.imageUri ? (
+      <View style={styles.primaryImageWrap}>
+        <ProductPlaceholderImage
+          product={product}
+          silhouetteSize={64}
+          showBrandWord
+          showMockupBadge={!localSrc}
+        />
+        {localSrc ? (
           <Image
-            source={
-              typeof product.imageUri === 'string'
-                ? { uri: product.imageUri }
-                : product.imageUri
-            }
+            source={localSrc}
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
+            transition={180}
           />
         ) : null}
         {matchScore !== null ? (
@@ -773,6 +782,9 @@ function AltRecCard({
   onOpen: () => void;
 }) {
   const { product, matchScore } = rec;
+  // v12.3 — see PrimaryRecCard. Real bundled photo when available;
+  // otherwise the editorial silhouette placeholder.
+  const localSrc = localProductImageFor(product.id);
   return (
     <Pressable
       onPress={onOpen}
@@ -783,16 +795,19 @@ function AltRecCard({
         pressed && { opacity: 0.94 },
       ]}
     >
-      <View style={[styles.altImageWrap, { backgroundColor: tintForProduct(product) }]}>
-        {product.imageUri ? (
+      <View style={styles.altImageWrap}>
+        <ProductPlaceholderImage
+          product={product}
+          silhouetteSize={48}
+          showBrandWord
+          showMockupBadge={!localSrc}
+        />
+        {localSrc ? (
           <Image
-            source={
-              typeof product.imageUri === 'string'
-                ? { uri: product.imageUri }
-                : product.imageUri
-            }
+            source={localSrc}
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
+            transition={180}
           />
         ) : null}
         {matchScore !== null ? (
