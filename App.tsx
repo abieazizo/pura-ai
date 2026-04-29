@@ -1,6 +1,26 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { LogBox, StyleSheet, View } from 'react-native';
+
+// v11.11 — silence known-safe non-critical noise from optional AI
+// surfaces (search suggestions, etc.). These calls fail gracefully
+// in our code path (tryAi returns null, surface degrades to default
+// copy), but RN's underlying networking module emits a console-level
+// log on aborted/timeout fetches that LogBox amplifies as a yellow
+// or red overlay in dev. The overlays are pure noise — they describe
+// behavior we already designed for.
+//
+// We DO NOT silence anything that could mask a real bug. The patterns
+// here are restricted to the known-non-critical AI proxy paths.
+LogBox.ignoreLogs([
+  // matches: "[ai:aiGateway.call] buildSearchSuggestions skipped..."
+  /\[ai:aiGateway\..*\] buildSearchSuggestions /,
+  // matches: "AIProxyError: buildSearchSuggestions -> HTTP 0 (req=...): Aborted"
+  /AIProxyError: buildSearchSuggestions/,
+  // generic abort warnings emitted by the platform networking layer
+  // when our timeout fires for non-critical methods
+  /Aborted.*buildSearchSuggestions/,
+]);
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

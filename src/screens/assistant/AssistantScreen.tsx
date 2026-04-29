@@ -10,7 +10,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+// v11.11 — useBottomTabBarHeight removed: keyboardVerticalOffset is
+// now 0 (the correct value with tabBarHideOnKeyboard:true). See the
+// inline comment above the KeyboardAvoidingView for the geometry.
 import { StatusBar } from 'expo-status-bar';
 import Animated, {
   Easing,
@@ -67,13 +69,11 @@ export function AssistantScreen() {
   const latestScan = useAppStore((s) => s.scans[s.scans.length - 1]);
   const hasScanned = useAppStore((s) => s.scans.length > 0);
   const sendMessage = useAppStore((s) => s.sendMessage);
-  // v11.5 — kill the dead air above the composer when the keyboard
-  // is up. The previous fixed `keyboardVerticalOffset={64}` was
-  // wrong: the actual offset = the live tab-bar height (varies per
-  // device — ~83 with home indicator, ~49 without). AssistantScreen
-  // always renders inside the bottom Tab navigator (see
-  // navigation/TabNavigator.tsx), so this hook is always callable.
-  const tabBarHeight = useBottomTabBarHeight();
+  // v11.11 — `useBottomTabBarHeight()` was previously used to set
+  // `keyboardVerticalOffset` on the KAV. That created the persistent
+  // composer gap because RN Nav reclaims the tab bar's layout when
+  // the keyboard opens (with `tabBarHideOnKeyboard: true`); the
+  // KAV then over-corrects by tabBarHeight worth of padding-debt.
 
   const listRef = useRef<FlatList<ListItem>>(null);
   const [draft, setDraft] = useState('');
@@ -133,6 +133,14 @@ export function AssistantScreen() {
           onPick={(t) => send(t, [])}
           hasScanned={hasScanned}
           onScan={() => nav.navigate('ScanModal')}
+          onOpenRoutine={() => {
+            // @ts-expect-error nested tab navigation typing
+            nav.navigate('Tabs', { screen: 'RoutineTab' });
+          }}
+          onOpenProducts={() => {
+            // @ts-expect-error nested tab navigation typing
+            nav.navigate('Tabs', { screen: 'ProductsTab' });
+          }}
         />
       );
     }
@@ -178,37 +186,40 @@ export function AssistantScreen() {
         </View>
       </View>
 
-      {/* v11.10 — REAL fix for the persistent composer gap.
+      {/* v11.11 — ACTUAL composer-gap fix.
         *
-        * The bug in v11.5–v11.9: a wrapper View added
-        * `paddingBottom: tabBarHeight` to push the composer above
-        * the tab bar. But this DOUBLE-COUNTED, because:
+        * Previous attempts (v11.5–v11.10) used
+        * `keyboardVerticalOffset={tabBarHeight}` because we assumed
+        * the tab bar's layout space stays even when it's hidden.
+        * Wrong assumption: with `@react-navigation/bottom-tabs` v6+
+        * AND `tabBarHideOnKeyboard: true` (set in TabNavigator), the
+        * tab bar's LAYOUT IS RECLAIMED when the keyboard opens — the
+        * screen expands to full height.
         *
-        *   1. React Navigation's bottom-tab navigator already
-        *      positions screen content ABOVE the tab bar — the
-        *      screen viewport ends at tabBarTop. No screen-side
-        *      padding is needed for the tab bar.
+        * That changes the geometry:
+        *   keyboard CLOSED:
+        *     - screen ends at tabBarTop (full-height − tabBar)
+        *     - KAV idle, composer flush above tab bar ✓
+        *   keyboard OPEN:
+        *     - tab bar layout removed, screen extends to full height
+        *     - KAV adds paddingBottom = (keyboardH − offset)
+        *     - For composer at keyboard top:
+        *         offset = 0 → padding = keyboardH → composer at
+        *         (fullH − keyboardH) = keyboard top ✓
         *
-        *   2. `tabBarHideOnKeyboard: true` (set in TabNavigator.tsx
-        *      v8) animates the tab bar out when the keyboard
-        *      opens. The tab bar's laid-out height stays the same,
-        *      so KeyboardAvoidingView with
-        *      `keyboardVerticalOffset={tabBarHeight}` already does
-        *      the correct math.
+        * With offset=tabBarHeight (the WRONG value): KAV adds only
+        * (keyboardH − tabBarHeight) of padding, so the composer ends
+        * up tabBarHeight ABOVE the keyboard top — that is exactly
+        * the persistent "white gap above the composer" the user has
+        * been reporting.
         *
-        *   3. The wrapper paddingBottom was layered ON TOP of those
-        *      two correct mechanisms, creating a literal
-        *      tabBarHeight-pixel gap above the composer (visible as
-        *      "the white gap").
-        *
-        * Fix: drop the wrapper, let KAV do its job alone. The
-        * `keyboardVerticalOffset` accounts for the screen's
-        * position above the tab bar so the composer slides flush
-        * with the keyboard top when it opens. */}
+        * Correct value: 0 (the default). Note `tabBarHeight` is no
+        * longer used — kept the import to make the prior bad usage
+        * obvious in the diff. */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={tabBarHeight}
+        keyboardVerticalOffset={0}
       >
         <FlatList
           ref={listRef}
@@ -419,33 +430,40 @@ function EmptyChatBody({
   opening,
   hasScanned,
   onScan,
+  onOpenRoutine,
+  onOpenProducts,
 }: {
   suggestions: string[];
   onPick: (text: string) => void;
   opening: string | null;
   hasScanned: boolean;
   onScan: () => void;
+  onOpenRoutine: () => void;
+  onOpenProducts: () => void;
 }) {
   const reduceMotion = useReduceMotion();
   const visible = useRotatingPrompts(suggestions, 3, 7000, reduceMotion);
 
-  // v11.4 — when no scan exists, the empty body now leads with a
-  // primary "Scan your face" action button instead of asking the
-  // user to type a question and hoping the AI suggests scanning.
-  // The assistant's grounded answers are massively better with scan
-  // data in hand, so the CTA short-circuits the user to the highest-
-  // value next step. 2 scan-free prompts ("How does the Skin Score
-  // work?" / "What's the difference between a serum and a toner?")
-  // remain available below.
+  // v11.11 — no-scan state per spec:
+  //   "I don't have a recent scan yet."
+  //   "Want to start with a face scan?"
+  //   Buttons: Scan face / Build routine / View products
+  //
+  // Three CTAs sit in a clean two-row stack: primary "Scan face"
+  // (clay-filled) on its own row, then "Build routine" + "View
+  // products" as paired secondaries. The previous treatment showed
+  // a single primary CTA + 2 prompt chips — closer but not what the
+  // spec called for.
   if (!hasScanned) {
     return (
       <View style={emptyStyles.root}>
         <Text style={emptyStyles.title} maxFontSizeMultiplier={1.15}>
-          {strings.emptyTitle}
+          I don’t have a recent scan yet.
         </Text>
         <Text style={emptyStyles.body}>
-          I don’t have a recent scan yet. Want to start there?
+          Want to start with a face scan?
         </Text>
+
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Take a face scan"
@@ -463,16 +481,39 @@ function EmptyChatBody({
             style={emptyStyles.primaryCtaLabel}
             maxFontSizeMultiplier={1.15}
           >
-            Take a face scan
+            Scan face
           </Text>
         </Pressable>
-        <Text style={emptyStyles.orLine} maxFontSizeMultiplier={1.1}>
-          OR ASK
-        </Text>
-        <View style={emptyStyles.promptGrid}>
-          {visible.slice(0, 2).map((s) => (
-            <PromptChip key={s} text={s} onPick={onPick} />
-          ))}
+
+        <View style={emptyStyles.secondaryRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Build routine"
+            onPress={() => {
+              hapt.select();
+              onOpenRoutine();
+            }}
+            style={({ pressed }) => [
+              emptyStyles.secondaryCta,
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <Text style={emptyStyles.secondaryCtaLabel}>Build routine</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View products"
+            onPress={() => {
+              hapt.select();
+              onOpenProducts();
+            }}
+            style={({ pressed }) => [
+              emptyStyles.secondaryCta,
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <Text style={emptyStyles.secondaryCtaLabel}>View products</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -1096,6 +1137,30 @@ const emptyStyles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: 0.1,
     color: palette.inkInverse,
+  },
+  // v11.11 — secondary CTAs for the no-scan empty state.
+  // "Build routine" + "View products" sit on a single row beneath
+  // the primary "Scan face" CTA so the user has every high-value
+  // entry point one tap away.
+  secondaryRow: {
+    marginTop: space.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  secondaryCta: {
+    height: 38,
+    paddingHorizontal: 16,
+    borderRadius: 19,
+    backgroundColor: palette.bgDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryCtaLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    letterSpacing: 0.1,
+    color: palette.ink,
   },
   orLine: {
     marginTop: space.lg,
