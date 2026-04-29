@@ -256,21 +256,27 @@ export const useAppStore = create<AppState>()(
       // back to deterministic ordering / templates).
       addScan: (scan) => {
         set((s) => ({ scans: [...s.scans, scan] }));
-        if (scan.aiAnalysis) {
-          // Lazy import to avoid a circular dependency between the
-          // store and the api modules. The `Promise.resolve().then`
-          // also defers the kick to the next tick so the UI gets the
-          // scan in state before the composite fires.
-          Promise.resolve().then(async () => {
-            try {
-              const products = await import('@/api/products');
-              await products.getMatchedProductsForUser({
-                userId: 'current_user',
-                basedOnScanId: scan.id,
-              });
-            } catch {
-              /* swallowed — helpers fall back to seeded order */
-            }
+        // v13.1 — fire the product matcher for EVERY new scan, not
+        // only AI-driven ones. The matcher's deterministic fallback
+        // (api/products.ts::buildDeterministicMatches) works against
+        // `scan.concerns` so it produces a realistic ranking even
+        // when AI is offline. Previously this was gated on
+        // `scan.aiAnalysis` so non-AI scans left aiTopMatches empty,
+        // which made the result screen + Products tab look
+        // demo-heavy.
+        Promise.resolve().then(async () => {
+          try {
+            const products = await import('@/api/products');
+            await products.getMatchedProductsForUser({
+              userId: 'current_user',
+              basedOnScanId: scan.id,
+            });
+          } catch {
+            /* swallowed — helpers fall back to seeded order */
+          }
+          // The branch below (search suggestions + routine recommendation)
+          // remains AI-gated because those calls are pure-AI.
+          if (!scan.aiAnalysis) return;
             try {
               const products = await import('@/api/products');
               await products.getSearchSuggestions('products');
@@ -333,7 +339,6 @@ export const useAppStore = create<AppState>()(
               }
             }
           });
-        }
       },
 
       toggleWishlist: (productId) =>
