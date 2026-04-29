@@ -67,10 +67,17 @@ import {
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
+import { SkinMap } from '@/screens/scan/components/SkinMap';
 import { localProductImageFor, seedProducts } from '@/data/seed';
 import type { RootStackParamList } from '@/navigation/types';
-import type { Concern, Product, Severity } from '@/types';
 import type {
+  Concern,
+  ConcernCategory,
+  Product,
+  Severity,
+} from '@/types';
+import type {
+  FaceRegion,
   FaceScanAnalysis,
   ProductMatch,
 } from '@/ai/ai-contracts';
@@ -120,6 +127,34 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     () => buildSupportLine(concerns, scan?.aiAnalysis),
     [concerns, scan?.aiAnalysis]
   );
+
+  // v16.0 — build a category → FaceRegion[] map from the AI's
+  // findings array so SkinMap can render real region overlays.
+  // For non-AI scans (deterministic fallback), this is empty and
+  // SkinMap falls back to its own concern.region string mapping.
+  const aiRegionsByCategory = useMemo(() => {
+    const out: Partial<Record<ConcernCategory, FaceRegion[]>> = {};
+    if (!scan?.aiAnalysis?.findings) return out;
+    const AI_TO_APP: Record<string, ConcernCategory> = {
+      breakouts: 'breakouts',
+      hydration: 'hydration',
+      texture: 'texture',
+      dark_marks: 'tone',
+      redness: 'breakouts',
+      oiliness: 'breakouts',
+      sensitivity: 'hydration',
+      pores: 'texture',
+    };
+    for (const finding of scan.aiAnalysis.findings) {
+      const cat = AI_TO_APP[finding.concern];
+      if (!cat) continue;
+      if (!out[cat]) out[cat] = [];
+      for (const r of finding.regions) {
+        if (!out[cat]!.includes(r)) out[cat]!.push(r);
+      }
+    }
+    return out;
+  }, [scan?.aiAnalysis]);
 
   const tonight = useMemo(() => {
     if (!scan) return [] as string[];
@@ -305,6 +340,25 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             {support}
           </Text>
         ) : null}
+
+        {/* ── v16.0 SKIN MAP — visual proof of where concerns live ── */}
+        {/* The user's explicit demand: "show WHERE issues are detected
+            on the face, in a premium and elegant way." Tabs let the
+            user toggle between concern overlays. Each overlay renders
+            anatomically-positioned translucent shapes (wash / speckle
+            / grid / pinpoints) over their captured photo, derived
+            from the AI's findings.regions array when present. Calm
+            scans show no tabs and a gentle caption. */}
+        <View style={styles.skinMapBlock}>
+          <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+            SKIN MAP
+          </Text>
+          <SkinMap
+            photoUri={scan.photoUri}
+            concerns={concerns}
+            aiRegionsByCategory={aiRegionsByCategory}
+          />
+        </View>
 
         {/* ── 3. YOUR NEXT MOVE — hero recommendation ──────────────── */}
         {recommendations.primary ? (
@@ -1046,6 +1100,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.4,
     color: palette.inkSecondary,
+  },
+
+  // v16.0 — SkinMap section block. Sits between the headline and
+  // YOUR NEXT MOVE so the user gets visual proof of the findings
+  // before the recommendation.
+  skinMapBlock: {
+    marginBottom: 28,
   },
 
   // ── 3. Headline + support ────────────────────────────────────────
