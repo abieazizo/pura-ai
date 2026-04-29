@@ -91,6 +91,16 @@ export function ScanCaptureScreen({
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
   const cameraRef = useRef<CameraView | null>(null);
   const requestedRef = useRef(false);
+  // v11.10 — track countdown timers so we can cancel them if the user
+  // navigates away mid-countdown. Previously the setTimeout/setInterval
+  // pair leaked: useCallback's "return () => clearTimeout(...)" was
+  // misinterpreted as a cleanup but useCallback simply returns its
+  // function — the cleanup never ran, and a navigated-away component
+  // would still fire takePictureAsync against a stale ref.
+  const countdownTimers = useRef<{
+    fire: ReturnType<typeof setTimeout> | null;
+    tick: ReturnType<typeof setInterval> | null;
+  }>({ fire: null, tick: null });
   const fade = useSharedValue(0);
   const flashOverlay = useSharedValue(0);
 
@@ -147,6 +157,25 @@ export function ScanCaptureScreen({
     setCountdownValue(null);
   }, [mode]);
 
+  // v11.10 — cancel any in-flight countdown timers on unmount AND
+  // when the mode changes away from face. This is the missing
+  // cleanup that previously let stale captures fire against an
+  // unmounted CameraView ref.
+  useEffect(() => {
+    if (mode !== 'face') {
+      if (countdownTimers.current.tick) clearInterval(countdownTimers.current.tick);
+      if (countdownTimers.current.fire) clearTimeout(countdownTimers.current.fire);
+      countdownTimers.current.tick = null;
+      countdownTimers.current.fire = null;
+    }
+    return () => {
+      if (countdownTimers.current.tick) clearInterval(countdownTimers.current.tick);
+      if (countdownTimers.current.fire) clearTimeout(countdownTimers.current.fire);
+      countdownTimers.current.tick = null;
+      countdownTimers.current.fire = null;
+    };
+  }, [mode]);
+
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOverlay.value }));
 
@@ -172,22 +201,22 @@ export function ScanCaptureScreen({
     setFrameState('preparing');
     const startedAt = Date.now();
     setCountdownValue(Math.ceil(COUNTDOWN_MS / 1000));
-    const tickId = setInterval(() => {
+    countdownTimers.current.tick = setInterval(() => {
       const elapsed = Date.now() - startedAt;
       const remainingMs = Math.max(0, COUNTDOWN_MS - elapsed);
       const next = Math.ceil(remainingMs / 1000);
       setCountdownValue(next > 0 ? next : null);
     }, 200);
-    const t = setTimeout(async () => {
-      clearInterval(tickId);
+    countdownTimers.current.fire = setTimeout(async () => {
+      if (countdownTimers.current.tick) {
+        clearInterval(countdownTimers.current.tick);
+        countdownTimers.current.tick = null;
+      }
+      countdownTimers.current.fire = null;
       setCountdownValue(null);
       hapt.medium();
       await runCapture();
     }, COUNTDOWN_MS);
-    return () => {
-      clearTimeout(t);
-      clearInterval(tickId);
-    };
 
     async function runCapture() {
       setCapturing(true);

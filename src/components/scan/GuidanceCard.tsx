@@ -1,23 +1,33 @@
 /**
- * GuidanceCard (v11.9).
+ * GuidanceCard (v11.10).
  *
- * Honest pre-capture guidance. Lives INSIDE the bottom panel slot in
- * ScanOverlay v11.9 (no longer absolutely positioned against window
- * dimensions). Sized to fill its slot.
+ * v11.7–v11.9 rendered all three pre-capture tips at once. The user
+ * called this out as cluttered: when there's nothing to coach, the
+ * UI was shouting three things in parallel.
  *
- * Two visual states:
- *   • idle      — three short, icon-led tips visible at once. Doesn't
- *                 rotate. Doesn't preach. The user reads them in
- *                 ~1.5s and intuits exactly what a good scan needs.
- *   • preparing — collapses into a single moss-tinted "Hold still…"
- *                 pill while the 2s post-tap countdown runs.
+ * v11.10 collapses to ONE active message at a time, chosen by a
+ * priority ladder so the message that gets surfaced is always the
+ * most relevant for the current state:
  *
- * This is the honest answer to "Expo Go has no live face detection":
- * give the user a clear visual model BEFORE they capture, then run the
- * preflight validation immediately AFTER capture.
+ *   priority 0 — preparing       ("Hold still — checking image quality…")
+ *   priority 1 — capture-blocked (gateway unavailable, etc.)
+ *   priority 2 — first-scan      (welcome line, only on the first run)
+ *   priority 3 — neutral framing instruction (default; rotates between
+ *               the three honest tips on a slow 6s cadence so the
+ *               surface still feels alive)
+ *
+ * Because Expo Go cannot give us live framing/lighting/motion signals,
+ * the app cannot truthfully decide "show 'fix lighting' vs 'fix
+ * framing'" before capture. The honest answer is to default to a
+ * single neutral framing instruction and let the post-capture
+ * preflight call do the actual diagnosis.
+ *
+ * Visually: a short single-line capsule. Lots of breathing room. No
+ * stacked rows. Reads as ONE thing the user is supposed to do right
+ * now.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -31,101 +41,171 @@ import {
   Sparkle,
   Barcode,
   Drop,
-  Camera,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
 import { palette } from '@/theme';
 import type { ReticleMode, FrameState } from './Reticle';
+import { useAppStore } from '@/store/useAppStore';
 
-interface Tip {
+interface GuidanceMessage {
+  id: string;
   Icon: React.FC<PhosphorIconProps>;
   text: string;
+  tone: 'neutral' | 'preparing' | 'attention';
 }
 
-const FACE_TIPS: ReadonlyArray<Tip> = [
-  { Icon: CircleHalf as React.FC<PhosphorIconProps>, text: 'Center your full face in the oval' },
-  { Icon: Sun as React.FC<PhosphorIconProps>, text: 'Use even, soft light' },
-  { Icon: Sparkle as React.FC<PhosphorIconProps>, text: 'Hold still — we’ll check the photo' },
+// Priority ladder. The first message whose predicate returns true is
+// the one rendered.
+//
+// FACE-MODE neutral pool. We rotate through these on a slow cadence
+// (6s) so the surface feels alive without ever being noisy: at any
+// given second exactly ONE of them is on screen.
+const FACE_NEUTRAL_TIPS: ReadonlyArray<GuidanceMessage> = [
+  {
+    id: 'face-center',
+    Icon: CircleHalf as React.FC<PhosphorIconProps>,
+    text: 'Center your full face in the oval',
+    tone: 'neutral',
+  },
+  {
+    id: 'face-light',
+    Icon: Sun as React.FC<PhosphorIconProps>,
+    text: 'Use even, soft light',
+    tone: 'neutral',
+  },
+  {
+    id: 'face-still',
+    Icon: Sparkle as React.FC<PhosphorIconProps>,
+    text: 'Hold still — we’ll check the photo',
+    tone: 'neutral',
+  },
 ];
 
-const PRODUCT_TIPS: ReadonlyArray<Tip> = [
-  { Icon: Drop as React.FC<PhosphorIconProps>, text: 'Frame the front label' },
-  { Icon: Sun as React.FC<PhosphorIconProps>, text: 'Avoid glare on packaging' },
-  { Icon: Camera as React.FC<PhosphorIconProps>, text: 'Hold steady — we’ll read the ingredients' },
-];
+const PRODUCT_NEUTRAL: GuidanceMessage = {
+  id: 'product',
+  Icon: Drop as React.FC<PhosphorIconProps>,
+  text: 'Frame the front label clearly',
+  tone: 'neutral',
+};
 
-const BARCODE_TIPS: ReadonlyArray<Tip> = [
-  { Icon: Barcode as React.FC<PhosphorIconProps>, text: 'Center the barcode in the frame' },
-  { Icon: Sun as React.FC<PhosphorIconProps>, text: 'Avoid harsh reflections' },
-  { Icon: Sparkle as React.FC<PhosphorIconProps>, text: 'It scans automatically when found' },
-];
+const BARCODE_NEUTRAL: GuidanceMessage = {
+  id: 'barcode',
+  Icon: Barcode as React.FC<PhosphorIconProps>,
+  text: 'Center the barcode — it scans automatically',
+  tone: 'neutral',
+};
+
+const PREPARING_MSG: GuidanceMessage = {
+  id: 'preparing',
+  Icon: Sparkle as React.FC<PhosphorIconProps>,
+  text: 'Hold still — checking image quality…',
+  tone: 'preparing',
+};
+
+const FIRST_SCAN_MSG: GuidanceMessage = {
+  id: 'first-scan',
+  Icon: CircleHalf as React.FC<PhosphorIconProps>,
+  text: 'Your first scan — center your full face',
+  tone: 'neutral',
+};
+
+const TIP_ROTATE_MS = 6000;
 
 export interface GuidanceCardProps {
   mode: ReticleMode;
-  /**
-   * v11.8 — when 'preparing' the card collapses into a single
-   * "Hold still…" line so the capture moment reads cleanly.
-   */
   frameState?: FrameState;
 }
 
 export function GuidanceCard({ mode, frameState = 'idle' }: GuidanceCardProps) {
-  const tips =
-    mode === 'product' ? PRODUCT_TIPS : mode === 'barcode' ? BARCODE_TIPS : FACE_TIPS;
+  const hasNeverScanned = useAppStore((s) => s.scans.length === 0);
 
-  // Crossfade between idle (3 tips) and preparing (1 line).
-  const phase = useSharedValue(frameState === 'preparing' ? 1 : 0);
-  React.useEffect(() => {
-    phase.value = withTiming(frameState === 'preparing' ? 1 : 0, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
+  // Slow rotation through the face-mode neutral pool. Resets to 0
+  // when the mode changes or the user enters preparing.
+  const [tipIndex, setTipIndex] = useState(0);
+  useEffect(() => {
+    if (mode !== 'face') return;
+    if (frameState === 'preparing') return;
+    if (hasNeverScanned) return; // first-scan message takes priority
+    const id = setInterval(() => {
+      setTipIndex((i) => (i + 1) % FACE_NEUTRAL_TIPS.length);
+    }, TIP_ROTATE_MS);
+    return () => clearInterval(id);
+  }, [mode, frameState, hasNeverScanned]);
+
+  // Resolve the single message to render based on the priority ladder.
+  let message: GuidanceMessage;
+  if (frameState === 'preparing') {
+    message = PREPARING_MSG;
+  } else if (mode === 'product') {
+    message = PRODUCT_NEUTRAL;
+  } else if (mode === 'barcode') {
+    message = BARCODE_NEUTRAL;
+  } else if (hasNeverScanned) {
+    // Face mode, first run: a one-time welcome before the rotation
+    // pool kicks in. After the user has scanned once, we drop into
+    // the rotation.
+    message = FIRST_SCAN_MSG;
+  } else {
+    message = FACE_NEUTRAL_TIPS[tipIndex];
+  }
+
+  // Crossfade on message change.
+  const fade = useSharedValue(1);
+  const [renderedId, setRenderedId] = useState(message.id);
+  const [rendered, setRendered] = useState(message);
+  useEffect(() => {
+    if (message.id === renderedId) return;
+    fade.value = withTiming(0, {
+      duration: 160,
+      easing: Easing.in(Easing.cubic),
     });
-  }, [frameState, phase]);
+    const t = setTimeout(() => {
+      setRendered(message);
+      setRenderedId(message.id);
+      fade.value = withTiming(1, {
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
+      });
+    }, 170);
+    return () => clearTimeout(t);
+  }, [message, renderedId, fade]);
 
-  const idleStyle = useAnimatedStyle(() => ({
-    opacity: 1 - phase.value,
-    transform: [{ translateY: phase.value * -4 }],
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: fade.value,
+    transform: [{ translateY: (1 - fade.value) * 4 }],
   }));
-  const preparingStyle = useAnimatedStyle(() => ({
-    opacity: phase.value,
-    transform: [{ translateY: (1 - phase.value) * 4 }],
-  }));
+
+  const Icon = rendered.Icon;
+  const isPreparing = rendered.tone === 'preparing';
 
   return (
     <View style={styles.wrap} pointerEvents="none">
-      <Animated.View style={[styles.layer, idleStyle]}>
-        <View style={styles.tipsRow}>
-          {tips.map((tip, i) => {
-            const Icon = tip.Icon;
-            return (
-              <View key={i} style={styles.tipPill}>
-                <View style={styles.iconWrap}>
-                  <Icon size={13} weight="duotone" color="rgba(255,255,255,0.92)" />
-                </View>
-                <Text
-                  style={styles.tipText}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  {tip.text}
-                </Text>
-              </View>
-            );
-          })}
+      <Animated.View
+        style={[
+          styles.pill,
+          isPreparing && styles.pillPreparing,
+          animatedStyle,
+        ]}
+      >
+        <View
+          style={[
+            styles.iconWrap,
+            isPreparing && styles.iconWrapPreparing,
+          ]}
+        >
+          <Icon
+            size={14}
+            weight="duotone"
+            color={isPreparing ? palette.mossLight : 'rgba(255,255,255,0.95)'}
+          />
         </View>
-      </Animated.View>
-
-      <Animated.View style={[styles.layer, preparingStyle]} pointerEvents="none">
-        <View style={styles.preparingPill}>
-          <View style={styles.preparingDot} />
-          <Text
-            style={styles.preparingText}
-            maxFontSizeMultiplier={1.15}
-            numberOfLines={1}
-          >
-            Hold still — checking image quality…
-          </Text>
-        </View>
+        <Text
+          style={[styles.text, isPreparing && styles.textPreparing]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.15}
+        >
+          {rendered.text}
+        </Text>
       </Animated.View>
     </View>
   );
@@ -137,75 +217,47 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 24,
   },
-  layer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // v11.9 — three pills in a horizontal row instead of stacked rows.
-  // Each pill is sized to its content; row wraps on narrow screens.
-  // Keeps the guidance "deliberate" without crowding vertical space.
-  tipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    maxWidth: 360,
-  },
-  tipPill: {
+  // Single capsule, sized to its content. Fixed height = 36pt.
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    gap: 10,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.16)',
+    maxWidth: '100%',
+  },
+  pillPreparing: {
+    backgroundColor: 'rgba(11,18,32,0.65)',
+    borderColor: palette.mossDeep,
   },
   iconWrap: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tipText: {
+  iconWrapPreparing: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  text: {
+    flexShrink: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 17,
     letterSpacing: 0.05,
     color: 'rgba(255,255,255,0.95)',
   },
-  // Preparing layer — single moss-tinted pill, sized to content.
-  preparingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(11,18,32,0.6)',
-    borderWidth: 1,
-    borderColor: palette.mossDeep,
-  },
-  preparingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: palette.mossLight,
-  },
-  preparingText: {
+  textPreparing: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    letterSpacing: 0.4,
     color: palette.mossLight,
+    letterSpacing: 0.4,
   },
 });

@@ -178,27 +178,38 @@ export function AssistantScreen() {
         </View>
       </View>
 
-      {/* v11.6 — proper composer/keyboard geometry.
+      {/* v11.10 — REAL fix for the persistent composer gap.
         *
-        *   closed → outer View pushes content up by tabBarHeight so
-        *            the composer sits ABOVE the tab bar.
-        *   open   → KeyboardAvoidingView adds (keyboard - tabBarHeight)
-        *            of internal padding so total bottom offset =
-        *            tabBarHeight (outer) + (keyboard - tabBarHeight)
-        *            (inner) = keyboard_height. Composer flush with
-        *            keyboard top. Zero dead air.
+        * The bug in v11.5–v11.9: a wrapper View added
+        * `paddingBottom: tabBarHeight` to push the composer above
+        * the tab bar. But this DOUBLE-COUNTED, because:
         *
-        * v11.5's `paddingBottom` on the KAV was overridden by KAV's
-        * own behavior=padding logic (StyleSheet.flatten — last
-        * paddingBottom wins) so the static value never applied
-        * when the keyboard was closed. Putting it on a wrapper
-        * View OUTSIDE KAV is the correct pattern. */}
-      <View style={[styles.flex, { paddingBottom: tabBarHeight }]}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={tabBarHeight}
-        >
+        *   1. React Navigation's bottom-tab navigator already
+        *      positions screen content ABOVE the tab bar — the
+        *      screen viewport ends at tabBarTop. No screen-side
+        *      padding is needed for the tab bar.
+        *
+        *   2. `tabBarHideOnKeyboard: true` (set in TabNavigator.tsx
+        *      v8) animates the tab bar out when the keyboard
+        *      opens. The tab bar's laid-out height stays the same,
+        *      so KeyboardAvoidingView with
+        *      `keyboardVerticalOffset={tabBarHeight}` already does
+        *      the correct math.
+        *
+        *   3. The wrapper paddingBottom was layered ON TOP of those
+        *      two correct mechanisms, creating a literal
+        *      tabBarHeight-pixel gap above the composer (visible as
+        *      "the white gap").
+        *
+        * Fix: drop the wrapper, let KAV do its job alone. The
+        * `keyboardVerticalOffset` accounts for the screen's
+        * position above the tab bar so the composer slides flush
+        * with the keyboard top when it opens. */}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={tabBarHeight}
+      >
         <FlatList
           ref={listRef}
           data={items}
@@ -359,8 +370,7 @@ export function AssistantScreen() {
             />
           </View>
         ) : null}
-        </KeyboardAvoidingView>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -81,19 +81,36 @@ export function ProductsScreen() {
     return () => clearTimeout(t);
   }, [query]);
 
-  // Fire-and-forget refresh of search suggestions on mount. Falls back
-  // silently when AI is unavailable (the placeholder reverts to the
-  // default copy in AISearchBar).
+  // v11.10 — fire AI search suggestions ONLY when:
+  //   (a) the AI gateway is actually configured (no point firing into
+  //       a dead transport), AND
+  //   (b) we don't already have suggestions cached from the post-scan
+  //       hydration in useAppStore::addScan.
+  //
+  // Previously this fired unconditionally on every mount; when the
+  // proxy was unreachable it generated a runtime AbortError that
+  // surfaced as a red overlay despite being non-critical. Gating the
+  // call removes the noise without changing behavior when AI is up.
   useEffect(() => {
+    if (aiSuggestions) return;
     let cancelled = false;
-    getSearchSuggestions('products').catch(() => {
-      /* swallowed — store state stays as-is */
-    });
+    void (async () => {
+      try {
+        const { aiGateway } = await import('@/ai/aiGateway');
+        if (cancelled) return;
+        if (!aiGateway.isAvailable()) return;
+        await getSearchSuggestions('products');
+      } catch {
+        /* non-critical: AISearchBar uses its default placeholder */
+      }
+    })();
     return () => {
       cancelled = true;
-      void cancelled;
     };
-  }, []);
+    // aiSuggestions intentionally listed: only re-fires if the cache
+    // is invalidated, which currently never happens at runtime — but
+    // the dependency keeps the linter honest.
+  }, [aiSuggestions]);
 
   const searchResults = useMemo(
     () =>
@@ -115,12 +132,14 @@ export function ProductsScreen() {
       <StatusBar style="dark" />
       <AISourceBadge feature="products" />
 
-      {/* Brand bar — PuraMark + wordmark + filter chip */}
+      {/* v11.10 — unified header pattern. Page identity in the brand
+          bar (top-left); no redundant giant in-page title. Matches the
+          AssistantScreen pattern so all primary tabs read consistently. */}
       <View style={styles.headerRow}>
         <View style={styles.brandLeft}>
-          <PuraMark size={32} variant="idle" />
+          <PuraMark size={22} variant="idle" />
           <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
-            Pura AI
+            Products
           </Text>
         </View>
         <Pressable
@@ -139,14 +158,6 @@ export function ProductsScreen() {
           <SlidersHorizontal size={18} color={palette.ink} weight="duotone" />
         </Pressable>
       </View>
-
-      <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-        Products.
-      </Text>
-
-      <Text style={styles.searchKicker} maxFontSizeMultiplier={1.1}>
-        POWERED BY AI
-      </Text>
 
       <AISearchBar
         value={query}
@@ -312,8 +323,11 @@ const suggestionRow = StyleSheet.create({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   flex: { flex: 1 },
+  // v11.10 — unified header dimensions across primary tabs.
+  // 48pt height matches AssistantScreen.brandBar so the page-to-page
+  // transitions feel consistent.
   headerRow: {
-    height: 60,
+    height: 48,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
@@ -322,12 +336,12 @@ const styles = StyleSheet.create({
   brandLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   brandWord: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    letterSpacing: -0.3,
+    fontSize: 18,
+    letterSpacing: -0.2,
     color: palette.ink,
   },
   filterBtn: {

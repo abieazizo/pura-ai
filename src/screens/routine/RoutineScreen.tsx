@@ -167,25 +167,21 @@ export function RoutineScreen() {
         feature={topSegment === 'progress' ? 'progress' : 'routine'}
       />
 
+      {/* v11.10 — unified header pattern. Page identity in the brand
+          bar (top-left); the giant in-page title is replaced with the
+          existing kicker (DAY N or BEGIN HERE) so the screen still
+          carries its daily anchor without doubling up on titles. */}
       <View style={styles.headerRow}>
-        <PuraMark size={26} variant="idle" />
+        <PuraMark size={22} variant="idle" />
         <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
-          Pura AI
+          {topSegment === 'routine' ? 'Routine' : 'Progress'}
         </Text>
         <View style={{ flex: 1 }} />
       </View>
 
       <View style={styles.titleBlock}>
-        {/* v10.18 — replaced the generic kicker ("WHAT YOU'RE DOING" /
-            "HOW IT'S TRACKING") with a daily-use anchor. When the user
-            has scanned at least once we surface the day count; this
-            gives the destination its identity as a place the user
-            comes back to every day, not a tab they configure once. */}
         <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
           {hasScanned ? `DAY ${dayNumber}` : 'BEGIN HERE'}
-        </Text>
-        <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-          {topSegment === 'routine' ? 'Routine.' : 'Progress.'}
         </Text>
       </View>
 
@@ -1371,17 +1367,18 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   scroll: { paddingBottom: 140 },
 
+  // v11.10 — unified header dimensions across primary tabs.
   headerRow: {
-    height: 52,
+    height: 48,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   brandWord: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 20,
-    letterSpacing: -0.3,
+    fontSize: 18,
+    letterSpacing: -0.2,
     color: palette.ink,
   },
 

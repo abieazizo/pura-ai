@@ -403,6 +403,21 @@ async function proxyFetch<TRaw>(
 // validation + structured logs.
 // ---------------------------------------------------------------------------
 
+/**
+ * v11.10 — non-critical methods: opt out of the retry-then-error
+ * pattern so transient failures don't surface as red console.error
+ * overlays in dev. These calls power optional UX (search suggestion
+ * chips, etc.); when they fail the surface degrades silently to its
+ * default copy.
+ *
+ * The criteria for inclusion: failure must NOT block any user goal.
+ *   • buildSearchSuggestions → search bar renders default placeholder
+ *   • (others can be added here without further touching runMethod)
+ */
+const NON_CRITICAL_METHODS = new Set<AIMethodName>([
+  'buildSearchSuggestions',
+]);
+
 async function runMethod<TRaw, T>(args: {
   method: AIMethodName;
   body: unknown;
@@ -412,6 +427,7 @@ async function runMethod<TRaw, T>(args: {
   const timeoutMs = TIMEOUT_MS[method];
   const requestId = newRequestId();
   const start = Date.now();
+  const isNonCritical = NON_CRITICAL_METHODS.has(method);
 
   const attempt = async (): Promise<T> => {
     const raw = await proxyFetch<TRaw>(method, body, timeoutMs, requestId);
@@ -442,6 +458,22 @@ async function runMethod<TRaw, T>(args: {
   } catch (firstError) {
     const transient =
       firstError instanceof AIProxyError && firstError.isTransient();
+
+    // Non-critical methods: ONE attempt, no retry, log as info-level
+    // so it never surfaces as a red overlay in __DEV__. Caller swallows.
+    if (isNonCritical) {
+      const dur = Date.now() - start;
+      const errMsg =
+        firstError instanceof Error ? firstError.message : String(firstError);
+      aiLog.info(
+        'aiGateway.call',
+        `${method} skipped (non-critical, degraded gracefully)`,
+        { requestId, durationMs: dur, error: errMsg }
+      );
+      aiTelemetry.completeMethodCallFail(method as AIMethodKey, dur, errMsg);
+      throw firstError;
+    }
+
     if (!transient) {
       const dur = Date.now() - start;
       const errMsg =
@@ -473,7 +505,11 @@ async function runMethod<TRaw, T>(args: {
         secondError instanceof Error
           ? secondError.message
           : String(secondError);
-      aiLog.error('aiGateway.call', `${method} failed after retry`, {
+      // v11.10 — was aiLog.error which fired console.error → red
+      // overlay. Downgraded to warn: the proxy/network failure is
+      // already surfaced via the AISourceBadge / fallback flag, so a
+      // duplicate red overlay served no UX purpose.
+      aiLog.warn('aiGateway.call', `${method} failed after retry`, {
         requestId,
         durationMs: dur,
         error: errMsg,
