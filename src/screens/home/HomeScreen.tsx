@@ -55,6 +55,24 @@ import type { Concern, Scan, Severity } from '@/types';
  */
 
 export function HomeScreen() {
+  // ─────────────────────────────────────────────────────────────────
+  // v11.14 — ALL hooks called unconditionally at the top of the
+  // component, BEFORE any early return.
+  //
+  // Previous bug: an early return for `scans.length === 0` (Day 0)
+  // sat between two groups of hooks. Day 0 path called 5 hooks; the
+  // Day 1+ path that ran AFTER the early return called 2 more
+  // (`useMemo` for recProduct + `useAppStore` for aiTopMatches),
+  // for a total of 7. When the store transitioned from Day 0 to
+  // Day 1+ on the same mounted instance (the user finishes their
+  // first scan), React saw the hook count jump 5 → 7 and threw:
+  //
+  //   "Rendered more hooks than during the previous render"
+  //
+  // Fix: hoist every hook to the top. Plain-JS derivations
+  // (`concerns`, `primary`, `score`, etc.) can stay below — they're
+  // not hooks.
+  // ─────────────────────────────────────────────────────────────────
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
@@ -65,6 +83,7 @@ export function HomeScreen() {
       initials: s.user?.initials ?? null,
     }))
   );
+  const aiTopMatches = useAppStore((s) => s.aiTopMatches);
 
   const latest = scans[scans.length - 1];
   const previous = scans.length >= 2 ? scans[scans.length - 2] : undefined;
@@ -72,6 +91,22 @@ export function HomeScreen() {
 
   const firstName = (user.name || '').split(/\s+/)[0] || null;
   const greeting = useMemo(() => buildGreeting(firstName), [firstName]);
+
+  // Hoisted hook for the Day 1+ product pick. Computes `primary`
+  // inline so the memo only re-runs when the relevant scan changes.
+  // Returns null on Day 0 — the JSX below skips rendering the rec
+  // card when scans.length === 0 anyway.
+  const recProduct = useMemo(() => {
+    if (scans.length === 0) return null;
+    const latestScan = scans[scans.length - 1];
+    const prev = scans.length >= 2 ? scans[scans.length - 2] : undefined;
+    const cs = latestScan ? getConcerns(latestScan, prev) : [];
+    const primaryConcern = cs.find((c) => c.severity !== 'calm') ?? cs[0];
+    return pickRecProduct(primaryConcern?.category);
+  }, [scans]);
+  // ─────────────────────────────────────────────────────────────────
+  // End of hook block. Plain derivations from here on.
+  // ─────────────────────────────────────────────────────────────────
 
   const handleScan = () => {
     hapt.tap();
@@ -156,16 +191,13 @@ export function HomeScreen() {
         )
       : 1;
 
-  // Product rec — pick one that matches the primary concern's category
-  const recProduct = useMemo(
-    () => pickRecProduct(primary?.category),
-    [primary]
-  );
-
+  // v11.14 — `recProduct` and `aiTopMatches` are hoisted above the
+  // Day 0 early return (see the hook block at the top of this
+  // function). Below we only derive non-hook values from them.
+  //
   // v10.23 — surface the AI's actual match score for this product when
   // the post-scan composite has run. Falls back to a label-only badge
   // (no fake number) when no AI ranking is available.
-  const aiTopMatches = useAppStore((s) => s.aiTopMatches);
   const recProductAiScore =
     recProduct == null
       ? null
