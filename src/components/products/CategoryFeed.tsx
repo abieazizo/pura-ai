@@ -264,7 +264,7 @@ function ProductCardImage({ product }: { product: Product }) {
         product={product}
         silhouetteSize={56}
         showBrandWord
-        showMockupBadge={!hasRealImage}
+        showMockupBadge={false}
       />
       {localSrc && !errored ? (
         <Image

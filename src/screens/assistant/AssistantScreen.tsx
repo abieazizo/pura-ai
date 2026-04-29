@@ -953,10 +953,18 @@ function deriveActionChips({
 // ============================================================================
 
 const PRODUCT_INTENT_PATTERNS: ReadonlyArray<RegExp> = [
-  /\b(best|recommend|suggest|pick|which|what)\b.*\b(product|serum|moisturizer|moisturiser|cleanser|toner|spf|sunscreen|exfoliant|retinol|niacinamide|salicylic)\b/i,
-  /\b(add|buy|shop|get)\b.*\b(serum|moisturizer|cleanser|toner|spf|sunscreen|product)\b/i,
-  /\b(serum|moisturizer|cleanser|toner|spf|sunscreen)\s+(for|to|that)\b/i,
+  // v14.1 — broadened. Any of these patterns surfaces inline product
+  // cards; the assistant text becomes the lead, not the whole answer.
+  /\b(best|recommend|suggest|pick|which|what|need|should\s+i)\b.*\b(product|serum|moisturizer|moisturiser|cleanser|toner|spf|sunscreen|exfoliant|retinol|niacinamide|salicylic|vitamin\s+c|aha|bha)\b/i,
+  /\b(add|buy|shop|get|use|try)\b.*\b(serum|moisturizer|cleanser|toner|spf|sunscreen|product|exfoliant|retinol|niacinamide)\b/i,
+  /\b(serum|moisturizer|cleanser|toner|spf|sunscreen|exfoliant|cream|gel|treatment)\s+(for|to|that)\b/i,
   /show me\b.*\b(product|serum|cleanser|moisturizer|spf)\b/i,
+  // Concern-shaped questions ("what helps redness", "what calms
+  // breakouts") — the answer naturally points at a product even
+  // when the user didn't say "product".
+  /\bwhat\s+(helps?|calms?|works?\s+for|fixes?|treats?)\b.*\b(redness|breakouts?|texture|hydration|dryness|dark\s+marks?|congestion|blackheads?|dullness|sensitivity)\b/i,
+  // Direct product-name mentions — answer with the matching card.
+  /\b(niacinamide|salicylic|retinol|vitamin\s+c|hyaluronic|ceramide|azelaic|glycolic|lactic\s+acid)\b/i,
 ];
 
 function looksLikeProductQuestion(text: string): boolean {
@@ -1084,7 +1092,7 @@ function AssistantProductCard({
           product={product}
           silhouetteSize={36}
           showBrandWord
-          showMockupBadge={!localSrc}
+          showMockupBadge={false}
         />
         {localSrc ? (
           <ExpoImage

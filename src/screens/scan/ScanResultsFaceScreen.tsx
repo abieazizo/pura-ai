@@ -730,7 +730,7 @@ function PrimaryRecCard({
           product={product}
           silhouetteSize={64}
           showBrandWord
-          showMockupBadge={!localSrc}
+          showMockupBadge={false}
         />
         {localSrc ? (
           <Image
@@ -838,7 +838,7 @@ function AltRecCard({
           product={product}
           silhouetteSize={48}
           showBrandWord
-          showMockupBadge={!localSrc}
+          showMockupBadge={false}
         />
         {localSrc ? (
           <Image

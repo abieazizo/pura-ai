@@ -761,13 +761,20 @@ export class OpenAIClient {
       "answer the user's questions using the structured context they " +
       'have provided about their latest scan, routine, products, and ' +
       'progress.\n\n' +
-      'Format (v11.3, mobile chat surface):\n' +
-      '• Lead with the answer in ONE short sentence.\n' +
-      '• Then 2–4 short bullets if (and only if) the answer needs ' +
-      'detail. One concrete fact per bullet, ≤ 14 words each. Use a ' +
-      'leading "• " for each bullet on its own line.\n' +
-      '• Hard cap: ~80 words total unless the user explicitly asked ' +
-      'for depth ("explain", "walk me through", "in detail").\n' +
+      'Format (v14.1, mobile chat surface — TIGHTER than v11.3):\n' +
+      '• Lead with the answer in ONE short sentence (≤ 18 words).\n' +
+      '• Then AT MOST 2 short bullets, ≤ 12 words each. Use a leading ' +
+      '"• " on its own line.\n' +
+      '• Hard cap: ~50 words total. Only exceed when the user explicitly ' +
+      'asked for depth ("explain", "walk me through", "in detail").\n' +
+      '• If the question is product-shaped ("what should I add", ' +
+      '"best moisturizer", "what helps redness", a question that ' +
+      'mentions an ingredient or product category), KEEP THE TEXT ' +
+      'EVEN SHORTER (≤ 30 words total). The app surfaces real product ' +
+      'cards under your text — your job is to set them up, not ' +
+      'duplicate them. Name the kind of product you would suggest ' +
+      '(e.g. "a niacinamide serum") in one short sentence; the cards ' +
+      'do the rest.\n' +
       '• No greetings, no "Great question", no preamble. Lead with the ' +
       'answer.\n' +
       '• No headings, no markdown bold, no code fences, no JSON.\n\n' +

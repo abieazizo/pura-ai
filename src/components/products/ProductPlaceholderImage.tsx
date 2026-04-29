@@ -202,9 +202,21 @@ export interface ProductPlaceholderImageProps {
   showProductName?: boolean;
   /** Visual silhouette size; auto-scales label font sizes. */
   silhouetteSize?: number;
-  /** Show the editorial "MOCKUP" corner badge. Default true; pass
-   *  false on tiny renderings (RoutineScreen sub-icons) where the
-   *  badge would dominate the surface. */
+  /**
+   * Show the editorial "MOCKUP" corner badge.
+   *
+   * v14.1 — DEFAULT IS NOW false. The badge previously defaulted to
+   * `true` and every consumer-facing card without a bundled real
+   * photo wore a "MOCKUP" watermark. That actively leaked a demo
+   * signal into the main user experience — the user described it
+   * as "fallback / mockup feeling in the visible UI."
+   *
+   * The placeholder itself is premium (silhouette + brand wordmark
+   * + soft pedestal), so it stands on its own as a clean editorial
+   * surface. The watermark is only useful in internal QA / catalog
+   * audits, where a caller can opt-in by passing
+   * `showMockupBadge={true}`.
+   */
   showMockupBadge?: boolean;
 }
 
@@ -213,7 +225,7 @@ export function ProductPlaceholderImage({
   showBrandWord = true,
   showProductName = false,
   silhouetteSize = 84,
-  showMockupBadge = true,
+  showMockupBadge = false,
 }: ProductPlaceholderImageProps) {
   const recipe = CATEGORY[product.category];
   const spec = SILHOUETTES[recipe.silhouette];
