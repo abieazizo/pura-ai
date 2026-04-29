@@ -85,6 +85,19 @@ export interface FaceConcernFinding {
   clinician_style_summary: string;
   /** 0 = do not surface, 1 = primary, 2 = secondary, 3 = supporting. */
   marker_priority: 0 | 1 | 2 | 3;
+  /**
+   * v17.0 — image-anchored polygon for this finding.
+   *
+   * Coordinates are normalised 0..1 against the captured image
+   * dimensions (NOT against the face_box). 3-12 points outlining
+   * where the model VISUALLY observes this concern in the captured
+   * image. Used by the FaceSkinMap component to render an overlay
+   * on the actual photo, not on a generic anatomical template.
+   *
+   * Optional because old persisted scans don't have this field.
+   * New AI runs always populate it (the schema requires it).
+   */
+  region_polygon?: Array<{ x: number; y: number }>;
 }
 
 export interface FaceScanAnalysis {
@@ -131,6 +144,34 @@ export interface FaceScanAnalysis {
     target_concerns: ConcernType[];
     preferred_product_categories: Exclude<ProductCategory, 'unknown'>[];
     contraindication_tags: string[];
+  };
+  /**
+   * v17.0 — image-anchored face overlay.
+   *
+   * The AI returns the actual face bounding box + facial landmarks
+   * normalised 0..1 against the captured image dimensions. The
+   * FaceSkinMap component uses these to anchor concern overlays
+   * onto the user's REAL face in the photo, not a generic
+   * anatomical template.
+   *
+   * Optional because old persisted scans don't have it. New AI
+   * runs always populate it.
+   */
+  face_overlay?: {
+    face_box: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    landmarks: {
+      left_eye: { x: number; y: number };
+      right_eye: { x: number; y: number };
+      nose_tip: { x: number; y: number };
+      mouth_center: { x: number; y: number };
+      chin: { x: number; y: number };
+      forehead_center: { x: number; y: number };
+    };
   };
 }
 
@@ -504,6 +545,7 @@ export const FACE_SCAN_ANALYSIS_SCHEMA: JsonSchema = {
     'score_factors',
     'next_focus',
     'plan_inputs',
+    'face_overlay',
   ],
   properties: {
     scan_id: { type: 'string' },
@@ -568,6 +610,7 @@ export const FACE_SCAN_ANALYSIS_SCHEMA: JsonSchema = {
           'user_summary',
           'clinician_style_summary',
           'marker_priority',
+          'region_polygon',
         ],
         properties: {
           concern: { type: 'string', enum: [...CONCERN_TYPE_ENUM] },
@@ -584,6 +627,21 @@ export const FACE_SCAN_ANALYSIS_SCHEMA: JsonSchema = {
           user_summary: { type: 'string' },
           clinician_style_summary: { type: 'string' },
           marker_priority: { type: 'integer', enum: [0, 1, 2, 3] },
+          // v17.0 — image-anchored polygon outlining where the model
+          // visually observes this concern. Coordinates normalized
+          // 0..1 against the captured image dimensions.
+          region_polygon: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['x', 'y'],
+              properties: {
+                x: { type: 'number', minimum: 0, maximum: 1 },
+                y: { type: 'number', minimum: 0, maximum: 1 },
+              },
+            },
+          },
         },
       },
     },
@@ -652,8 +710,62 @@ export const FACE_SCAN_ANALYSIS_SCHEMA: JsonSchema = {
         },
       },
     },
+    // v17.0 — image-anchored face overlay (real face_box +
+    // landmarks). All coordinates normalized 0..1 against the
+    // captured image. Drives the FaceSkinMap component.
+    face_overlay: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['face_box', 'landmarks'],
+      properties: {
+        face_box: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['x', 'y', 'width', 'height'],
+          properties: {
+            x: { type: 'number', minimum: 0, maximum: 1 },
+            y: { type: 'number', minimum: 0, maximum: 1 },
+            width: { type: 'number', minimum: 0, maximum: 1 },
+            height: { type: 'number', minimum: 0, maximum: 1 },
+          },
+        },
+        landmarks: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'left_eye',
+            'right_eye',
+            'nose_tip',
+            'mouth_center',
+            'chin',
+            'forehead_center',
+          ],
+          properties: {
+            left_eye: pointSchema(),
+            right_eye: pointSchema(),
+            nose_tip: pointSchema(),
+            mouth_center: pointSchema(),
+            chin: pointSchema(),
+            forehead_center: pointSchema(),
+          },
+        },
+      },
+    },
   },
 };
+
+// Helper for the repeated {x, y} normalized point schema.
+function pointSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['x', 'y'],
+    properties: {
+      x: { type: 'number', minimum: 0, maximum: 1 },
+      y: { type: 'number', minimum: 0, maximum: 1 },
+    },
+  };
+}
 
 // ----------------------------------------------------------------------------
 // Product identity schema.

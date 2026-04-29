@@ -29,6 +29,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  Dimensions,
   LayoutAnimation,
   Linking,
   Platform,
@@ -67,7 +68,7 @@ import {
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
-import { SkinMap } from '@/screens/scan/components/SkinMap';
+import { FaceSkinMap } from '@/screens/scan/components/FaceSkinMap';
 import { localProductImageFor, seedProducts } from '@/data/seed';
 import type { RootStackParamList } from '@/navigation/types';
 import type {
@@ -77,7 +78,6 @@ import type {
   Severity,
 } from '@/types';
 import type {
-  FaceRegion,
   FaceScanAnalysis,
   ProductMatch,
 } from '@/ai/ai-contracts';
@@ -128,33 +128,12 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     [concerns, scan?.aiAnalysis]
   );
 
-  // v16.0 — build a category → FaceRegion[] map from the AI's
-  // findings array so SkinMap can render real region overlays.
-  // For non-AI scans (deterministic fallback), this is empty and
-  // SkinMap falls back to its own concern.region string mapping.
-  const aiRegionsByCategory = useMemo(() => {
-    const out: Partial<Record<ConcernCategory, FaceRegion[]>> = {};
-    if (!scan?.aiAnalysis?.findings) return out;
-    const AI_TO_APP: Record<string, ConcernCategory> = {
-      breakouts: 'breakouts',
-      hydration: 'hydration',
-      texture: 'texture',
-      dark_marks: 'tone',
-      redness: 'breakouts',
-      oiliness: 'breakouts',
-      sensitivity: 'hydration',
-      pores: 'texture',
-    };
-    for (const finding of scan.aiAnalysis.findings) {
-      const cat = AI_TO_APP[finding.concern];
-      if (!cat) continue;
-      if (!out[cat]) out[cat] = [];
-      for (const r of finding.regions) {
-        if (!out[cat]!.includes(r)) out[cat]!.push(r);
-      }
-    }
-    return out;
-  }, [scan?.aiAnalysis]);
+  // v17.0 — `selectedMapCategory` drives which finding the
+  // FaceSkinMap highlights. Null = show every surfaced concern at
+  // equal weight; setting it to a specific ConcernCategory dims the
+  // others to a hairline trace and brightens the selected one.
+  const [selectedMapCategory, setSelectedMapCategory] =
+    useState<ConcernCategory | null>(null);
 
   const tonight = useMemo(() => {
     if (!scan) return [] as string[];
@@ -341,24 +320,76 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </Text>
         ) : null}
 
-        {/* ── v16.0 SKIN MAP — visual proof of where concerns live ── */}
-        {/* The user's explicit demand: "show WHERE issues are detected
-            on the face, in a premium and elegant way." Tabs let the
-            user toggle between concern overlays. Each overlay renders
-            anatomically-positioned translucent shapes (wash / speckle
-            / grid / pinpoints) over their captured photo, derived
-            from the AI's findings.regions array when present. Calm
-            scans show no tabs and a gentle caption. */}
-        <View style={styles.skinMapBlock}>
-          <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-            SKIN MAP
-          </Text>
-          <SkinMap
-            photoUri={scan.photoUri}
-            concerns={concerns}
-            aiRegionsByCategory={aiRegionsByCategory}
-          />
-        </View>
+        {/* ── 2.5 WHAT WE SAW — v17.0 image-anchored overlay ───────────
+            Renders the actual captured photo with AI-supplied
+            polygons + landmark-anchored fallback ellipses overlaid
+            for every surfaced concern. Selectable chips dim the
+            non-active concerns down to a hairline trace so the user
+            can isolate any single finding. Hidden entirely on old
+            persisted scans without face_overlay payloads. */}
+        {scan.aiAnalysis ? (
+          <View style={styles.skinMapBlock}>
+            <View style={styles.skinMapHeader}>
+              <Text
+                style={styles.sectionKicker}
+                maxFontSizeMultiplier={1.1}
+              >
+                WHAT WE SAW
+              </Text>
+            </View>
+            {visibleConcerns.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.skinMapChipRow}
+              >
+                <SkinMapChip
+                  label="ALL"
+                  selected={selectedMapCategory === null}
+                  onPress={() => {
+                    hapt.select();
+                    setSelectedMapCategory(null);
+                  }}
+                />
+                {visibleConcerns
+                  .filter((c) => c.severity !== 'calm')
+                  .map((c) => (
+                    <SkinMapChip
+                      key={c.category}
+                      label={CATEGORY_LABEL[c.category]}
+                      color={categoryChipColor(c.category)}
+                      selected={selectedMapCategory === c.category}
+                      onPress={() => {
+                        hapt.select();
+                        setSelectedMapCategory(
+                          selectedMapCategory === c.category
+                            ? null
+                            : c.category
+                        );
+                      }}
+                    />
+                  ))}
+              </ScrollView>
+            ) : null}
+            <FaceSkinMap
+              photoUri={scan.photoUri}
+              aiAnalysis={scan.aiAnalysis}
+              selectedCategory={selectedMapCategory}
+              width={Math.min(
+                Dimensions.get('window').width - 40,
+                460
+              )}
+            />
+            <Text
+              style={styles.skinMapCaption}
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={2}
+            >
+              AI-detected zones, anchored to your photo. Tap a label
+              to isolate a single concern.
+            </Text>
+          </View>
+        ) : null}
 
         {/* ── 3. YOUR NEXT MOVE — hero recommendation ──────────────── */}
         {recommendations.primary ? (
@@ -678,6 +709,11 @@ function FindingRow({
   const color = colorFor(concern.severity);
   const fillRatio = severityFillRatio(concern.severity);
 
+  // v17.0 — visual proof now lives in the WHAT WE SAW section
+  // above (FaceSkinMap on the actual photo). The finding rows
+  // here read as compact text + severity bars; no inline diagram
+  // duplicates the work of the photo overlay.
+
   return (
     <Pressable
       onPress={onPress}
@@ -693,13 +729,25 @@ function FindingRow({
       ]}
     >
       <View style={styles.rowHead}>
-        <Text style={styles.rowTitle} maxFontSizeMultiplier={1.15}>
-          <Text style={styles.rowTitleStrong}>
-            {CATEGORY_LABEL[concern.category]}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rowTitle} maxFontSizeMultiplier={1.15}>
+            <Text style={styles.rowTitleStrong}>
+              {CATEGORY_LABEL[concern.category]}
+            </Text>
+            <Text style={styles.rowTitleMid}>{`  ·  ${concern.region}`}</Text>
           </Text>
-          <Text style={styles.rowTitleMid}>{`  ·  ${concern.region}`}</Text>
-        </Text>
-        <View style={{ flex: 1 }} />
+          <View style={styles.severityBarRail}>
+            <View
+              style={[
+                styles.severityBarFill,
+                {
+                  backgroundColor: color,
+                  width: `${Math.round(fillRatio * 100)}%`,
+                },
+              ]}
+            />
+          </View>
+        </View>
         <Text
           style={[styles.rowSeverity, { color }]}
           maxFontSizeMultiplier={1.1}
@@ -716,18 +764,6 @@ function FindingRow({
         </View>
       </View>
 
-      <View style={styles.severityBarRail}>
-        <View
-          style={[
-            styles.severityBarFill,
-            {
-              backgroundColor: color,
-              width: `${Math.round(fillRatio * 100)}%`,
-            },
-          ]}
-        />
-      </View>
-
       {expanded ? (
         <View style={styles.rowDetail}>
           <Text style={styles.rowDetailFinding} maxFontSizeMultiplier={1.2}>
@@ -741,6 +777,68 @@ function FindingRow({
       ) : null}
     </Pressable>
   );
+}
+
+// ============================================================================
+// v17.0 — Skin map category chip
+//
+// Compact pill button. Tapping toggles which concern is highlighted
+// on the FaceSkinMap above. Selected state takes the concern's
+// category color; unselected stays calm/hairline.
+// ============================================================================
+
+function SkinMapChip({
+  label,
+  color,
+  selected,
+  onPress,
+}: {
+  label: string;
+  /** Concern category color. Optional — "ALL" chip uses ink. */
+  color?: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const tint = color ?? palette.ink;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${label}${selected ? ', selected' : ''}`}
+      style={({ pressed }) => [
+        styles.skinMapChip,
+        selected && {
+          borderColor: tint,
+          backgroundColor: `${tint}15`,
+        },
+        pressed && { opacity: 0.92 },
+      ]}
+    >
+      <Text
+        style={[
+          styles.skinMapChipLabel,
+          selected && { color: tint },
+        ]}
+        maxFontSizeMultiplier={1.1}
+      >
+        {label.toUpperCase()}
+      </Text>
+    </Pressable>
+  );
+}
+
+function categoryChipColor(category: ConcernCategory): string {
+  switch (category) {
+    case 'breakouts':
+      return '#E66B5C';
+    case 'hydration':
+      return '#7CB0FF';
+    case 'texture':
+      return '#A8C7C0';
+    case 'tone':
+      return '#D9A75E';
+  }
 }
 
 function severityFillRatio(s: Severity): number {
@@ -1102,11 +1200,45 @@ const styles = StyleSheet.create({
     color: palette.inkSecondary,
   },
 
-  // v16.0 — SkinMap section block. Sits between the headline and
-  // YOUR NEXT MOVE so the user gets visual proof of the findings
-  // before the recommendation.
+  // v17.0 — WHAT WE SAW block. Sits between the headline and
+  // YOUR NEXT MOVE so the user gets photo-anchored proof of the
+  // findings before any recommendation. Tap a category chip to
+  // isolate that concern on the photo.
   skinMapBlock: {
     marginBottom: 28,
+  },
+  skinMapHeader: {
+    marginBottom: 10,
+  },
+  skinMapChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 12,
+    paddingRight: 4,
+  },
+  skinMapChip: {
+    paddingHorizontal: 12,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    backgroundColor: palette.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skinMapChipLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: palette.inkSecondary,
+  },
+  skinMapCaption: {
+    marginTop: 12,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkTertiary,
+    maxWidth: '94%',
   },
 
   // ── 3. Headline + support ────────────────────────────────────────
@@ -1151,7 +1283,7 @@ const styles = StyleSheet.create({
   rowHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   severityBarRail: {
     height: 3,

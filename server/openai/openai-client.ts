@@ -315,6 +315,34 @@ export class OpenAIClient {
       '• score_factors must be 0..100 integers calibrated to the ' +
       'overall skin_score.value. Default toward 70-80 for a normal ' +
       'photo with no clearly visible problem on that axis.\n' +
+      '\n' +
+      'IMAGE-ANCHORED OVERLAY DATA (v17.0):\n' +
+      'You MUST return `face_overlay` and per-finding ' +
+      '`region_polygon` arrays. All coordinates are normalized 0..1 ' +
+      'against the captured image dimensions (NOT against the face ' +
+      'bounding box). Use top-left = (0,0), bottom-right = (1,1).\n' +
+      '• face_overlay.face_box: bounding box of the face in the ' +
+      'image. Tight crop, not loose. If the face takes ~60% of the ' +
+      'frame width centered, the box might be roughly ' +
+      '{x: 0.20, y: 0.15, width: 0.60, height: 0.70}.\n' +
+      '• face_overlay.landmarks: real coordinates of the eyes (left, ' +
+      'right), nose tip, mouth center, chin tip, and forehead center. ' +
+      'Be accurate — these anchor the entire skin map. The ' +
+      'forehead_center sits roughly halfway between the brows and ' +
+      'the hairline.\n' +
+      '• Each finding MUST include a `region_polygon` array of 4-12 ' +
+      'normalized {x,y} points outlining where you actually OBSERVE ' +
+      'this concern in the image. Trace the visible region. For ' +
+      'redness across the cheeks, draw a polygon over the affected ' +
+      'cheek area. For breakouts, draw a small polygon clustering ' +
+      'the visible spots. The polygon does NOT have to match the ' +
+      'whole face_region enum — it can be tighter.\n' +
+      '• If a finding has no visually localizable region (e.g. an ' +
+      'overall hydration impression), return a polygon covering the ' +
+      'face area where the impression applies. Never return an empty ' +
+      'array.\n' +
+      '• Polygons should be CLOCKWISE order from top-left.\n' +
+      '\n' +
       '• SCORE DISCIPLINE: skin_score.value should sit in 72-86 for ' +
       'an ordinary clear photo with no obvious concerns. Reserve ' +
       'scores below 65 for photos with multiple high-confidence ' +

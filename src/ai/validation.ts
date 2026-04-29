@@ -163,6 +163,99 @@ function arrayOfEnum<T extends string>(
 // Compound shape validators.
 // ============================================================================
 
+// v17.0 — image-anchored overlay helpers.
+//
+// All overlay coordinates are normalised 0..1 against the captured
+// image's natural width/height. We clamp aggressively to defend
+// against the model emitting slightly out-of-range values.
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function validateNormalizedPoint(
+  v: unknown
+): { x: number; y: number } | null {
+  if (!isObject(v)) return null;
+  if (!isFiniteNumber(v.x) || !isFiniteNumber(v.y)) return null;
+  return { x: clamp01(v.x), y: clamp01(v.y) };
+}
+
+function validateRegionPolygon(
+  v: unknown
+): Array<{ x: number; y: number }> | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const points: Array<{ x: number; y: number }> = [];
+  for (const raw of v) {
+    const p = validateNormalizedPoint(raw);
+    if (p) points.push(p);
+  }
+  // A polygon needs at least 3 points to render meaningfully. Anything
+  // less and we drop the field — the FaceSkinMap will fall back to the
+  // landmark-anchored ellipse for that concern.
+  if (points.length < 3) return undefined;
+  return points;
+}
+
+function validateFaceOverlay(v: unknown): {
+  face_box: { x: number; y: number; width: number; height: number };
+  landmarks: {
+    left_eye: { x: number; y: number };
+    right_eye: { x: number; y: number };
+    nose_tip: { x: number; y: number };
+    mouth_center: { x: number; y: number };
+    chin: { x: number; y: number };
+    forehead_center: { x: number; y: number };
+  };
+} | undefined {
+  if (!isObject(v)) return undefined;
+  if (!isObject(v.face_box)) return undefined;
+  const fb = v.face_box;
+  if (
+    !isFiniteNumber(fb.x) ||
+    !isFiniteNumber(fb.y) ||
+    !isFiniteNumber(fb.width) ||
+    !isFiniteNumber(fb.height)
+  ) {
+    return undefined;
+  }
+  if (!isObject(v.landmarks)) return undefined;
+  const lm = v.landmarks;
+  const leftEye = validateNormalizedPoint(lm.left_eye);
+  const rightEye = validateNormalizedPoint(lm.right_eye);
+  const noseTip = validateNormalizedPoint(lm.nose_tip);
+  const mouthCenter = validateNormalizedPoint(lm.mouth_center);
+  const chin = validateNormalizedPoint(lm.chin);
+  const foreheadCenter = validateNormalizedPoint(lm.forehead_center);
+  if (
+    !leftEye ||
+    !rightEye ||
+    !noseTip ||
+    !mouthCenter ||
+    !chin ||
+    !foreheadCenter
+  ) {
+    return undefined;
+  }
+  return {
+    face_box: {
+      x: clamp01(fb.x),
+      y: clamp01(fb.y),
+      width: clamp01(fb.width),
+      height: clamp01(fb.height),
+    },
+    landmarks: {
+      left_eye: leftEye,
+      right_eye: rightEye,
+      nose_tip: noseTip,
+      mouth_center: mouthCenter,
+      chin,
+      forehead_center: foreheadCenter,
+    },
+  };
+}
+
 function validateFinding(v: unknown): FaceConcernFinding | null {
   if (!isObject(v)) return null;
   const concern = v.concern;
@@ -183,6 +276,7 @@ function validateFinding(v: unknown): FaceConcernFinding | null {
     ? clampInt(v.marker_priority, 0, 3)
     : 3;
   const markerPriority = (rawPriority as 0 | 1 | 2 | 3);
+  const regionPolygon = validateRegionPolygon(v.region_polygon);
   return {
     concern,
     severity,
@@ -192,6 +286,7 @@ function validateFinding(v: unknown): FaceConcernFinding | null {
     user_summary: userSummary,
     clinician_style_summary: clinicianSummary,
     marker_priority: markerPriority,
+    ...(regionPolygon ? { region_polygon: regionPolygon } : {}),
   };
 }
 
@@ -267,6 +362,12 @@ export function validateFaceScanAnalysis(
     : null;
   const secondaryConcerns = arrayOfEnum(v.secondary_concerns, CONCERN_TYPES);
 
+  // v17.0 — passthrough of image-anchored overlay data. Optional in
+  // TS so old persisted scans without overlays still satisfy the
+  // FaceScanAnalysis type. Helper returns undefined if the AI didn't
+  // emit the field or emitted it malformed.
+  const faceOverlay = validateFaceOverlay(v.face_overlay);
+
   return {
     scan_id: v.scan_id,
     analyzed_at_iso: isNonEmptyString(v.analyzed_at_iso)
@@ -308,6 +409,7 @@ export function validateFaceScanAnalysis(
         v.plan_inputs.contraindication_tags
       ),
     },
+    ...(faceOverlay ? { face_overlay: faceOverlay } : {}),
   };
 }
 
