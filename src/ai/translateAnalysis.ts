@@ -165,11 +165,67 @@ function regionPhrase(regions: FaceRegion[]): string {
 // Concern construction.
 // ---------------------------------------------------------------------------
 
+/**
+ * v12.0 — confidence-aware finding filter. The AI sometimes returns
+ * low-confidence findings that look certain in the JSON; the UI was
+ * surfacing them as "moderate breakouts on nose" even when the
+ * confidence was 0.3. This filter:
+ *
+ *   • Drops findings below MIN_CONFIDENCE.
+ *   • Caps severity at "mild" for findings between MIN_CONFIDENCE and
+ *     STRONG_CONFIDENCE (so a low-confidence "moderate" reads as
+ *     "mild" in the UI).
+ *   • If image_quality is flagged as low, applies an additional
+ *     one-tier downgrade across the board.
+ *
+ * Net effect: the only findings the user sees with severity ≥
+ * moderate are findings the model was genuinely confident about AND
+ * the photo had enough quality to support.
+ */
+const MIN_CONFIDENCE = 0.55;
+const STRONG_CONFIDENCE = 0.75;
+
+function downgradeSeverity(s: AISeverity): AISeverity {
+  switch (s) {
+    case 'high':
+      return 'moderate';
+    case 'moderate':
+      return 'mild';
+    case 'mild':
+      return 'low';
+    case 'low':
+    case 'none':
+      return s;
+  }
+}
+
+function applyConfidenceClamp(
+  finding: FaceConcernFinding,
+  imageQualityLow: boolean
+): FaceConcernFinding | null {
+  if (finding.confidence < MIN_CONFIDENCE) return null;
+
+  let severity = finding.severity;
+  // Medium-confidence findings can't claim moderate+. Cap at mild.
+  if (finding.confidence < STRONG_CONFIDENCE) {
+    if (severity === 'high' || severity === 'moderate') severity = 'mild';
+  }
+  // Low image quality → one-tier downgrade for everything.
+  if (imageQualityLow) {
+    severity = downgradeSeverity(severity);
+  }
+  return { ...finding, severity };
+}
+
 function pickWorstFindingPerCategory(
-  findings: FaceConcernFinding[]
+  findings: FaceConcernFinding[],
+  imageQualityLow: boolean
 ): Map<ConcernCategory, FaceConcernFinding> {
   const map = new Map<ConcernCategory, FaceConcernFinding>();
-  for (const f of findings) {
+  for (const raw of findings) {
+    const f = applyConfidenceClamp(raw, imageQualityLow);
+    if (!f) continue;
+    if (aiSeverityToApp(f.severity) === 'calm') continue;
     const cat = AI_TO_APP_CATEGORY[f.concern];
     const existing = map.get(cat);
     if (
@@ -197,7 +253,14 @@ function aiTrendToConcernTrend(direction: FaceConcernFinding['direction_vs_previ
 }
 
 function buildConcernsFromAI(analysis: FaceScanAnalysis): Concern[] {
-  const byCategory = pickWorstFindingPerCategory(analysis.findings);
+  const imageQualityLow =
+    !analysis.image_quality.usable ||
+    analysis.image_quality.confidence < 0.6 ||
+    analysis.image_quality.issues.length > 0;
+  const byCategory = pickWorstFindingPerCategory(
+    analysis.findings,
+    imageQualityLow
+  );
 
   // Make sure every app category has a row even if the AI returned
   // nothing for it — the result screen guarantees 4 concerns.
@@ -380,8 +443,17 @@ export function translateAnalysisToScan(
   input: TranslateAnalysisInput
 ): Scan {
   const { analysis, photoUri, dayNumber, scanId } = input;
-  const concerns = buildConcernsFromAI(analysis);
-  const zones = buildZonesFromAI(analysis);
+  // v12.0 — pre-normalize next_focus strings so any raw token leaks
+  // (e.g. "gentle_exfoliation_chemical_1-2x") never reach the UI.
+  const normalizedAnalysis: FaceScanAnalysis = {
+    ...analysis,
+    next_focus: {
+      tonight: analysis.next_focus.tonight.map(humanizeRoutineString),
+      avoid: analysis.next_focus.avoid.map(humanizeRoutineString),
+    },
+  };
+  const concerns = buildConcernsFromAI(normalizedAnalysis);
+  const zones = buildZonesFromAI(normalizedAnalysis);
 
   // Headline + body fall back to AI explanation / first finding when
   // present. The deterministic helpers `buildSummaryHeadline` /
@@ -389,7 +461,7 @@ export function translateAnalysisToScan(
   // values, but we populate the legacy fields too so consumers that
   // read them directly (older Scan-shape consumers) get sensible text.
   const summaryHeadline =
-    analysis.skin_score.explanation ||
+    normalizedAnalysis.skin_score.explanation ||
     (concerns[0]?.finding ?? 'Your reading is ready.');
   const summaryBody = concerns
     .slice(0, 2)
@@ -397,17 +469,88 @@ export function translateAnalysisToScan(
     .join(' ');
 
   return {
-    id: scanId ?? analysis.scan_id,
-    capturedAt: analysis.analyzed_at_iso || new Date().toISOString(),
+    id: scanId ?? normalizedAnalysis.scan_id,
+    capturedAt:
+      normalizedAnalysis.analyzed_at_iso || new Date().toISOString(),
     dayNumber,
     photoUri,
-    overallScore: analysis.skin_score.value,
+    overallScore: normalizedAnalysis.skin_score.value,
     zones,
     summaryHeadline,
     summaryBody,
     concerns,
-    aiAnalysis: analysis,
+    aiAnalysis: normalizedAnalysis,
   };
+}
+
+// ---------------------------------------------------------------------------
+// v12.0 — routine string humanizer.
+//
+// The model is now prompted to return human sentences, but we keep
+// this normalizer as a defensive layer: if a raw token like
+// `gentle_exfoliation_chemical_1-2x` ever leaks through, we map it
+// to clean copy before any UI surface ever sees it.
+// ---------------------------------------------------------------------------
+
+const TOKEN_MAP: ReadonlyArray<readonly [RegExp, string]> = [
+  [
+    /gentle[_-]exfoliation[_-]chemical[_-]?1[\s-]?2x/i,
+    'Use a gentle chemical exfoliant 1–2 nights per week.',
+  ],
+  [
+    /(light|gentle)[_-]hydrating[_-]serum/i,
+    'Apply a light hydrating serum.',
+  ],
+  [
+    /barrier[_-]repair[_-]?(only|moisturizer)?/i,
+    'Stick to a barrier-repair moisturizer tonight.',
+  ],
+  [
+    /spot[_-]care[_-]if[_-]new[_-]blemishes/i,
+    'Use spot treatment only if new blemishes appear.',
+  ],
+  [
+    /pause[_-]actives|skip[_-]actives|no[_-]actives/i,
+    'Skip actives tonight.',
+  ],
+  [
+    /spf[_-]?(daily|am)?/i,
+    'Wear SPF in the morning.',
+  ],
+  [
+    /retinol[_-]?(start|low|begin)?/i,
+    'Reintroduce retinol slowly — twice a week to start.',
+  ],
+];
+
+export function humanizeRoutineString(raw: string): string {
+  if (!raw) return raw;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return trimmed;
+
+  // If the string already reads as a sentence (has spaces and ends
+  // with sensible punctuation), pass it through unchanged.
+  const looksHuman =
+    /\s/.test(trimmed) && !/^[a-z0-9_]+$/i.test(trimmed) && !/_/.test(trimmed);
+  if (looksHuman) {
+    // Ensure terminal punctuation.
+    return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  }
+
+  // Try the explicit token map first.
+  for (const [pattern, humanized] of TOKEN_MAP) {
+    if (pattern.test(trimmed)) return humanized;
+  }
+
+  // Generic fallback: convert snake_case / kebab-case to a sentence.
+  const words = trimmed
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (words.length === 0) return trimmed;
+  const sentence = words.charAt(0).toUpperCase() + words.slice(1);
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
 }
 
 /**

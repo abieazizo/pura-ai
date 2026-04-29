@@ -56,7 +56,9 @@ import type { ScanResult } from '@/types';
 import { PhotoStage } from './components/PhotoStage';
 import { AnalysisHeader } from './components/AnalysisHeader';
 import { AnalysisCaption } from './components/AnalysisCaption';
-import { RevealFooter } from './components/RevealFooter';
+// v12.0 — RevealFooter removed: auto-navigation replaces the "See
+// your results" button. Kept in source tree for any future use.
+// import { RevealFooter } from './components/RevealFooter';
 import { ErrorState, type ErrorStateReason } from './components/ErrorState';
 import { PreflightRetry } from './components/PreflightRetry';
 import { scanToScanResult } from './lib/scanToResult';
@@ -293,17 +295,39 @@ export function ScanAnalyzingFaceScreen({
     onCancel();
   }, [onCancel]);
 
-  const handleRevealPrimary = useCallback(() => {
-    const scan = completedScanRef.current;
-    if (!scan) return;
-    useAppStore.getState().clearInFlightScan();
-    onComplete(scan.id);
-  }, [onComplete]);
+  // v12.0 — handleRevealPrimary removed; auto-navigate effect below
+  // calls onComplete(scan.id) directly when canReveal flips true.
 
   const handleRetry = useCallback(() => {
     useAppStore.getState().clearInFlightScan();
     onRetry();
   }, [onRetry]);
+
+  // v12.0 — AUTO-navigate to the results screen once both gates open.
+  // Previous flow showed a "See your results" button (RevealFooter)
+  // and required a manual tap. The brief explicitly calls for
+  // automatic transition: "When analysis completes successfully,
+  // automatically navigate to the redesigned results page."
+  //
+  // We give the choreography its full SETTLE beat (the existing
+  // micro-pause that sells "the result has landed") and then fire
+  // the navigation once both signals are go.
+  const autoNavigateFiredRef = useRef(false);
+  useEffect(() => {
+    if (!canReveal) return;
+    if (autoNavigateFiredRef.current) return;
+    const scan = completedScanRef.current;
+    if (!scan) return;
+    autoNavigateFiredRef.current = true;
+    // Brief beat (480ms) so the dial settle isn't immediately
+    // ripped away. Long enough to read as "result landed" but short
+    // enough that the user doesn't feel they have to wait for a CTA.
+    const t = setTimeout(() => {
+      useAppStore.getState().clearInFlightScan();
+      onComplete(scan.id);
+    }, 480);
+    return () => clearTimeout(t);
+  }, [canReveal, onComplete]);
 
   // ---- Routing: preflight fail comes BEFORE the network ErrorState ----
   // The PreflightRetry screen is an in-flow correction loop (photo +
@@ -375,19 +399,18 @@ export function ScanAnalyzingFaceScreen({
           topOffset={captionTop}
           reduceMotion={reduceMotion}
         />
-      ) : null}
-
-      {canReveal && result ? (
-        <RevealFooter
-          overallScore={result.overallScore}
-          previousScore={previousScan?.overallScore ?? null}
-          findings={result.findings}
-          onPrimary={handleRevealPrimary}
-          onSecondary={handleRetry}
-          bottomInset={insets.bottom}
+      ) : (
+        // v12.0 — auto-navigation replaces the previous manual
+        // "See your results" CTA. While the brief 480ms beat
+        // before navigation runs, surface a soft "Reading
+        // complete." caption so the screen never reads as static.
+        <AnalysisCaption
+          text="Reading complete."
+          variant="roman"
+          topOffset={captionTop}
           reduceMotion={reduceMotion}
         />
-      ) : null}
+      )}
     </View>
   );
 }
