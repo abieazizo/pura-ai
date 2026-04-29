@@ -44,6 +44,7 @@ import type { AiLogRecord } from './aiLog';
  * but is consumed via the assistant API wrapper).
  */
 export type AIMethodKey =
+  | 'validateScanPreflight'
   | 'analyzeFaceScan'
   | 'identifyProductFromImage'
   | 'normalizeBarcodeResolution'
@@ -158,6 +159,14 @@ interface AITelemetryState {
 // ---------------------------------------------------------------------------
 
 const METHOD_KEYS: AIMethodKey[] = [
+  // v11.7 — preflight added to the gateway. Was missing from this
+  // registry, which caused the runtime crash:
+  //   beginMethodCall('validateScanPreflight') would set a partial
+  //   snapshot (no `counts` field) because the spread of `undefined`
+  //   produces nothing → completeMethodCallFail then reads
+  //   `prev.counts.fail` and crashes with "Cannot read property
+  //   'fail' of undefined" → the whole face-scan flow dies silently.
+  'validateScanPreflight',
   'analyzeFaceScan',
   'identifyProductFromImage',
   'normalizeBarcodeResolution',
@@ -215,8 +224,14 @@ export const useAITelemetry = create<AITelemetryState>((set, get) => ({
     set((s) => ({
       methods: {
         ...s.methods,
+        // v11.12 — fall back to a fully-shaped snapshot if `method`
+        // wasn't pre-registered in METHOD_KEYS. Previously a missing
+        // key (e.g. v11.7's `validateScanPreflight`) caused the spread
+        // of `undefined` to produce a snapshot without `counts`, which
+        // then crashed completeMethodCallFail downstream.
         [method]: {
-          ...s.methods[method],
+          ...EMPTY_METHOD_SNAPSHOT,
+          ...(s.methods[method] ?? {}),
           status: 'pending',
           source: 'pending',
           requestId,
@@ -230,7 +245,8 @@ export const useAITelemetry = create<AITelemetryState>((set, get) => ({
 
   completeMethodCallOk(method, durationMs) {
     set((s) => {
-      const prev = s.methods[method];
+      const prev = s.methods[method] ?? EMPTY_METHOD_SNAPSHOT;
+      const counts = prev.counts ?? { ok: 0, fail: 0, fallback: 0 };
       return {
         methods: {
           ...s.methods,
@@ -241,7 +257,7 @@ export const useAITelemetry = create<AITelemetryState>((set, get) => ({
             durationMs,
             error: null,
             updatedAt: Date.now(),
-            counts: { ...prev.counts, ok: prev.counts.ok + 1 },
+            counts: { ...counts, ok: counts.ok + 1 },
           },
         },
       };
@@ -250,7 +266,8 @@ export const useAITelemetry = create<AITelemetryState>((set, get) => ({
 
   completeMethodCallFail(method, durationMs, error) {
     set((s) => {
-      const prev = s.methods[method];
+      const prev = s.methods[method] ?? EMPTY_METHOD_SNAPSHOT;
+      const counts = prev.counts ?? { ok: 0, fail: 0, fallback: 0 };
       return {
         methods: {
           ...s.methods,
@@ -261,7 +278,7 @@ export const useAITelemetry = create<AITelemetryState>((set, get) => ({
             durationMs,
             error,
             updatedAt: Date.now(),
-            counts: { ...prev.counts, fail: prev.counts.fail + 1 },
+            counts: { ...counts, fail: counts.fail + 1 },
           },
         },
       };
@@ -270,13 +287,14 @@ export const useAITelemetry = create<AITelemetryState>((set, get) => ({
 
   countFallback(method) {
     set((s) => {
-      const prev = s.methods[method];
+      const prev = s.methods[method] ?? EMPTY_METHOD_SNAPSHOT;
+      const counts = prev.counts ?? { ok: 0, fail: 0, fallback: 0 };
       return {
         methods: {
           ...s.methods,
           [method]: {
             ...prev,
-            counts: { ...prev.counts, fallback: prev.counts.fallback + 1 },
+            counts: { ...counts, fallback: counts.fallback + 1 },
           },
         },
       };

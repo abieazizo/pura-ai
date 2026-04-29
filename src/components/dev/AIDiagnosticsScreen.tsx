@@ -59,6 +59,7 @@ const FEATURE_LABEL: Record<AIFeatureKey, string> = {
 };
 
 const METHOD_LABEL: Record<AIMethodKey, string> = {
+  validateScanPreflight: 'validateScanPreflight',
   analyzeFaceScan: 'analyzeFaceScan',
   identifyProductFromImage: 'identifyProductFromImage',
   normalizeBarcodeResolution: 'normalizeBarcodeResolution',
