@@ -290,5 +290,26 @@ export function searchProducts(query: string): Product[] {
     .filter((x): x is { p: Product; score: number } => x !== null)
     .sort((a, b) => b.score - a.score);
 
-  return matches.map((m) => m.p);
+  // v17.1 — when the user has scanned, give a meaningful boost to
+  // products the AI has matched to THEIR skin. Live aiTopMatches
+  // from the store reflect the user's current scan; products the
+  // AI ranked well there should outrank generic fuzzy matches when
+  // the relevance score is close. Net effect: the same query feels
+  // "learned" after a scan, without rewriting the search engine.
+  const aiMatches = useAppStore.getState().aiTopMatches;
+  if (aiMatches.length === 0) {
+    return matches.map((m) => m.p);
+  }
+  const aiOrder = new Map<string, number>();
+  aiMatches.forEach((m, i) => aiOrder.set(m.product_id, i));
+  const blended = matches.map((m) => {
+    const aiIdx = aiOrder.get(m.p.id);
+    if (aiIdx === undefined) return { ...m, blended: m.score };
+    // AI rank 0 → +6 boost; rank 9 → +1 boost. Tunable but small —
+    // a strong fuzzy match still wins over a weak AI pick.
+    const aiBoost = Math.max(1, 6 - Math.floor(aiIdx * 0.6));
+    return { ...m, blended: m.score + aiBoost };
+  });
+  blended.sort((a, b) => b.blended - a.blended);
+  return blended.map((m) => m.p);
 }

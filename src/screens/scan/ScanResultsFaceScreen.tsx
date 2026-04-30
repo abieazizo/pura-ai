@@ -128,10 +128,12 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     [concerns, scan?.aiAnalysis]
   );
 
-  // v17.0 — `selectedMapCategory` drives which finding the
-  // FaceSkinMap highlights. Null = show every surfaced concern at
-  // equal weight; setting it to a specific ConcernCategory dims the
-  // others to a hairline trace and brightens the selected one.
+  // v17.1 — `selectedMapCategory` drives which finding the
+  // FaceSkinMap renders in isolation. Default `null` lets the
+  // FaceSkinMap pick its own primary concern (highest severity).
+  // Tapping a chip locks the user's choice. v17.1 ditched the
+  // ALL-overlays-at-once view because it was visually noisy and
+  // hid the story.
   const [selectedMapCategory, setSelectedMapCategory] =
     useState<ConcernCategory | null>(null);
 
@@ -320,76 +322,18 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </Text>
         ) : null}
 
-        {/* ── 2.5 WHAT WE SAW — v17.0 image-anchored overlay ───────────
-            Renders the actual captured photo with AI-supplied
-            polygons + landmark-anchored fallback ellipses overlaid
-            for every surfaced concern. Selectable chips dim the
-            non-active concerns down to a hairline trace so the user
-            can isolate any single finding. Hidden entirely on old
-            persisted scans without face_overlay payloads. */}
-        {scan.aiAnalysis ? (
-          <View style={styles.skinMapBlock}>
-            <View style={styles.skinMapHeader}>
-              <Text
-                style={styles.sectionKicker}
-                maxFontSizeMultiplier={1.1}
-              >
-                WHAT WE SAW
-              </Text>
-            </View>
-            {visibleConcerns.length > 1 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.skinMapChipRow}
-              >
-                <SkinMapChip
-                  label="ALL"
-                  selected={selectedMapCategory === null}
-                  onPress={() => {
-                    hapt.select();
-                    setSelectedMapCategory(null);
-                  }}
-                />
-                {visibleConcerns
-                  .filter((c) => c.severity !== 'calm')
-                  .map((c) => (
-                    <SkinMapChip
-                      key={c.category}
-                      label={CATEGORY_LABEL[c.category]}
-                      color={categoryChipColor(c.category)}
-                      selected={selectedMapCategory === c.category}
-                      onPress={() => {
-                        hapt.select();
-                        setSelectedMapCategory(
-                          selectedMapCategory === c.category
-                            ? null
-                            : c.category
-                        );
-                      }}
-                    />
-                  ))}
-              </ScrollView>
-            ) : null}
-            <FaceSkinMap
-              photoUri={scan.photoUri}
-              aiAnalysis={scan.aiAnalysis}
-              selectedCategory={selectedMapCategory}
-              width={Math.min(
-                Dimensions.get('window').width - 40,
-                460
-              )}
-            />
-            <Text
-              style={styles.skinMapCaption}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={2}
-            >
-              AI-detected zones, anchored to your photo. Tap a label
-              to isolate a single concern.
-            </Text>
-          </View>
-        ) : null}
+        {/* v17.1 — OPTION A layout
+            1. Score + summary (above)
+            2. Hero product / best next move
+            3. Skin map (WHAT WE SAW)
+            4. Visible findings
+            5. Tonight
+            6. Alternatives
+            7. Image quality (only when relevant)
+            8. Disclaimer
+            Putting the hero product BEFORE the skin map ensures the
+            user sees the actionable answer first; the skin map then
+            backs that recommendation with photographic proof. */}
 
         {/* ── 3. YOUR NEXT MOVE — hero recommendation ──────────────── */}
         {recommendations.primary ? (
@@ -415,34 +359,61 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </View>
         ) : null}
 
-        {/* ── 4. Also matched ──────────────────────────────────────── */}
-        {recommendations.alternatives.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.recHeader}>
-              <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-                ALSO MATCHED
+        {/* ── 4. WHAT WE SAW — image-anchored overlay ──────────────────
+            Renders the actual captured photo with AI-supplied polygon
+            + per-concern visual treatment overlaid. Default shows the
+            primary concern in isolation; chips toggle which finding
+            is highlighted. */}
+        {scan.aiAnalysis ? (
+          <View style={styles.skinMapBlock}>
+            <View style={styles.skinMapHeader}>
+              <Text
+                style={styles.sectionKicker}
+                maxFontSizeMultiplier={1.1}
+              >
+                WHAT WE SAW
               </Text>
-              <Pressable onPress={openProducts} hitSlop={8}>
-                <Text style={styles.seeAllLink} maxFontSizeMultiplier={1.1}>
-                  See all
-                </Text>
-              </Pressable>
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.altRow}
+            {visibleConcerns.filter((c) => c.severity !== 'calm').length >
+            1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.skinMapChipRow}
+              >
+                {visibleConcerns
+                  .filter((c) => c.severity !== 'calm')
+                  .map((c) => (
+                    <SkinMapChip
+                      key={c.category}
+                      label={CATEGORY_LABEL[c.category]}
+                      color={categoryChipColor(c.category)}
+                      selected={selectedMapCategory === c.category}
+                      onPress={() => {
+                        hapt.select();
+                        setSelectedMapCategory(c.category);
+                      }}
+                    />
+                  ))}
+              </ScrollView>
+            ) : null}
+            <FaceSkinMap
+              photoUri={scan.photoUri}
+              aiAnalysis={scan.aiAnalysis}
+              selectedCategory={selectedMapCategory}
+              width={Math.min(
+                Dimensions.get('window').width - 40,
+                460
+              )}
+            />
+            <Text
+              style={styles.skinMapCaption}
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={2}
             >
-              {recommendations.alternatives.map((rec) => (
-                <AltRecCard
-                  key={rec.product.id}
-                  rec={rec}
-                  onOpen={() =>
-                    openProductDetail(rec.product.id, rec.product.tint)
-                  }
-                />
-              ))}
-            </ScrollView>
+              AI-detected zones on your captured photo. Tap a label
+              to isolate that concern.
+            </Text>
           </View>
         ) : null}
 
@@ -489,7 +460,38 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </View>
         ) : null}
 
-        {/* ── 7. Image-quality note (only when relevant) ───────────── */}
+        {/* ── 7a. Also matched (alternatives) ──────────────────────── */}
+        {recommendations.alternatives.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.recHeader}>
+              <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+                ALSO MATCHED
+              </Text>
+              <Pressable onPress={openProducts} hitSlop={8}>
+                <Text style={styles.seeAllLink} maxFontSizeMultiplier={1.1}>
+                  See all
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.altRow}
+            >
+              {recommendations.alternatives.map((rec) => (
+                <AltRecCard
+                  key={rec.product.id}
+                  rec={rec}
+                  onOpen={() =>
+                    openProductDetail(rec.product.id, rec.product.tint)
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* ── 7b. Image-quality note (only when relevant) ──────────── */}
         {lowQuality && scan.aiAnalysis ? (
           <View style={styles.qualityCard}>
             <View style={styles.qualityRail} />

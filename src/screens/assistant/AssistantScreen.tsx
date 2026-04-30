@@ -730,7 +730,7 @@ function MessageLine({
   onOpenRoutine: () => void;
   onOpenProductDetail: (productId: string) => void;
   onShopProduct: (url: string) => void;
-  inlineProducts: Product[];
+  inlineProducts: InlinePick[];
 }) {
   const isUser = message.role === 'user';
   const attachedProducts: Product[] = (message.attachedProductIds ?? [])
@@ -811,13 +811,17 @@ function MessageLine({
             commerce-aware action surfaces. */}
         {inlineProducts.length > 0 ? (
           <View style={messageStyles.inlineProductRow}>
-            {inlineProducts.slice(0, 2).map((p) => (
+            {inlineProducts.slice(0, 2).map((pick) => (
               <AssistantProductCard
-                key={p.id}
-                product={p}
-                onOpen={() => onOpenProductDetail(p.id)}
+                key={pick.product.id}
+                product={pick.product}
+                matchScore={pick.matchScore}
+                reason={pick.reason}
+                onOpen={() => onOpenProductDetail(pick.product.id)}
                 onShop={
-                  p.buyUrl ? () => onShopProduct(p.buyUrl!) : undefined
+                  pick.product.buyUrl
+                    ? () => onShopProduct(pick.product.buyUrl!)
+                    : undefined
                 }
               />
             ))}
@@ -1015,6 +1019,17 @@ function categoriesFromQuery(text: string): Array<Product['category']> | null {
   return null;
 }
 
+/** v17.1 — InlinePick carries the matchScore alongside the product
+ *  so the card can surface the AI's actual confidence in this
+ *  product for THIS user's skin. */
+export interface InlinePick {
+  product: Product;
+  /** Integer 0..100 when sourced from aiTopMatches; null when fallback. */
+  matchScore: number | null;
+  /** AI-supplied "why this product" lead reason. May be empty. */
+  reason: string | null;
+}
+
 function resolveInlineProducts({
   assistantText,
   userQuestion,
@@ -1025,7 +1040,7 @@ function resolveInlineProducts({
   userQuestion: string;
   latestScan: ReturnType<typeof useAppStore.getState>['scans'][number] | undefined;
   hasScanned: boolean;
-}): Product[] {
+}): InlinePick[] {
   // Trigger only on product-shaped intent, otherwise stay quiet.
   if (
     !looksLikeProductQuestion(userQuestion) &&
@@ -1043,20 +1058,48 @@ function resolveInlineProducts({
     : undefined;
   const preferred = explicit ?? preferredCategoriesFor(concernCategory);
 
+  const productById = new Map(seedProducts.map((p) => [p.id, p]));
+
+  // v17.1 — primary source: live aiTopMatches from the store. Those
+  // are the AI's actual ranking against THIS user's last scan. Filter
+  // them down to the preferred categories so a "what helps redness"
+  // ask doesn't return the AI's #1 SPF when the user wanted a serum.
+  const aiMatches = useAppStore.getState().aiTopMatches;
   const seen = new Set<string>();
-  const picks: Product[] = [];
-  for (const cat of preferred) {
-    for (const p of seedProducts) {
-      if (p.category !== cat) continue;
-      if (seen.has(p.id)) continue;
-      // Prefer products with a real buyUrl so the card carries a
-      // working Shop action.
-      if (!p.buyUrl) continue;
-      seen.add(p.id);
-      picks.push(p);
+  const picks: InlinePick[] = [];
+
+  if (aiMatches.length > 0) {
+    for (const m of aiMatches) {
+      const product = productById.get(m.product_id);
+      if (!product) continue;
+      if (!preferred.includes(product.category)) continue;
+      if (seen.has(product.id)) continue;
+      if (!product.buyUrl) continue;
+      seen.add(product.id);
+      picks.push({
+        product,
+        matchScore: m.match_score,
+        reason: m.primary_reasons[0] ?? null,
+      });
       if (picks.length >= 2) break;
     }
-    if (picks.length >= 2) break;
+  }
+
+  // Pad from the seed catalog when the AI ranking doesn't fill the
+  // slot (fewer than 2 picks in the requested category, or no scan
+  // run yet). Quiet emergency fallback — never the primary source.
+  if (picks.length < 2) {
+    for (const cat of preferred) {
+      for (const p of seedProducts) {
+        if (p.category !== cat) continue;
+        if (seen.has(p.id)) continue;
+        if (!p.buyUrl) continue;
+        seen.add(p.id);
+        picks.push({ product: p, matchScore: null, reason: null });
+        if (picks.length >= 2) break;
+      }
+      if (picks.length >= 2) break;
+    }
   }
   return picks;
 }
@@ -1069,10 +1112,17 @@ function resolveInlineProducts({
  */
 function AssistantProductCard({
   product,
+  matchScore,
+  reason,
   onOpen,
   onShop,
 }: {
   product: Product;
+  /** v17.1 — when sourced from aiTopMatches, render the actual
+   *  AI confidence as a "88% match" badge. null hides the badge. */
+  matchScore: number | null;
+  /** v17.1 — AI's "why this product" lead reason. Italic serif line. */
+  reason?: string | null;
   onOpen: () => void;
   onShop?: () => void;
 }) {
@@ -1081,7 +1131,9 @@ function AssistantProductCard({
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`${product.brand} ${product.name}`}
+      accessibilityLabel={`${product.brand} ${product.name}${
+        matchScore !== null ? `, ${matchScore}% match` : ''
+      }`}
       style={({ pressed }) => [
         inlineCardStyles.card,
         pressed && { opacity: 0.94 },
@@ -1102,6 +1154,16 @@ function AssistantProductCard({
             transition={180}
           />
         ) : null}
+        {matchScore !== null ? (
+          <View style={inlineCardStyles.matchBadge}>
+            <Text
+              style={inlineCardStyles.matchBadgeText}
+              maxFontSizeMultiplier={1.1}
+            >
+              {`${matchScore}%`}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <View style={inlineCardStyles.text}>
         <Text style={inlineCardStyles.brand} maxFontSizeMultiplier={1.1}>
@@ -1114,6 +1176,15 @@ function AssistantProductCard({
         >
           {product.name}
         </Text>
+        {reason ? (
+          <Text
+            style={inlineCardStyles.reason}
+            numberOfLines={2}
+            maxFontSizeMultiplier={1.2}
+          >
+            {reason}
+          </Text>
+        ) : null}
         <View style={inlineCardStyles.foot}>
           {Number.isFinite(product.price) && product.price > 0 ? (
             <Text style={inlineCardStyles.price} maxFontSizeMultiplier={1.1}>
@@ -1173,6 +1244,24 @@ const inlineCardStyles = StyleSheet.create({
     backgroundColor: palette.bgDeep,
     position: 'relative',
   },
+  // v17.1 — match-score badge in the bottom-left of the image so the
+  // assistant card visibly carries the AI's confidence in this pick.
+  matchBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: palette.moss,
+  },
+  matchBadgeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 0.2,
+    color: palette.inkInverse,
+    fontVariant: ['tabular-nums'],
+  },
   text: {
     flex: 1,
     justifyContent: 'space-between',
@@ -1190,6 +1279,15 @@ const inlineCardStyles = StyleSheet.create({
     lineHeight: 17,
     letterSpacing: -0.2,
     color: palette.ink,
+  },
+  // v17.1 — short italic-serif "why this product" line. Reads as the
+  // AI's lead reason for this match, not generic copy.
+  reason: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 12,
+    lineHeight: 15,
+    color: palette.inkSecondary,
+    marginTop: 4,
   },
   foot: {
     flexDirection: 'row',
