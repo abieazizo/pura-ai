@@ -1,41 +1,40 @@
 /**
- * FaceSkinMap — v17.1 honest, image-anchored, per-concern overlay.
+ * FaceSkinMap — v17.2 landmark-anchored geometry, polygon as refinement.
  *
- * Hard requirements driving this rewrite:
+ * v17.0/v17.1 trusted the AI's per-finding `region_polygon` as the
+ * primary overlay shape. Real GPT-5-mini polygon coordinates often
+ * drift by a few percent of image dimensions — visible misalignment
+ * on a real face. The fix is to flip the primacy:
  *
- *   1. Renders the ACTUAL captured face image, not a duplicate or
- *      diagram.
- *   2. AI returns image-anchored data (face_overlay + per-finding
- *      region_polygon, normalised 0..1). v17.1 trusts the contract
- *      and lays overlays directly on the captured image.
- *   3. Each concern type renders with its own VISUAL TREATMENT, not
- *      a copy-paste polygon. Premium and editorial; never clinical.
- *   4. Default state shows ONE concern (the primary). Concern chips
- *      let the user toggle which concern is isolated. Showing every
- *      overlay simultaneously was visually noisy and hid the story.
- *   5. When AI omits face_overlay (old persisted scans) OR every
- *      finding is below the visibility threshold, we show a clean
- *      fallback state — never a broken or empty overlay.
+ *   • PRIMARY  — derive each concern's overlay shape DETERMINISTICALLY
+ *     from the AI's `landmarks` (6 reliable anchor points) and its
+ *     `regions[]` enum (categorical, not coordinate). Output always
+ *     hugs the user's actual eyes / nose / chin / forehead.
+ *   • REFINEMENT — when the AI's `region_polygon` passes a sanity
+ *     check (≥3 points, centroid inside face_box, bounding box not
+ *     pathological), use it INSTEAD of the landmark shape. This lets
+ *     the model tighten the highlight when its polygon is good
+ *     without ever letting a bad polygon ruin the visual.
  *
- * Per-concern visual styles (the v17.1 brief):
- *   • redness → soft coral feathered wash (Gaussian blur, no stroke)
- *   • breakouts → clustered pinpoint halos (small radial dots
- *     scattered along the polygon centroid)
- *   • dark_marks / pigmentation → warm amber/golden soft patch
- *   • under_eyes → soft lilac arc band
- *   • texture / pores / oiliness → subtle micrograin sheen with
- *     a hairline stroke (no harsh fill)
- *   • hydration / sensitivity → cool blue feathered wash
+ * Everything else (per-concern visual treatment, default-single-
+ * concern, graceful fallback states) follows v17.1.
  *
- * Render strategy notes:
- *   • viewBox = "0 0 1 1" + preserveAspectRatio="none" — coordinates
- *     map 1:1 to the captured image normalised 0..1 space.
- *   • Container's height is computed from the photo's natural aspect
- *     ratio via RNImage.getSize so contentFit="cover" doesn't crop
- *     and the SVG stays in lockstep with the visible photo.
- *   • Each visual style is implemented as its own renderer. Falls
- *     back to a plain feathered wash when the concern type isn't
- *     specifically styled.
+ * Per-concern visual styles:
+ *   • redness         feathered_wash  — coral blurred fill + soft halo
+ *   • breakouts       pinpoint_halos  — clustered radial dots + base wash
+ *   • dark_marks      warm_patch      — radial-gradient amber
+ *   • under_eyes      lilac_arc       — narrow blurred band
+ *   • texture/pores   micrograin      — hairline stroke + low fill
+ *   • hydration       cool_wash       — azure blurred fill + soft halo
+ *   • sensitivity     cool_wash       — same as hydration
+ *   • oiliness        micrograin      — sheen sub-treatment
+ *
+ * Coordinate system:
+ *   viewBox = "0 0 1 1" + preserveAspectRatio="none" — coordinates map
+ *   1:1 to the captured image's normalised 0..1 space. Container
+ *   height is computed from the photo's natural aspect ratio (via
+ *   RNImage.getSize) so contentFit="cover" doesn't crop and the SVG
+ *   stays in lockstep with the visible photo.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -65,7 +64,7 @@ import { palette, scanTypography } from '@/theme';
 import type { ConcernCategory } from '@/types';
 
 // ---------------------------------------------------------------------------
-// Concern → category mapping. Mirrors translateAnalysis.ts.
+// Mapping tables.
 // ---------------------------------------------------------------------------
 
 const AI_TO_APP_CATEGORY: Record<ConcernType, ConcernCategory> = {
@@ -79,17 +78,13 @@ const AI_TO_APP_CATEGORY: Record<ConcernType, ConcernCategory> = {
   pores: 'texture',
 };
 
-// Per-CONCERN-TYPE visual treatment. Distinct from CATEGORY_COLOR
-// because two concerns mapped to the same app category can still
-// render differently — e.g. redness vs breakouts both fall under
-// 'breakouts' but visually deserve different treatments.
 type VisualStyle =
-  | 'feathered_wash' // soft blurred fill, no stroke
-  | 'pinpoint_halos' // small dots clustered along the polygon
-  | 'warm_patch' // golden patch with subtle radial gradient
-  | 'lilac_arc' // narrow lilac band, used for under_eyes
-  | 'micrograin' // hairline stroke + thin fill, sheen-like
-  | 'cool_wash'; // cool-blue blurred fill
+  | 'feathered_wash'
+  | 'pinpoint_halos'
+  | 'warm_patch'
+  | 'lilac_arc'
+  | 'micrograin'
+  | 'cool_wash';
 
 const CONCERN_STYLE: Record<ConcernType, { color: string; style: VisualStyle }> =
   {
@@ -103,8 +98,6 @@ const CONCERN_STYLE: Record<ConcernType, { color: string; style: VisualStyle }> 
     sensitivity: { color: '#9DB7D9', style: 'cool_wash' },
   };
 
-// Category-level color (used for chips + headline). Mirrors what the
-// FindingRow rows tint with elsewhere.
 const CATEGORY_COLOR: Record<ConcernCategory, string> = {
   breakouts: '#E66B5C',
   hydration: '#7CB0FF',
@@ -112,32 +105,19 @@ const CATEGORY_COLOR: Record<ConcernCategory, string> = {
   tone: '#D9A75E',
 };
 
+// v17.2 — alpha values bumped vs v17.1. The Gaussian-blur softens
+// fills considerably; we need more brightness in the source so the
+// final composite reads cleanly on a real photo.
 const SEVERITY_ALPHA: Record<FaceConcernFinding['severity'], number> = {
   none: 0,
-  low: 0.34,
-  mild: 0.46,
-  moderate: 0.62,
-  high: 0.78,
+  low: 0.45,
+  mild: 0.6,
+  moderate: 0.78,
+  high: 0.9,
 };
 
 // ---------------------------------------------------------------------------
-// Props.
-// ---------------------------------------------------------------------------
-
-export interface FaceSkinMapProps {
-  photoUri: string;
-  aiAnalysis: FaceScanAnalysis;
-  /** When set, that category's overlay renders in isolation. When null,
-   *  the component picks its own primary concern (highest severity). */
-  selectedCategory?: ConcernCategory | null;
-  /** Display width in pt. Height is derived from the photo's natural
-   *  aspect ratio so overlay coordinates land where they should. */
-  width: number;
-  fallbackAspectRatio?: number;
-}
-
-// ---------------------------------------------------------------------------
-// Geometry helpers.
+// Geometry primitives.
 // ---------------------------------------------------------------------------
 
 interface Point {
@@ -145,11 +125,19 @@ interface Point {
   y: number;
 }
 
+interface Ellipse2 {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+}
+
 function midpoint(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
 function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0.5;
   return Math.max(0, Math.min(1, n));
 }
 
@@ -164,7 +152,7 @@ function centroid(points: Point[]): Point {
   return { x: sx / points.length, y: sy / points.length };
 }
 
-function bounds(points: Point[]): {
+function polygonBounds(points: Point[]): {
   minX: number;
   minY: number;
   maxX: number;
@@ -183,11 +171,20 @@ function bounds(points: Point[]): {
   return { minX, minY, maxX, maxY };
 }
 
-/** Landmark-anchored fallback shape when the AI omits a polygon. */
-function fallbackEllipseFor(
+// ---------------------------------------------------------------------------
+// Landmark-anchored shape for each FaceRegion.
+//
+// These ARE the source of truth for overlay placement. They use the
+// AI's `landmarks` (6 anchor points) + `face_box` to compute an
+// ellipse that hugs the relevant facial feature. The same six points
+// are spatial anchors GPT-5-mini can place reliably; freehand
+// polygons are not.
+// ---------------------------------------------------------------------------
+
+function landmarkShapeFor(
   region: FaceRegion,
   overlay: NonNullable<FaceScanAnalysis['face_overlay']>
-): { cx: number; cy: number; rx: number; ry: number } {
+): Ellipse2 {
   const { face_box, landmarks } = overlay;
   const eyeMid = midpoint(landmarks.left_eye, landmarks.right_eye);
   const faceW = face_box.width;
@@ -198,58 +195,60 @@ function fallbackEllipseFor(
       return {
         cx: landmarks.forehead_center.x,
         cy: landmarks.forehead_center.y,
-        rx: faceW * 0.36,
-        ry: faceH * 0.15,
+        rx: faceW * 0.4,
+        ry: faceH * 0.16,
       };
     case 't_zone':
       return {
         cx: eyeMid.x,
-        cy: midpoint(eyeMid, landmarks.nose_tip).y,
+        cy: midpoint(eyeMid, landmarks.nose_tip).y + faceH * 0.02,
         rx: faceW * 0.18,
-        ry: faceH * 0.26,
+        ry: faceH * 0.28,
       };
     case 'nose':
       return {
         cx: landmarks.nose_tip.x,
         cy: landmarks.nose_tip.y,
-        rx: faceW * 0.12,
-        ry: faceH * 0.14,
+        rx: faceW * 0.13,
+        ry: faceH * 0.16,
       };
     case 'left_cheek':
       return {
         cx: landmarks.left_eye.x - faceW * 0.04,
-        cy: midpoint(landmarks.left_eye, landmarks.mouth_center).y +
+        cy:
+          midpoint(landmarks.left_eye, landmarks.mouth_center).y +
           faceH * 0.02,
-        rx: faceW * 0.2,
+        rx: faceW * 0.21,
         ry: faceH * 0.18,
       };
     case 'right_cheek':
       return {
         cx: landmarks.right_eye.x + faceW * 0.04,
-        cy: midpoint(landmarks.right_eye, landmarks.mouth_center).y +
+        cy:
+          midpoint(landmarks.right_eye, landmarks.mouth_center).y +
           faceH * 0.02,
-        rx: faceW * 0.2,
+        rx: faceW * 0.21,
         ry: faceH * 0.18,
       };
     case 'chin':
       return {
         cx: landmarks.chin.x,
         cy: landmarks.chin.y,
-        rx: faceW * 0.22,
-        ry: faceH * 0.12,
+        rx: faceW * 0.24,
+        ry: faceH * 0.13,
       };
     case 'jawline':
       return {
         cx: face_box.x + faceW / 2,
         cy: face_box.y + faceH * 0.88,
-        rx: faceW * 0.42,
-        ry: faceH * 0.08,
+        rx: faceW * 0.45,
+        ry: faceH * 0.09,
       };
     case 'under_eyes':
       return {
         cx: eyeMid.x,
         cy: eyeMid.y + faceH * 0.06,
-        rx: faceW * 0.34,
+        rx: faceW * 0.36,
         ry: faceH * 0.045,
       };
     case 'across_face':
@@ -264,8 +263,67 @@ function fallbackEllipseFor(
 }
 
 // ---------------------------------------------------------------------------
-// Worst-finding-per-category picker. Same as v17.0; kept local.
+// Polygon sanity check.
+//
+// A polygon is "trustworthy" only when:
+//   1. it has ≥3 points
+//   2. its centroid is inside the AI's face_box (with a tolerance)
+//   3. its bounding box width × height is between 0.2% and 70% of
+//      the face_box area — too tiny is a stray dot, too huge is a
+//      coordinate-system bug.
+//
+// When ANY check fails we silently fall back to the landmark shape.
 // ---------------------------------------------------------------------------
+
+function polygonIsTrustworthy(
+  poly: Point[],
+  faceBox: { x: number; y: number; width: number; height: number }
+): boolean {
+  if (poly.length < 3) return false;
+  const c = centroid(poly);
+  const cx = faceBox.x;
+  const cy = faceBox.y;
+  const cw = faceBox.width;
+  const ch = faceBox.height;
+  // 8% slack so a polygon that grazes the chin or forehead boundary
+  // still counts.
+  const xMin = cx - cw * 0.08;
+  const xMax = cx + cw * 1.08;
+  const yMin = cy - ch * 0.08;
+  const yMax = cy + ch * 1.08;
+  if (c.x < xMin || c.x > xMax) return false;
+  if (c.y < yMin || c.y > yMax) return false;
+  const b = polygonBounds(poly);
+  const polyArea = Math.max(0, b.maxX - b.minX) * Math.max(0, b.maxY - b.minY);
+  const faceArea = Math.max(0.0001, cw * ch);
+  const ratio = polyArea / faceArea;
+  if (ratio < 0.002) return false;
+  if (ratio > 0.7) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Build the resolved overlay for a finding.
+//   - regionShape  : always present, derived from landmarks
+//   - polygon      : optional refinement, only when trustworthy
+//
+// The renderer uses polygon when present, otherwise falls back to
+// regionShape. This guarantees there is ALWAYS an overlay anchored
+// to real face features.
+// ---------------------------------------------------------------------------
+
+interface ResolvedOverlay {
+  category: ConcernCategory;
+  concernType: ConcernType;
+  style: VisualStyle;
+  color: string;
+  alpha: number;
+  finding: FaceConcernFinding;
+  regionShape: Ellipse2;
+  polygon?: Point[];
+  /** Friendly label for the active-concern badge. */
+  label: string;
+}
 
 function pickWorstByCategory(
   findings: FaceConcernFinding[]
@@ -289,25 +347,66 @@ function pickWorstByCategory(
   return map;
 }
 
-// ---------------------------------------------------------------------------
-// Per-concern renderers. Each takes the resolved polygon (or
-// fallback ellipse) plus the concern's color + alpha and returns
-// the SVG sub-tree.
-// ---------------------------------------------------------------------------
-
-interface RenderInput {
-  /** Pre-computed polygon points in 0..1 image space. */
-  polygon?: Point[];
-  /** Optional fallback ellipse params in 0..1 image space. */
-  ellipse?: { cx: number; cy: number; rx: number; ry: number };
-  color: string;
-  alpha: number;
-  /** Unique key for SVG <Defs> ids. */
-  defsKey: string;
+function labelFor(finding: FaceConcernFinding): string {
+  const concern = finding.concern.replace('_', ' ').toUpperCase();
+  const region = (finding.regions[0] ?? 'across_face')
+    .replace('_', ' ')
+    .toUpperCase();
+  return `${concern} · ${region}`;
 }
+
+function resolveOverlays(analysis: FaceScanAnalysis): ResolvedOverlay[] {
+  const overlay = analysis.face_overlay;
+  if (!overlay) return [];
+  const byCat = pickWorstByCategory(analysis.findings);
+  const out: ResolvedOverlay[] = [];
+  for (const [category, finding] of byCat.entries()) {
+    const treatment = CONCERN_STYLE[finding.concern];
+    const alpha = SEVERITY_ALPHA[finding.severity] ?? 0.6;
+    const region: FaceRegion = finding.regions[0] ?? 'across_face';
+    const regionShape = landmarkShapeFor(region, overlay);
+    let polygon: Point[] | undefined;
+    if (
+      finding.region_polygon &&
+      polygonIsTrustworthy(finding.region_polygon, overlay.face_box)
+    ) {
+      polygon = finding.region_polygon.map((p) => ({
+        x: clamp01(p.x),
+        y: clamp01(p.y),
+      }));
+    }
+    out.push({
+      category,
+      concernType: finding.concern,
+      style: treatment.style,
+      color: treatment.color,
+      alpha,
+      finding,
+      regionShape,
+      polygon,
+      label: labelFor(finding),
+    });
+  }
+  // Sort by severity desc so [0] is always the worst → primary.
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Visual style renderers. Each is a small SVG sub-tree. v17.2 bumps
+// alpha and layers a soft halo behind the core fill so the overlay
+// reads cleanly even after Gaussian blur softens it.
+// ---------------------------------------------------------------------------
 
 function pointsToString(points: Point[]): string {
   return points.map((p) => `${p.x},${p.y}`).join(' ');
+}
+
+interface RenderInput {
+  polygon?: Point[];
+  ellipse: Ellipse2;
+  color: string;
+  alpha: number;
+  defsKey: string;
 }
 
 function FeatheredWash({
@@ -317,60 +416,63 @@ function FeatheredWash({
   alpha,
   defsKey,
 }: RenderInput) {
-  const filterId = `wash-blur-${defsKey}`;
+  const blurId = `wash-${defsKey}`;
   return (
     <G>
       <Defs>
-        <Filter id={filterId} x="-10%" y="-10%" width="120%" height="120%">
-          <FeGaussianBlur stdDeviation={0.012} />
+        <Filter id={blurId} x="-15%" y="-15%" width="130%" height="130%">
+          <FeGaussianBlur stdDeviation={0.014} />
         </Filter>
       </Defs>
+      {/* Soft outer halo to lift the overlay off the photo */}
+      <Ellipse
+        cx={ellipse.cx}
+        cy={ellipse.cy}
+        rx={ellipse.rx * 1.18}
+        ry={ellipse.ry * 1.18}
+        fill={color}
+        fillOpacity={alpha * 0.32}
+        filter={`url(#${blurId})`}
+      />
       {polygon ? (
         <Polygon
           points={pointsToString(polygon)}
           fill={color}
-          fillOpacity={alpha}
-          filter={`url(#${filterId})`}
+          fillOpacity={alpha * 0.92}
+          filter={`url(#${blurId})`}
         />
-      ) : ellipse ? (
+      ) : (
         <Ellipse
           cx={ellipse.cx}
           cy={ellipse.cy}
           rx={ellipse.rx}
           ry={ellipse.ry}
           fill={color}
-          fillOpacity={alpha}
-          filter={`url(#${filterId})`}
+          fillOpacity={alpha * 0.92}
+          filter={`url(#${blurId})`}
         />
-      ) : null}
+      )}
     </G>
   );
 }
 
 function CoolWash(props: RenderInput) {
-  // Same renderer as FeatheredWash but kept as a separate component
-  // to make per-style tuning trivial later.
   return <FeatheredWash {...props} />;
 }
 
 function WarmPatch({ polygon, ellipse, color, alpha, defsKey }: RenderInput) {
-  const gradId = `warm-patch-${defsKey}`;
-  const filterId = `warm-blur-${defsKey}`;
-  // For polygons, derive a center + a soft radial gradient.
-  const c = polygon ? centroid(polygon) : ellipse
-    ? { x: ellipse.cx, y: ellipse.cy }
-    : { x: 0.5, y: 0.5 };
+  const gradId = `warm-${defsKey}`;
+  const blurId = `warm-blur-${defsKey}`;
+  const c = polygon ? centroid(polygon) : { x: ellipse.cx, y: ellipse.cy };
   const r = polygon
     ? Math.max(
         0.06,
         (() => {
-          const b = bounds(polygon);
+          const b = polygonBounds(polygon);
           return Math.max(b.maxX - b.minX, b.maxY - b.minY) * 0.6;
         })()
       )
-    : ellipse
-    ? Math.max(ellipse.rx, ellipse.ry) * 1.1
-    : 0.18;
+    : Math.max(ellipse.rx, ellipse.ry) * 1.1;
   return (
     <G>
       <Defs>
@@ -383,11 +485,11 @@ function WarmPatch({ polygon, ellipse, color, alpha, defsKey }: RenderInput) {
           fy={c.y}
           gradientUnits="userSpaceOnUse"
         >
-          <Stop offset="0" stopColor={color} stopOpacity={alpha * 0.95} />
-          <Stop offset="0.6" stopColor={color} stopOpacity={alpha * 0.55} />
+          <Stop offset="0" stopColor={color} stopOpacity={alpha} />
+          <Stop offset="0.55" stopColor={color} stopOpacity={alpha * 0.6} />
           <Stop offset="1" stopColor={color} stopOpacity={0} />
         </RadialGradient>
-        <Filter id={filterId} x="-10%" y="-10%" width="120%" height="120%">
+        <Filter id={blurId} x="-10%" y="-10%" width="120%" height="120%">
           <FeGaussianBlur stdDeviation={0.008} />
         </Filter>
       </Defs>
@@ -395,18 +497,18 @@ function WarmPatch({ polygon, ellipse, color, alpha, defsKey }: RenderInput) {
         <Polygon
           points={pointsToString(polygon)}
           fill={`url(#${gradId})`}
-          filter={`url(#${filterId})`}
+          filter={`url(#${blurId})`}
         />
-      ) : ellipse ? (
+      ) : (
         <Ellipse
           cx={ellipse.cx}
           cy={ellipse.cy}
           rx={ellipse.rx}
           ry={ellipse.ry}
           fill={`url(#${gradId})`}
-          filter={`url(#${filterId})`}
+          filter={`url(#${blurId})`}
         />
-      ) : null}
+      )}
     </G>
   );
 }
@@ -418,80 +520,67 @@ function PinpointHalos({
   alpha,
   defsKey,
 }: RenderInput) {
-  // Sample a small number of points within the polygon / ellipse and
-  // render as soft glowing halos. This reads as "small clustered
-  // breakouts" rather than one solid blob.
-  const filterId = `halo-blur-${defsKey}`;
-  const dots: Point[] = useMemo(() => {
-    if (polygon) {
+  const blurId = `halo-${defsKey}`;
+  // 5-7 deterministic dots around the centroid of the active region.
+  const dots = useMemo<Point[]>(() => {
+    if (polygon && polygon.length >= 3) {
       const c = centroid(polygon);
-      const b = bounds(polygon);
+      const b = polygonBounds(polygon);
       const w = b.maxX - b.minX;
       const h = b.maxY - b.minY;
-      // Deterministic mini-cluster around the centroid.
       return [
         c,
         { x: clamp01(c.x - w * 0.22), y: clamp01(c.y - h * 0.18) },
         { x: clamp01(c.x + w * 0.24), y: clamp01(c.y - h * 0.06) },
         { x: clamp01(c.x - w * 0.1), y: clamp01(c.y + h * 0.22) },
         { x: clamp01(c.x + w * 0.18), y: clamp01(c.y + h * 0.18) },
+        { x: clamp01(c.x - w * 0.3), y: clamp01(c.y + h * 0.05) },
       ];
     }
-    if (ellipse) {
-      const { cx, cy, rx, ry } = ellipse;
-      return [
-        { x: cx, y: cy },
-        { x: clamp01(cx - rx * 0.5), y: clamp01(cy - ry * 0.4) },
-        { x: clamp01(cx + rx * 0.55), y: clamp01(cy - ry * 0.2) },
-        { x: clamp01(cx - rx * 0.25), y: clamp01(cy + ry * 0.5) },
-        { x: clamp01(cx + rx * 0.4), y: clamp01(cy + ry * 0.45) },
-      ];
-    }
-    return [];
+    const { cx, cy, rx, ry } = ellipse;
+    return [
+      { x: cx, y: cy },
+      { x: clamp01(cx - rx * 0.5), y: clamp01(cy - ry * 0.4) },
+      { x: clamp01(cx + rx * 0.55), y: clamp01(cy - ry * 0.2) },
+      { x: clamp01(cx - rx * 0.25), y: clamp01(cy + ry * 0.5) },
+      { x: clamp01(cx + rx * 0.4), y: clamp01(cy + ry * 0.45) },
+      { x: clamp01(cx + rx * 0.2), y: clamp01(cy - ry * 0.55) },
+    ];
   }, [polygon, ellipse]);
 
   return (
     <G>
       <Defs>
-        <Filter id={filterId} x="-30%" y="-30%" width="160%" height="160%">
-          <FeGaussianBlur stdDeviation={0.006} />
+        <Filter id={blurId} x="-30%" y="-30%" width="160%" height="160%">
+          <FeGaussianBlur stdDeviation={0.007} />
         </Filter>
       </Defs>
-      {/* Subtle wash under the dots so the cluster reads as a zone */}
-      {polygon ? (
-        <Polygon
-          points={pointsToString(polygon)}
-          fill={color}
-          fillOpacity={alpha * 0.18}
-          filter={`url(#${filterId})`}
-        />
-      ) : ellipse ? (
-        <Ellipse
-          cx={ellipse.cx}
-          cy={ellipse.cy}
-          rx={ellipse.rx}
-          ry={ellipse.ry}
-          fill={color}
-          fillOpacity={alpha * 0.18}
-          filter={`url(#${filterId})`}
-        />
-      ) : null}
+      {/* Soft base wash so the dots feel grouped into a zone */}
+      <Ellipse
+        cx={ellipse.cx}
+        cy={ellipse.cy}
+        rx={ellipse.rx * 0.95}
+        ry={ellipse.ry * 0.95}
+        fill={color}
+        fillOpacity={alpha * 0.22}
+        filter={`url(#${blurId})`}
+      />
       {dots.map((d, i) => (
         <G key={i}>
           <Circle
             cx={d.x}
             cy={d.y}
-            r={0.018}
+            r={0.022}
             fill={color}
             fillOpacity={alpha * 0.55}
-            filter={`url(#${filterId})`}
+            filter={`url(#${blurId})`}
           />
           <Circle
             cx={d.x}
             cy={d.y}
-            r={0.008}
+            r={0.009}
             fill={color}
-            fillOpacity={Math.min(0.95, alpha * 1.1)}
+            fillOpacity={Math.min(0.95, alpha * 1.05)}
           />
         </G>
       ))}
@@ -500,34 +589,32 @@ function PinpointHalos({
 }
 
 function LilacArc({ polygon, ellipse, color, alpha, defsKey }: RenderInput) {
-  // Used for under_eyes-like findings. Renders a narrow horizontal
-  // band rather than a wide blob.
-  const filterId = `lilac-blur-${defsKey}`;
+  const blurId = `arc-${defsKey}`;
   return (
     <G>
       <Defs>
-        <Filter id={filterId} x="-5%" y="-30%" width="110%" height="160%">
-          <FeGaussianBlur stdDeviation={0.01} />
+        <Filter id={blurId} x="-5%" y="-30%" width="110%" height="160%">
+          <FeGaussianBlur stdDeviation={0.011} />
         </Filter>
       </Defs>
       {polygon ? (
         <Polygon
           points={pointsToString(polygon)}
           fill={color}
-          fillOpacity={alpha * 0.85}
-          filter={`url(#${filterId})`}
+          fillOpacity={alpha * 0.9}
+          filter={`url(#${blurId})`}
         />
-      ) : ellipse ? (
+      ) : (
         <Ellipse
           cx={ellipse.cx}
           cy={ellipse.cy}
           rx={ellipse.rx}
-          ry={Math.max(ellipse.ry * 0.7, 0.025)}
+          ry={Math.max(ellipse.ry * 0.65, 0.022)}
           fill={color}
-          fillOpacity={alpha * 0.85}
-          filter={`url(#${filterId})`}
+          fillOpacity={alpha * 0.9}
+          filter={`url(#${blurId})`}
         />
-      ) : null}
+      )}
     </G>
   );
 }
@@ -539,34 +626,42 @@ function Micrograin({
   alpha,
   defsKey,
 }: RenderInput) {
-  // Sheen treatment for texture / pores / oiliness. Hairline stroke
-  // + low fill — hints at the area without flooding it.
-  const filterId = `grain-blur-${defsKey}`;
+  const blurId = `grain-${defsKey}`;
   return (
     <G>
       <Defs>
-        <Filter id={filterId} x="-5%" y="-5%" width="110%" height="110%">
-          <FeGaussianBlur stdDeviation={0.004} />
+        <Filter id={blurId} x="-5%" y="-5%" width="110%" height="110%">
+          <FeGaussianBlur stdDeviation={0.005} />
         </Filter>
       </Defs>
+      {/* Soft halo */}
+      <Ellipse
+        cx={ellipse.cx}
+        cy={ellipse.cy}
+        rx={ellipse.rx * 1.05}
+        ry={ellipse.ry * 1.05}
+        fill={color}
+        fillOpacity={alpha * 0.22}
+        filter={`url(#${blurId})`}
+      />
       {polygon ? (
         <>
           <Polygon
             points={pointsToString(polygon)}
             fill={color}
-            fillOpacity={alpha * 0.34}
-            filter={`url(#${filterId})`}
+            fillOpacity={alpha * 0.45}
+            filter={`url(#${blurId})`}
           />
           <Polygon
             points={pointsToString(polygon)}
             fill="none"
             stroke={color}
             strokeOpacity={Math.min(0.95, alpha * 1.3)}
-            strokeWidth={0.0035}
+            strokeWidth={0.004}
             strokeLinejoin="round"
           />
         </>
-      ) : ellipse ? (
+      ) : (
         <>
           <Ellipse
             cx={ellipse.cx}
@@ -574,8 +669,8 @@ function Micrograin({
             rx={ellipse.rx}
             ry={ellipse.ry}
             fill={color}
-            fillOpacity={alpha * 0.34}
-            filter={`url(#${filterId})`}
+            fillOpacity={alpha * 0.45}
+            filter={`url(#${blurId})`}
           />
           <Ellipse
             cx={ellipse.cx}
@@ -585,10 +680,10 @@ function Micrograin({
             fill="none"
             stroke={color}
             strokeOpacity={Math.min(0.95, alpha * 1.3)}
-            strokeWidth={0.0035}
+            strokeWidth={0.004}
           />
         </>
-      ) : null}
+      )}
     </G>
   );
 }
@@ -606,12 +701,26 @@ const STYLE_RENDERERS: Record<VisualStyle, React.FC<RenderInput>> = {
 // Component.
 // ---------------------------------------------------------------------------
 
+export interface FaceSkinMapProps {
+  photoUri: string;
+  aiAnalysis: FaceScanAnalysis;
+  /** When set, that category's overlay renders. When null, primary
+   *  (highest-severity) is auto-selected. */
+  selectedCategory?: ConcernCategory | null;
+  width: number;
+  fallbackAspectRatio?: number;
+  /** v17.2 — show a small dev diagnostic ribbon ("LIVE polys 2/3,
+   *  landmarks ✓"). Off by default. */
+  showDebug?: boolean;
+}
+
 export function FaceSkinMap({
   photoUri,
   aiAnalysis,
   selectedCategory = null,
   width,
   fallbackAspectRatio = 4 / 5,
+  showDebug = false,
 }: FaceSkinMapProps) {
   const [aspectRatio, setAspectRatio] = useState<number>(fallbackAspectRatio);
 
@@ -624,7 +733,7 @@ export function FaceSkinMap({
         setAspectRatio(w / h);
       },
       () => {
-        /* swallow — fallback ratio stands */
+        /* swallow */
       }
     );
     return () => {
@@ -635,54 +744,11 @@ export function FaceSkinMap({
   const overlay = aiAnalysis.face_overlay;
   const height = Math.round(width / aspectRatio);
 
-  // Build the per-category overlay list (worst finding per category).
-  const overlays = useMemo(() => {
-    if (!overlay) return [];
-    const byCat = pickWorstByCategory(aiAnalysis.findings);
-    const items: Array<{
-      category: ConcernCategory;
-      concernType: ConcernType;
-      style: VisualStyle;
-      color: string;
-      alpha: number;
-      finding: FaceConcernFinding;
-      polygon?: Point[];
-      ellipse?: { cx: number; cy: number; rx: number; ry: number };
-    }> = [];
-    for (const [category, finding] of byCat.entries()) {
-      const treatment = CONCERN_STYLE[finding.concern];
-      const alpha = SEVERITY_ALPHA[finding.severity] ?? 0.5;
-      const polygon = finding.region_polygon;
-      const item = {
-        category,
-        concernType: finding.concern,
-        style: treatment.style,
-        color: treatment.color,
-        alpha,
-        finding,
-      };
-      if (polygon && polygon.length >= 3) {
-        items.push({
-          ...item,
-          polygon: polygon.map((p) => ({
-            x: clamp01(p.x),
-            y: clamp01(p.y),
-          })),
-        });
-      } else {
-        const region: FaceRegion = finding.regions[0] ?? 'across_face';
-        items.push({
-          ...item,
-          ellipse: fallbackEllipseFor(region, overlay),
-        });
-      }
-    }
-    return items;
-  }, [aiAnalysis.findings, overlay]);
+  const overlays = useMemo<ResolvedOverlay[]>(
+    () => resolveOverlays(aiAnalysis),
+    [aiAnalysis]
+  );
 
-  // v17.1 — by default isolate the most severe concern. The host
-  // screen can override via `selectedCategory`. When the host passes
-  // null explicitly, the component picks for itself.
   const effectiveCategory = useMemo<ConcernCategory | null>(() => {
     if (selectedCategory != null) return selectedCategory;
     if (overlays.length === 0) return null;
@@ -694,9 +760,15 @@ export function FaceSkinMap({
     [overlays, effectiveCategory]
   );
 
+  // Debug diagnostic — counts polygons that passed the trust check.
+  const debugLine = useMemo(() => {
+    if (!showDebug || !overlay) return '';
+    const trustworthy = overlays.filter((o) => !!o.polygon).length;
+    return `LIVE  overlay ✓  landmarks ✓  polys ${trustworthy}/${overlays.length}`;
+  }, [overlays, overlay, showDebug]);
+
   // ----- Graceful states ------------------------------------------------
 
-  // 1. AI omitted face_overlay entirely (old persisted scans).
   if (!overlay) {
     return (
       <View style={[styles.frame, { width, height }]}>
@@ -711,12 +783,17 @@ export function FaceSkinMap({
             ZONE LOCALIZATION UNAVAILABLE FOR THIS SCAN
           </Text>
         </View>
+        {showDebug ? (
+          <View style={styles.debugRibbon}>
+            <Text style={styles.debugText}>
+              FALLBACK  no face_overlay in payload
+            </Text>
+          </View>
+        ) : null}
       </View>
     );
   }
 
-  // 2. AI returned face_overlay but every finding is calm/low. Show
-  // the photo with a quiet "no focal zones" caption — never fake.
   if (overlays.length === 0) {
     return (
       <View style={[styles.frame, { width, height }]}>
@@ -731,13 +808,16 @@ export function FaceSkinMap({
             NO FOCAL ZONES IN THIS SCAN
           </Text>
         </View>
+        {showDebug && debugLine ? (
+          <View style={styles.debugRibbon}>
+            <Text style={styles.debugText}>{debugLine}</Text>
+          </View>
+        ) : null}
       </View>
     );
   }
 
   // ----- Active render --------------------------------------------------
-
-  const viewBox = '0 0 1 1';
 
   return (
     <View style={[styles.frame, { width, height }]}>
@@ -751,72 +831,64 @@ export function FaceSkinMap({
       <Svg
         width={width}
         height={height}
-        viewBox={viewBox}
+        viewBox="0 0 1 1"
         preserveAspectRatio="none"
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       >
         <Defs>
-          <LinearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
+          <LinearGradient id="vignette-top" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor="#0B1220" stopOpacity="0.04" />
             <Stop offset="0.6" stopColor="#0B1220" stopOpacity="0" />
-            <Stop offset="1" stopColor="#0B1220" stopOpacity="0.16" />
+            <Stop offset="1" stopColor="#0B1220" stopOpacity="0.18" />
           </LinearGradient>
         </Defs>
-        <Rect x={0} y={0} width={1} height={1} fill="url(#vignette)" />
+        <Rect x={0} y={0} width={1} height={1} fill="url(#vignette-top)" />
 
-        {/* Render only the active concern's overlay. Single-concern
-            isolation is the v17.1 default — the chips above let users
-            switch which concern is highlighted. */}
-        {activeOverlay
-          ? (() => {
-              const Renderer = STYLE_RENDERERS[activeOverlay.style];
-              return (
-                <Renderer
-                  polygon={activeOverlay.polygon}
-                  ellipse={activeOverlay.ellipse}
-                  color={activeOverlay.color}
-                  alpha={activeOverlay.alpha}
-                  defsKey={activeOverlay.category}
-                />
-              );
-            })()
-          : null}
+        {activeOverlay ? (
+          (() => {
+            const Renderer = STYLE_RENDERERS[activeOverlay.style];
+            return (
+              <Renderer
+                polygon={activeOverlay.polygon}
+                ellipse={activeOverlay.regionShape}
+                color={activeOverlay.color}
+                alpha={activeOverlay.alpha}
+                defsKey={activeOverlay.category}
+              />
+            );
+          })()
+        ) : null}
       </Svg>
 
-      {/* Top-left concern label badge so the user knows which concern
-          they're seeing on the photo right now. */}
+      {/* v17.2 — active-concern badge with the FULL "BREAKOUTS · CHIN"
+          label so users immediately read where on their face this
+          concern was detected. */}
       {activeOverlay ? (
         <View
           style={[
             styles.activeBadge,
-            { backgroundColor: `${CATEGORY_COLOR[activeOverlay.category]}E6` },
+            {
+              backgroundColor: `${CATEGORY_COLOR[activeOverlay.category]}E6`,
+            },
           ]}
         >
-          <Text style={styles.activeBadgeText}>
-            {labelForCategory(activeOverlay.category)}
+          <Text style={styles.activeBadgeText} numberOfLines={1}>
+            {activeOverlay.label}
           </Text>
+        </View>
+      ) : null}
+
+      {showDebug && debugLine ? (
+        <View style={styles.debugRibbon}>
+          <Text style={styles.debugText}>{debugLine}</Text>
         </View>
       ) : null}
     </View>
   );
 }
 
-function labelForCategory(c: ConcernCategory): string {
-  switch (c) {
-    case 'breakouts':
-      return 'BREAKOUTS · REDNESS';
-    case 'hydration':
-      return 'HYDRATION';
-    case 'texture':
-      return 'TEXTURE · PORES';
-    case 'tone':
-      return 'TONE · DARK MARKS';
-  }
-}
-
-// Suppress unused-import warnings for SVG primitives kept ready for
-// future renderers (FeColorMatrix can layer further treatments).
+// Suppress unused-import for FeColorMatrix (kept for future use).
 void FeColorMatrix;
 
 const styles = StyleSheet.create({
@@ -848,11 +920,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6,
+    maxWidth: '70%',
   },
   activeBadgeText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 9,
     letterSpacing: 1.4,
+    color: palette.inkInverse,
+  },
+  debugRibbon: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: 'rgba(11, 18, 32, 0.78)',
+  },
+  debugText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 8,
+    letterSpacing: 1,
     color: palette.inkInverse,
   },
 });

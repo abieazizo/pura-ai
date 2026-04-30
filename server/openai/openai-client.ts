@@ -797,12 +797,15 @@ export class OpenAIClient {
       'asked for depth ("explain", "walk me through", "in detail").\n' +
       '• If the question is product-shaped ("what should I add", ' +
       '"best moisturizer", "what helps redness", a question that ' +
-      'mentions an ingredient or product category), KEEP THE TEXT ' +
-      'EVEN SHORTER (≤ 30 words total). The app surfaces real product ' +
-      'cards under your text — your job is to set them up, not ' +
-      'duplicate them. Name the kind of product you would suggest ' +
-      '(e.g. "a niacinamide serum") in one short sentence; the cards ' +
-      'do the rest.\n' +
+      'mentions an ingredient or product category), output ONE short ' +
+      'lead sentence ONLY. Hard cap: ≤ 22 words. No bullets, no ' +
+      'second sentence, no list. The app renders real product cards ' +
+      'with brand, name, match %, price, and Shop button directly ' +
+      'under your text — your job is the lead-in only, not the recap. ' +
+      'Name the type of product (e.g. "a salicylic acid serum" or ' +
+      '"a barrier-repair moisturizer") tied to the user\'s actual ' +
+      'concern from latest_scan if present. Never name specific ' +
+      'brands or product names — the cards do that.\n' +
       '• No greetings, no "Great question", no preamble. Lead with the ' +
       'answer.\n' +
       '• No headings, no markdown bold, no code fences, no JSON.\n\n' +

@@ -30,14 +30,11 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
-  LayoutAnimation,
   Linking,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -46,13 +43,12 @@ import { StatusBar } from 'expo-status-bar';
 import {
   ArrowRight,
   ArrowUpRight,
-  CaretDown,
   X,
 } from 'phosphor-react-native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@/store/useAppStore';
-import { palette, statusColor } from '@/theme';
+import { palette } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import {
   CATEGORY_LABEL,
@@ -75,20 +71,11 @@ import type {
   Concern,
   ConcernCategory,
   Product,
-  Severity,
 } from '@/types';
 import type {
   FaceScanAnalysis,
   ProductMatch,
 } from '@/ai/ai-contracts';
-
-// Android — required for LayoutAnimation when expanding finding rows.
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // Dev-only loud "DEMO READING" banner. Hidden from consumer flow.
 const DEV_BADGE_ENABLED =
@@ -109,15 +96,6 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     : undefined;
 
   const concerns = scan ? getConcerns(scan, previous) : [];
-  // v12.0 — show only the concerns the AI was confident enough about.
-  // calm/mild rows already exist for completeness in `concerns`, but
-  // the user-facing list focuses on what's actually noticeable.
-  const visibleConcerns = useMemo(() => {
-    const noticeable = concerns.filter((c) => c.severity !== 'calm');
-    if (noticeable.length > 0) return noticeable.slice(0, 4);
-    // Calm photo — show one row so the section isn't empty.
-    return concerns.slice(0, 1);
-  }, [concerns]);
 
   const headline = useMemo(() => buildHeadline(concerns, scan?.aiAnalysis), [
     concerns,
@@ -128,14 +106,32 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     [concerns, scan?.aiAnalysis]
   );
 
-  // v17.1 — `selectedMapCategory` drives which finding the
-  // FaceSkinMap renders in isolation. Default `null` lets the
-  // FaceSkinMap pick its own primary concern (highest severity).
-  // Tapping a chip locks the user's choice. v17.1 ditched the
-  // ALL-overlays-at-once view because it was visually noisy and
-  // hid the story.
+  // v17.2 — `selectedMapCategory` is the user's explicit chip
+  // choice. The actual concern shown in WHAT WE SAW falls back to
+  // the primary (highest-severity) concern when null. Tapping a
+  // chip locks user choice; the chip row + overlay + detail panel
+  // all read from the same active concern.
   const [selectedMapCategory, setSelectedMapCategory] =
     useState<ConcernCategory | null>(null);
+
+  // v17.2 — concerns the user actually needs to know about. Sorted
+  // worst-first so [0] is always the primary. Drives the chip row,
+  // the FaceSkinMap default selection, and the detail panel.
+  const noticeableConcerns = useMemo(
+    () => concerns.filter((c) => c.severity !== 'calm').slice(0, 4),
+    [concerns]
+  );
+
+  const activeMapConcern = useMemo(() => {
+    if (noticeableConcerns.length === 0) return null;
+    if (selectedMapCategory) {
+      return (
+        noticeableConcerns.find((c) => c.category === selectedMapCategory) ??
+        noticeableConcerns[0]
+      );
+    }
+    return noticeableConcerns[0];
+  }, [selectedMapCategory, noticeableConcerns]);
 
   const tonight = useMemo(() => {
     if (!scan) return [] as string[];
@@ -154,7 +150,6 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     return resolveRecommendations({ aiTopMatches, concerns });
   }, [aiTopMatches, concerns]);
 
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const revealHapticFired = useRef(false);
@@ -173,15 +168,6 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
   const close = () => {
     hapt.select();
     rootNav.goBack();
-  };
-
-  const toggleRow = (category: string) => {
-    hapt.select();
-    LayoutAnimation.configureNext({
-      duration: 220,
-      update: { type: 'easeInEaseOut' },
-    });
-    setExpandedCategory((prev) => (prev === category ? null : category));
   };
 
   const openProducts = () => {
@@ -322,20 +308,21 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </Text>
         ) : null}
 
-        {/* v17.1 — OPTION A layout
+        {/* v17.2 — consolidated OPTION A layout
             1. Score + summary (above)
-            2. Hero product / best next move
-            3. Skin map (WHAT WE SAW)
-            4. Visible findings
-            5. Tonight
-            6. Alternatives
-            7. Image quality (only when relevant)
-            8. Disclaimer
-            Putting the hero product BEFORE the skin map ensures the
-            user sees the actionable answer first; the skin map then
-            backs that recommendation with photographic proof. */}
+            2. Hero product (one card)
+            3. WHAT WE SAW — chip-driven photo overlay + active
+               finding's detail line directly under the photo (the
+               old WHAT'S VISIBLE list is now collapsed into this
+               single chip-driven section, eliminating the duplicate
+               "list of concerns then a photo of the same concerns"
+               beat).
+            4. TONIGHT (3 steps)
+            5. ALSO MATCHED (alternatives)
+            6. Image quality (only when relevant)
+            7. Disclaimer */}
 
-        {/* ── 3. YOUR NEXT MOVE — hero recommendation ──────────────── */}
+        {/* ── 2. YOUR NEXT MOVE — hero recommendation ──────────────── */}
         {recommendations.primary ? (
           <View style={styles.section}>
             <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
@@ -359,11 +346,11 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </View>
         ) : null}
 
-        {/* ── 4. WHAT WE SAW — image-anchored overlay ──────────────────
-            Renders the actual captured photo with AI-supplied polygon
-            + per-concern visual treatment overlaid. Default shows the
-            primary concern in isolation; chips toggle which finding
-            is highlighted. */}
+        {/* ── 3. WHAT WE SAW — image-anchored overlay + chip-driven
+              detail panel. The chip is the finding row AND the
+              overlay toggle in one. Tapping a chip both highlights
+              that concern on the photo and swaps the detail line
+              below. No separate "WHAT'S VISIBLE" section needed. */}
         {scan.aiAnalysis ? (
           <View style={styles.skinMapBlock}>
             <View style={styles.skinMapHeader}>
@@ -374,68 +361,86 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
                 WHAT WE SAW
               </Text>
             </View>
-            {visibleConcerns.filter((c) => c.severity !== 'calm').length >
-            1 ? (
+            {noticeableConcerns.length > 1 ? (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.skinMapChipRow}
               >
-                {visibleConcerns
-                  .filter((c) => c.severity !== 'calm')
-                  .map((c) => (
+                {noticeableConcerns.map((c) => {
+                  const selected =
+                    (selectedMapCategory ?? noticeableConcerns[0]?.category) ===
+                    c.category;
+                  return (
                     <SkinMapChip
                       key={c.category}
                       label={CATEGORY_LABEL[c.category]}
                       color={categoryChipColor(c.category)}
-                      selected={selectedMapCategory === c.category}
+                      severity={severityLabel(c.severity)}
+                      selected={selected}
                       onPress={() => {
                         hapt.select();
                         setSelectedMapCategory(c.category);
                       }}
                     />
-                  ))}
+                  );
+                })}
               </ScrollView>
             ) : null}
             <FaceSkinMap
               photoUri={scan.photoUri}
               aiAnalysis={scan.aiAnalysis}
-              selectedCategory={selectedMapCategory}
+              selectedCategory={
+                selectedMapCategory ??
+                noticeableConcerns[0]?.category ??
+                null
+              }
               width={Math.min(
                 Dimensions.get('window').width - 40,
                 460
               )}
+              showDebug={DEV_BADGE_ENABLED}
             />
-            <Text
-              style={styles.skinMapCaption}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={2}
-            >
-              AI-detected zones on your captured photo. Tap a label
-              to isolate that concern.
-            </Text>
+            {activeMapConcern ? (
+              <View style={styles.skinMapDetail}>
+                <View
+                  style={[
+                    styles.skinMapDetailRail,
+                    {
+                      backgroundColor: categoryChipColor(
+                        activeMapConcern.category
+                      ),
+                    },
+                  ]}
+                />
+                <Text
+                  style={styles.skinMapDetailFinding}
+                  maxFontSizeMultiplier={1.2}
+                  numberOfLines={3}
+                >
+                  {activeMapConcern.finding}
+                </Text>
+                <Text
+                  style={styles.skinMapDetailNext}
+                  maxFontSizeMultiplier={1.2}
+                  numberOfLines={2}
+                >
+                  {activeMapConcern.nextStep}
+                </Text>
+              </View>
+            ) : (
+              <Text
+                style={styles.skinMapCaption}
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={2}
+              >
+                No focal zones in this scan. Stay the course tonight.
+              </Text>
+            )}
           </View>
         ) : null}
 
-        {/* ── 5. What's visible — supporting findings ──────────────── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-            WHAT’S VISIBLE
-          </Text>
-          <View style={styles.findings}>
-            {visibleConcerns.map((concern, i) => (
-              <FindingRow
-                key={concern.category}
-                concern={concern}
-                expanded={expandedCategory === concern.category}
-                onPress={() => toggleRow(concern.category)}
-                showTopDivider={i > 0}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* ── 6. Tonight ───────────────────────────────────────────── */}
+        {/* ── 4. Tonight ───────────────────────────────────────────── */}
         {tonight.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
@@ -694,92 +699,13 @@ function buildHomeRecReason(concern: Concern | undefined): string {
 }
 
 // ============================================================================
-// Finding row
+// v17.2 — FindingRow removed.
+//
+// The WHAT'S VISIBLE list duplicated content the WHAT WE SAW chips
+// already carry (concern + severity), and the chip-driven detail
+// panel under the photo now shows the active finding's text +
+// next-step. One concern, one place.
 // ============================================================================
-
-function FindingRow({
-  concern,
-  expanded,
-  onPress,
-  showTopDivider,
-}: {
-  concern: Concern;
-  expanded: boolean;
-  onPress: () => void;
-  showTopDivider: boolean;
-}) {
-  const color = colorFor(concern.severity);
-  const fillRatio = severityFillRatio(concern.severity);
-
-  // v17.0 — visual proof now lives in the WHAT WE SAW section
-  // above (FaceSkinMap on the actual photo). The finding rows
-  // here read as compact text + severity bars; no inline diagram
-  // duplicates the work of the photo overlay.
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${CATEGORY_LABEL[concern.category]}, ${
-        concern.region
-      }, ${severityLabel(concern.severity)}`}
-      accessibilityState={{ expanded }}
-      style={({ pressed }) => [
-        styles.row,
-        showTopDivider && styles.rowDivider,
-        pressed && { opacity: 0.96 },
-      ]}
-    >
-      <View style={styles.rowHead}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.rowTitle} maxFontSizeMultiplier={1.15}>
-            <Text style={styles.rowTitleStrong}>
-              {CATEGORY_LABEL[concern.category]}
-            </Text>
-            <Text style={styles.rowTitleMid}>{`  ·  ${concern.region}`}</Text>
-          </Text>
-          <View style={styles.severityBarRail}>
-            <View
-              style={[
-                styles.severityBarFill,
-                {
-                  backgroundColor: color,
-                  width: `${Math.round(fillRatio * 100)}%`,
-                },
-              ]}
-            />
-          </View>
-        </View>
-        <Text
-          style={[styles.rowSeverity, { color }]}
-          maxFontSizeMultiplier={1.1}
-        >
-          {severityLabel(concern.severity)}
-        </Text>
-        <View
-          style={[
-            styles.rowCaret,
-            expanded && { transform: [{ rotate: '180deg' }] },
-          ]}
-        >
-          <CaretDown size={13} color={palette.inkTertiary} weight="bold" />
-        </View>
-      </View>
-
-      {expanded ? (
-        <View style={styles.rowDetail}>
-          <Text style={styles.rowDetailFinding} maxFontSizeMultiplier={1.2}>
-            {concern.finding}
-          </Text>
-          <View style={[styles.rowDetailBullet, { backgroundColor: color }]} />
-          <Text style={styles.rowDetailNext} maxFontSizeMultiplier={1.2}>
-            {concern.nextStep}
-          </Text>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
 
 // ============================================================================
 // v17.0 — Skin map category chip
@@ -793,26 +719,32 @@ function SkinMapChip({
   label,
   color,
   selected,
+  severity,
   onPress,
 }: {
   label: string;
-  /** Concern category color. Optional — "ALL" chip uses ink. */
-  color?: string;
+  /** Concern category color. */
+  color: string;
   selected: boolean;
+  /** v17.2 — short severity word ("MILD", "MODERATE"). Renders as a
+   *  faint sub-line under the label so the chip carries finding
+   *  context without needing a separate concern row. */
+  severity?: string;
   onPress: () => void;
 }) {
-  const tint = color ?? palette.ink;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${label}${selected ? ', selected' : ''}`}
+      accessibilityLabel={`${label}${
+        severity ? ', ' + severity : ''
+      }${selected ? ', selected' : ''}`}
       style={({ pressed }) => [
         styles.skinMapChip,
         selected && {
-          borderColor: tint,
-          backgroundColor: `${tint}15`,
+          borderColor: color,
+          backgroundColor: `${color}1F`,
         },
         pressed && { opacity: 0.92 },
       ]}
@@ -820,12 +752,23 @@ function SkinMapChip({
       <Text
         style={[
           styles.skinMapChipLabel,
-          selected && { color: tint },
+          selected && { color },
         ]}
         maxFontSizeMultiplier={1.1}
       >
         {label.toUpperCase()}
       </Text>
+      {severity ? (
+        <Text
+          style={[
+            styles.skinMapChipSeverity,
+            selected && { color, opacity: 0.85 },
+          ]}
+          maxFontSizeMultiplier={1.1}
+        >
+          {severity.toUpperCase()}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -840,32 +783,6 @@ function categoryChipColor(category: ConcernCategory): string {
       return '#A8C7C0';
     case 'tone':
       return '#D9A75E';
-  }
-}
-
-function severityFillRatio(s: Severity): number {
-  switch (s) {
-    case 'calm':
-      return 0.1;
-    case 'mild':
-      return 0.35;
-    case 'moderate':
-      return 0.65;
-    case 'needs-attention':
-      return 1;
-  }
-}
-
-function colorFor(s: Severity): string {
-  switch (s) {
-    case 'calm':
-      return statusColor.calm;
-    case 'mild':
-      return palette.inkTertiary;
-    case 'moderate':
-      return statusColor.monitor;
-    case 'needs-attention':
-      return statusColor.active;
   }
 }
 
@@ -1220,7 +1137,8 @@ const styles = StyleSheet.create({
   },
   skinMapChip: {
     paddingHorizontal: 12,
-    height: 28,
+    paddingVertical: 6,
+    minHeight: 38,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: palette.hairline,
@@ -1234,6 +1152,16 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: palette.inkSecondary,
   },
+  // v17.2 — small severity sub-line under the chip's category
+  // label. Same chip carries finding context AND the overlay
+  // toggle, eliminating the need for a separate row.
+  skinMapChipSeverity: {
+    marginTop: 2,
+    fontFamily: 'Inter-Regular',
+    fontSize: 8.5,
+    letterSpacing: 0.8,
+    color: palette.inkTertiary,
+  },
   skinMapCaption: {
     marginTop: 12,
     fontFamily: 'InstrumentSerif-Italic',
@@ -1241,6 +1169,36 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: palette.inkTertiary,
     maxWidth: '94%',
+  },
+  // v17.2 — chip-driven detail panel under the photo. Renders the
+  // active concern's finding text + next-step. Replaces the old
+  // WHAT'S VISIBLE section entirely.
+  skinMapDetail: {
+    marginTop: 14,
+    paddingLeft: 14,
+    position: 'relative',
+  },
+  skinMapDetailRail: {
+    position: 'absolute',
+    left: 0,
+    top: 4,
+    bottom: 4,
+    width: 3,
+    borderRadius: 2,
+  },
+  skinMapDetailFinding: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.3,
+    color: palette.ink,
+    marginBottom: 6,
+  },
+  skinMapDetailNext: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: palette.inkSecondary,
   },
 
   // ── 3. Headline + support ────────────────────────────────────────
@@ -1275,68 +1233,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // ── 4. Findings ──────────────────────────────────────────────────
-  findings: {},
-  row: { paddingVertical: 16 },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: palette.hairline,
-  },
-  rowHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  severityBarRail: {
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: palette.hairline,
-    marginTop: 10,
-    overflow: 'hidden',
-  },
-  severityBarFill: {
-    height: 3,
-    borderRadius: 1.5,
-  },
-  rowTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
-    color: palette.ink,
-    letterSpacing: -0.1,
-  },
-  rowTitleStrong: { color: palette.ink },
-  rowTitleMid: { color: palette.inkTertiary, fontFamily: 'Inter-Regular' },
-  rowSeverity: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  rowCaret: { marginLeft: 8, width: 16, alignItems: 'center' },
-  rowDetail: { marginTop: 12, paddingLeft: 18, position: 'relative' },
-  rowDetailFinding: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 15,
-    lineHeight: 22,
-    color: palette.inkSecondary,
-    marginBottom: 10,
-  },
-  rowDetailBullet: {
-    position: 'absolute',
-    left: 0,
-    top: 8,
-    width: 3,
-    height: 18,
-    borderRadius: 2,
-  },
-  rowDetailNext: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 19,
-    color: palette.ink,
-  },
-
-  // ── 5. Image quality ─────────────────────────────────────────────
+  // ── Image quality ─────────────────────────────────────────────
   qualityCard: {
     marginBottom: 28,
     paddingVertical: 14,

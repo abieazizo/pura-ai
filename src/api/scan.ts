@@ -135,10 +135,30 @@ export async function analyzeFaceScan(args: {
         })
       );
       if (analysis) {
+        // v17.2 — observable diagnostic. Logs the live overlay
+        // payload shape so the dev surface (and the AI source badge)
+        // can show whether the AI returned usable face_overlay +
+        // per-finding region_polygon arrays. This is the single
+        // place every AI-path scan flows through, so this log is
+        // ground truth for "did the live model give us overlay
+        // data this time?".
+        const overlayPresent = !!analysis.face_overlay;
+        const polygonCount = analysis.findings.filter(
+          (f) =>
+            Array.isArray(f.region_polygon) && f.region_polygon.length >= 3
+        ).length;
+        aiLog.info('analyzeFaceScan', 'overlay payload diagnostic', {
+          scanId,
+          face_overlay: overlayPresent,
+          face_box: analysis.face_overlay?.face_box ?? null,
+          landmarks_present: !!analysis.face_overlay?.landmarks,
+          findings_total: analysis.findings.length,
+          findings_with_polygon: polygonCount,
+        });
         aiTelemetry.setFeatureSource(
           'scan',
           'ai',
-          `analyzed scan ${scanId} via proxy (skin score ${analysis.skin_score.value}, ${analysis.findings.length} findings)`
+          `analyzed scan ${scanId} via proxy (skin score ${analysis.skin_score.value}, ${analysis.findings.length} findings, overlay=${overlayPresent ? 'yes' : 'no'}, polys=${polygonCount}/${analysis.findings.length})`
         );
         return translateAnalysisToScan({
           analysis,
