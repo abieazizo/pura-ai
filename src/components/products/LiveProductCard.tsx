@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { ArrowUpRight } from 'phosphor-react-native';
+import { useNavigation } from '@react-navigation/native';
 import { palette } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
@@ -72,12 +73,28 @@ export function LiveProductCard({
   variant = 'alt',
   onOpen,
 }: LiveProductCardProps) {
+  // v18.1 — by default, tapping the card body navigates to the
+  // in-app ProductDetail screen (which resolves from the live
+  // cache via `liveProductsById`). The Shop button still opens
+  // the real merchant URL via Linking. Callers can override the
+  // body-tap behavior via the `onOpen` prop (e.g. ScanResults
+  // wants to dismiss the modal first).
+  const nav = useNavigation<{ navigate: (name: string, params?: unknown) => void }>();
   const handleOpen = () => {
     if (onOpen) {
       onOpen(candidate);
       return;
     }
-    openProductPage(candidate);
+    hapt.select();
+    try {
+      nav.navigate('ProductDetail', {
+        productId: candidate.id,
+        tint: 'sand',
+      });
+    } catch {
+      // No nav context (rare) — fall back to merchant URL.
+      openProductPage(candidate);
+    }
   };
 
   if (variant === 'hero') {
@@ -151,12 +168,24 @@ function HeroCard({
             <View />
           )}
           <View style={{ flex: 1 }} />
-          <View style={heroStyles.shopBtn}>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              openProductPage(candidate);
+            }}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`Shop ${candidate.brand}`}
+            style={({ pressed }) => [
+              heroStyles.shopBtn,
+              pressed && { opacity: 0.92 },
+            ]}
+          >
             <Text style={heroStyles.shopBtnLabel} maxFontSizeMultiplier={1.1}>
               {candidate.productUrl ? 'Shop' : 'Find'}
             </Text>
             <ArrowUpRight size={12} weight="bold" color={palette.inkInverse} />
-          </View>
+          </Pressable>
         </View>
       </View>
     </Pressable>

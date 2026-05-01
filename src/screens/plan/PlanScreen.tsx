@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   LayoutAnimation,
@@ -46,8 +46,10 @@ import {
   sinceLastPhrase,
   tierLabel,
 } from '@/utils/skinScore';
-import { seedProducts } from '@/data/seed';
-import type { Concern, ConcernCategory, Product, Severity } from '@/types';
+import { LiveProductCard } from '@/components/products/LiveProductCard';
+import { lookupForScan } from '@/api/liveProducts';
+import type { LiveProductCandidate } from '@/ai/ai-contracts';
+import type { Concern, ConcernCategory, Severity } from '@/types';
 
 /**
  * PlanScreen — v9.1 "What should I do now?" full page.
@@ -88,23 +90,38 @@ export function PlanScreen() {
   const score = computeSkinScore(scans);
 
   const primary = concerns.find((c) => c.severity !== 'calm') ?? concerns[0];
-  const rec = useMemo(
-    () => pickProductForConcern(primary),
-    [primary]
-  );
-  const alternatives = useMemo(
-    () => pickAlternatives(primary, rec),
-    [primary, rec]
-  );
+
+  // v18.1 — live retrieval drives BEST FOR THIS + ALTERNATIVES.
+  // Previously we walked seedProducts via pickProductForConcern /
+  // pickAlternatives; now we ask the AI for real products tied to
+  // the user's actual scan. Cached at the module layer so multiple
+  // mounts hit cache.
+  const [livePicks, setLivePicks] = useState<LiveProductCandidate[]>([]);
+  useEffect(() => {
+    if (!latest?.aiAnalysis) {
+      setLivePicks([]);
+      return;
+    }
+    let cancelled = false;
+    lookupForScan(latest, { count: 6 })
+      .then((picks) => {
+        if (cancelled) return;
+        setLivePicks(picks);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLivePicks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [latest?.id, latest?.aiAnalysis]);
+  const rec = livePicks[0] ?? null;
+  const alternatives = livePicks.slice(1, 4);
 
   const goBack = () => {
     hapt.select();
     nav.goBack();
-  };
-
-  const openProduct = (p: Product) => {
-    hapt.select();
-    nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
   };
 
   const openProducts = () => {
@@ -215,86 +232,20 @@ export function PlanScreen() {
           </View>
         ) : null}
 
-        {/* ── BEST PRODUCT ── */}
+        {/* ── BEST PRODUCT — v18.1 LIVE retrieval ────────────────────
+            Replaces the seed-driven `pickProductForConcern` walk.
+            Renders a LiveProductCard hero with the AI's actual
+            best pick for the user's scan + concern. */}
         {rec ? (
           <View style={styles.section}>
             <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
               BEST FOR THIS
             </Text>
-            <Pressable
-              onPress={() => openProduct(rec)}
-              accessibilityRole="button"
-              accessibilityLabel={`${rec.brand} ${rec.name}`}
-              style={({ pressed }) => [
-                styles.recCard,
-                pressed && { opacity: 0.97 },
-              ]}
-            >
-              <View
-                style={[
-                  styles.recImage,
-                  { backgroundColor: tintForProduct(rec) },
-                ]}
-              >
-                {rec.imageUri ? (
-                  <Image
-                    source={{ uri: rec.imageUri }}
-                    style={styles.recImageInner}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.recImageFallback} pointerEvents="none">
-                    <Drop size={44} color={palette.ink} weight="duotone" />
-                  </View>
-                )}
-                {/* 98% match badge — premium green, bottom-left of image */}
-                <View style={styles.recMatchBadge}>
-                  <Text style={styles.recMatchBadgeNum} maxFontSizeMultiplier={1.1}>
-                    {`${rec.matchScore ?? 90}%`}
-                  </Text>
-                  <Text style={styles.recMatchBadgeLabel} maxFontSizeMultiplier={1.1}>
-                    MATCH
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.recBody}>
-                <Text style={styles.recBrand} maxFontSizeMultiplier={1.1}>
-                  {rec.brand.toUpperCase()}
-                </Text>
-                <Text
-                  style={styles.recName}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={1.15}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}
-                >
-                  {rec.name}
-                </Text>
-                <View style={styles.recReasonRow}>
-                  <View style={styles.recReasonBullet} />
-                  <Text
-                    style={styles.recReason}
-                    maxFontSizeMultiplier={1.2}
-                    numberOfLines={2}
-                  >
-                    {buildRecReason(primary)}
-                  </Text>
-                </View>
-                <View style={styles.recFoot}>
-                  <Text style={styles.recPrice} maxFontSizeMultiplier={1.1}>
-                    ${Number.isInteger(rec.price) ? rec.price : rec.price.toFixed(2)}
-                  </Text>
-                  <View style={styles.recAdd}>
-                    <Plus size={13} color={palette.inkInverse} weight="bold" />
-                    <Text style={styles.recAddLabel}>Add</Text>
-                  </View>
-                </View>
-              </View>
-            </Pressable>
+            <LiveProductCard candidate={rec} variant="hero" />
           </View>
         ) : null}
 
-        {/* ── ALTERNATIVES ── */}
+        {/* ── ALTERNATIVES — v18.1 LIVE retrieval ──────────────────── */}
         {alternatives.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.altHead}>
@@ -312,68 +263,19 @@ export function PlanScreen() {
                 </Text>
               </Pressable>
             </View>
-            {/* v10.5 — alternatives rows enriched. Thumbnail grows 48×56
-                → 54×66, name gets paired with a tiny moss match percent,
-                price becomes serif to echo the hero card. Still one row
-                per product — net-zero element count. Each row now speaks
-                the app's "match-as-pitch" vocabulary instead of reading
-                as a price list. */}
-            <View style={styles.altList}>
-              {alternatives.map((p) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() => openProduct(p)}
-                  style={({ pressed }) => [
-                    styles.altRow,
-                    pressed && { opacity: 0.92 },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.altImage,
-                      { backgroundColor: tintForProduct(p) },
-                    ]}
-                  >
-                    {p.imageUri ? (
-                      <Image
-                        source={{ uri: p.imageUri }}
-                        style={StyleSheet.absoluteFillObject}
-                        resizeMode="cover"
-                      />
-                    ) : null}
-                  </View>
-                  <View style={{ flex: 1, marginRight: 10 }}>
-                    <View style={styles.altBrandRow}>
-                      <Text
-                        style={styles.altBrand}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={1.1}
-                      >
-                        {p.brand.toUpperCase()}
-                      </Text>
-                      <View style={styles.altMatchPill}>
-                        <Text
-                          style={styles.altMatchPillText}
-                          maxFontSizeMultiplier={1.1}
-                        >
-                          {`${p.matchScore ?? 84}%`}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text
-                      style={styles.altName}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {p.name}
-                    </Text>
-                  </View>
-                  <Text style={styles.altPrice} maxFontSizeMultiplier={1.1}>
-                    ${Number.isInteger(p.price) ? p.price : p.price.toFixed(2)}
-                  </Text>
-                </Pressable>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.altScrollRow}
+            >
+              {alternatives.map((c) => (
+                <LiveProductCard
+                  key={c.id}
+                  candidate={c}
+                  variant="alt"
+                />
               ))}
-            </View>
+            </ScrollView>
           </View>
         ) : null}
 
@@ -748,65 +650,10 @@ function Header({ onBack }: { onBack: () => void }) {
   );
 }
 
-// ============================================================================
-// Product selection
-// ============================================================================
-
-const CATEGORY_TO_PRODUCT_CATEGORY: Record<ConcernCategory, string[]> = {
-  breakouts: ['spot', 'serum', 'toner', 'cleanser'],
-  hydration: ['moisturizer', 'serum', 'toner'],
-  texture: ['serum', 'mask', 'toner'],
-  tone: ['serum', 'spf', 'treatment'],
-};
-
-function pickProductForConcern(concern: Concern | undefined): Product | null {
-  if (!concern) return seedProducts[0] ?? null;
-  const preferredCategories = CATEGORY_TO_PRODUCT_CATEGORY[concern.category];
-  for (const cat of preferredCategories) {
-    const match = seedProducts.find(
-      (p) => p.category === cat
-    );
-    if (match) return match;
-  }
-  return seedProducts[0] ?? null;
-}
-
-function pickAlternatives(
-  concern: Concern | undefined,
-  primary: Product | null
-): Product[] {
-  if (!concern || !primary) return seedProducts.slice(0, 3);
-  const preferredCategories = CATEGORY_TO_PRODUCT_CATEGORY[concern.category];
-  const matches = seedProducts.filter(
-    (p) =>
-      p.id !== primary.id &&
-      preferredCategories.includes(p.category)
-  );
-  if (matches.length >= 3) return matches.slice(0, 3);
-  // Fill with any products
-  const fillers = seedProducts.filter(
-    (p) => p.id !== primary.id && !matches.includes(p)
-  );
-  return [...matches, ...fillers].slice(0, 3);
-}
-
-function buildRecReason(concern: Concern | undefined): string {
-  if (!concern) return 'Matched to your skin profile.';
-  // v10 — rewritten so every region (singular or plural) reads grammatically.
-  // Prior copy had "your forehead are running dry" which failed noun-verb
-  // agreement. Each branch now names the region in a clause that works with
-  // any region string.
-  switch (concern.category) {
-    case 'breakouts':
-      return `Targets the breakout showing on your ${concern.region}.`;
-    case 'hydration':
-      return `Restores moisture to your ${concern.region}.`;
-    case 'texture':
-      return `Smooths the texture on your ${concern.region}.`;
-    case 'tone':
-      return `Works on the dark marks across your ${concern.region}.`;
-  }
-}
+// v18.1 — Product selection helpers removed. Plan now reads its
+// hero + alternatives from `lookupForScan(latest)`; LiveProductCard
+// supplies its own matchReason so we don't need a deterministic
+// copywriter here.
 
 // ============================================================================
 // Helpers
@@ -829,19 +676,6 @@ function compressStep(step: string): string {
   if (s.includes('barrier-repair')) return 'Barrier-repair only.';
   const first = step.split(/[.;]/)[0];
   return first.length <= 48 ? `${first}.` : `${first.slice(0, 45)}\u2026`;
-}
-
-function tintForProduct(p: Product): string {
-  switch (p.tint) {
-    case 'clay':
-      return palette.clayPaper;
-    case 'sand':
-      return palette.sandPaper;
-    case 'moss':
-      return palette.mossLight;
-    default:
-      return palette.bgDeep;
-  }
 }
 
 function colorFor(s: Severity): string {
@@ -1101,9 +935,12 @@ const styles = StyleSheet.create({
     color: palette.clay,
     letterSpacing: 0.2,
   },
-  // v10.5 — alternatives enriched. Thumbnails larger, brand row pairs
-  // with a moss match-percent pill, price becomes serif to echo the
-  // hero product card. Still one row per product.
+  // v18.1 — altScrollRow drives the horizontal LiveProductCard
+  // alternatives carousel under BEST FOR THIS.
+  altScrollRow: {
+    gap: 10,
+    paddingRight: 4,
+  },
   altList: {
     gap: 14,
   },

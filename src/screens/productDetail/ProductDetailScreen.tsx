@@ -33,7 +33,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import { CATEGORY_LABEL, getConcerns } from '@/utils/concerns';
-import type { Concern, Product, ProductTint } from '@/types';
+import type { Concern, Product, ProductCategory, ProductTint } from '@/types';
+import type { LiveProductCandidate } from '@/ai/ai-contracts';
+import { buildSearchUrl } from '@/api/liveProducts';
 
 type DetailRoute = RouteProp<
   { ProductDetail: { productId: string; tint?: ProductTint } },
@@ -53,7 +55,20 @@ export function ProductDetailScreen() {
   const { productId } = route.params;
   const tint: ProductTint = route.params.tint ?? 'sand';
 
-  const product = seedProducts.find((p) => p.id === productId);
+  // v18.1 — resolve from the live cache first, fall back to seed.
+  // Live products surfaced anywhere in the app (Home, scan results,
+  // assistant, search) are written into `liveProductsById` by
+  // `src/api/liveProducts.ts`. ProductDetail can render either type
+  // because we adapt LiveProductCandidate → Product shape on read.
+  const liveCandidate = useAppStore(
+    (s) => s.liveProductsById[productId] ?? null
+  );
+  const product: Product | undefined = useMemo(() => {
+    if (liveCandidate) {
+      return liveCandidateToProduct(liveCandidate, tint);
+    }
+    return seedProducts.find((p) => p.id === productId);
+  }, [liveCandidate, productId, tint]);
   const user = useAppStore(
     useShallow((s) => ({
       skinType: s.skinType,
@@ -215,6 +230,55 @@ export function ProductDetailScreen() {
       ) : null}
     </SafeAreaView>
   );
+}
+
+// ============================================================================
+// v18.1 — LiveProductCandidate → Product adapter.
+//
+// The detail screen was originally seed-only. v18.1 lets it render
+// any product surfaced via the live retrieval engine by adapting
+// the candidate shape into the legacy Product shape. Fields the
+// live candidate doesn't carry (rating, reviewCount, tint hash,
+// formulation, howToUse, etc.) are filled with sensible defaults
+// or empty strings; the screen's optional-field handling already
+// handles missing data gracefully.
+// ============================================================================
+
+function adaptCategory(c: LiveProductCandidate['category']): ProductCategory {
+  switch (c) {
+    case 'spot_treatment':
+      return 'treatment';
+    case 'unknown':
+      return 'serum';
+    default:
+      return c;
+  }
+}
+
+function liveCandidateToProduct(
+  c: LiveProductCandidate,
+  tint: ProductTint
+): Product {
+  const buyUrl = c.productUrl ?? buildSearchUrl(c);
+  return {
+    id: c.id,
+    brand: c.brand,
+    name: c.name,
+    category: adaptCategory(c.category),
+    imageUri: c.imageUrl ?? '',
+    ingredients: c.ingredientsHighlights,
+    keyIngredients: c.ingredientsHighlights,
+    description: c.shortDescription,
+    tint,
+    rating: 0,
+    reviewCount: 0,
+    matchScore: c.matchScore,
+    tags: [],
+    addedDate: c.sourceTimestamp,
+    price: c.price ?? 0,
+    imageUrl: c.imageUrl ?? undefined,
+    buyUrl,
+  };
 }
 
 // ============================================================================

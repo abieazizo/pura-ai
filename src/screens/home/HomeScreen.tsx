@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,7 +32,9 @@ import {
   computeSkinScore,
   formatDelta,
 } from '@/utils/skinScore';
-import { seedProducts } from '@/data/seed';
+import { LiveProductCard } from '@/components/products/LiveProductCard';
+import { lookupForScan, lookupLiveProducts } from '@/api/liveProducts';
+import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import type { Concern, Scan, Severity } from '@/types';
 
 /**
@@ -92,18 +93,56 @@ export function HomeScreen() {
   const firstName = (user.name || '').split(/\s+/)[0] || null;
   const greeting = useMemo(() => buildGreeting(firstName), [firstName]);
 
-  // Hoisted hook for the Day 1+ product pick. Computes `primary`
-  // inline so the memo only re-runs when the relevant scan changes.
-  // Returns null on Day 0 — the JSX below skips rendering the rec
-  // card when scans.length === 0 anyway.
-  const recProduct = useMemo(() => {
-    if (scans.length === 0) return null;
-    const latestScan = scans[scans.length - 1];
-    const prev = scans.length >= 2 ? scans[scans.length - 2] : undefined;
-    const cs = latestScan ? getConcerns(latestScan, prev) : [];
-    const primaryConcern = cs.find((c) => c.severity !== 'calm') ?? cs[0];
-    return pickRecProduct(primaryConcern?.category);
-  }, [scans]);
+  // v18.1 — Day 1+ product pick now sourced from LIVE retrieval.
+  // The previous `pickRecProduct` walked seedProducts; that's gone.
+  // We fire `lookupForScan(latestScan)` once per scan id and
+  // surface candidates[0] as the PICKED FOR YOU card. The seed
+  // catalog is no longer this screen's primary inventory.
+  const [recCandidate, setRecCandidate] = useState<LiveProductCandidate | null>(
+    null
+  );
+  const latestScanForRec = scans.length > 0 ? scans[scans.length - 1] : null;
+  useEffect(() => {
+    if (!latestScanForRec) {
+      setRecCandidate(null);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const picks = latestScanForRec.aiAnalysis
+          ? await lookupForScan(latestScanForRec, { count: 4 })
+          : [];
+        if (cancelled) return;
+        if (picks.length > 0) {
+          setRecCandidate(picks[0]);
+          return;
+        }
+        // No scan-level AI context — fall back to a concern-shaped
+        // free-text live retrieval so we never leave the user
+        // looking at silence.
+        const cs = getConcerns(
+          latestScanForRec,
+          scans.length >= 2 ? scans[scans.length - 2] : undefined
+        );
+        const primaryConcern = cs.find((c) => c.severity !== 'calm') ?? cs[0];
+        const fallback = primaryConcern
+          ? await lookupLiveProducts(
+              `best ${primaryConcern.category} product`,
+              { count: 3 }
+            )
+          : [];
+        if (cancelled) return;
+        setRecCandidate(fallback[0] ?? null);
+      } catch {
+        if (!cancelled) setRecCandidate(null);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [latestScanForRec?.id, scans]);
   // ─────────────────────────────────────────────────────────────────
   // End of hook block. Plain derivations from here on.
   // ─────────────────────────────────────────────────────────────────
@@ -191,18 +230,9 @@ export function HomeScreen() {
         )
       : 1;
 
-  // v11.14 — `recProduct` and `aiTopMatches` are hoisted above the
-  // Day 0 early return (see the hook block at the top of this
-  // function). Below we only derive non-hook values from them.
-  //
-  // v10.23 — surface the AI's actual match score for this product when
-  // the post-scan composite has run. Falls back to a label-only badge
-  // (no fake number) when no AI ranking is available.
-  const recProductAiScore =
-    recProduct == null
-      ? null
-      : aiTopMatches.find((m) => m.product_id === recProduct.id)?.match_score ??
-        null;
+  // v18.1 — recProduct is now the LIVE retrieval result; the AI's
+  // matchScore is already on the candidate so we don't need to
+  // cross-reference aiTopMatches.
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -345,90 +375,19 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        {/* ── E. Product teaser (v10.4 premium card) ─────────────────── */}
-        {/* Was a flat brand+name+price row; now matches the Plan page's
-            132×164 premium card treatment so Home's one product moment
-            feels like a considered pick, not a list item. Moss match
-            badge overlays the image; brand + serif name + italic "why"
-            stacks to the right. */}
-        {recProduct ? (
-          <Pressable
-            onPress={() => {
-              hapt.select();
-              nav.navigate('ProductDetail', {
-                productId: recProduct.id,
-                tint: recProduct.tint,
-              });
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`${recProduct.brand} ${recProduct.name}`}
-            style={({ pressed }) => [
-              styles.recCard,
-              pressed && { opacity: 0.96 },
-            ]}
-          >
-            <View style={styles.recCardKickerRow}>
-              <Text style={styles.recCardKicker} maxFontSizeMultiplier={1.1}>
-                PICKED FOR YOU
-              </Text>
-            </View>
-            <View style={styles.recCardBody}>
-              <View
-                style={[
-                  styles.recCardImage,
-                  { backgroundColor: tintForProduct(recProduct) },
-                ]}
-              >
-                {recProduct.imageUri ? (
-                  <Image
-                    source={{ uri: recProduct.imageUri }}
-                    style={StyleSheet.absoluteFillObject}
-                    resizeMode="cover"
-                  />
-                ) : null}
-                <View style={styles.recCardMatch}>
-                  {recProductAiScore !== null ? (
-                    <Text
-                      style={styles.recCardMatchNum}
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      {`${recProductAiScore}%`}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.recCardMatchLabel} maxFontSizeMultiplier={1.1}>
-                    MATCH
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.recCardText}>
-                <Text style={styles.recCardBrand} maxFontSizeMultiplier={1.1}>
-                  {recProduct.brand.toUpperCase()}
-                </Text>
-                <Text
-                  style={styles.recCardName}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={1.15}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}
-                >
-                  {recProduct.name}
-                </Text>
-                <Text
-                  style={styles.recCardReason}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={1.2}
-                >
-                  {buildHomeRecReason(primary)}
-                </Text>
-                <View style={styles.recCardFoot}>
-                  <Text style={styles.recCardPrice} maxFontSizeMultiplier={1.1}>
-                    {`$${Number.isInteger(recProduct.price) ? recProduct.price : recProduct.price.toFixed(2)}`}
-                  </Text>
-                  <CaretRight size={13} color={palette.inkTertiary} weight="bold" />
-                </View>
-              </View>
-            </View>
-          </Pressable>
+        {/* ── E. Product teaser — v18.1 LIVE retrieval ──────────────
+            The PICKED FOR YOU card is now backed by the live AI
+            retrieval engine, not the seed catalog. We fire
+            lookupForScan() once per scan and render the top candidate
+            as a LiveProductCard hero. seedProducts no longer touches
+            this screen. */}
+        {recCandidate ? (
+          <View style={styles.recBlock}>
+            <Text style={styles.recCardKicker} maxFontSizeMultiplier={1.1}>
+              PICKED FOR YOU
+            </Text>
+            <LiveProductCard candidate={recCandidate} variant="hero" />
+          </View>
         ) : null}
 
         {/* ── F. Entry points ─────────────────────────────────────────── */}
@@ -762,50 +721,10 @@ function progressTeaserCaption(delta: number, scoreValue: number): string {
  * current top concern. Falls back to a generic match line when the user
  * has no scan-derived concern yet.
  */
-function buildHomeRecReason(concern: Concern | undefined): string {
-  if (!concern) return 'Matched to your skin profile.';
-  switch (concern.category) {
-    case 'breakouts':
-      return `Targets the breakout on your ${concern.region}.`;
-    case 'hydration':
-      return `Restores moisture to your ${concern.region}.`;
-    case 'texture':
-      return `Smooths the texture on your ${concern.region}.`;
-    case 'tone':
-      return `Works on dark marks across your ${concern.region}.`;
-  }
-}
-
-function pickRecProduct(category: Concern['category'] | undefined) {
-  const preferred: string[] =
-    category === 'breakouts'
-      ? ['spot', 'serum', 'toner']
-      : category === 'hydration'
-      ? ['moisturizer', 'serum']
-      : category === 'texture'
-      ? ['serum', 'mask']
-      : category === 'tone'
-      ? ['serum', 'spf']
-      : ['serum'];
-  for (const c of preferred) {
-    const m = seedProducts.find((p) => p.category === c);
-    if (m) return m;
-  }
-  return seedProducts[0] ?? null;
-}
-
-function tintForProduct(p: { tint?: string | null }) {
-  switch (p.tint) {
-    case 'clay':
-      return palette.clayPaper;
-    case 'sand':
-      return palette.sandPaper;
-    case 'moss':
-      return palette.mossLight;
-    default:
-      return palette.bgDeep;
-  }
-}
+// v18.1 — `buildHomeRecReason`, `pickRecProduct`, and `tintForProduct`
+// removed. The Home product pick now uses LiveProductCard which
+// renders the AI's own matchReason and does not need a seed-tinted
+// placeholder.
 
 function colorFor(s: Severity): string {
   switch (s) {
@@ -1111,13 +1030,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
-  // E — Product rec card (v10.4 premium)
-  recCard: {
+  // v18.1 — recBlock wraps the LiveProductCard hero with a kicker.
+  recBlock: {
     marginTop: 22,
     marginHorizontal: 20,
-  },
-  recCardKickerRow: {
-    marginBottom: 14,
+    gap: 12,
   },
   recCardKicker: {
     fontFamily: 'Inter-SemiBold',
@@ -1125,83 +1042,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.6,
     color: palette.inkTertiary,
     textTransform: 'uppercase',
-  },
-  recCardBody: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  recCardImage: {
-    width: 118,
-    height: 148,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: palette.bgDeep,
-    position: 'relative',
-  },
-  recCardMatch: {
-    position: 'absolute',
-    left: 8,
-    bottom: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: palette.moss,
-    alignItems: 'center',
-    minWidth: 52,
-  },
-  recCardMatchNum: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    lineHeight: 14,
-    color: palette.inkInverse,
-    letterSpacing: 0.1,
-    fontVariant: ['tabular-nums'],
-  },
-  recCardMatchLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: 'rgba(248,250,252,0.78)',
-    marginTop: 1,
-  },
-  recCardText: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  recCardBrand: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: palette.inkTertiary,
-    marginBottom: 4,
-  },
-  recCardName: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 18,
-    lineHeight: 22,
-    letterSpacing: -0.3,
-    color: palette.ink,
-    marginBottom: 8,
-  },
-  recCardReason: {
-    flex: 1,
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 13,
-    lineHeight: 19,
-    color: palette.inkSecondary,
-    marginBottom: 10,
-  },
-  recCardFoot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  recCardPrice: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 17,
-    letterSpacing: -0.2,
-    color: palette.ink,
-    fontVariant: ['tabular-nums'],
   },
 
   // F — Entry block (v10). Primary ink CTA + two quieter link rows.

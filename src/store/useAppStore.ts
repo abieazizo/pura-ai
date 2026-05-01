@@ -16,6 +16,7 @@ import type {
   User,
 } from '@/types';
 import type {
+  LiveProductCandidate,
   ProductIdentity,
   ProductMatch,
   ProgressExplanation,
@@ -107,6 +108,21 @@ export interface AppState {
   aiRoutine: RoutineRecommendation | null;
   aiSearchSuggestions: SearchSuggestionResult | null;
   aiActiveProductIdentity: ProductIdentity | null;
+  /**
+   * v18.1 — Live product cache.
+   *
+   * Every `LiveProductCandidate` surfaced anywhere in the app gets
+   * cached here by id. The cache lets ProductDetail resolve a
+   * candidate by id (e.g. when the user taps a hero card on the
+   * scan result and we navigate to detail), and lets components
+   * across screens share the same live data without each one
+   * firing its own AI call.
+   *
+   * Keyed by candidate.id (a stable AI-generated slug like
+   * "the-ordinary-niacinamide-10-zinc-1"). Non-persisted —
+   * regenerated per session by the live retrieval path.
+   */
+  liveProductsById: Record<string, LiveProductCandidate>;
   /** v10.26 — AI-derived progress narrative + score explanation,
    *  hydrated by `getProgressBundle()` (api/progress.ts) on Progress
    *  sub-tab mount. Surfaces in RoutineScreen's Progress segment as
@@ -172,6 +188,13 @@ export interface AppState {
     progress: ProgressExplanation | null,
     score: SkinScoreExplanation | null
   ) => void;
+  /**
+   * v18.1 — write a live product candidate (or batch) to the
+   * shared cache. Every retrieval call in `src/api/liveProducts.ts`
+   * funnels through this so any screen that surfaces a candidate
+   * also makes it resolvable by id.
+   */
+  cacheLiveProducts: (candidates: LiveProductCandidate[]) => void;
 
   finishOnboarding: () => void;
 
@@ -225,6 +248,10 @@ const blankState = {
   aiRoutine: null as RoutineRecommendation | null,
   aiSearchSuggestions: null as SearchSuggestionResult | null,
   aiActiveProductIdentity: null as ProductIdentity | null,
+
+  // v18.1 — live product cache. Non-persisted; rebuilt per session
+  // by every call into src/api/liveProducts.ts.
+  liveProductsById: {} as Record<string, LiveProductCandidate>,
 
   // v10.26 AI progress hydration
   aiProgress: null as ProgressExplanation | null,
@@ -474,6 +501,20 @@ export const useAppStore = create<AppState>()(
         set({ aiActiveProductIdentity: i }),
       setAiProgressBundle: (progress, score) =>
         set({ aiProgress: progress, aiScoreExplanation: score }),
+
+      // v18.1 — merge incoming live candidates into the cache. Used
+      // by every retrieval flow in src/api/liveProducts.ts so any
+      // surface that displays a candidate also makes it resolvable
+      // by id from any other surface.
+      cacheLiveProducts: (candidates) =>
+        set((state) => {
+          if (candidates.length === 0) return state;
+          const next = { ...state.liveProductsById };
+          for (const c of candidates) {
+            next[c.id] = c;
+          }
+          return { liveProductsById: next };
+        }),
 
       finishOnboarding: () => {
         const s = get();

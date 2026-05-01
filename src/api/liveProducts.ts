@@ -40,6 +40,21 @@ import type {
 import { aiGateway } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
 import { aiTelemetry } from '@/ai/aiTelemetry';
+import { useAppStore } from '@/store/useAppStore';
+
+/**
+ * v18.1 — every successful retrieval writes the candidate set into
+ * the shared store cache so ProductDetail / Home / browse-by-goal /
+ * the assistant all resolve by id from a single source of truth.
+ */
+function cacheCandidates(candidates: LiveProductCandidate[]) {
+  if (candidates.length === 0) return;
+  try {
+    useAppStore.getState().cacheLiveProducts(candidates);
+  } catch {
+    /* never break the retrieval path on a cache write */
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Cache.
@@ -253,6 +268,7 @@ export async function lookupLiveProducts(
         query: trimmed,
         n: hit.length,
       });
+      cacheCandidates(hit);
       return hit;
     }
   }
@@ -272,6 +288,7 @@ export async function lookupLiveProducts(
       .map(sanitizeCandidate)
       .sort((a, b) => b.matchScore - a.matchScore);
     writeCache(key, sanitized, result.confidence);
+    cacheCandidates(sanitized);
     aiLog.info('liveProducts', 'AI live retrieval ok', {
       query: trimmed,
       n: sanitized.length,
@@ -338,6 +355,7 @@ export async function lookupForScan(
         scanId: scan.id,
         n: hit.length,
       });
+      cacheCandidates(hit);
       return hit;
     }
   }
@@ -362,6 +380,7 @@ export async function lookupForScan(
       .map(sanitizeCandidate)
       .sort((a, b) => b.matchScore - a.matchScore);
     writeCache(key, sanitized, result.confidence);
+    cacheCandidates(sanitized);
     aiLog.info('liveProducts', 'scan live retrieval ok', {
       scanId: scan.id,
       n: sanitized.length,
