@@ -60,6 +60,7 @@ import {
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
+import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { FaceSkinMap } from '@/screens/scan/components/FaceSkinMap';
 import { lookupForScan } from '@/api/liveProducts';
 import type { RootStackParamList } from '@/navigation/types';
@@ -148,19 +149,24 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     LiveProductCandidate[]
   >([]);
   const [liveLoading, setLiveLoading] = useState<boolean>(false);
+  const [liveError, setLiveError] = useState<boolean>(false);
+  const [liveAttempt, setLiveAttempt] = useState<number>(0);
 
   useEffect(() => {
     if (!scan?.aiAnalysis) return;
     let cancelled = false;
     setLiveLoading(true);
-    lookupForScan(scan)
+    setLiveError(false);
+    lookupForScan(scan, { fresh: liveAttempt > 0 })
       .then((picks) => {
         if (cancelled) return;
         setLiveCandidates(picks);
+        setLiveError(picks.length === 0);
       })
       .catch(() => {
         if (cancelled) return;
         setLiveCandidates([]);
+        setLiveError(true);
       })
       .finally(() => {
         if (cancelled) return;
@@ -169,10 +175,11 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [scan?.id, scan?.aiAnalysis]);
+  }, [scan?.id, scan?.aiAnalysis, liveAttempt]);
 
   const heroLive = liveCandidates[0] ?? null;
   const altLive = liveCandidates.slice(1, 6);
+  const retryLive = () => setLiveAttempt((n) => n + 1);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -324,28 +331,25 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             7. Disclaimer */}
 
         {/* ── 2. YOUR NEXT MOVE — live product retrieval ─────────────── */}
-        {heroLive ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-              {nextMoveKickerFor(concerns)}
-            </Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+            {nextMoveKickerFor(concerns)}
+          </Text>
+          {heroLive ? (
             <LiveProductCard candidate={heroLive} variant="hero" />
-          </View>
-        ) : liveLoading ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-              {nextMoveKickerFor(concerns)}
-            </Text>
-            <View style={styles.liveLoadingCard}>
-              <Text
-                style={styles.liveLoadingText}
-                maxFontSizeMultiplier={1.15}
-              >
-                Finding the right products for your scan…
-              </Text>
-            </View>
-          </View>
-        ) : null}
+          ) : liveLoading ? (
+            <LiveProductsUnavailable
+              variant="loading"
+              scope="for your scan"
+            />
+          ) : (
+            <LiveProductsUnavailable
+              variant={liveError ? 'unavailable' : 'empty'}
+              scope="for your scan"
+              onRetry={retryLive}
+            />
+          )}
+        </View>
 
         {/* ── 3. WHAT WE SAW — image-anchored overlay + chip-driven
               detail panel. The chip is the finding row AND the
@@ -1028,21 +1032,6 @@ const styles = StyleSheet.create({
     color: palette.clay,
   },
   altRow: { gap: 10, paddingRight: 4 },
-  // v18.0 — quiet placeholder while live retrieval is in flight.
-  liveLoadingCard: {
-    paddingVertical: 22,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    backgroundColor: palette.bgDeep,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-  },
-  liveLoadingText: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 14,
-    lineHeight: 19,
-    color: palette.inkSecondary,
-  },
 
   // ── 8. Disclaimer ────────────────────────────────────────────────
   disclaimer: {

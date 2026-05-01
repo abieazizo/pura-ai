@@ -72,7 +72,9 @@ export function AnalysisHeader({ onClose, mode, topInset }: AnalysisHeaderProps)
         accessibilityLabel="Cancel scan"
         hitSlop={8}
       >
-        <X size={18} weight="duotone" color={palette.ink} />
+        {/* v18.4 — close icon switches to inverse ink for the deep
+            analyzing backdrop. */}
+        <X size={18} weight="duotone" color={palette.inkInverse} />
       </Pressable>
 
       <View style={styles.kickerRow}>
@@ -102,11 +104,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  // v18.4 — close button reads as a quiet pearl pill on the deep
+  // backdrop. Kicker + pulse switch to a soft pearl/cyan tone.
   closeBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.35)', // sand @ 35%
+    backgroundColor: 'rgba(248, 250, 252, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(248, 250, 252, 0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -119,12 +125,12 @@ const styles = StyleSheet.create({
   },
   kicker: {
     ...scanTypography.headerKicker,
-    color: palette.clay,
+    color: 'rgba(248, 250, 252, 0.78)',
   },
   pulseDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: palette.clay,
+    backgroundColor: '#7CB0FF',
   },
 });

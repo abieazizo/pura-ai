@@ -33,6 +33,7 @@ import {
   formatDelta,
 } from '@/utils/skinScore';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
+import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { lookupForScan, lookupLiveProducts } from '@/api/liveProducts';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import type { Concern, Scan, Severity } from '@/types';
@@ -101,6 +102,9 @@ export function HomeScreen() {
   const [recCandidate, setRecCandidate] = useState<LiveProductCandidate | null>(
     null
   );
+  const [recLoading, setRecLoading] = useState<boolean>(false);
+  const [recError, setRecError] = useState<boolean>(false);
+  const [recAttempt, setRecAttempt] = useState<number>(0);
   const latestScanForRec = scans.length > 0 ? scans[scans.length - 1] : null;
   useEffect(() => {
     if (!latestScanForRec) {
@@ -108,14 +112,20 @@ export function HomeScreen() {
       return;
     }
     let cancelled = false;
+    setRecLoading(true);
+    setRecError(false);
     const run = async () => {
       try {
         const picks = latestScanForRec.aiAnalysis
-          ? await lookupForScan(latestScanForRec, { count: 4 })
+          ? await lookupForScan(latestScanForRec, {
+              count: 4,
+              fresh: recAttempt > 0,
+            })
           : [];
         if (cancelled) return;
         if (picks.length > 0) {
           setRecCandidate(picks[0]);
+          setRecLoading(false);
           return;
         }
         // No scan-level AI context — fall back to a concern-shaped
@@ -129,20 +139,26 @@ export function HomeScreen() {
         const fallback = primaryConcern
           ? await lookupLiveProducts(
               `best ${primaryConcern.category} product`,
-              { count: 3 }
+              { count: 3, fresh: recAttempt > 0 }
             )
           : [];
         if (cancelled) return;
         setRecCandidate(fallback[0] ?? null);
+        setRecError(fallback.length === 0);
+        setRecLoading(false);
       } catch {
-        if (!cancelled) setRecCandidate(null);
+        if (cancelled) return;
+        setRecCandidate(null);
+        setRecError(true);
+        setRecLoading(false);
       }
     };
     run();
     return () => {
       cancelled = true;
     };
-  }, [latestScanForRec?.id, scans]);
+  }, [latestScanForRec?.id, scans, recAttempt]);
+  const retryRec = () => setRecAttempt((n) => n + 1);
   // ─────────────────────────────────────────────────────────────────
   // End of hook block. Plain derivations from here on.
   // ─────────────────────────────────────────────────────────────────
@@ -381,14 +397,25 @@ export function HomeScreen() {
             lookupForScan() once per scan and render the top candidate
             as a LiveProductCard hero. seedProducts no longer touches
             this screen. */}
-        {recCandidate ? (
-          <View style={styles.recBlock}>
-            <Text style={styles.recCardKicker} maxFontSizeMultiplier={1.1}>
-              PICKED FOR YOU
-            </Text>
+        <View style={styles.recBlock}>
+          <Text style={styles.recCardKicker} maxFontSizeMultiplier={1.1}>
+            PICKED FOR YOU
+          </Text>
+          {recCandidate ? (
             <LiveProductCard candidate={recCandidate} variant="hero" />
-          </View>
-        ) : null}
+          ) : recLoading ? (
+            <LiveProductsUnavailable
+              variant="loading"
+              scope="for your skin"
+            />
+          ) : (
+            <LiveProductsUnavailable
+              variant={recError ? 'unavailable' : 'empty'}
+              scope="for your skin"
+              onRetry={retryRec}
+            />
+          )}
+        </View>
 
         {/* ── F. Entry points ─────────────────────────────────────────── */}
         {/* v10 — launcher-style three-tile row is gone. A hero "Scan again"

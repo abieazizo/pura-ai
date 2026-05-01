@@ -211,22 +211,26 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
 });
 
 const styles = StyleSheet.create({
+  // v18.4 — premium analyzing wrapper. Soft pearl/cyan glow shadow
+  // sits behind the photo on the deep-ink backdrop so the photo
+  // appears to float. Process tint switches from warm-clay to a
+  // cool ~3% slate that keeps the captured face true-color while
+  // signalling "in analysis" without yellowing the skin.
   wrapper: {
     width: '100%',
     height: '100%',
     borderRadius: PHOTO_RADIUS,
     overflow: 'hidden',
-    backgroundColor: palette.bgDeep,
-    // Warm shadow — paper-hued, not gray.
-    shadowColor: palette.clay,
-    shadowOpacity: 0.08,
-    shadowRadius: 40,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    backgroundColor: palette.bgInkElevated,
+    shadowColor: '#7CB0FF',
+    shadowOpacity: 0.18,
+    shadowRadius: 60,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 14,
   },
   processTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(198,93,72,0.05)', // palette.clay @ 5%
+    backgroundColor: 'rgba(11, 18, 32, 0.12)',
   },
 });
 

@@ -438,7 +438,8 @@ export function ScanAnalyzingFaceScreen({
 
   return (
     <View style={styles.root}>
-      <StatusBar style="dark" />
+      {/* v18.4 — light status bar for the deep-ink analyzing surface. */}
+      <StatusBar style="light" />
 
       <AnalysisHeader
         onClose={handleCancel}
@@ -482,9 +483,17 @@ export function ScanAnalyzingFaceScreen({
 }
 
 const styles = StyleSheet.create({
+  // v18.4 — premium analyzing surface. Switches from the light
+  // app background to a deep ink backdrop so the captured photo +
+  // sweep band read as a flagship cinematic moment. The photo's
+  // PhotoStage card still has its rounded radius + soft shadow,
+  // but it now sits on a near-black surface that lets the cyan/
+  // pearl sweep glow pop. Caption typography is inverted via
+  // AnalysisCaption's own theming which reads palette tokens
+  // dynamically.
   root: {
     flex: 1,
-    backgroundColor: palette.bg,
+    backgroundColor: palette.bgInk,
   },
 });
 

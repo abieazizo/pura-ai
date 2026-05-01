@@ -21,6 +21,7 @@ import { FiltersStubSheet } from '@/components/products/FiltersStubSheet';
 import { CategoryRail, type GoalKey } from '@/components/products/CategoryRail';
 import { CategoryFeed } from '@/components/products/CategoryFeed';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
+import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { PuraMark } from '@/components/PuraMark';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { searchProducts } from '@/store/productSelectors';
@@ -240,23 +241,38 @@ export function ProductsScreen() {
               ))}
             </View>
           ) : liveSearching ? (
-            <View style={liveStyles.statusWrap}>
-              <Text
-                style={liveStyles.statusText}
-                maxFontSizeMultiplier={1.2}
-              >
-                Searching real products…
-              </Text>
+            <View style={liveStyles.unavailableWrap}>
+              <LiveProductsUnavailable
+                variant="loading"
+                scope={`for "${debouncedQuery}"`}
+              />
             </View>
           ) : (
-            // Emergency fallback: AI returned nothing AND we're not
-            // mid-fetch. Show whatever the local fuzzy search can
-            // offer so the user is never staring at "no results" if
-            // we have ANY signal at all.
-            <SearchResults
-              query={debouncedQuery}
-              results={seedFallbackResults}
-            />
+            <View style={liveStyles.unavailableWrap}>
+              {/* v18.4 — honest empty state. If a quiet local fuzzy
+                  match exists, surface it under a clear "Catalog
+                  fallback" heading so it never masquerades as a
+                  live answer. */}
+              <LiveProductsUnavailable
+                variant="empty"
+                scope={`for "${debouncedQuery}"`}
+                onRetry={() => setQuery(debouncedQuery + ' ')}
+              />
+              {seedFallbackResults.length > 0 ? (
+                <View style={liveStyles.fallbackWrap}>
+                  <Text
+                    style={liveStyles.fallbackKicker}
+                    maxFontSizeMultiplier={1.1}
+                  >
+                    OFFLINE CATALOG MATCH
+                  </Text>
+                  <SearchResults
+                    query={debouncedQuery}
+                    results={seedFallbackResults}
+                  />
+                </View>
+              ) : null}
+            </View>
           )}
         </ScrollView>
       ) : (
@@ -409,6 +425,22 @@ const liveStyles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: palette.inkTertiary,
+  },
+  unavailableWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+  },
+  fallbackWrap: {
+    marginTop: 20,
+  },
+  fallbackKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
 });
 

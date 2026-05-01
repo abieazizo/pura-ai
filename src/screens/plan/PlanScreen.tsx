@@ -47,6 +47,7 @@ import {
   tierLabel,
 } from '@/utils/skinScore';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
+import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { lookupForScan } from '@/api/liveProducts';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import type { Concern, ConcernCategory, Severity } from '@/types';
@@ -97,27 +98,39 @@ export function PlanScreen() {
   // the user's actual scan. Cached at the module layer so multiple
   // mounts hit cache.
   const [livePicks, setLivePicks] = useState<LiveProductCandidate[]>([]);
+  const [liveLoading, setLiveLoading] = useState<boolean>(false);
+  const [liveError, setLiveError] = useState<boolean>(false);
+  const [liveAttempt, setLiveAttempt] = useState<number>(0);
   useEffect(() => {
     if (!latest?.aiAnalysis) {
       setLivePicks([]);
       return;
     }
     let cancelled = false;
-    lookupForScan(latest, { count: 6 })
+    setLiveLoading(true);
+    setLiveError(false);
+    lookupForScan(latest, { count: 6, fresh: liveAttempt > 0 })
       .then((picks) => {
         if (cancelled) return;
         setLivePicks(picks);
+        setLiveError(picks.length === 0);
       })
       .catch(() => {
         if (cancelled) return;
         setLivePicks([]);
+        setLiveError(true);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLiveLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [latest?.id, latest?.aiAnalysis]);
+  }, [latest?.id, latest?.aiAnalysis, liveAttempt]);
   const rec = livePicks[0] ?? null;
   const alternatives = livePicks.slice(1, 4);
+  const retryLive = () => setLiveAttempt((n) => n + 1);
 
   const goBack = () => {
     hapt.select();
@@ -232,18 +245,26 @@ export function PlanScreen() {
           </View>
         ) : null}
 
-        {/* ── BEST PRODUCT — v18.1 LIVE retrieval ────────────────────
-            Replaces the seed-driven `pickProductForConcern` walk.
-            Renders a LiveProductCard hero with the AI's actual
-            best pick for the user's scan + concern. */}
-        {rec ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-              BEST FOR THIS
-            </Text>
+        {/* ── BEST PRODUCT — v18.4 LIVE retrieval with empty UX ─────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+            BEST FOR THIS
+          </Text>
+          {rec ? (
             <LiveProductCard candidate={rec} variant="hero" />
-          </View>
-        ) : null}
+          ) : liveLoading ? (
+            <LiveProductsUnavailable
+              variant="loading"
+              scope="for your scan"
+            />
+          ) : (
+            <LiveProductsUnavailable
+              variant={liveError ? 'unavailable' : 'empty'}
+              scope="for your scan"
+              onRetry={retryLive}
+            />
+          )}
+        </View>
 
         {/* ── ALTERNATIVES — v18.1 LIVE retrieval ──────────────────── */}
         {alternatives.length > 0 ? (

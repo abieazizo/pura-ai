@@ -127,16 +127,17 @@ export function MeasuringSweep({
 
   return (
     <>
+      {/* v18.4 — sweep retinted from clay (warm) to pearl/cyan
+          (#7CB0FF). On the deep ink backdrop this reads as a luxe
+          beauty-tech scan band rather than a warm marketing tint. */}
       <Defs>
         <LinearGradient id="sweepBloom" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={palette.clay} stopOpacity={0} />
-          <Stop offset="0.5" stopColor={palette.clay} stopOpacity={1} />
-          <Stop offset="1" stopColor={palette.clay} stopOpacity={0} />
+          <Stop offset="0" stopColor="#7CB0FF" stopOpacity={0} />
+          <Stop offset="0.5" stopColor="#A8C7FF" stopOpacity={1} />
+          <Stop offset="1" stopColor="#7CB0FF" stopOpacity={0} />
         </LinearGradient>
       </Defs>
 
-      {/* Soft bloom band — tall gradient rect, low max opacity so it
-          reads as glow not a shape. */}
       <AnimatedRect
         x={0}
         width={size.w}
@@ -145,12 +146,11 @@ export function MeasuringSweep({
         animatedProps={bandAnimatedProps}
       />
 
-      {/* Core line — the sharper edge inside the bloom, slightly brighter. */}
       <AnimatedRect
         x={0}
         width={size.w}
         height={LINE_THICKNESS}
-        fill={palette.clay}
+        fill="#A8C7FF"
         animatedProps={lineAnimatedProps}
       />
     </>

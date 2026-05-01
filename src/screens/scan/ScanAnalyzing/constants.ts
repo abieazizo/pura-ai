@@ -91,12 +91,18 @@ export const PHOTO_MARGIN_H = 24;
 // Photo stage geometry
 // ------------------------------------------------------------------
 
+// v18.4 — premium analyzing photo geometry. Photo grows from 460pt
+// → 540pt active height + sits closer to the top edge so the
+// captured face dominates the screen as a flagship moment. Photo
+// horizontal margin tightens 24 → 16 to make it feel near-bleed
+// without crowding. Reveal-state height stays smaller so the
+// transition into the result screen still compresses gracefully.
 export const PHOTO_ASPECT = 3 / 4;
-export const PHOTO_HEIGHT_ACTIVE = 460;
+export const PHOTO_HEIGHT_ACTIVE = 540;
 export const PHOTO_HEIGHT_REVEAL = 380;
-export const PHOTO_Y_ACTIVE = 92;
+export const PHOTO_Y_ACTIVE = 80;
 export const PHOTO_Y_REVEAL = 72;
-export const PHOTO_RADIUS = 28;
+export const PHOTO_RADIUS = 32;
 
 // ------------------------------------------------------------------
 // Zone rectangles — normalized within the photo box (0-1 on each axis).

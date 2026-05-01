@@ -607,6 +607,16 @@ export const useAppStore = create<AppState>()(
         aiSearchSuggestions: state.aiSearchSuggestions,
         aiProgress: state.aiProgress,
         aiScoreExplanation: state.aiScoreExplanation,
+
+        // v18.4 — persist the live product cache so AI-retrieved
+        // products attached to the user's routine, wishlist, or
+        // chat history still resolve after a cold start. Without
+        // this, a routine item with a live id ("the-ordinary-
+        // niacinamide-10-zinc-1") would orphan because the in-
+        // memory cache empties on app kill. The cache may grow
+        // over a session; a future pass can prune entries older
+        // than 30 days.
+        liveProductsById: state.liveProductsById,
       }),
     }
   )

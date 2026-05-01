@@ -38,6 +38,7 @@ import {
   lookupLiveProducts,
 } from '@/api/liveProducts';
 import { LiveProductCard } from './LiveProductCard';
+import { LiveProductsUnavailable } from './LiveProductsUnavailable';
 import { type GoalKey } from './CategoryRail';
 import type {
   ConcernType,
@@ -59,33 +60,42 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
 
   const [picks, setPicks] = useState<LiveProductCandidate[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [errored, setErrored] = useState<boolean>(false);
+  const [attempt, setAttempt] = useState<number>(0);
 
-  // v18.2 — live retrieval per goal. The Promise behind each goal is
-  // cached at the module layer (src/api/liveProducts.ts) so jumping
-  // back to the same chip is instant after the first run.
+  // v18.2/v18.4 — live retrieval per goal with explicit retry.
   useEffect(() => {
     let cancelled = false;
     if (goal === 'best-for-you' && !hasScanned) {
-      // Pre-scan locked state — no retrieval needed.
       setPicks([]);
       setLoading(false);
+      setErrored(false);
       return;
     }
     setLoading(true);
+    setErrored(false);
     const promise: Promise<LiveProductCandidate[]> =
       goal === 'best-for-you' && latestScan
-        ? lookupForScan(latestScan, { count: 8 })
+        ? lookupForScan(latestScan, { count: 8, fresh: attempt > 0 })
         : goalToConcern(goal)
-        ? lookupForConcern(goalToConcern(goal)!, { count: 8 })
-        : lookupLiveProducts(goalToFreeQuery(goal), { count: 8 });
+        ? lookupForConcern(goalToConcern(goal)!, {
+            count: 8,
+            fresh: attempt > 0,
+          })
+        : lookupLiveProducts(goalToFreeQuery(goal), {
+            count: 8,
+            fresh: attempt > 0,
+          });
     promise
       .then((next) => {
         if (cancelled) return;
         setPicks(next);
+        setErrored(next.length === 0);
       })
       .catch(() => {
         if (cancelled) return;
         setPicks([]);
+        setErrored(true);
       })
       .finally(() => {
         if (cancelled) return;
@@ -94,7 +104,7 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
     return () => {
       cancelled = true;
     };
-  }, [goal, hasScanned, latestScan?.id]);
+  }, [goal, hasScanned, latestScan?.id, attempt]);
 
   const meta = GOAL_LABELS[goal];
 
@@ -118,16 +128,18 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
       </View>
 
       {loading && picks.length === 0 ? (
-        <Text style={styles.loadingLine} maxFontSizeMultiplier={1.2}>
-          Finding the best real products for {meta.queryName}…
-        </Text>
+        <LiveProductsUnavailable
+          variant="loading"
+          scope={`for ${meta.queryName}`}
+        />
       ) : null}
 
       {!loading && picks.length === 0 ? (
-        <Text style={styles.emptyLine} maxFontSizeMultiplier={1.2}>
-          The AI engine couldn’t reach the live retrieval service.
-          Connect the proxy and pull this goal again.
-        </Text>
+        <LiveProductsUnavailable
+          variant={errored ? 'unavailable' : 'empty'}
+          scope={`for ${meta.queryName}`}
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
       ) : null}
 
       <View style={styles.grid}>

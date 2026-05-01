@@ -139,10 +139,6 @@ export function ProductDetailScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── v10.10 first screenful — identity cluster ─────────
-            Image → Brand/Name → Match (% + one-line reason) → Price
-            → compact Fit chips. Tight 16pt rhythm between these five
-            elements so they read as one product-identity block. */}
         <ProductHero
           tint={tint}
           imageUrl={
@@ -156,18 +152,30 @@ export function ProductDetailScreen() {
         />
         <BrandAndName brand={product.brand} name={product.name} />
         <MatchWhyBlock product={product} topConcern={topConcern} />
-        <PriceAndRating
-          price={product.price}
-          rating={product.rating}
-          reviewCount={product.reviewCount}
-        />
-        <FitTagsRow product={product} user={user} />
+        {/* v18.4 — render PriceAndRating's full panel ONLY for seed
+            products (which have real rating + reviewCount). Live
+            products show a tighter price-only line — no fake zero
+            rating, no "(0 reviews)" placeholder. */}
+        {liveCandidate ? (
+          <LivePriceLine
+            price={product.price}
+            currency={liveCandidate.currency}
+            merchantName={liveCandidate.merchantName}
+          />
+        ) : (
+          <PriceAndRating
+            price={product.price}
+            rating={product.rating}
+            reviewCount={product.reviewCount}
+          />
+        )}
+        {/* Hide FitTagsRow on live products that have no tags — the
+            seed-era treatment renders nothing for empty tags but
+            still occupies vertical space. */}
+        {liveCandidate && product.tags.length === 0 ? null : (
+          <FitTagsRow product={product} user={user} />
+        )}
 
-        {/* ── v10.10 boundary rule ──────────────────────────────
-            A hairline + kicker creates a clear break between the
-            identity cluster above and the progressive-disclosure
-            stack below. Reads as "here's the product — here are
-            the details." */}
         <View style={styles.boundary}>
           <View style={styles.boundaryRule} />
           <Text style={styles.boundaryKicker} maxFontSizeMultiplier={1.1}>
@@ -176,40 +184,53 @@ export function ProductDetailScreen() {
           <View style={styles.boundaryRule} />
         </View>
 
-        {/* ── v10.10 progressive disclosure (4 sections) ────────
-            The old "Why this matches you" + "Ingredients" split
-            merged into a single premium "Why it works for your
-            skin" section. The formula story, the AI fit note, the
-            curated hero ingredients, and the collapsible full list
-            all live in one place — one answer to "why is this right
-            for me." Alternatives stays open as the discovery moment;
-            How to use + Product details collapsed by default. */}
-        <Accordion id="why" title="Why it works for your skin" defaultOpen>
-          <WhyItWorksPanel
-            product={product}
-            user={user}
-            topConcern={topConcern}
-          />
-        </Accordion>
+        {/* v18.4 — for LIVE products, replace the dense WhyItWorksPanel
+            (which expects rich seed-era ingredient + formula data)
+            with a tight "Why this fits" panel built from the AI's
+            matchReason + ingredientsHighlights. Seed products keep
+            the legacy panel. */}
+        {liveCandidate ? (
+          <Accordion
+            id="why"
+            title="Why this fits your scan"
+            defaultOpen
+          >
+            <LiveWhyPanel candidate={liveCandidate} />
+          </Accordion>
+        ) : (
+          <Accordion id="why" title="Why it works for your skin" defaultOpen>
+            <WhyItWorksPanel
+              product={product}
+              user={user}
+              topConcern={topConcern}
+            />
+          </Accordion>
+        )}
 
         <Accordion id="alternatives" title="Alternatives" defaultOpen>
           <AlternativesList current={product} />
         </Accordion>
 
-        <Accordion id="howToUse" title="How to use">
-          {product.howToUse ? (
-            <Text style={styles.bodyCopy} maxFontSizeMultiplier={1.2}>
-              {product.howToUse}
-            </Text>
-          ) : null}
-        </Accordion>
+        {/* "How to use" hidden on live products with no howToUse data. */}
+        {liveCandidate && !product.howToUse ? null : (
+          <Accordion id="howToUse" title="How to use">
+            {product.howToUse ? (
+              <Text style={styles.bodyCopy} maxFontSizeMultiplier={1.2}>
+                {product.howToUse}
+              </Text>
+            ) : null}
+          </Accordion>
+        )}
 
-        <Accordion id="details" title="Product details">
-          <DetailsPanel product={product} />
-        </Accordion>
+        {/* "Product details" hidden on live products — the seed-era
+            DetailsPanel pulls fields (formulation, goodFor, timeOfUse,
+            skinTypes) that live candidates don't carry. */}
+        {liveCandidate ? null : (
+          <Accordion id="details" title="Product details">
+            <DetailsPanel product={product} />
+          </Accordion>
+        )}
 
-        {/* v10.12 — spacer reduced 180 → 120 to match the new
-            single-row PinnedCTA tray (was 2-row ≈ 110pt + paddings). */}
         <View style={{ height: 120 }} />
       </ScrollView>
 
@@ -244,6 +265,213 @@ export function ProductDetailScreen() {
 // or empty strings; the screen's optional-field handling already
 // handles missing data gracefully.
 // ============================================================================
+
+// ============================================================================
+// v18.4 — Live product detail components.
+// ============================================================================
+
+/**
+ * Price-only line for live products. Hides rating + reviewCount which
+ * live candidates don't carry. Optionally shows the merchant name as
+ * a small kicker so the user knows where the price came from.
+ */
+function LivePriceLine({
+  price,
+  currency,
+  merchantName,
+}: {
+  price: number;
+  currency: string;
+  merchantName: string | null;
+}) {
+  if (!Number.isFinite(price) || price <= 0) {
+    return (
+      <View style={livePriceStyles.row}>
+        <Text style={livePriceStyles.priceMissing} maxFontSizeMultiplier={1.1}>
+          Price varies — tap Shop for live pricing
+        </Text>
+      </View>
+    );
+  }
+  const sym =
+    currency === 'GBP'
+      ? '£'
+      : currency === 'EUR'
+      ? '€'
+      : currency === 'CAD'
+      ? 'C$'
+      : currency === 'AUD'
+      ? 'A$'
+      : '$';
+  const formatted = Number.isInteger(price)
+    ? `${sym}${price}`
+    : `${sym}${price.toFixed(2)}`;
+  return (
+    <View style={livePriceStyles.row}>
+      <Text style={livePriceStyles.price} maxFontSizeMultiplier={1.1}>
+        {formatted}
+      </Text>
+      {merchantName ? (
+        <Text style={livePriceStyles.merchant} maxFontSizeMultiplier={1.1}>
+          at {merchantName}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Why-this-fits panel for live products. Replaces the seed-era
+ * WhyItWorksPanel which relies on `formulation` + structured
+ * `ingredientList` that live candidates don't carry. Renders:
+ *   • The AI's matchReason as a serif lead line
+ *   • The shortDescription as a body paragraph
+ *   • A clean "Hero ingredients" chip row from ingredientsHighlights
+ *   • Concern chips from concernTags
+ */
+function LiveWhyPanel({ candidate }: { candidate: LiveProductCandidate }) {
+  return (
+    <View style={liveWhyStyles.wrap}>
+      {candidate.matchReason ? (
+        <Text style={liveWhyStyles.lead} maxFontSizeMultiplier={1.2}>
+          {candidate.matchReason}
+        </Text>
+      ) : null}
+      {candidate.shortDescription ? (
+        <Text style={liveWhyStyles.body} maxFontSizeMultiplier={1.2}>
+          {candidate.shortDescription}
+        </Text>
+      ) : null}
+      {candidate.ingredientsHighlights.length > 0 ? (
+        <View style={liveWhyStyles.section}>
+          <Text style={liveWhyStyles.kicker} maxFontSizeMultiplier={1.1}>
+            HERO INGREDIENTS
+          </Text>
+          <View style={liveWhyStyles.chipRow}>
+            {candidate.ingredientsHighlights.slice(0, 6).map((ing) => (
+              <View key={ing} style={liveWhyStyles.chip}>
+                <Text style={liveWhyStyles.chipText} maxFontSizeMultiplier={1.1}>
+                  {ing}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+      {candidate.concernTags.length > 0 ? (
+        <View style={liveWhyStyles.section}>
+          <Text style={liveWhyStyles.kicker} maxFontSizeMultiplier={1.1}>
+            TARGETS
+          </Text>
+          <View style={liveWhyStyles.chipRow}>
+            {candidate.concernTags.map((c) => (
+              <View key={c} style={liveWhyStyles.targetChip}>
+                <Text
+                  style={liveWhyStyles.targetChipText}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  {c.replace('_', ' ').toUpperCase()}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const livePriceStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+    paddingHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 14,
+  },
+  price: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    letterSpacing: -0.4,
+    color: palette.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  merchant: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    letterSpacing: 0.2,
+    color: palette.inkTertiary,
+  },
+  priceMissing: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    color: palette.inkTertiary,
+  },
+});
+
+const liveWhyStyles = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 14,
+  },
+  lead: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.3,
+    color: palette.ink,
+  },
+  body: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 21,
+    color: palette.inkSecondary,
+  },
+  section: {
+    gap: 8,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+  },
+  chipText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.2,
+    color: palette.ink,
+  },
+  targetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: palette.clayPaper,
+  },
+  targetChipText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: palette.clayDeep,
+  },
+});
 
 function adaptCategory(c: LiveProductCandidate['category']): ProductCategory {
   switch (c) {

@@ -116,7 +116,8 @@ export function AnalysisCaption({
 
   const showDot = displayedVariant !== 'roman';
   const dotSize = displayedVariant === 'waiting' ? 4 : 5;
-  const dotColor = palette.clay;
+  // v18.4 — pulse dot picks up the cyan/pearl analyzing tone.
+  const dotColor = '#7CB0FF';
 
   return (
     <View
@@ -163,17 +164,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 6,
   },
+  // v18.4 — caption typography inverts for the deep analyzing
+  // surface. Italic + waiting variants use a pearl tone; the roman
+  // reveal "Reading complete." goes full inverse ink for emphasis.
   textItalic: {
     ...scanTypography.captionItalic,
-    color: palette.inkSecondary,
+    color: 'rgba(248, 250, 252, 0.82)',
   },
   textRoman: {
     ...scanTypography.captionRoman,
-    color: palette.ink,
+    color: palette.inkInverse,
   },
   textWaiting: {
     ...scanTypography.captionWaiting,
-    color: palette.inkTertiary,
+    color: 'rgba(248, 250, 252, 0.6)',
   },
   dot: {
     marginBottom: 8,
