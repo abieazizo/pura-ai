@@ -405,16 +405,44 @@ export const HANDLERS: Record<string, Handler> = {
     };
     const validated = validateLiveProductLookupResult(stamped);
     if (!validated) aiBad('lookupLiveProducts');
-    // v18.6 — deterministic commerce enrichment runs SERVER-SIDE so a
-    // direct curl POST to /lookupLiveProducts (and the client gateway
-    // alike) sees enriched candidates. Earlier versions ran this only
-    // in `src/api/liveProducts.ts` which the endpoint test bypassed
-    // entirely. After this step every candidate has merchantName and
-    // productUrl populated, with brand DTC URLs preferred for major
-    // brands and a Sephora search URL as the universal fallback.
+    // v18.6/18.7 — deterministic commerce enrichment runs SERVER-SIDE
+    // so a direct curl POST to /lookupLiveProducts (and the client
+    // gateway alike) sees enriched candidates. v18.7 adds a verifiable
+    // server-side log so you can confirm enrichment ran on every
+    // request: look for "[v18.7 enrichment]" in the Metro console.
+    const beforeNullUrls = validated.candidates.filter(
+      (c) => !c.productUrl
+    ).length;
+    const beforeNullMerchants = validated.candidates.filter(
+      (c) => !c.merchantName
+    ).length;
+    const enriched = sanitizeAndEnrich(validated.candidates);
+    const afterNullUrls = enriched.filter((c) => !c.productUrl).length;
+    const afterNullMerchants = enriched.filter(
+      (c) => !c.merchantName
+    ).length;
+    // eslint-disable-next-line no-console
+    console.log(
+      '[v18.7 enrichment]',
+      JSON.stringify({
+        method: 'lookupLiveProducts',
+        n: validated.candidates.length,
+        productUrl_null_before: beforeNullUrls,
+        productUrl_null_after: afterNullUrls,
+        merchantName_null_before: beforeNullMerchants,
+        merchantName_null_after: afterNullMerchants,
+        first_candidate_after: enriched[0]
+          ? {
+              brand: enriched[0].brand,
+              merchantName: enriched[0].merchantName,
+              productUrl: enriched[0].productUrl,
+            }
+          : null,
+      })
+    );
     return {
       ...validated,
-      candidates: sanitizeAndEnrich(validated.candidates),
+      candidates: enriched,
     };
   },
 

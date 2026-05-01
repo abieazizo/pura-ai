@@ -18,7 +18,13 @@
  * import from both server and client without bundler warnings.
  */
 
-import type { LiveProductCandidate } from '@/ai/ai-contracts';
+// v18.7 — Use a RELATIVE import path. The server's tsx/cjs runtime
+// loader does not honour the TypeScript `@/` path alias the way
+// the React Native bundler does. Even a type-only import like this
+// can break tsx's resolution under some setups; a relative path is
+// safe across all entry points (Metro middleware, standalone proxy,
+// and the React Native bundle).
+import type { LiveProductCandidate } from '../ai/ai-contracts';
 
 // ---------------------------------------------------------------------------
 // Trusted hosts. Used by sanitizeCandidate to drop AI-supplied URLs
