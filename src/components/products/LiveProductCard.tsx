@@ -54,6 +54,25 @@ function openProductPage(candidate: LiveProductCandidate) {
   });
 }
 
+/**
+ * v18.5 — CTA label reads from the enriched merchant. After
+ * deterministic enrichment in `liveProducts.ts::enrichCommerce`,
+ * every candidate carries either a brand DTC merchant ("The Ordinary
+ * (DTC)") or a search-merchant ("Sephora (search)") + a productUrl.
+ * The card surfaces this as "Shop on The Ordinary" or "Find on
+ * Sephora" so the action reads unambiguously.
+ */
+function shopButtonLabel(c: LiveProductCandidate): string {
+  if (!c.merchantName) return c.productUrl ? 'Shop' : 'Find';
+  const isSearch = /\(search\)$/i.test(c.merchantName);
+  const cleanMerchant = c.merchantName.replace(/\s*\((dtc|search)\)$/i, '');
+  return `${isSearch ? 'Find on' : 'Shop on'} ${cleanMerchant}`;
+}
+
+function shopButtonAccessibilityLabel(c: LiveProductCandidate): string {
+  return `${shopButtonLabel(c)} ${c.brand} ${c.name}`;
+}
+
 function formatPrice(value: number, currency: string): string {
   const sym =
     currency === 'GBP'
@@ -175,14 +194,14 @@ function HeroCard({
             }}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel={`Shop ${candidate.brand}`}
+            accessibilityLabel={shopButtonAccessibilityLabel(candidate)}
             style={({ pressed }) => [
               heroStyles.shopBtn,
               pressed && { opacity: 0.92 },
             ]}
           >
             <Text style={heroStyles.shopBtnLabel} maxFontSizeMultiplier={1.1}>
-              {candidate.productUrl ? 'Shop' : 'Find'}
+              {shopButtonLabel(candidate)}
             </Text>
             <ArrowUpRight size={12} weight="bold" color={palette.inkInverse} />
           </Pressable>
@@ -389,14 +408,15 @@ const heroStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     height: 32,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderRadius: 16,
     backgroundColor: palette.clay,
+    maxWidth: 220,
   },
   shopBtnLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    letterSpacing: 0.3,
+    fontSize: 11.5,
+    letterSpacing: 0.2,
     color: palette.inkInverse,
   },
 });

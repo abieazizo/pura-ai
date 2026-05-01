@@ -834,17 +834,36 @@ export class OpenAIClient {
       '• `ingredientsHighlights`: 2–5 hero actives with strength when ' +
       'known ("salicylic acid 2%", "niacinamide 10%", "ceramide-3"). ' +
       'No filler.\n' +
-      '• `price`: ONLY include when you are confident about a real ' +
-      'recent retail price. Otherwise null. Never invent a price.\n' +
+      '• `price`: provide your best estimate of the typical recent ' +
+      'US retail price as a number (e.g. 16, 32.99). Skincare retail ' +
+      'prices are public knowledge for major brands — use it. Only ' +
+      'return null when you genuinely have no idea (rare/niche brand). ' +
+      'Do NOT round to obvious dummy values like 10, 20, 50.\n' +
       '• `currency`: "USD" by default; use the merchant\'s currency ' +
       'when you cite a non-US merchant.\n' +
-      '• `merchantName` + `productUrl`: ONLY include when you are ' +
-      'confident the URL points at a real, current product page on ' +
-      'either the brand site or a major retailer (Sephora, Ulta, ' +
-      'Amazon, Boots, Cult Beauty, LookFantastic, brand DTC). When ' +
-      'unsure, return null for both — the client will render a ' +
-      'search-on-merchant CTA instead. NEVER fabricate a URL.\n' +
-      '• `imageUrl`: same standard. Real CDN URLs only, or null.\n' +
+      '• `merchantName` + `productUrl`: ALWAYS populate these. Pick ' +
+      'the most credible commerce destination for this product, in ' +
+      'this priority order:\n' +
+      '   1. Brand DTC site for the major brands you reliably know — ' +
+      'e.g. The Ordinary → theordinary.com, CeraVe → cerave.com, ' +
+      'La Roche-Posay → laroche-posay.us, Paula\'s Choice → ' +
+      'paulaschoice.com, COSRX → cosrx.com, Beauty of Joseon → ' +
+      'beautyofjoseon.com, Kiehl\'s → kiehls.com, Supergoop → ' +
+      'supergoop.com, Naturium → naturium.com, Glow Recipe → ' +
+      'glowrecipe.com, Youth To The People → youthtothepeople.com.\n' +
+      '   2. A Sephora search URL when the brand is sold at Sephora: ' +
+      'https://www.sephora.com/search?keyword={brand}+{product}\n' +
+      '   3. An Ulta search URL when the brand is more drugstore-side: ' +
+      'https://www.ulta.com/shop?Ntt={brand}+{product}\n' +
+      '   4. An Amazon search URL as a last resort: ' +
+      'https://www.amazon.com/s?k={brand}+{product}\n' +
+      'Only return null for productUrl when you genuinely cannot ' +
+      'name any plausible retailer. merchantName must match the host ' +
+      '("Brand DTC", "Sephora", "Ulta", "Amazon").\n' +
+      '• `imageUrl`: include a real product image URL when you reliably ' +
+      'know it (e.g. an Open Beauty Facts image, an official brand ' +
+      'CDN, a known retailer CDN). Otherwise null is fine — the app ' +
+      'has a quiet brand-wordmark fallback.\n' +
       '• `imageSource` ("merchant" | "brand" | "obf" | "none") must ' +
       'match where imageUrl came from. Use "none" when imageUrl is null.\n' +
       '• `shortDescription`: ≤ 120 chars, plain English. What the ' +
