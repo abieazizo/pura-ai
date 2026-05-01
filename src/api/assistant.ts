@@ -300,32 +300,54 @@ export async function askAssistant(args: {
       args.attachedProductIds &&
       args.attachedProductIds.length > 0
     ) {
-      const p = seedProducts.find(
-        (sp) => sp.id === args.attachedProductIds![0]
-      );
-      if (p) {
+      // v18.3 — resolve the attached product from the live cache
+      // FIRST so AI-retrieved products attached to a chat question
+      // ground the assistant correctly. Falls back to seed only when
+      // the cache misses (legacy attachments).
+      const attachedId = args.attachedProductIds[0];
+      const liveById = useAppStore.getState().liveProductsById;
+      const live = liveById[attachedId];
+      if (live) {
         context.active_product_identity = {
           source: 'image',
           confidence: 0.95,
           resolved: true,
-          brand: p.brand,
-          product_name: p.name,
-          canonical_title: `${p.brand} ${p.name}`,
-          product_category:
-            (p.category as
-              | 'cleanser'
-              | 'serum'
-              | 'moisturizer'
-              | 'spot_treatment'
-              | 'toner'
-              | 'spf'
-              | 'mask') ?? 'unknown',
-          likely_concerns_supported: [],
-          key_claims: p.keyIngredients ?? [],
+          brand: live.brand,
+          product_name: live.name,
+          canonical_title: `${live.brand} ${live.name}`,
+          product_category: live.category,
+          likely_concerns_supported: live.concernTags,
+          key_claims: live.ingredientsHighlights,
           barcode_value: null,
-          catalog_lookup_key: p.id,
-          packaging_notes: '',
+          catalog_lookup_key: live.id,
+          packaging_notes: live.shortDescription,
         };
+      } else {
+        const p = seedProducts.find((sp) => sp.id === attachedId);
+        if (p) {
+          context.active_product_identity = {
+            source: 'image',
+            confidence: 0.95,
+            resolved: true,
+            brand: p.brand,
+            product_name: p.name,
+            canonical_title: `${p.brand} ${p.name}`,
+            product_category:
+              (p.category as
+                | 'cleanser'
+                | 'serum'
+                | 'moisturizer'
+                | 'spot_treatment'
+                | 'toner'
+                | 'spf'
+                | 'mask') ?? 'unknown',
+            likely_concerns_supported: [],
+            key_claims: p.keyIngredients ?? [],
+            barcode_value: null,
+            catalog_lookup_key: p.id,
+            packaging_notes: '',
+          };
+        }
       }
     }
     const text = await tryAi(() =>

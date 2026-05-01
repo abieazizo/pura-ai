@@ -268,31 +268,39 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 // / score / settle / reveal) but only four carry text.
 // ------------------------------------------------------------------
 
-// v11.5 \u2014 analyzing-stage labels rewritten to feel like the system
-// is genuinely doing skincare-grade analysis (per the v11.5 spec).
-// Order: features \u2192 texture \u2192 tone \u2192 hydration/breakouts \u2192 result.
-// v11.8 \u2014 added `preflight` caption for the visible image-quality
-// validation beat that runs BEFORE the 7-beat choreography starts.
+// v18.3 \u2014 premium 6-stage analyzing timeline:
+//   1 Aligning your scan      (preflight)
+//   2 Reading skin zones      (locate)
+//   3 Checking texture and tone  (partition)
+//   4 Mapping visible concerns  (detect)
+//   5 Matching products for you (score)
+//   6 Building your result     (waiting/settle)
+// Final reveal: "Ready."
+//
+// The captions read as a real, premium beauty-tech analysis sequence
+// rather than a generic "loading" screen. Each stage tells the user
+// what the system is actually doing right now \u2014 from initial face
+// alignment through to the final live product retrieval.
 export const CAPTION_COPY = {
-  preflight: 'Checking image quality\u2026',
-  locate: 'Aligning features\u2026',
-  partition: 'Reading skin texture\u2026',
-  detect: 'Checking tone balance\u2026',
-  score: 'Mapping hydration and breakouts\u2026',
+  preflight: 'Aligning your scan\u2026',
+  locate: 'Reading skin zones\u2026',
+  partition: 'Checking texture and tone\u2026',
+  detect: 'Mapping visible concerns\u2026',
+  score: 'Matching products for you\u2026',
   waiting: 'Building your result\u2026',
   reveal: 'Ready.',
 } as const;
 
 // ------------------------------------------------------------------
-// VoiceOver announcements
+// VoiceOver announcements (v18.3 mirrors the visible captions).
 // ------------------------------------------------------------------
 
 export const A11Y_ANNOUNCEMENTS = {
-  preflight: 'Checking image quality.',
-  locate: 'Reading skin texture.',
-  partition: 'Checking for breakouts.',
-  detect: 'Measuring hydration.',
-  score: 'Preparing your result.',
-  waiting: 'One moment.',
+  preflight: 'Aligning your scan.',
+  locate: 'Reading skin zones.',
+  partition: 'Checking texture and tone.',
+  detect: 'Mapping visible concerns.',
+  score: 'Matching products for you.',
+  waiting: 'Building your result.',
   reveal: 'Your result is ready.',
 } as const;

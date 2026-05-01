@@ -273,8 +273,15 @@ export function AssistantScreen() {
                 tap-to-remove. Footprint dropped from ~80pt rows to a
                 28pt single line. */}
             {attached.map((id) => {
-              const p = seedProducts.find((x) => x.id === id);
-              if (!p) return null;
+              // v18.3 — resolve attached pill from the live cache
+              // first so v18.x AI-retrieved products render. Seed
+              // fallback for legacy attachments only.
+              const liveById = useAppStore.getState().liveProductsById;
+              const live = liveById[id];
+              const seed = !live ? seedProducts.find((x) => x.id === id) : null;
+              const brand = live?.brand ?? seed?.brand;
+              const name = live?.name ?? seed?.name;
+              if (!brand || !name) return null;
               return (
                 <Pressable
                   key={id}
@@ -282,14 +289,14 @@ export function AssistantScreen() {
                   hitSlop={6}
                   style={styles.attachedPill}
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove ${p.brand} ${p.name}`}
+                  accessibilityLabel={`Remove ${brand} ${name}`}
                 >
                   <Text
                     style={styles.attachedPillText}
                     numberOfLines={1}
                     maxFontSizeMultiplier={1.1}
                   >
-                    {`${p.brand.toUpperCase()} · ${p.name}`}
+                    {`${brand.toUpperCase()} · ${name}`}
                   </Text>
                   <X size={11} color={palette.inkTertiary} weight="bold" />
                 </Pressable>
@@ -357,46 +364,111 @@ export function AssistantScreen() {
         </View>
 
         {showPicker ? (
-          <View style={styles.picker}>
-            {/* v11.3 — picker tray rebuilt as slim horizontal pills
-                instead of full ProductCard chips. Saves ~110pt of
-                vertical space on the lower screen and stops the tray
-                from dominating the composer. */}
-            <Text style={styles.pickerLabel}>ATTACH A PRODUCT</Text>
-            <FlatList
-              data={seedProducts.slice(0, 10)}
-              horizontal
-              keyExtractor={(p) => p.id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.pickerRow}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => attachProduct(item.id)}
-                  style={styles.pickerPill}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Attach ${item.brand} ${item.name}`}
-                >
-                  <Text
-                    style={styles.pickerPillBrand}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    {item.brand.toUpperCase()}
-                  </Text>
-                  <Text
-                    style={styles.pickerPillName}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    {item.name}
-                  </Text>
-                </Pressable>
-              )}
-            />
-          </View>
+          <AttachPickerTray onPick={attachProduct} />
         ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+/**
+/**
+ * v18.3 — adapter: live candidate → legacy Product shape used by
+ * the chat ProductCard chip. Lets us render past attached-product
+ * messages whose ids point at AI-retrieved products.
+ */
+function liveCandidateToAttachedProduct(c: LiveProductCandidate): Product {
+  const adaptedCategory =
+    c.category === 'spot_treatment'
+      ? 'treatment'
+      : c.category === 'unknown'
+      ? 'serum'
+      : c.category;
+  return {
+    id: c.id,
+    brand: c.brand,
+    name: c.name,
+    category: adaptedCategory as Product['category'],
+    imageUri: c.imageUrl ?? '',
+    ingredients: c.ingredientsHighlights,
+    keyIngredients: c.ingredientsHighlights,
+    description: c.shortDescription,
+    tint: 'sand',
+    rating: 0,
+    reviewCount: 0,
+    matchScore: c.matchScore,
+    tags: [],
+    addedDate: c.sourceTimestamp,
+    price: c.price ?? 0,
+    imageUrl: c.imageUrl ?? undefined,
+    buyUrl: c.productUrl ?? undefined,
+  };
+}
+
+/**
+ * v18.3 — AttachPickerTray.
+ *
+ * Replaces the seed-driven "attach a product" picker. Pulls
+ * candidates from `useAppStore.liveProductsById` (everything the
+ * live retrieval engine has surfaced this session) so users can
+ * attach AI-recommended products to chat questions.
+ *
+ * Falls back to a tasteful "scan or browse to surface products"
+ * empty state when the cache is empty — never silently shows seed
+ * products as if they were live.
+ */
+function AttachPickerTray({
+  onPick,
+}: {
+  onPick: (id: string) => void;
+}) {
+  const cache = useAppStore((s) => s.liveProductsById);
+  const liveItems = useMemo(() => {
+    return Object.values(cache)
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, 10);
+  }, [cache]);
+  return (
+    <View style={styles.picker}>
+      <Text style={styles.pickerLabel}>ATTACH A PRODUCT</Text>
+      {liveItems.length === 0 ? (
+        <Text style={styles.pickerEmpty} maxFontSizeMultiplier={1.2}>
+          No live picks yet — run a scan or open the Products tab,
+          then come back to attach one.
+        </Text>
+      ) : (
+        <FlatList
+          data={liveItems}
+          horizontal
+          keyExtractor={(c) => c.id}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pickerRow}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => onPick(item.id)}
+              style={styles.pickerPill}
+              accessibilityRole="button"
+              accessibilityLabel={`Attach ${item.brand} ${item.name}`}
+            >
+              <Text
+                style={styles.pickerPillBrand}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.1}
+              >
+                {item.brand.toUpperCase()}
+              </Text>
+              <Text
+                style={styles.pickerPillName}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.1}
+              >
+                {item.name}
+              </Text>
+            </Pressable>
+          )}
+        />
+      )}
+    </View>
   );
 }
 
@@ -761,8 +833,16 @@ function MessageLine({
     hasScanned,
   ]);
   const isUser = message.role === 'user';
+  // v18.3 — attached products in past messages resolve from the
+  // live cache first (live AI-retrieved attachments), falling back
+  // to seed only for legacy messages.
+  const liveById = useAppStore((s) => s.liveProductsById);
   const attachedProducts: Product[] = (message.attachedProductIds ?? [])
-    .map((id) => seedProducts.find((p) => p.id === id))
+    .map((id) => {
+      const live = liveById[id];
+      if (live) return liveCandidateToAttachedProduct(live);
+      return seedProducts.find((p) => p.id === id);
+    })
     .filter((p): p is Product => !!p);
 
   if (isUser) {
@@ -1198,6 +1278,14 @@ const styles = StyleSheet.create({
     color: palette.inkTertiary,
     marginTop: space.sm,
     marginBottom: 8,
+  },
+  pickerEmpty: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkTertiary,
+    marginBottom: 8,
+    paddingRight: space.lg,
   },
   // v11.3 — picker tray was a horizontal FlatList of full ProductCard
   // chips (~92pt tall). Replaced with slim 2-line pills (~52pt) that

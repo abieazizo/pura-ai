@@ -38,11 +38,56 @@ import { computeSkinScore } from '@/utils/skinScore';
 // Catalog reads (unchanged from v10.15).
 // ---------------------------------------------------------------------------
 
+// v18.3 — listProducts is intentionally an emergency-only export.
+// It's no longer consumed by any user-facing screen (Home / Plan /
+// Products / Routine / ProductDetail / Assistant all use the live
+// retrieval engine in `src/api/liveProducts.ts`). Kept compiling
+// because `src/api/index.ts` re-exports it; callers in tests or
+// future tooling can still read the seed catalog directly.
 export async function listProducts(): Promise<Product[]> {
   return seedProducts;
 }
 
+/**
+ * v18.3 — getProduct(id) now resolves from the live product cache
+ * FIRST (any AI-retrieved product surfaced this session), falling
+ * back to the seed catalog only when the cache misses. The legacy
+ * deterministic-mock assistant code path uses this; everywhere
+ * else has migrated to live retrieval directly.
+ */
 export async function getProduct(id: string): Promise<Product | undefined> {
+  try {
+    const live = useAppStore.getState().liveProductsById[id];
+    if (live) {
+      const adaptedCategory =
+        live.category === 'spot_treatment'
+          ? 'treatment'
+          : live.category === 'unknown'
+          ? 'serum'
+          : live.category;
+      return {
+        id: live.id,
+        brand: live.brand,
+        name: live.name,
+        category: adaptedCategory as Product['category'],
+        imageUri: live.imageUrl ?? '',
+        ingredients: live.ingredientsHighlights,
+        keyIngredients: live.ingredientsHighlights,
+        description: live.shortDescription,
+        tint: 'sand',
+        rating: 0,
+        reviewCount: 0,
+        matchScore: live.matchScore,
+        tags: [],
+        addedDate: live.sourceTimestamp,
+        price: live.price ?? 0,
+        imageUrl: live.imageUrl ?? undefined,
+        buyUrl: live.productUrl ?? undefined,
+      };
+    }
+  } catch {
+    /* fall through to seed lookup */
+  }
   return seedProducts.find((p) => p.id === id);
 }
 
@@ -560,15 +605,24 @@ function buildLatestScanSummary(): string | null {
 }
 
 function buildRoutineSummary(): string {
+  // v18.3 — resolve routine ids from the live cache first so AI-
+  // retrieved products in the user's routine surface to the AI as
+  // grounding context. Falls back to seed for legacy ids.
   const s = useAppStore.getState();
-  const morning = s.userRoutineMorning
-    .map((id) => seedProducts.find((p) => p.id === id))
-    .filter(Boolean)
-    .map((p) => `${p!.brand} ${p!.name}`);
-  const evening = s.userRoutineEvening
-    .map((id) => seedProducts.find((p) => p.id === id))
-    .filter(Boolean)
-    .map((p) => `${p!.brand} ${p!.name}`);
+  const liveById = s.liveProductsById;
+  const nameFor = (id: string): string | null => {
+    const live = liveById[id];
+    if (live) return `${live.brand} ${live.name}`;
+    const seed = seedProducts.find((p) => p.id === id);
+    if (seed) return `${seed.brand} ${seed.name}`;
+    return null;
+  };
+  const morning = s.userRoutineMorning.map(nameFor).filter(
+    (n): n is string => !!n
+  );
+  const evening = s.userRoutineEvening.map(nameFor).filter(
+    (n): n is string => !!n
+  );
   return JSON.stringify({ morning, evening, saved_count: s.wishlist.length });
 }
 
