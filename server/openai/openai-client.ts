@@ -39,6 +39,7 @@ import type {
   BarcodeLookupResult,
   BarcodeResolution,
   FaceScanAnalysis,
+  LiveProductLookupResult,
   ProductIdentity,
   ProductMatchResult,
   ProgressExplanation,
@@ -54,6 +55,7 @@ import {
   AI_MODELS,
   BARCODE_RESOLUTION_SCHEMA,
   FACE_SCAN_ANALYSIS_SCHEMA,
+  LIVE_PRODUCT_LOOKUP_SCHEMA,
   PRODUCT_IDENTITY_SCHEMA,
   PRODUCT_MATCH_RESULT_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
@@ -768,6 +770,120 @@ export class OpenAIClient {
       userContent,
       schemaName: 'search_suggestion_result',
       schema: SEARCH_SUGGESTION_RESULT_SCHEMA,
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 8b. v18.0 — Live product retrieval.
+  //
+  // Replaces the seed-catalog-as-primary-inventory pattern. This
+  // method asks GPT to recommend REAL named skincare products for
+  // either a free-text query or a scan-derived concern context.
+  // GPT's training data IS the inventory — major brands, real
+  // product names, real ingredient lists, claimed benefits. The
+  // structured-output schema forces brand+name+category+reason on
+  // every candidate so the client can render it with confidence.
+  //
+  // The model is INSTRUCTED to never fabricate URLs or prices when
+  // it isn't confident — it must return null for those fields. The
+  // client then renders a brand-wordmark placeholder + a search-on-
+  // merchant CTA, never a fabricated brand site.
+  // --------------------------------------------------------------------------
+
+  async lookupLiveProducts(params: {
+    /** Free text or AI-shaped query ("for redness on cheeks", etc.) */
+    query: string;
+    /** Optional structured scan context — when present the model
+     *  prefers products for the user's actual concerns and severity. */
+    scanContext?: {
+      primary_concern: string | null;
+      secondary_concerns: string[];
+      severity_band: string;
+      regions: string[];
+      skin_type: string;
+      sensitivities: string[];
+    };
+    /** How many candidates to return (default 8). The model still
+     *  picks fewer if it can't honestly fill the slot. */
+    count?: number;
+  }): Promise<LiveProductLookupResult> {
+    const count = Math.max(1, Math.min(12, params.count ?? 8));
+    const system =
+      'You are Pura AI\'s live product retrieval engine. Given a ' +
+      'query and optional scan context, you return real, named, ' +
+      'commercially available skincare products that fit the ask. ' +
+      'You are NOT ranking a fixed catalog — you are choosing real ' +
+      'products from your knowledge of the global skincare market.\n\n' +
+      'Hard rules (v18.0):\n' +
+      '• Return EXACTLY the JSON object specified by the schema.\n' +
+      '• Every product must be a REAL product made by a REAL brand. ' +
+      'No fabricated names, no "Brand X" placeholders, no fictional ' +
+      'SKUs. If you would be guessing, leave the slot out.\n' +
+      `• Aim for ${count} candidates ranked by fit. Return fewer when ` +
+      'you cannot honestly fill the slot at high confidence.\n' +
+      '• `id` must be a stable, lowercase, hyphenated slug derived ' +
+      'from brand+name (e.g. "the-ordinary-niacinamide-10-zinc-1"). ' +
+      'No spaces, no special characters except hyphens.\n' +
+      '• `category` must be one of: cleanser, toner, serum, ' +
+      'moisturizer, spot_treatment, spf, mask, unknown. Pick the best ' +
+      'fit; never invent categories.\n' +
+      '• `concernTags` must use the canonical concern enum: ' +
+      'breakouts, hydration, texture, dark_marks, redness, oiliness, ' +
+      'sensitivity, pores. Pick the 1–4 concerns the product is ' +
+      'genuinely formulated for.\n' +
+      '• `ingredientsHighlights`: 2–5 hero actives with strength when ' +
+      'known ("salicylic acid 2%", "niacinamide 10%", "ceramide-3"). ' +
+      'No filler.\n' +
+      '• `price`: ONLY include when you are confident about a real ' +
+      'recent retail price. Otherwise null. Never invent a price.\n' +
+      '• `currency`: "USD" by default; use the merchant\'s currency ' +
+      'when you cite a non-US merchant.\n' +
+      '• `merchantName` + `productUrl`: ONLY include when you are ' +
+      'confident the URL points at a real, current product page on ' +
+      'either the brand site or a major retailer (Sephora, Ulta, ' +
+      'Amazon, Boots, Cult Beauty, LookFantastic, brand DTC). When ' +
+      'unsure, return null for both — the client will render a ' +
+      'search-on-merchant CTA instead. NEVER fabricate a URL.\n' +
+      '• `imageUrl`: same standard. Real CDN URLs only, or null.\n' +
+      '• `imageSource` ("merchant" | "brand" | "obf" | "none") must ' +
+      'match where imageUrl came from. Use "none" when imageUrl is null.\n' +
+      '• `shortDescription`: ≤ 120 chars, plain English. What the ' +
+      'product does, not marketing fluff.\n' +
+      '• `matchReason`: ≤ 100 chars, names the specific tie to the ' +
+      'user\'s concern (or query). "Targets clustered breakouts on ' +
+      'oily skin via 2% salicylic acid" beats "great product".\n' +
+      '• `availability`: "available" only when you are confident the ' +
+      'product is currently on shelves; otherwise "unknown".\n' +
+      '• `matchScore`: integer 0..100 calibrated within YOUR result ' +
+      'set. Best fit ≈ 95, weakest fit ≈ 65. Reserve scores below 60 ' +
+      'for results that barely fit and shouldn\'t be top picks.\n' +
+      '• Return `confidence` honestly: "high" when the query was ' +
+      'clear and you found strong matches, "medium" when the picks ' +
+      'are reasonable but not perfect, "low" when the query was vague ' +
+      'or the matches are speculative.\n\n' +
+      'Editorial bias:\n' +
+      '• Prefer products from established brands a US/UK shopper would ' +
+      'recognize (CeraVe, La Roche-Posay, The Ordinary, Beauty of ' +
+      'Joseon, Paula\'s Choice, Kiehl\'s, COSRX, Supergoop, Naturium, ' +
+      'Glow Recipe, Youth To The People, etc.) over niche-only brands ' +
+      'when both fit. The user must be able to actually buy what you ' +
+      'recommend.\n' +
+      '• Avoid duplicates — never two products from the same brand in ' +
+      'the same category.\n' +
+      '• Honor sensitivities: skip fragranced or actives-heavy picks ' +
+      'when the user is flagged sensitive.';
+
+    const userContent = JSON.stringify({
+      query: params.query,
+      scan_context: params.scanContext ?? null,
+      requested_count: count,
+    });
+
+    return this.runStrictStructured<LiveProductLookupResult>({
+      system,
+      userContent,
+      schemaName: 'live_product_lookup',
+      schema: LIVE_PRODUCT_LOOKUP_SCHEMA,
     });
   }
 

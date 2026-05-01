@@ -51,6 +51,7 @@ import type {
   AssistantContext,
   BarcodeResolution,
   FaceScanAnalysis,
+  LiveProductLookupResult,
   ProductIdentity,
   ProductMatchResult,
   ProgressExplanation,
@@ -66,6 +67,7 @@ import {
   validateAssistantAnswer,
   validateBarcodeResolution,
   validateFaceScanAnalysis,
+  validateLiveProductLookupResult,
   validateProductIdentity,
   validateProductMatchResult,
   validateProgressBundle,
@@ -145,6 +147,9 @@ const TIMEOUT_MS = {
   analyzeScannedProductAgainstUser: 75_000,
   buildFullScanToPlanBundle: 120_000,
   buildProgressBundle: 30_000,
+  // v18.0 — live product retrieval. Structured-output text call;
+  // 25s is generous given the 8-candidate target.
+  lookupLiveProducts: 25_000,
 } as const;
 
 type AIMethodName = keyof typeof TIMEOUT_MS;
@@ -607,6 +612,26 @@ export interface AIGateway {
     pageContext: 'products' | 'assistant';
   }): Promise<SearchSuggestionResult>;
 
+  /**
+   * v18.0 — Live product retrieval. Returns real, named, commercially
+   * available products for either a free-text query or a scan-derived
+   * concern context. The AI is the inventory; the client renders the
+   * result with brand/name/price/buy-url when present and a quiet
+   * placeholder + search-on-merchant CTA when fields are null.
+   */
+  lookupLiveProducts(params: {
+    query: string;
+    scanContext?: {
+      primary_concern: string | null;
+      secondary_concerns: string[];
+      severity_band: string;
+      regions: string[];
+      skin_type: string;
+      sensitivities: string[];
+    };
+    count?: number;
+  }): Promise<LiveProductLookupResult>;
+
   answerAssistant(params: {
     context: AssistantContext;
     userQuestion: string;
@@ -737,6 +762,15 @@ const gateway: AIGateway = {
       method: 'buildSearchSuggestions',
       body: params,
       validate: validateSearchSuggestionResult,
+    });
+  },
+
+  async lookupLiveProducts(params) {
+    ensureAvailable();
+    return runMethod({
+      method: 'lookupLiveProducts',
+      body: params,
+      validate: validateLiveProductLookupResult,
     });
   },
 

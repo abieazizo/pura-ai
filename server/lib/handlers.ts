@@ -16,6 +16,7 @@ import {
   validateAssistantContext,
   validateBarcodeResolution,
   validateFaceScanAnalysis,
+  validateLiveProductLookupResult,
   validateProductIdentity,
   validateProductMatchResult,
   validateProgressBundle,
@@ -336,6 +337,74 @@ export const HANDLERS: Record<string, Handler> = {
     });
     if (typeof result !== 'string') aiBad('answerAssistant');
     return result;
+  },
+
+  async lookupLiveProducts(client, body) {
+    const query = reqString(body, 'query');
+    const countRaw = body['count'];
+    const count =
+      typeof countRaw === 'number' && Number.isFinite(countRaw)
+        ? Math.max(1, Math.min(12, Math.round(countRaw)))
+        : 8;
+    let scanContext:
+      | {
+          primary_concern: string | null;
+          secondary_concerns: string[];
+          severity_band: string;
+          regions: string[];
+          skin_type: string;
+          sensitivities: string[];
+        }
+      | undefined;
+    const ctxRaw = body['scanContext'];
+    if (ctxRaw && typeof ctxRaw === 'object' && !Array.isArray(ctxRaw)) {
+      const ctx = ctxRaw as Record<string, unknown>;
+      scanContext = {
+        primary_concern:
+          typeof ctx['primary_concern'] === 'string'
+            ? (ctx['primary_concern'] as string)
+            : null,
+        secondary_concerns: Array.isArray(ctx['secondary_concerns'])
+          ? (ctx['secondary_concerns'] as unknown[]).filter(
+              (x): x is string => typeof x === 'string'
+            )
+          : [],
+        severity_band:
+          typeof ctx['severity_band'] === 'string'
+            ? (ctx['severity_band'] as string)
+            : 'unknown',
+        regions: Array.isArray(ctx['regions'])
+          ? (ctx['regions'] as unknown[]).filter(
+              (x): x is string => typeof x === 'string'
+            )
+          : [],
+        skin_type:
+          typeof ctx['skin_type'] === 'string'
+            ? (ctx['skin_type'] as string)
+            : 'unknown',
+        sensitivities: Array.isArray(ctx['sensitivities'])
+          ? (ctx['sensitivities'] as unknown[]).filter(
+              (x): x is string => typeof x === 'string'
+            )
+          : [],
+      };
+    }
+    const raw = await client.lookupLiveProducts({ query, scanContext, count });
+    // Stamp the source timestamp server-side so the client never sees
+    // a candidate without it.
+    const stamped = {
+      ...raw,
+      candidates: (raw.candidates ?? []).map((c) => ({
+        ...c,
+        sourceTimestamp:
+          typeof c.sourceTimestamp === 'string' && c.sourceTimestamp.length > 0
+            ? c.sourceTimestamp
+            : new Date().toISOString(),
+      })),
+    };
+    const validated = validateLiveProductLookupResult(stamped);
+    if (!validated) aiBad('lookupLiveProducts');
+    return validated;
   },
 
   async analyzeScannedProductAgainstUser(client, body) {

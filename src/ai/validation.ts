@@ -28,6 +28,8 @@ import type {
   FaceConcernFinding,
   FaceRegion,
   FaceScanAnalysis,
+  LiveProductCandidate,
+  LiveProductLookupResult,
   ProductCategory,
   ProductIdentity,
   ProductMatch,
@@ -702,6 +704,89 @@ export function validateAssistantAnswer(v: unknown): string | null {
   if (typeof v === 'string') return v;
   aiLog.warn('validateAssistantAnswer', 'not a string');
   return null;
+}
+
+// ============================================================================
+// v18.0 — Live product lookup validator.
+//
+// Validates AI-returned LiveProductCandidate arrays. Strips bad
+// candidates silently rather than rejecting the whole response — a
+// single bad item shouldn't kill the whole retrieval. Per the
+// contract, productUrl/imageUrl/price MAY be null; we don't try to
+// repair those.
+// ============================================================================
+
+const IMAGE_SOURCE_ENUM = ['merchant', 'brand', 'obf', 'none'] as const;
+const AVAILABILITY_ENUM = ['available', 'unknown'] as const;
+const LIVE_LOOKUP_CONFIDENCE_ENUM = ['high', 'medium', 'low'] as const;
+
+function validateLiveProductCandidate(
+  v: unknown
+): LiveProductCandidate | null {
+  if (!isObject(v)) return null;
+  if (!isNonEmptyString(v.id)) return null;
+  if (!isNonEmptyString(v.brand)) return null;
+  if (!isNonEmptyString(v.name)) return null;
+  if (!inEnum(v.category, PRODUCT_CATEGORIES)) return null;
+  if (!inEnum(v.imageSource, IMAGE_SOURCE_ENUM)) return null;
+  if (!inEnum(v.availability, AVAILABILITY_ENUM)) return null;
+  const matchScore = isFiniteNumber(v.matchScore)
+    ? clampInt(v.matchScore, 0, 100)
+    : 60;
+  const price = v.price === null
+    ? null
+    : isFiniteNumber(v.price)
+    ? Math.max(0, v.price)
+    : null;
+  return {
+    id: v.id,
+    brand: v.brand,
+    name: v.name,
+    category: v.category,
+    concernTags: arrayOfEnum(v.concernTags, CONCERN_TYPES),
+    skinTypeTags: arrayOfStrings(v.skinTypeTags),
+    ingredientsHighlights: arrayOfStrings(v.ingredientsHighlights),
+    price,
+    currency: isNonEmptyString(v.currency) ? v.currency : 'USD',
+    merchantName: isString(v.merchantName) ? v.merchantName : null,
+    productUrl: isString(v.productUrl) ? v.productUrl : null,
+    imageUrl: isString(v.imageUrl) ? v.imageUrl : null,
+    imageSource: v.imageSource,
+    shortDescription: isString(v.shortDescription) ? v.shortDescription : '',
+    matchReason: isString(v.matchReason) ? v.matchReason : '',
+    availability: v.availability,
+    sourceTimestamp: isNonEmptyString(v.sourceTimestamp)
+      ? v.sourceTimestamp
+      : new Date().toISOString(),
+    matchScore,
+  };
+}
+
+export function validateLiveProductLookupResult(
+  v: unknown
+): LiveProductLookupResult | null {
+  if (!isObject(v)) {
+    aiLog.warn('validateLiveProductLookupResult', 'not an object');
+    return null;
+  }
+  if (!isString(v.query)) {
+    aiLog.warn('validateLiveProductLookupResult', 'missing query');
+    return null;
+  }
+  if (!inEnum(v.confidence, LIVE_LOOKUP_CONFIDENCE_ENUM)) {
+    aiLog.warn('validateLiveProductLookupResult', 'bad confidence');
+    return null;
+  }
+  const candidates = Array.isArray(v.candidates)
+    ? v.candidates
+        .map(validateLiveProductCandidate)
+        .filter((c): c is LiveProductCandidate => !!c)
+    : [];
+  return {
+    query: v.query,
+    candidates,
+    confidence: v.confidence,
+  };
 }
 
 // ============================================================================

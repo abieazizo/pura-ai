@@ -20,13 +20,16 @@ import { SearchResults } from '@/components/products/SearchResults';
 import { FiltersStubSheet } from '@/components/products/FiltersStubSheet';
 import { CategoryRail, type GoalKey } from '@/components/products/CategoryRail';
 import { CategoryFeed } from '@/components/products/CategoryFeed';
+import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { PuraMark } from '@/components/PuraMark';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { searchProducts } from '@/store/productSelectors';
 import { useAppStore } from '@/store/useAppStore';
 import { getSearchSuggestions } from '@/api';
+import { lookupLiveProducts } from '@/api/liveProducts';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
+import type { LiveProductCandidate } from '@/ai/ai-contracts';
 
 /**
  * ProductsScreen — v10.16.
@@ -112,7 +115,45 @@ export function ProductsScreen() {
     // the dependency keeps the linter honest.
   }, [aiSuggestions]);
 
-  const searchResults = useMemo(
+  // v18.0 — live retrieval becomes the primary search engine. The
+  // local fuzzy `searchProducts` selector becomes the emergency
+  // fallback only when (a) the gateway is unreachable, or (b) the AI
+  // returned zero candidates for this query. Cached at the module
+  // layer in liveProducts.ts so a back-press → re-search is instant.
+  const [liveResults, setLiveResults] = useState<LiveProductCandidate[]>(
+    []
+  );
+  const [liveSearching, setLiveSearching] = useState(false);
+
+  useEffect(() => {
+    const q = debouncedQuery.trim();
+    if (q.length === 0) {
+      setLiveResults([]);
+      setLiveSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setLiveSearching(true);
+    lookupLiveProducts(q, { count: 10 })
+      .then((picks) => {
+        if (cancelled) return;
+        setLiveResults(picks);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLiveResults([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLiveSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQuery]);
+
+  // Emergency fallback: only consulted when AI returns nothing.
+  const seedFallbackResults = useMemo(
     () =>
       debouncedQuery.trim().length > 0
         ? searchProducts(debouncedQuery)
@@ -190,7 +231,33 @@ export function ProductsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <SearchResults query={debouncedQuery} results={searchResults} />
+          {liveResults.length > 0 ? (
+            <View style={liveStyles.grid}>
+              {liveResults.map((c) => (
+                <View key={c.id} style={liveStyles.cell}>
+                  <LiveProductCard candidate={c} variant="alt" />
+                </View>
+              ))}
+            </View>
+          ) : liveSearching ? (
+            <View style={liveStyles.statusWrap}>
+              <Text
+                style={liveStyles.statusText}
+                maxFontSizeMultiplier={1.2}
+              >
+                Searching real products…
+              </Text>
+            </View>
+          ) : (
+            // Emergency fallback: AI returned nothing AND we're not
+            // mid-fetch. Show whatever the local fuzzy search can
+            // offer so the user is never staring at "no results" if
+            // we have ANY signal at all.
+            <SearchResults
+              query={debouncedQuery}
+              results={seedFallbackResults}
+            />
+          )}
         </ScrollView>
       ) : (
         <ScrollView
@@ -317,6 +384,31 @@ const suggestionRow = StyleSheet.create({
     fontSize: 14,
     letterSpacing: -0.1,
     color: palette.ink,
+  },
+});
+
+// v18.0 — live search grid + transient status block.
+const liveStyles = StyleSheet.create({
+  grid: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  cell: {
+    width: '47%',
+  },
+  statusWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 60,
+    alignItems: 'center',
+  },
+  statusText: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 16,
+    lineHeight: 22,
+    color: palette.inkTertiary,
   },
 });
 

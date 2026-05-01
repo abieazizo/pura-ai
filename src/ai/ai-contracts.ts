@@ -1086,6 +1086,147 @@ export const SEARCH_SUGGESTION_RESULT_SCHEMA: JsonSchema = {
   },
 };
 
+// ----------------------------------------------------------------------------
+// v18.0 — Live product retrieval contract.
+//
+// Replaces the v7.6 seed-catalog-as-primary-inventory pattern. The
+// AI is asked to recommend real, named products tied to either a
+// scan-driven concern context or an explicit search query. Results
+// flow into the same UI surfaces (scan results hero/alternatives,
+// product search, assistant inline cards) as the live source of
+// truth; the seed catalog is reduced to a quiet emergency fallback
+// for users who have never been online with the proxy reachable.
+//
+// Why "live" works under Expo Go: the AI is the inventory. GPT
+// knows the world's skincare products by brand + name + ingredients
+// + claimed benefits. A structured-output call produces a vetted
+// list of real picks for the user's actual concern, ranked, with
+// "why this product" reasoning attached. Image / price / merchant
+// URL are best-effort: when the AI knows them confidently they're
+// returned; when it doesn't the client renders the brand wordmark
+// placeholder + a search-on-merchant CTA.
+// ----------------------------------------------------------------------------
+
+export interface LiveProductCandidate {
+  /** Stable id derived from brand+name (slug). */
+  id: string;
+  brand: string;
+  name: string;
+  category: ProductCategory;
+  /** Concerns this product is intended to address, AI-tagged. */
+  concernTags: ConcernType[];
+  /** Skin-type fitness ("oily", "dry", "sensitive", "combination",
+   *  "normal", "all"). Free-form lowercase strings. */
+  skinTypeTags: string[];
+  /** 2-5 hero ingredients ("salicylic acid 2%", "niacinamide 10%"). */
+  ingredientsHighlights: string[];
+  /** Best-effort retail price the AI is confident about. Null when
+   *  the AI didn't know — the card hides the price, never invents. */
+  price: number | null;
+  /** ISO 4217 currency code: "USD", "GBP", "EUR". Default "USD". */
+  currency: string;
+  /** Merchant the productUrl points at ("Sephora", "Brand DTC"). */
+  merchantName: string | null;
+  /** Direct URL to a real merchant or brand product page. Null is
+   *  honest — never fabricate a URL. */
+  productUrl: string | null;
+  /** Best-effort packshot URL. Null is honest. */
+  imageUrl: string | null;
+  imageSource: 'merchant' | 'brand' | 'obf' | 'none';
+  shortDescription: string;
+  /** Why this product matches the user's specific concern. */
+  matchReason: string;
+  /** "available" when the AI is confident the product is actively
+   *  sold; "unknown" otherwise. */
+  availability: 'available' | 'unknown';
+  /** ISO timestamp of when the AI returned this candidate — used to
+   *  age the client cache. */
+  sourceTimestamp: string;
+  /** 0..100 ranked confidence within the result set. */
+  matchScore: number;
+}
+
+export interface LiveProductLookupResult {
+  /** The query that produced this set, echoed back. Either a free
+   *  query string or a structured concern-derived prompt. */
+  query: string;
+  /** Sorted by matchScore desc. */
+  candidates: LiveProductCandidate[];
+  /** Server-side hint: did the AI feel it had enough context to
+   *  answer well? Drives client UI ("we found 8 strong matches"
+   *  vs "you may want to refine the query"). */
+  confidence: 'high' | 'medium' | 'low';
+}
+
+const LIVE_PRODUCT_CANDIDATE_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'id',
+    'brand',
+    'name',
+    'category',
+    'concernTags',
+    'skinTypeTags',
+    'ingredientsHighlights',
+    'price',
+    'currency',
+    'merchantName',
+    'productUrl',
+    'imageUrl',
+    'imageSource',
+    'shortDescription',
+    'matchReason',
+    'availability',
+    'matchScore',
+  ],
+  properties: {
+    id: { type: 'string' },
+    brand: { type: 'string' },
+    name: { type: 'string' },
+    category: { type: 'string', enum: [...PRODUCT_CATEGORY_ENUM] },
+    concernTags: {
+      type: 'array',
+      items: { type: 'string', enum: [...CONCERN_TYPE_ENUM] },
+    },
+    skinTypeTags: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    ingredientsHighlights: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    price: { type: ['number', 'null'] },
+    currency: { type: 'string' },
+    merchantName: { type: ['string', 'null'] },
+    productUrl: { type: ['string', 'null'] },
+    imageUrl: { type: ['string', 'null'] },
+    imageSource: {
+      type: 'string',
+      enum: ['merchant', 'brand', 'obf', 'none'],
+    },
+    shortDescription: { type: 'string' },
+    matchReason: { type: 'string' },
+    availability: { type: 'string', enum: ['available', 'unknown'] },
+    matchScore: { type: 'integer', minimum: 0, maximum: 100 },
+  },
+};
+
+export const LIVE_PRODUCT_LOOKUP_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['query', 'candidates', 'confidence'],
+  properties: {
+    query: { type: 'string' },
+    candidates: {
+      type: 'array',
+      items: LIVE_PRODUCT_CANDIDATE_SCHEMA,
+    },
+    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+  },
+};
+
 // ============================================================================
 // Aggregate map — every named schema indexed by its variable name. Useful
 // for telemetry, debugging, and any consumer that needs to enumerate
@@ -1103,6 +1244,7 @@ export interface AIStructuredSchemas {
   SKIN_SCORE_EXPLANATION_SCHEMA: JsonSchema;
   PROGRESS_EXPLANATION_SCHEMA: JsonSchema;
   SEARCH_SUGGESTION_RESULT_SCHEMA: JsonSchema;
+  LIVE_PRODUCT_LOOKUP_SCHEMA: JsonSchema;
 }
 
 export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
@@ -1116,6 +1258,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   SKIN_SCORE_EXPLANATION_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
   SEARCH_SUGGESTION_RESULT_SCHEMA,
+  LIVE_PRODUCT_LOOKUP_SCHEMA,
 };
 
 // v11.1 — legacy `Claude*` schema aliases removed.

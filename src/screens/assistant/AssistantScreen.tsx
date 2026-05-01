@@ -46,8 +46,10 @@ import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import { localProductImageFor, seedProducts } from '@/data/seed';
-import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
+import { seedProducts } from '@/data/seed';
+import { LiveProductCard } from '@/components/products/LiveProductCard';
+import { lookupLiveProducts } from '@/api/liveProducts';
+import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import { colors, palette, radius, space, type as typography } from '@/theme';
 import { assistant as strings } from '@/copy/strings';
 import { hapt } from '@/utils/haptics';
@@ -147,23 +149,20 @@ export function AssistantScreen() {
         />
       );
     }
-    // v13.0 — inline product cards. We resolve the user-question
-    // intent against the latest scan and the seed catalog to surface
-    // 1–2 actual product cards inside the assistant message body
-    // when the question reads as product-shaped. Done here (in the
-    // parent) so we have full nav + store access; passed as props to
-    // MessageLine so the renderer stays simple.
+    // v18.0 — inline product cards now backed by LIVE retrieval.
+    // We pass the question + assistant text + scan grounding down to
+    // MessageLine; the line itself fires `lookupLiveProducts()` on
+    // mount when the question reads product-shaped, caches by query
+    // string at the module layer, and renders LiveProductCard cards
+    // with real merchant URLs + match badges. seedProducts no longer
+    // touches this path.
     const userQuestion = findPrecedingUserQuestion(messages, item.message.id);
-    const inlineProducts = resolveInlineProducts({
-      assistantText: item.message.text,
-      userQuestion,
-      latestScan,
-      hasScanned,
-    });
     return (
       <MessageLine
         message={item.message}
         hasScanned={hasScanned}
+        userQuestion={userQuestion}
+        latestScan={latestScan}
         onScan={() => nav.navigate('ScanModal')}
         onOpenProducts={() => {
           // @ts-expect-error nested tab navigation typing
@@ -173,20 +172,6 @@ export function AssistantScreen() {
           // @ts-expect-error nested tab navigation typing
           nav.navigate('Tabs', { screen: 'RoutineTab' });
         }}
-        onOpenProductDetail={(productId) => {
-          // ProductDetail lives on the HomeStack inside Tabs.
-          // @ts-expect-error nested stack typing
-          nav.navigate('Tabs', {
-            screen: 'HomeTab',
-            params: { screen: 'ProductDetail', params: { productId } },
-          });
-        }}
-        onShopProduct={(url) => {
-          Linking.openURL(url).catch(() => {
-            /* swallow */
-          });
-        }}
-        inlineProducts={inlineProducts}
       />
     );
   };
@@ -716,22 +701,65 @@ function buildProactiveOpening(
 function MessageLine({
   message,
   hasScanned,
+  userQuestion,
+  latestScan,
   onScan,
   onOpenProducts,
   onOpenRoutine,
-  onOpenProductDetail,
-  onShopProduct,
-  inlineProducts,
 }: {
   message: AssistantMessage;
   hasScanned: boolean;
+  userQuestion: string;
+  latestScan:
+    | ReturnType<typeof useAppStore.getState>['scans'][number]
+    | undefined;
   onScan: () => void;
   onOpenProducts: () => void;
   onOpenRoutine: () => void;
-  onOpenProductDetail: (productId: string) => void;
-  onShopProduct: (url: string) => void;
-  inlineProducts: InlinePick[];
 }) {
+  // v18.0 — fire live product retrieval inside the message itself
+  // when the question is product-shaped. Cached by query string at
+  // the module layer in `liveProducts.ts`, so the same query across
+  // message remounts hits cache.
+  const [liveCandidates, setLiveCandidates] = React.useState<
+    LiveProductCandidate[]
+  >([]);
+  const productShaped =
+    message.role === 'assistant' &&
+    (looksLikeProductQuestion(userQuestion) ||
+      looksLikeProductQuestion(message.text));
+  React.useEffect(() => {
+    if (!productShaped) return;
+    let cancelled = false;
+    const query = buildLiveProductQuery({
+      assistantText: message.text,
+      userQuestion,
+      latestScan,
+      hasScanned,
+    });
+    if (!query) return;
+    lookupLiveProducts(query, {
+      scanId: latestScan?.id ?? null,
+      count: 4,
+    })
+      .then((picks) => {
+        if (cancelled) return;
+        setLiveCandidates(picks.slice(0, 2));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLiveCandidates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    productShaped,
+    message.text,
+    userQuestion,
+    latestScan?.id,
+    hasScanned,
+  ]);
   const isUser = message.role === 'user';
   const attachedProducts: Product[] = (message.attachedProductIds ?? [])
     .map((id) => seedProducts.find((p) => p.id === id))
@@ -809,21 +837,10 @@ function MessageLine({
             tapping the body opens the in-app product detail. This
             replaces the "wall of text + a chip" pattern with real
             commerce-aware action surfaces. */}
-        {inlineProducts.length > 0 ? (
+        {liveCandidates.length > 0 ? (
           <View style={messageStyles.inlineProductRow}>
-            {inlineProducts.slice(0, 2).map((pick) => (
-              <AssistantProductCard
-                key={pick.product.id}
-                product={pick.product}
-                matchScore={pick.matchScore}
-                reason={pick.reason}
-                onOpen={() => onOpenProductDetail(pick.product.id)}
-                onShop={
-                  pick.product.buyUrl
-                    ? () => onShopProduct(pick.product.buyUrl!)
-                    : undefined
-                }
-              />
+            {liveCandidates.map((c) => (
+              <LiveProductCard key={c.id} candidate={c} variant="alt" />
             ))}
           </View>
         ) : null}
@@ -989,48 +1006,18 @@ function findPrecedingUserQuestion(
   return '';
 }
 
-function preferredCategoriesFor(
-  category: 'breakouts' | 'hydration' | 'texture' | 'tone' | undefined
-): Array<Product['category']> {
-  switch (category) {
-    case 'breakouts':
-      return ['serum', 'toner', 'spf', 'cleanser'];
-    case 'hydration':
-      return ['moisturizer', 'serum', 'toner'];
-    case 'texture':
-      return ['serum', 'mask', 'cleanser'];
-    case 'tone':
-      return ['serum', 'spf', 'moisturizer'];
-    default:
-      return ['serum', 'moisturizer'];
-  }
-}
-
-function categoriesFromQuery(text: string): Array<Product['category']> | null {
-  const t = text.toLowerCase();
-  if (/\bspf|sunscreen\b/.test(t)) return ['spf'];
-  if (/\bmoistur/.test(t)) return ['moisturizer'];
-  if (/\bclean/.test(t)) return ['cleanser'];
-  if (/\btoner\b/.test(t)) return ['toner'];
-  if (/\bserum|niacinamide|salicylic|retinol|vitamin c|exfoliant|active\b/.test(t)) {
-    return ['serum'];
-  }
-  if (/\bmask\b/.test(t)) return ['mask'];
-  return null;
-}
-
-/** v17.1 — InlinePick carries the matchScore alongside the product
- *  so the card can surface the AI's actual confidence in this
- *  product for THIS user's skin. */
-export interface InlinePick {
-  product: Product;
-  /** Integer 0..100 when sourced from aiTopMatches; null when fallback. */
-  matchScore: number | null;
-  /** AI-supplied "why this product" lead reason. May be empty. */
-  reason: string | null;
-}
-
-function resolveInlineProducts({
+/**
+ * v18.0 — Build the live retrieval query string for an assistant
+ * message. Used by MessageLine's useEffect to fire the live AI
+ * lookup ONLY when the question reads product-shaped. Returns null
+ * when there's nothing useful to ask.
+ *
+ * Combines:
+ *   • the user question (as-is, the model is good at parsing intent)
+ *   • the user's primary scan concern + region when present
+ * so a vague "what should I add?" still gets scan-grounded results.
+ */
+function buildLiveProductQuery({
   assistantText,
   userQuestion,
   latestScan,
@@ -1038,285 +1025,40 @@ function resolveInlineProducts({
 }: {
   assistantText: string;
   userQuestion: string;
-  latestScan: ReturnType<typeof useAppStore.getState>['scans'][number] | undefined;
+  latestScan:
+    | ReturnType<typeof useAppStore.getState>['scans'][number]
+    | undefined;
   hasScanned: boolean;
-}): InlinePick[] {
-  // Trigger only on product-shaped intent, otherwise stay quiet.
+}): string | null {
+  const trimmed = userQuestion.trim();
   if (
-    !looksLikeProductQuestion(userQuestion) &&
+    !looksLikeProductQuestion(trimmed) &&
     !looksLikeProductQuestion(assistantText)
   ) {
-    return [];
+    return null;
   }
-
-  // Choose preferred categories: explicit category in the question
-  // beats concern-driven inference. If no scan and no explicit
-  // category, fall back to the generic preference order.
-  const explicit = categoriesFromQuery(`${userQuestion} ${assistantText}`);
-  const concernCategory = hasScanned
-    ? latestScan?.concerns?.find((c) => c.severity !== 'calm')?.category
-    : undefined;
-  const preferred = explicit ?? preferredCategoriesFor(concernCategory);
-
-  const productById = new Map(seedProducts.map((p) => [p.id, p]));
-
-  // v17.1 — primary source: live aiTopMatches from the store. Those
-  // are the AI's actual ranking against THIS user's last scan. Filter
-  // them down to the preferred categories so a "what helps redness"
-  // ask doesn't return the AI's #1 SPF when the user wanted a serum.
-  const aiMatches = useAppStore.getState().aiTopMatches;
-  const seen = new Set<string>();
-  const picks: InlinePick[] = [];
-
-  if (aiMatches.length > 0) {
-    for (const m of aiMatches) {
-      const product = productById.get(m.product_id);
-      if (!product) continue;
-      if (!preferred.includes(product.category)) continue;
-      if (seen.has(product.id)) continue;
-      if (!product.buyUrl) continue;
-      seen.add(product.id);
-      picks.push({
-        product,
-        matchScore: m.match_score,
-        reason: m.primary_reasons[0] ?? null,
-      });
-      if (picks.length >= 2) break;
-    }
+  if (hasScanned && latestScan?.aiAnalysis) {
+    const ai = latestScan.aiAnalysis;
+    const concern = ai.primary_concern;
+    const region = ai.findings[0]?.regions[0];
+    const grounding = [
+      concern ? `for ${concern.replace('_', ' ')}` : null,
+      region && region !== 'across_face'
+        ? `on ${region.replace('_', ' ')}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return grounding ? `${trimmed} ${grounding}` : trimmed;
   }
-
-  // Pad from the seed catalog when the AI ranking doesn't fill the
-  // slot (fewer than 2 picks in the requested category, or no scan
-  // run yet). Quiet emergency fallback — never the primary source.
-  if (picks.length < 2) {
-    for (const cat of preferred) {
-      for (const p of seedProducts) {
-        if (p.category !== cat) continue;
-        if (seen.has(p.id)) continue;
-        if (!p.buyUrl) continue;
-        seen.add(p.id);
-        picks.push({ product: p, matchScore: null, reason: null });
-        if (picks.length >= 2) break;
-      }
-      if (picks.length >= 2) break;
-    }
-  }
-  return picks;
+  return trimmed;
 }
 
-/**
- * Compact inline product card rendered inside an assistant message.
- * Image + brand caps + serif name + price + tap-to-shop arrow.
- * Tapping the body opens ProductDetail; tapping the Shop pill opens
- * the brand site via Linking.openURL.
- */
-function AssistantProductCard({
-  product,
-  matchScore,
-  reason,
-  onOpen,
-  onShop,
-}: {
-  product: Product;
-  /** v17.1 — when sourced from aiTopMatches, render the actual
-   *  AI confidence as a "88% match" badge. null hides the badge. */
-  matchScore: number | null;
-  /** v17.1 — AI's "why this product" lead reason. Italic serif line. */
-  reason?: string | null;
-  onOpen: () => void;
-  onShop?: () => void;
-}) {
-  const localSrc = localProductImageFor(product.id);
-  return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityRole="button"
-      accessibilityLabel={`${product.brand} ${product.name}${
-        matchScore !== null ? `, ${matchScore}% match` : ''
-      }`}
-      style={({ pressed }) => [
-        inlineCardStyles.card,
-        pressed && { opacity: 0.94 },
-      ]}
-    >
-      <View style={inlineCardStyles.imageWrap}>
-        <ProductPlaceholderImage
-          product={product}
-          silhouetteSize={36}
-          showBrandWord
-          showMockupBadge={false}
-        />
-        {localSrc ? (
-          <ExpoImage
-            source={localSrc}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
-            transition={180}
-          />
-        ) : null}
-        {matchScore !== null ? (
-          <View style={inlineCardStyles.matchBadge}>
-            <Text
-              style={inlineCardStyles.matchBadgeText}
-              maxFontSizeMultiplier={1.1}
-            >
-              {`${matchScore}%`}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <View style={inlineCardStyles.text}>
-        <Text style={inlineCardStyles.brand} maxFontSizeMultiplier={1.1}>
-          {product.brand.toUpperCase()}
-        </Text>
-        <Text
-          style={inlineCardStyles.name}
-          numberOfLines={2}
-          maxFontSizeMultiplier={1.15}
-        >
-          {product.name}
-        </Text>
-        {reason ? (
-          <Text
-            style={inlineCardStyles.reason}
-            numberOfLines={2}
-            maxFontSizeMultiplier={1.2}
-          >
-            {reason}
-          </Text>
-        ) : null}
-        <View style={inlineCardStyles.foot}>
-          {Number.isFinite(product.price) && product.price > 0 ? (
-            <Text style={inlineCardStyles.price} maxFontSizeMultiplier={1.1}>
-              {Number.isInteger(product.price)
-                ? `$${product.price}`
-                : `$${product.price.toFixed(2)}`}
-            </Text>
-          ) : (
-            <View />
-          )}
-          {onShop ? (
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation?.();
-                hapt.select();
-                onShop();
-              }}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={`Shop ${product.brand}`}
-              style={({ pressed }) => [
-                inlineCardStyles.shopBtn,
-                pressed && { opacity: 0.92 },
-              ]}
-            >
-              <Text
-                style={inlineCardStyles.shopBtnLabel}
-                maxFontSizeMultiplier={1.1}
-              >
-                Shop
-              </Text>
-              <CaretRight size={11} color={palette.inkInverse} weight="bold" />
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
-    </Pressable>
-  );
-}
-
-const inlineCardStyles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: palette.bg,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    width: '100%',
-  },
-  imageWrap: {
-    width: 64,
-    height: 80,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: palette.bgDeep,
-    position: 'relative',
-  },
-  // v17.1 — match-score badge in the bottom-left of the image so the
-  // assistant card visibly carries the AI's confidence in this pick.
-  matchBadge: {
-    position: 'absolute',
-    bottom: 6,
-    left: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: palette.moss,
-  },
-  matchBadgeText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 0.2,
-    color: palette.inkInverse,
-    fontVariant: ['tabular-nums'],
-  },
-  text: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  brand: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: palette.inkTertiary,
-    marginBottom: 2,
-  },
-  name: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 14,
-    lineHeight: 17,
-    letterSpacing: -0.2,
-    color: palette.ink,
-  },
-  // v17.1 — short italic-serif "why this product" line. Reads as the
-  // AI's lead reason for this match, not generic copy.
-  reason: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 12,
-    lineHeight: 15,
-    color: palette.inkSecondary,
-    marginTop: 4,
-  },
-  foot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  price: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 13,
-    color: palette.ink,
-    fontVariant: ['tabular-nums'],
-  },
-  shopBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    height: 26,
-    paddingHorizontal: 10,
-    borderRadius: 13,
-    backgroundColor: palette.clay,
-  },
-  shopBtnLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 0.3,
-    color: palette.inkInverse,
-  },
-});
+// v18.0 — AssistantProductCard + inlineCardStyles removed. Inline
+// product cards now render via the shared `LiveProductCard`
+// component sourced from the live retrieval engine in
+// `src/api/liveProducts.ts`. The seed catalog no longer touches
+// assistant inline products.
 
 type ListItem =
   | { kind: 'empty' }

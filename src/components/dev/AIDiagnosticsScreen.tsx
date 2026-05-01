@@ -72,6 +72,7 @@ const METHOD_LABEL: Record<AIMethodKey, string> = {
   analyzeScannedProductAgainstUser: 'analyzeScannedProductAgainstUser',
   buildFullScanToPlanBundle: 'buildFullScanToPlanBundle',
   buildProgressBundle: 'buildProgressBundle',
+  lookupLiveProducts: 'lookupLiveProducts',
 };
 
 export function AIDiagnosticsScreen() {

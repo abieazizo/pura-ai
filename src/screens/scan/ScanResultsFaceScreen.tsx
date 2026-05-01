@@ -27,7 +27,7 @@
  * settles and the analysis is ready.
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Linking,
@@ -40,11 +40,7 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import {
-  ArrowRight,
-  ArrowUpRight,
-  X,
-} from 'phosphor-react-native';
+import { X } from 'phosphor-react-native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@/store/useAppStore';
@@ -63,18 +59,17 @@ import {
 } from '@/utils/skinScore';
 import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
-import { ProductPlaceholderImage } from '@/components/products/ProductPlaceholderImage';
+import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { FaceSkinMap } from '@/screens/scan/components/FaceSkinMap';
-import { localProductImageFor, seedProducts } from '@/data/seed';
+import { lookupForScan } from '@/api/liveProducts';
 import type { RootStackParamList } from '@/navigation/types';
 import type {
   Concern,
   ConcernCategory,
-  Product,
 } from '@/types';
 import type {
   FaceScanAnalysis,
-  ProductMatch,
+  LiveProductCandidate,
 } from '@/ai/ai-contracts';
 
 // Dev-only loud "DEMO READING" banner. Hidden from consumer flow.
@@ -87,7 +82,6 @@ export interface ScanResultsFaceScreenProps {
 
 export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
   const scans = useAppStore((s) => s.scans);
-  const aiTopMatches = useAppStore((s) => s.aiTopMatches);
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
 
   const scan = scans.find((s) => s.id === scanId) ?? scans[scans.length - 1];
@@ -144,11 +138,41 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
     return buildTonightFocus(concerns).slice(0, 4);
   }, [scan, concerns]);
 
-  // v12.0 — recommended products: use the AI ranking when available,
-  // otherwise use the deterministic top concern → category seed.
-  const recommendations = useMemo(() => {
-    return resolveRecommendations({ aiTopMatches, concerns });
-  }, [aiTopMatches, concerns]);
+  // v18.0 — live product retrieval. Replaces the seed-catalog-as-
+  // primary-inventory pattern. Fires once per scan, cached at the
+  // module layer so screen remounts don't refetch. The hero card is
+  // candidates[0]; alternatives are candidates[1..5]. When the
+  // gateway is unreachable, candidates is empty and the section
+  // hides gracefully.
+  const [liveCandidates, setLiveCandidates] = useState<
+    LiveProductCandidate[]
+  >([]);
+  const [liveLoading, setLiveLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!scan?.aiAnalysis) return;
+    let cancelled = false;
+    setLiveLoading(true);
+    lookupForScan(scan)
+      .then((picks) => {
+        if (cancelled) return;
+        setLiveCandidates(picks);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLiveCandidates([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLiveLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scan?.id, scan?.aiAnalysis]);
+
+  const heroLive = liveCandidates[0] ?? null;
+  const altLive = liveCandidates.slice(1, 6);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -177,29 +201,6 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
       // @ts-expect-error nested tab navigation
       rootNav.navigate?.('Tabs', { screen: 'ProductsTab' });
     }, 60);
-  };
-
-  // v12.0 — ProductDetail lives on the HomeStack, not the RootStack.
-  // From inside the scan modal we can't navigate there directly; we
-  // dismiss the scan modal and let the Tabs navigator route through
-  // the Home stack, then push ProductDetail there.
-  const openProductDetail = (id: string, tint: Product['tint']) => {
-    hapt.select();
-    rootNav.goBack();
-    setTimeout(() => {
-      // @ts-expect-error nested stack typing
-      rootNav.navigate?.('Tabs', {
-        screen: 'HomeTab',
-        params: { screen: 'ProductDetail', params: { productId: id, tint } },
-      });
-    }, 60);
-  };
-
-  const openMerchant = (url: string) => {
-    hapt.select();
-    Linking.openURL(url).catch(() => {
-      /* swallow — no toast chrome here */
-    });
   };
 
   const lowQuality =
@@ -322,27 +323,27 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             6. Image quality (only when relevant)
             7. Disclaimer */}
 
-        {/* ── 2. YOUR NEXT MOVE — hero recommendation ──────────────── */}
-        {recommendations.primary ? (
+        {/* ── 2. YOUR NEXT MOVE — live product retrieval ─────────────── */}
+        {heroLive ? (
           <View style={styles.section}>
             <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
               {nextMoveKickerFor(concerns)}
             </Text>
-            <PrimaryRecCard
-              rec={recommendations.primary}
-              onOpen={() =>
-                openProductDetail(
-                  recommendations.primary!.product.id,
-                  recommendations.primary!.product.tint
-                )
-              }
-              onShop={
-                recommendations.primary.product.buyUrl
-                  ? () =>
-                      openMerchant(recommendations.primary!.product.buyUrl!)
-                  : undefined
-              }
-            />
+            <LiveProductCard candidate={heroLive} variant="hero" />
+          </View>
+        ) : liveLoading ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
+              {nextMoveKickerFor(concerns)}
+            </Text>
+            <View style={styles.liveLoadingCard}>
+              <Text
+                style={styles.liveLoadingText}
+                maxFontSizeMultiplier={1.15}
+              >
+                Finding the right products for your scan…
+              </Text>
+            </View>
           </View>
         ) : null}
 
@@ -465,8 +466,8 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
           </View>
         ) : null}
 
-        {/* ── 7a. Also matched (alternatives) ──────────────────────── */}
-        {recommendations.alternatives.length > 0 ? (
+        {/* ── 7a. Also matched (live alternatives) ──────────────────── */}
+        {altLive.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.recHeader}>
               <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
@@ -474,7 +475,7 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
               </Text>
               <Pressable onPress={openProducts} hitSlop={8}>
                 <Text style={styles.seeAllLink} maxFontSizeMultiplier={1.1}>
-                  See all
+                  Open products
                 </Text>
               </Pressable>
             </View>
@@ -483,13 +484,11 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.altRow}
             >
-              {recommendations.alternatives.map((rec) => (
-                <AltRecCard
-                  key={rec.product.id}
-                  rec={rec}
-                  onOpen={() =>
-                    openProductDetail(rec.product.id, rec.product.tint)
-                  }
+              {altLive.map((c) => (
+                <LiveProductCard
+                  key={c.id}
+                  candidate={c}
+                  variant="alt"
                 />
               ))}
             </ScrollView>
@@ -596,107 +595,12 @@ function qualityCopy(analysis: FaceScanAnalysis): string {
   return 'Some areas were harder to read in this photo.';
 }
 
-interface ResolvedRec {
-  product: Product;
-  matchScore: number | null;
-  matchBand: ProductMatch['match_band'] | null;
-  reasons: string[];
-}
-
-interface ResolvedRecommendations {
-  primary: ResolvedRec | null;
-  alternatives: ResolvedRec[];
-}
-
-/**
- * Map the AI's `aiTopMatches` (or the deterministic top-concern
- * fallback) onto the seed catalog so we can surface real images,
- * names, and shop links.
- */
-function resolveRecommendations({
-  aiTopMatches,
-  concerns,
-}: {
-  aiTopMatches: ProductMatch[];
-  concerns: Concern[];
-}): ResolvedRecommendations {
-  const byId = new Map(seedProducts.map((p) => [p.id, p]));
-
-  // Try AI-driven ranking first.
-  if (aiTopMatches.length > 0) {
-    const resolved: ResolvedRec[] = [];
-    for (const m of aiTopMatches) {
-      const product = byId.get(m.product_id);
-      if (!product) continue;
-      resolved.push({
-        product,
-        matchScore: m.match_score,
-        matchBand: m.match_band,
-        reasons: m.primary_reasons.slice(0, 2),
-      });
-      if (resolved.length >= 5) break;
-    }
-    if (resolved.length > 0) {
-      return { primary: resolved[0], alternatives: resolved.slice(1, 5) };
-    }
-  }
-
-  // Deterministic fallback — pick by concern category.
-  const topConcern = concerns.find((c) => c.severity !== 'calm') ?? concerns[0];
-  const preferredCategories = preferredCategoriesFor(topConcern?.category);
-  const seen = new Set<string>();
-  const picks: ResolvedRec[] = [];
-  for (const cat of preferredCategories) {
-    for (const product of seedProducts) {
-      if (product.category !== cat) continue;
-      if (seen.has(product.id)) continue;
-      seen.add(product.id);
-      picks.push({
-        product,
-        matchScore: null,
-        matchBand: null,
-        reasons: [
-          buildHomeRecReason(topConcern),
-        ].filter((s) => s.length > 0),
-      });
-      if (picks.length >= 5) break;
-    }
-    if (picks.length >= 5) break;
-  }
-  if (picks.length === 0) return { primary: null, alternatives: [] };
-  return { primary: picks[0], alternatives: picks.slice(1, 5) };
-}
-
-function preferredCategoriesFor(
-  category: Concern['category'] | undefined
-): Product['category'][] {
-  switch (category) {
-    case 'breakouts':
-      return ['serum', 'toner', 'spf', 'cleanser'];
-    case 'hydration':
-      return ['moisturizer', 'serum', 'toner'];
-    case 'texture':
-      return ['serum', 'mask', 'cleanser'];
-    case 'tone':
-      return ['serum', 'spf', 'moisturizer'];
-    default:
-      return ['serum', 'moisturizer'];
-  }
-}
-
-function buildHomeRecReason(concern: Concern | undefined): string {
-  if (!concern) return 'Matched to your skin profile.';
-  switch (concern.category) {
-    case 'breakouts':
-      return `Targets congestion on your ${concern.region}.`;
-    case 'hydration':
-      return `Restores moisture to your ${concern.region}.`;
-    case 'texture':
-      return `Smooths the texture on your ${concern.region}.`;
-    case 'tone':
-      return `Works on dark marks across your ${concern.region}.`;
-  }
-}
+// v18.0 — `resolveRecommendations`, `ResolvedRec`, `preferredCategoriesFor`,
+// and `buildHomeRecReason` removed. The seed-catalog-driven recommendation
+// path is replaced by `lookupForScan(scan)` from `src/api/liveProducts.ts`,
+// which returns AI-curated real products (`LiveProductCandidate[]`) tied to
+// the user's actual scan findings. The seed catalog is no longer the
+// primary inventory source on this screen.
 
 // ============================================================================
 // v17.2 — FindingRow removed.
@@ -790,192 +694,10 @@ function categoryChipColor(category: ConcernCategory): string {
 // Recommended product cards
 // ============================================================================
 
-function PrimaryRecCard({
-  rec,
-  onOpen,
-  onShop,
-}: {
-  rec: ResolvedRec;
-  onOpen: () => void;
-  onShop?: () => void;
-}) {
-  const { product, matchScore, reasons } = rec;
-  // v12.3 — real images. seedProducts.imageUri is empty; the actual
-  // photos are bundled assets resolved via localProductImageFor(id).
-  // When no real image is bundled, ProductPlaceholderImage renders a
-  // premium silhouette + brand wordmark instead of an empty box.
-  const localSrc = localProductImageFor(product.id);
-  return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityRole="button"
-      accessibilityLabel={`${product.brand} ${product.name}`}
-      style={({ pressed }) => [
-        styles.primaryCard,
-        pressed && { opacity: 0.96 },
-      ]}
-    >
-      <View style={styles.primaryImageWrap}>
-        <ProductPlaceholderImage
-          product={product}
-          silhouetteSize={64}
-          showBrandWord
-          showMockupBadge={false}
-        />
-        {localSrc ? (
-          <Image
-            source={localSrc}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
-            transition={180}
-          />
-        ) : null}
-        {matchScore !== null ? (
-          <View style={styles.matchPill}>
-            <Text style={styles.matchPillNum} maxFontSizeMultiplier={1.1}>
-              {`${matchScore}%`}
-            </Text>
-            <Text style={styles.matchPillLabel} maxFontSizeMultiplier={1.1}>
-              MATCH
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.primaryText}>
-        <Text style={styles.primaryBrand} maxFontSizeMultiplier={1.1}>
-          {product.brand.toUpperCase()}
-        </Text>
-        <Text
-          style={styles.primaryName}
-          numberOfLines={2}
-          maxFontSizeMultiplier={1.15}
-        >
-          {product.name}
-        </Text>
-        {reasons[0] ? (
-          <Text
-            style={styles.primaryReason}
-            numberOfLines={2}
-            maxFontSizeMultiplier={1.2}
-          >
-            {reasons[0]}
-          </Text>
-        ) : null}
-        <View style={styles.primaryFoot}>
-          {Number.isFinite(product.price) && product.price > 0 ? (
-            <Text style={styles.primaryPrice} maxFontSizeMultiplier={1.1}>
-              {formatPrice(product.price)}
-            </Text>
-          ) : (
-            <View />
-          )}
-          <View style={{ flex: 1 }} />
-          {onShop ? (
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation?.();
-                onShop();
-              }}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={`Shop ${product.brand}`}
-              style={({ pressed }) => [
-                styles.shopBtn,
-                pressed && { opacity: 0.92 },
-              ]}
-            >
-              <Text style={styles.shopBtnLabel} maxFontSizeMultiplier={1.1}>
-                Shop
-              </Text>
-              <ArrowUpRight
-                size={12}
-                weight="bold"
-                color={palette.inkInverse}
-              />
-            </Pressable>
-          ) : (
-            <ArrowRight size={14} color={palette.inkTertiary} weight="bold" />
-          )}
-        </View>
-      </View>
-    </Pressable>
-  );
-}
-
-function AltRecCard({
-  rec,
-  onOpen,
-}: {
-  rec: ResolvedRec;
-  onOpen: () => void;
-}) {
-  const { product, matchScore } = rec;
-  // v12.3 — see PrimaryRecCard. Real bundled photo when available;
-  // otherwise the editorial silhouette placeholder.
-  const localSrc = localProductImageFor(product.id);
-  return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityRole="button"
-      accessibilityLabel={`${product.brand} ${product.name}`}
-      style={({ pressed }) => [
-        styles.altCard,
-        pressed && { opacity: 0.94 },
-      ]}
-    >
-      <View style={styles.altImageWrap}>
-        <ProductPlaceholderImage
-          product={product}
-          silhouetteSize={48}
-          showBrandWord
-          showMockupBadge={false}
-        />
-        {localSrc ? (
-          <Image
-            source={localSrc}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
-            transition={180}
-          />
-        ) : null}
-        {matchScore !== null ? (
-          <View style={styles.altMatchBadge}>
-            <Text style={styles.altMatchText} maxFontSizeMultiplier={1.1}>
-              {`${matchScore}%`}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <Text style={styles.altBrand} maxFontSizeMultiplier={1.1}>
-        {product.brand.toUpperCase()}
-      </Text>
-      <Text
-        style={styles.altName}
-        numberOfLines={2}
-        maxFontSizeMultiplier={1.15}
-      >
-        {product.name}
-      </Text>
-    </Pressable>
-  );
-}
-
-function tintForProduct(p: { tint?: string | null }) {
-  switch (p.tint) {
-    case 'clay':
-      return palette.clayPaper;
-    case 'sand':
-      return palette.sandPaper;
-    case 'moss':
-      return palette.mossLight;
-    default:
-      return palette.bgDeep;
-  }
-}
-
-function formatPrice(price: number): string {
-  return Number.isInteger(price) ? `$${price}` : `$${price.toFixed(2)}`;
-}
+// v18.0 — `PrimaryRecCard`, `AltRecCard`, `tintForProduct`, and
+// `formatPrice` removed. The result screen now renders
+// `LiveProductCard` (variants "hero" and "alt") which sources its
+// data from the live retrieval endpoint, not the seed catalog.
 
 // ============================================================================
 // Dev-only banner (kept for diagnostics)
@@ -1292,7 +1014,7 @@ const styles = StyleSheet.create({
     paddingTop: 3,
   },
 
-  // ── 7. Recommended products ──────────────────────────────────────
+  // ── Recommended products (live retrieval) ───────────────────────
   recHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1305,154 +1027,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     color: palette.clay,
   },
-  // v13.0 — hero card. Increased visual weight via shadow + slightly
-  // taller image. The card is the primary action surface on the
-  // result screen now (above findings), so it earns more presence.
-  primaryCard: {
-    flexDirection: 'row',
-    gap: 14,
-    padding: 12,
-    borderRadius: 20,
-    backgroundColor: palette.bg,
+  altRow: { gap: 10, paddingRight: 4 },
+  // v18.0 — quiet placeholder while live retrieval is in flight.
+  liveLoadingCard: {
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    backgroundColor: palette.bgDeep,
     borderWidth: 1,
     borderColor: palette.hairline,
-    marginBottom: 16,
-    shadowColor: palette.ink,
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
   },
-  primaryImageWrap: {
-    width: 116,
-    height: 148,
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: palette.bgDeep,
-    position: 'relative',
-  },
-  matchPill: {
-    position: 'absolute',
-    left: 8,
-    bottom: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: palette.moss,
-    alignItems: 'center',
-    minWidth: 52,
-  },
-  matchPillNum: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    lineHeight: 14,
-    color: palette.inkInverse,
-    fontVariant: ['tabular-nums'],
-  },
-  matchPillLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: 'rgba(248,250,252,0.78)',
-    marginTop: 1,
-  },
-  primaryText: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  primaryBrand: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: palette.inkTertiary,
-    marginBottom: 4,
-  },
-  primaryName: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 17,
-    lineHeight: 21,
-    letterSpacing: -0.3,
-    color: palette.ink,
-    marginBottom: 6,
-  },
-  primaryReason: {
-    flex: 1,
+  liveLoadingText: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 19,
     color: palette.inkSecondary,
-    marginBottom: 10,
-  },
-  primaryFoot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  primaryPrice: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 16,
-    color: palette.ink,
-    fontVariant: ['tabular-nums'],
-  },
-  // v13.0 — stronger Shop CTA. Premium pill with a subtle clay
-  // accent so it reads as the primary action on the rec card.
-  shopBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 32,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    backgroundColor: palette.clay,
-  },
-  shopBtnLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    letterSpacing: 0.3,
-    color: palette.inkInverse,
-  },
-
-  altRow: { gap: 10, paddingRight: 4 },
-  altCard: {
-    width: 132,
-  },
-  altImageWrap: {
-    width: 132,
-    height: 132,
-    borderRadius: 14,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: palette.bgDeep,
-    marginBottom: 8,
-  },
-  altMatchBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 8,
-    backgroundColor: 'rgba(11,18,32,0.7)',
-  },
-  altMatchText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    color: palette.inkInverse,
-    letterSpacing: 0.2,
-    fontVariant: ['tabular-nums'],
-  },
-  altBrand: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: palette.inkTertiary,
-    marginBottom: 2,
-  },
-  altName: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 13,
-    lineHeight: 16,
-    letterSpacing: -0.2,
-    color: palette.ink,
   },
 
   // ── 8. Disclaimer ────────────────────────────────────────────────
