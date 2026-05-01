@@ -105,275 +105,21 @@ export function clearLiveProductCache(): void {
 }
 
 // ---------------------------------------------------------------------------
-// URL safety.
-//
-// The AI is instructed to never fabricate URLs, but defense-in-depth
-// applies. Real retailer + brand domains are whitelisted; anything
-// else collapses to null so the card renders a search-on-merchant
-// CTA instead of pointing at a guessed brand DTC site.
+// v18.6 — URL safety + commerce enrichment moved to the shared
+// module `src/lib/commerceEnrichment.ts`. Both the proxy server
+// handler and the client orchestrator import the same helpers, so
+// a direct curl POST to /lookupLiveProducts now sees enriched
+// candidates (the v18.5 bug was that enrichment lived only here).
 // ---------------------------------------------------------------------------
 
-const TRUSTED_HOSTS = new Set<string>([
-  // Major retailers
-  'sephora.com',
-  'ulta.com',
-  'amazon.com',
-  'amazon.co.uk',
-  'amazon.ca',
-  'boots.com',
-  'cultbeauty.com',
-  'cultbeauty.co.uk',
-  'lookfantastic.com',
-  'lookfantastic.co.uk',
-  'spacenk.com',
-  'beautypie.com',
-  'dermstore.com',
-  'target.com',
-  'walmart.com',
-  'mecca.com',
-  'mecca.com.au',
-  'adore.com.au',
-  'feelunique.com',
-  // Brand DTC domains (selection of recognisable global brands)
-  'cerave.com',
-  'cerave.co.uk',
-  'laroche-posay.us',
-  'laroche-posay.co.uk',
-  'theordinary.com',
-  'paulaschoice.com',
-  'paulaschoice.co.uk',
-  'beautyofjoseon.com',
-  'cosrx.com',
-  'kiehls.com',
-  'supergoop.com',
-  'naturium.com',
-  'glowrecipe.com',
-  'youthtothepeople.com',
-  'goodmolecules.com',
-  'biotherm.com',
-  'biotherm-usa.com',
-  'elfcosmetics.com',
-  'innisfree.com',
-  'laneige.com',
-  'drunkelephant.com',
-  'tatcha.com',
-  'fentyskin.com',
-  'rare-beauty.com',
-  'ren-skincare.com',
-  'kinship.com',
-  'iliabeauty.com',
-  'farmacybeauty.com',
-  'firstaidbeauty.com',
-  'kosas.com',
-  'merit-beauty.com',
-  'summerfridays.com',
-  'biossance.com',
-  'krave-beauty.com',
-  'anuaglobal.com',
-  'anua-global.com',
-  'bonajour.com',
-  'illiyoon.com',
-  'itsskin.com',
-]);
-
-/** Strip leading "www." and a trailing slash; return host only. */
-function hostOf(url: string): string | null {
-  try {
-    const u = new URL(url);
-    let host = u.host.toLowerCase();
-    if (host.startsWith('www.')) host = host.slice(4);
-    return host;
-  } catch {
-    return null;
-  }
-}
-
-function isTrustedUrl(url: string): boolean {
-  const host = hostOf(url);
-  if (!host) return false;
-  if (TRUSTED_HOSTS.has(host)) return true;
-  // Allow subdomains of trusted hosts (e.g. shop.sephora.com).
-  for (const t of TRUSTED_HOSTS) {
-    if (host.endsWith('.' + t)) return true;
-  }
-  return false;
-}
-
-function sanitizeCandidate(c: LiveProductCandidate): LiveProductCandidate {
-  let productUrl = c.productUrl;
-  let merchantName = c.merchantName;
-  let imageUrl = c.imageUrl;
-  let imageSource = c.imageSource;
-
-  if (productUrl && !isTrustedUrl(productUrl)) {
-    aiLog.warn('liveProducts', 'dropped untrusted productUrl', {
-      url: productUrl.slice(0, 120),
-    });
-    productUrl = null;
-    if (imageSource === 'merchant' || imageSource === 'brand') {
-      merchantName = merchantName ?? null;
-    }
-  }
-  if (imageUrl && !/^https?:\/\//i.test(imageUrl)) {
-    imageUrl = null;
-    imageSource = 'none';
-  }
-  return {
-    ...c,
-    productUrl,
-    merchantName,
-    imageUrl,
-    imageSource,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// v18.5 — Deterministic commerce enrichment.
-//
-// The AI ranks names + reasons reliably but emits null for productUrl /
-// merchantName / imageUrl on most candidates, even with a permissive
-// prompt. Rather than fight the model, we deterministically fill in
-// the gaps client-side:
-//   • Map known brand → official DTC home so users land on the brand
-//     when there's no specific PDP URL.
-//   • Otherwise build a high-trust retailer SEARCH URL (Sephora →
-//     Ulta → Amazon priority) scoped by brand+name.
-//   • Always populate merchantName so the card carries a "Find on X"
-//     CTA instead of a dead Shop button.
-//
-// Image enrichment is intentionally NOT synthesized — we don't fake
-// packshots. Cards with null imageUrl render the brand-wordmark
-// placeholder (see LiveProductCard).
-// ---------------------------------------------------------------------------
-
-/** Known brand → DTC site map. Lowercase brand keys for lookup. */
-const BRAND_DTC: Record<string, { host: string; merchant: string }> = {
-  'the ordinary': { host: 'theordinary.com', merchant: 'The Ordinary' },
-  'cerave': { host: 'cerave.com', merchant: 'CeraVe' },
-  'la roche-posay': { host: 'laroche-posay.us', merchant: 'La Roche-Posay' },
-  "paula's choice": { host: 'paulaschoice.com', merchant: "Paula's Choice" },
-  'paulas choice': { host: 'paulaschoice.com', merchant: "Paula's Choice" },
-  'cosrx': { host: 'cosrx.com', merchant: 'COSRX' },
-  'beauty of joseon': {
-    host: 'beautyofjoseon.com',
-    merchant: 'Beauty of Joseon',
-  },
-  "kiehl's": { host: 'kiehls.com', merchant: "Kiehl's" },
-  'kiehls': { host: 'kiehls.com', merchant: "Kiehl's" },
-  'supergoop': { host: 'supergoop.com', merchant: 'Supergoop!' },
-  'supergoop!': { host: 'supergoop.com', merchant: 'Supergoop!' },
-  'naturium': { host: 'naturium.com', merchant: 'Naturium' },
-  'glow recipe': { host: 'glowrecipe.com', merchant: 'Glow Recipe' },
-  'youth to the people': {
-    host: 'youthtothepeople.com',
-    merchant: 'Youth To The People',
-  },
-  'good molecules': {
-    host: 'goodmolecules.com',
-    merchant: 'Good Molecules',
-  },
-  'biossance': { host: 'biossance.com', merchant: 'Biossance' },
-  'drunk elephant': {
-    host: 'drunkelephant.com',
-    merchant: 'Drunk Elephant',
-  },
-  'tatcha': { host: 'tatcha.com', merchant: 'Tatcha' },
-  'farmacy': { host: 'farmacybeauty.com', merchant: 'Farmacy' },
-  'first aid beauty': {
-    host: 'firstaidbeauty.com',
-    merchant: 'First Aid Beauty',
-  },
-  'kosas': { host: 'kosas.com', merchant: 'Kosas' },
-  'merit': { host: 'merit-beauty.com', merchant: 'Merit' },
-  'summer fridays': { host: 'summerfridays.com', merchant: 'Summer Fridays' },
-  'youth lab': { host: 'theyouthlab.com', merchant: 'Youth Lab' },
-  'krave beauty': { host: 'krave-beauty.com', merchant: 'Krave Beauty' },
-  'anua': { host: 'anuaglobal.com', merchant: 'Anua' },
-  'fenty skin': { host: 'fentyskin.com', merchant: 'Fenty Skin' },
-  'ilia': { host: 'iliabeauty.com', merchant: 'Ilia' },
-  'rare beauty': { host: 'rare-beauty.com', merchant: 'Rare Beauty' },
-  'ren': { host: 'ren-skincare.com', merchant: 'REN' },
-  "e.l.f.": { host: 'elfcosmetics.com', merchant: 'e.l.f.' },
-  'elf': { host: 'elfcosmetics.com', merchant: 'e.l.f.' },
-  'innisfree': { host: 'innisfree.com', merchant: 'innisfree' },
-  'laneige': { host: 'laneige.com', merchant: 'LANEIGE' },
-};
-
-/** Pretty-name a host into a merchant string ("sephora.com" → "Sephora"). */
-function merchantNameForHost(host: string): string {
-  if (host.endsWith('sephora.com')) return 'Sephora';
-  if (host.endsWith('ulta.com')) return 'Ulta';
-  if (host.startsWith('amazon.')) return 'Amazon';
-  if (host.endsWith('boots.com')) return 'Boots';
-  if (host.endsWith('cultbeauty.com') || host.endsWith('cultbeauty.co.uk'))
-    return 'Cult Beauty';
-  if (host.endsWith('lookfantastic.com') || host.endsWith('lookfantastic.co.uk'))
-    return 'LookFantastic';
-  if (host.endsWith('spacenk.com')) return 'Space NK';
-  if (host.endsWith('dermstore.com')) return 'Dermstore';
-  if (host.endsWith('target.com')) return 'Target';
-  if (host.endsWith('walmart.com')) return 'Walmart';
-  if (host.endsWith('mecca.com.au') || host.endsWith('mecca.com'))
-    return 'Mecca';
-  if (host.endsWith('feelunique.com')) return 'Feelunique';
-  // For brand DTCs not in the BRAND_DTC table, capitalize the first
-  // segment of the host as a clean fallback ("naturium.com" → "Naturium").
-  const seg = host.split('.')[0] ?? host;
-  return seg.replace(/-/g, ' ').replace(/(^|\s)\S/g, (c) => c.toUpperCase());
-}
-
-/** Build a Sephora search URL keyed by brand + name. */
-function sephoraSearchUrl(brand: string, name: string): string {
-  const q = encodeURIComponent(`${brand} ${name}`);
-  return `https://www.sephora.com/search?keyword=${q}`;
-}
+import {
+  sanitizeAndEnrich,
+  sephoraSearchUrl,
+} from '@/lib/commerceEnrichment';
 
 /**
- * Deterministic enrichment. Run after sanitizeCandidate. Fills
- * missing productUrl + merchantName so every card has a working
- * "Find on X" path. Keeps imageUrl + price untouched (we don't
- * fabricate those).
- */
-function enrichCommerce(c: LiveProductCandidate): LiveProductCandidate {
-  let productUrl = c.productUrl;
-  let merchantName = c.merchantName;
-  let imageSource = c.imageSource;
-
-  // (1) If productUrl is set and trusted, just normalize merchantName
-  // from the host when missing.
-  if (productUrl) {
-    const host = hostOf(productUrl);
-    if (host && (!merchantName || merchantName.length === 0)) {
-      merchantName = merchantNameForHost(host);
-    }
-    return { ...c, productUrl, merchantName, imageSource };
-  }
-
-  // (2) productUrl is null — try a brand DTC match by lowercase brand.
-  const brandKey = (c.brand ?? '').trim().toLowerCase();
-  const dtc = BRAND_DTC[brandKey];
-  if (dtc) {
-    productUrl = `https://www.${dtc.host}/`;
-    merchantName = `${dtc.merchant} (DTC)`;
-    imageSource = 'none';
-    return { ...c, productUrl, merchantName, imageSource };
-  }
-
-  // (3) No DTC match — default to a Sephora search URL keyed by
-  // brand + name. This always works as a real shoppable destination.
-  if (c.brand && c.name) {
-    productUrl = sephoraSearchUrl(c.brand, c.name);
-    merchantName = 'Sephora (search)';
-    imageSource = 'none';
-  }
-  return { ...c, productUrl, merchantName, imageSource };
-}
-
-/**
- * Build a search-on-merchant URL when the AI didn't supply a trusted
- * productUrl. Used by the card-render layer at click time as a final
- * safety net (most candidates now flow through enrichCommerce, but
- * the helper is kept as the click-time fallback for old code paths).
+ * Build a Sephora search URL keyed by brand + name. Re-exported for
+ * the card-render layer's click-time fallback.
  */
 export function buildSearchUrl(candidate: LiveProductCandidate): string {
   return sephoraSearchUrl(candidate.brand, candidate.name);
@@ -426,10 +172,9 @@ export async function lookupLiveProducts(
       query: trimmed,
       count: opts.count ?? 8,
     });
-    const sanitized = result.candidates
-      .map(sanitizeCandidate)
-      .map(enrichCommerce)
-      .sort((a, b) => b.matchScore - a.matchScore);
+    const sanitized = sanitizeAndEnrich(result.candidates).sort(
+      (a, b) => b.matchScore - a.matchScore
+    );
     writeCache(key, sanitized, result.confidence);
     cacheCandidates(sanitized);
     aiLog.info('liveProducts', 'AI live retrieval ok', {
@@ -519,10 +264,9 @@ export async function lookupForScan(
         sensitivities,
       },
     });
-    const sanitized = result.candidates
-      .map(sanitizeCandidate)
-      .map(enrichCommerce)
-      .sort((a, b) => b.matchScore - a.matchScore);
+    const sanitized = sanitizeAndEnrich(result.candidates).sort(
+      (a, b) => b.matchScore - a.matchScore
+    );
     writeCache(key, sanitized, result.confidence);
     cacheCandidates(sanitized);
     aiLog.info('liveProducts', 'scan live retrieval ok', {

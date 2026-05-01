@@ -28,6 +28,7 @@ import {
   validateSearchSuggestionResult,
   validateSkinScoreExplanation,
 } from '../../src/ai/validation';
+import { sanitizeAndEnrich } from '../../src/lib/commerceEnrichment';
 import { lookupBarcodeServerSide } from './barcodeLookup';
 
 export class HandlerError extends Error {
@@ -404,7 +405,17 @@ export const HANDLERS: Record<string, Handler> = {
     };
     const validated = validateLiveProductLookupResult(stamped);
     if (!validated) aiBad('lookupLiveProducts');
-    return validated;
+    // v18.6 — deterministic commerce enrichment runs SERVER-SIDE so a
+    // direct curl POST to /lookupLiveProducts (and the client gateway
+    // alike) sees enriched candidates. Earlier versions ran this only
+    // in `src/api/liveProducts.ts` which the endpoint test bypassed
+    // entirely. After this step every candidate has merchantName and
+    // productUrl populated, with brand DTC URLs preferred for major
+    // brands and a Sephora search URL as the universal fallback.
+    return {
+      ...validated,
+      candidates: sanitizeAndEnrich(validated.candidates),
+    };
   },
 
   async analyzeScannedProductAgainstUser(client, body) {
