@@ -1,67 +1,102 @@
-import React, { useMemo, useState } from 'react';
+/**
+ * CategoryFeed — v18.2.
+ *
+ * The Products tab's "Browse by goal" grid. v18.2 replaces the
+ * seed-driven `getGoalBreakouts()` / `getGoalHydration()` / etc.
+ * selectors with the live retrieval engine. Each goal chip now
+ * fires `lookupForConcern()` or, for `best-for-you`, fires
+ * `lookupForScan(latestScan)` so the grid surfaces the AI's actual
+ * curated picks for the active goal.
+ *
+ * Visible behavior change:
+ *   • Tap a goal chip ("BREAKOUTS") → grid populates with real
+ *     named products from real brands (CeraVe, La Roche-Posay,
+ *     Beauty of Joseon, etc.) returned by the live retrieval engine.
+ *   • Tap "Best for you" with a scan → grid is the same scan-driven
+ *     retrieval as the Plan / Home / Scan-result hero, so all surfaces
+ *     stay consistent.
+ *   • No scan + "Best for you" → BestForYouLocked still surfaces a
+ *     premium "take a scan" CTA (unchanged from v10.9).
+ *   • While the AI call is in flight, a quiet italic-serif "Loading
+ *     real picks for X…" line shows.
+ *   • Card tap → in-app ProductDetail (resolves from
+ *     useAppStore.liveProductsById). Shop button on each card opens
+ *     the merchant URL.
+ */
+
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowRight } from 'phosphor-react-native';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
-import type { Product, ProductTint } from '@/types';
 import {
-  getBestForYou,
-  getGoalBreakouts,
-  getGoalDarkMarks,
-  getGoalHydration,
-  getGoalSensitive,
-  getGoalTexture,
-  getNatural,
-} from '@/store/productSelectors';
+  lookupForConcern,
+  lookupForScan,
+  lookupLiveProducts,
+} from '@/api/liveProducts';
+import { LiveProductCard } from './LiveProductCard';
 import { type GoalKey } from './CategoryRail';
-import { ProductPlaceholderImage } from './ProductPlaceholderImage';
-import { localProductImageFor } from '@/data/seed';
-import type { ProductMatch } from '@/ai/ai-contracts';
+import type {
+  ConcernType,
+  LiveProductCandidate,
+} from '@/ai/ai-contracts';
 
 export interface CategoryFeedProps {
   goal: GoalKey;
 }
 
-/**
- * v10.9 — unified product feed below the CategoryRail. Replaces the four
- * stacked horizontal ProductRows (best-overall / natural / new /
- * essentials) with a single 2-column grid whose contents update as the
- * user selects a category above.
- *
- * For `best-for-you` on a pre-scan user, the feed shows a premium
- * "locked" empty state promoting the scan. Every other goal is always
- * populated from `seedProducts` via the goal-specific selectors.
- *
- * Card treatment matches the v10.4 Home PICKED-FOR-YOU card: tinted
- * image tile with a moss match badge overlaid, brand kicker, serif
- * name, price. Compact enough for a 2-col grid; premium enough to feel
- * merchandised.
- */
 export function CategoryFeed({ goal }: CategoryFeedProps) {
-  const nav = useNavigation<any>();
-  const { hasScanned, aiTopMatches } = useAppStore(
+  const nav = useNavigation<{ navigate: (name: string) => void }>();
+  const { hasScanned, latestScan } = useAppStore(
     useShallow((s) => ({
       hasScanned: s.scans.length > 0,
-      aiTopMatches: s.aiTopMatches,
+      latestScan: s.scans.length > 0 ? s.scans[s.scans.length - 1] : null,
     }))
   );
 
-  const products = useMemo(() => pickForGoal(goal), [goal]);
-  const meta = GOAL_LABELS[goal];
+  const [picks, setPicks] = useState<LiveProductCandidate[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  // v10.23 — build a quick id -> AI match lookup so each grid card
-  // can show the AI-derived match score instead of the seeded one.
-  // When the AI hasn't run yet, the badge falls back to a label-only
-  // "MATCH" pill (no fake number).
-  const aiMatchById = useMemo<Map<string, ProductMatch>>(() => {
-    const m = new Map<string, ProductMatch>();
-    for (const match of aiTopMatches) m.set(match.product_id, match);
-    return m;
-  }, [aiTopMatches]);
+  // v18.2 — live retrieval per goal. The Promise behind each goal is
+  // cached at the module layer (src/api/liveProducts.ts) so jumping
+  // back to the same chip is instant after the first run.
+  useEffect(() => {
+    let cancelled = false;
+    if (goal === 'best-for-you' && !hasScanned) {
+      // Pre-scan locked state — no retrieval needed.
+      setPicks([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const promise: Promise<LiveProductCandidate[]> =
+      goal === 'best-for-you' && latestScan
+        ? lookupForScan(latestScan, { count: 8 })
+        : goalToConcern(goal)
+        ? lookupForConcern(goalToConcern(goal)!, { count: 8 })
+        : lookupLiveProducts(goalToFreeQuery(goal), { count: 8 });
+    promise
+      .then((next) => {
+        if (cancelled) return;
+        setPicks(next);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPicks([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [goal, hasScanned, latestScan?.id]);
+
+  const meta = GOAL_LABELS[goal];
 
   if (goal === 'best-for-you' && !hasScanned) {
     return <BestForYouLocked onScan={() => nav.navigate('ScanModal')} />;
@@ -74,21 +109,32 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
           {meta.kicker}
         </Text>
         <Text style={styles.count} maxFontSizeMultiplier={1.1}>
-          {`${products.length} picks`}
+          {loading
+            ? 'Loading…'
+            : picks.length > 0
+            ? `${picks.length} picks`
+            : 'No live picks'}
         </Text>
       </View>
 
+      {loading && picks.length === 0 ? (
+        <Text style={styles.loadingLine} maxFontSizeMultiplier={1.2}>
+          Finding the best real products for {meta.queryName}…
+        </Text>
+      ) : null}
+
+      {!loading && picks.length === 0 ? (
+        <Text style={styles.emptyLine} maxFontSizeMultiplier={1.2}>
+          The AI engine couldn’t reach the live retrieval service.
+          Connect the proxy and pull this goal again.
+        </Text>
+      ) : null}
+
       <View style={styles.grid}>
-        {products.map((p) => (
-          <GridCard
-            key={p.id}
-            product={p}
-            aiMatch={aiMatchById.get(p.id) ?? null}
-            onPress={() => {
-              hapt.select();
-              nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
-            }}
-          />
+        {picks.map((c) => (
+          <View key={c.id} style={styles.cell}>
+            <LiveProductCard candidate={c} variant="alt" />
+          </View>
         ))}
       </View>
     </View>
@@ -96,200 +142,51 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Goal → products + header copy
+// Goal mapping.
 // ---------------------------------------------------------------------------
 
-const GOAL_LABELS: Record<GoalKey, { kicker: string }> = {
-  'best-for-you': { kicker: 'MATCHED TO YOUR SKIN' },
-  breakouts: { kicker: 'TARGETED FOR BREAKOUTS' },
-  hydration: { kicker: 'FOR HYDRATION' },
-  texture: { kicker: 'FOR SMOOTHER TEXTURE' },
-  'dark-marks': { kicker: 'FOR DARK MARKS' },
-  sensitive: { kicker: 'GENTLE FOR SENSITIVE SKIN' },
-  natural: { kicker: 'NATURAL & CLEAN' },
+const GOAL_LABELS: Record<GoalKey, { kicker: string; queryName: string }> = {
+  'best-for-you': { kicker: 'MATCHED TO YOUR SKIN', queryName: 'your skin' },
+  breakouts: { kicker: 'TARGETED FOR BREAKOUTS', queryName: 'breakouts' },
+  hydration: { kicker: 'FOR HYDRATION', queryName: 'hydration' },
+  texture: { kicker: 'FOR SMOOTHER TEXTURE', queryName: 'texture' },
+  'dark-marks': { kicker: 'FOR DARK MARKS', queryName: 'dark marks' },
+  sensitive: { kicker: 'GENTLE FOR SENSITIVE SKIN', queryName: 'sensitive skin' },
+  natural: { kicker: 'NATURAL & CLEAN', queryName: 'clean & natural picks' },
 };
 
-function pickForGoal(goal: GoalKey): Product[] {
+function goalToConcern(goal: GoalKey): ConcernType | null {
   switch (goal) {
-    case 'best-for-you':
-      return getBestForYou();
     case 'breakouts':
-      return getGoalBreakouts();
+      return 'breakouts';
     case 'hydration':
-      return getGoalHydration();
+      return 'hydration';
     case 'texture':
-      return getGoalTexture();
+      return 'texture';
     case 'dark-marks':
-      return getGoalDarkMarks();
+      return 'dark_marks';
     case 'sensitive':
-      return getGoalSensitive();
-    case 'natural':
-      return getNatural();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Grid card
-// ---------------------------------------------------------------------------
-
-function GridCard({
-  product,
-  aiMatch,
-  onPress,
-}: {
-  product: Product;
-  aiMatch: ProductMatch | null;
-  onPress: () => void;
-}) {
-  // v10.23 — match badge sourcing rule:
-  //   • aiMatch present → show the AI score + "MATCH" label.
-  //   • aiMatch absent → show "MATCH" label only, no number. The
-  //     seeded matchScore is no longer surfaced as if the AI had
-  //     ranked it; doing so was a fake-AI gap the production
-  //     hardening pass closed.
-  const showAiNumber = aiMatch !== null;
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={
-        showAiNumber
-          ? `${product.brand} ${product.name}, ${aiMatch!.match_score}% AI match`
-          : `${product.brand} ${product.name}`
-      }
-      style={({ pressed }) => [
-        styles.card,
-        pressed && { opacity: 0.94 },
-      ]}
-    >
-      <View
-        style={[
-          styles.imageTile,
-          { backgroundColor: tintFor(product) },
-        ]}
-      >
-        {/* v10.31 — render a real Open Beauty Facts product photo
-            when one was resolved for this product (see seed.ts /
-            PRODUCT_IMAGE_URLS). On load failure or when no URL was
-            resolved (OBF doesn't index this brand yet), fall through
-            to the upgraded ProductPlaceholderImage so the card never
-            looks broken. */}
-        <ProductCardImage product={product} />
-        <View style={styles.matchBadge}>
-          {showAiNumber ? (
-            <Text style={styles.matchBadgeNum} maxFontSizeMultiplier={1.1}>
-              {`${aiMatch!.match_score}%`}
-            </Text>
-          ) : null}
-          <Text style={styles.matchBadgeLabel} maxFontSizeMultiplier={1.1}>
-            MATCH
-          </Text>
-        </View>
-      </View>
-      <View style={styles.cardText}>
-        <Text style={styles.cardBrand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
-          {product.brand.toUpperCase()}
-        </Text>
-        <Text
-          style={styles.cardName}
-          numberOfLines={2}
-          maxFontSizeMultiplier={1.1}
-        >
-          {product.name}
-        </Text>
-        {/* v10.26 — when AI ranked this product, surface its top
-            primary_reason as a single italic line. Visible only when
-            AI is the source — so its presence is a real product-level
-            signal that the matching is grounded, not seeded. */}
-        {showAiNumber && aiMatch && aiMatch.primary_reasons.length > 0 ? (
-          <Text
-            style={styles.cardWhy}
-            numberOfLines={2}
-            maxFontSizeMultiplier={1.15}
-          >
-            {aiMatch.primary_reasons[0]}
-          </Text>
-        ) : null}
-        <Text style={styles.cardPrice} maxFontSizeMultiplier={1.1}>
-          {`$${Number.isInteger(product.price) ? product.price : product.price.toFixed(2)}`}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function tintFor(p: Product): string {
-  const tint: ProductTint = p.tint ?? 'sand';
-  switch (tint) {
-    case 'clay':
-      return palette.clayPaper;
-    case 'sand':
-      return palette.sandPaper;
-    case 'moss':
-      return palette.mossLight;
+      return 'sensitivity';
     default:
-      return palette.bgDeep;
+      return null;
+  }
+}
+
+function goalToFreeQuery(goal: GoalKey): string {
+  switch (goal) {
+    case 'natural':
+      return 'best clean fragrance-free skincare from natural-leaning brands';
+    case 'best-for-you':
+      // Used only when there's no scan AND this somehow gets past
+      // the BestForYouLocked guard.
+      return 'best entry-level skincare picks for general skin';
+    default:
+      return GOAL_LABELS[goal].queryName;
   }
 }
 
 // ---------------------------------------------------------------------------
-// v10.31 — Image with placeholder fallback.
-//
-// Renders the real Open Beauty Facts product photo when present; on
-// load failure (404, network blip, OBF rotated the URL) falls
-// through to the upgraded ProductPlaceholderImage so the card never
-// shows an empty box. Uses expo-image's `onError` to detect failure
-// without relying on RN Image's quirkier event surface.
-// ---------------------------------------------------------------------------
-
-function ProductCardImage({ product }: { product: Product }) {
-  const [errored, setErrored] = useState(false);
-  // v10.34 — prefer the bundled local asset (no network needed) over
-  // the legacy remote URL. require()'d assets are inline in the JS
-  // bundle, so they paint on first frame even with no internet.
-  const localSrc = localProductImageFor(product.id);
-  const remoteUrl =
-    !localSrc && product.imageUrl && product.imageUrl.trim().length > 0
-      ? product.imageUrl
-      : null;
-  const hasRealImage = !errored && (!!localSrc || !!remoteUrl);
-
-  // Placeholder rendered UNDER the Image at all times so cards look
-  // populated on first paint. When the bundled / remote photo loads
-  // (or is already inlined), it covers the silhouette via
-  // contentFit="cover". On error, the placeholder remains visible.
-  return (
-    <View style={StyleSheet.absoluteFillObject}>
-      <ProductPlaceholderImage
-        product={product}
-        silhouetteSize={56}
-        showBrandWord
-        showMockupBadge={false}
-      />
-      {localSrc && !errored ? (
-        <Image
-          source={localSrc}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          transition={180}
-          onError={() => setErrored(true)}
-        />
-      ) : null}
-      {!localSrc && remoteUrl ? (
-        <Image
-          source={{ uri: remoteUrl }}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          transition={180}
-          onError={() => setErrored(true)}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Pre-scan locked state (only for best-for-you)
+// Pre-scan locked state (only for best-for-you).
 // ---------------------------------------------------------------------------
 
 function BestForYouLocked({ onScan }: { onScan: () => void }) {
@@ -355,86 +252,27 @@ const styles = StyleSheet.create({
     color: palette.inkTertiary,
     fontVariant: ['tabular-nums'],
   },
+  loadingLine: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    lineHeight: 19,
+    color: palette.inkTertiary,
+    marginBottom: 8,
+  },
+  emptyLine: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    lineHeight: 19,
+    color: palette.inkTertiary,
+    marginBottom: 8,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 14,
   },
-  card: {
-    flexGrow: 1,
-    flexBasis: '46%',
-    maxWidth: '48%',
-  },
-  imageTile: {
-    width: '100%',
-    aspectRatio: 0.82,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: palette.bgDeep,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  matchBadge: {
-    position: 'absolute',
-    left: 8,
-    bottom: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9,
-    backgroundColor: palette.moss,
-    alignItems: 'center',
-    minWidth: 46,
-  },
-  matchBadgeNum: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    lineHeight: 13,
-    color: palette.inkInverse,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 0.1,
-  },
-  matchBadgeLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 7,
-    letterSpacing: 1.1,
-    color: 'rgba(248,250,252,0.78)',
-  },
-  cardText: {
-    paddingTop: 10,
-    paddingHorizontal: 2,
-  },
-  cardBrand: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: palette.inkTertiary,
-    marginBottom: 3,
-  },
-  cardName: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 15,
-    lineHeight: 18,
-    letterSpacing: -0.2,
-    color: palette.ink,
-    marginBottom: 6,
-    minHeight: 36,
-  },
-  // v10.26 — AI match reason (italic serif, secondary ink). Only
-  // visible when the AI grounded the ranking; absent on fallback.
-  cardWhy: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 12,
-    lineHeight: 16,
-    color: palette.inkSecondary,
-    marginBottom: 6,
-  },
-  cardPrice: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 15,
-    letterSpacing: -0.2,
-    color: palette.ink,
-    fontVariant: ['tabular-nums'],
+  cell: {
+    width: '47%',
   },
 });
 

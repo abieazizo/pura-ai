@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Linking,
@@ -35,7 +35,8 @@ import { palette } from '@/theme';
 import { CATEGORY_LABEL, getConcerns } from '@/utils/concerns';
 import type { Concern, Product, ProductCategory, ProductTint } from '@/types';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
-import { buildSearchUrl } from '@/api/liveProducts';
+import { buildSearchUrl, lookupLiveProducts } from '@/api/liveProducts';
+import { LiveProductCard } from '@/components/products/LiveProductCard';
 
 type DetailRoute = RouteProp<
   { ProductDetail: { productId: string; tint?: ProductTint } },
@@ -288,92 +289,44 @@ function liveCandidateToProduct(
 // detail page. Hidden when no alternatives are found.
 // ============================================================================
 
+// v18.2 — AlternativesList now backed by live retrieval.
+// Replaces the seed-driven `pickAlternatives()` walk with a
+// `lookupLiveProducts()` call shaped on the current product's
+// brand + category. Renders LiveProductCard alt cards in a
+// horizontal carousel.
 function AlternativesList({ current }: { current: Product }) {
-  const nav = useNavigation<any>();
-  const alternatives = useMemo(
-    () => pickAlternatives(current),
-    [current]
-  );
-  if (alternatives.length === 0) return null;
+  const [picks, setPicks] = useState<LiveProductCandidate[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const query = `best ${current.category} similar to ${current.brand} ${current.name}`;
+    lookupLiveProducts(query, { count: 4 })
+      .then((next) => {
+        if (cancelled) return;
+        // Drop the current product if the AI returned it again.
+        setPicks(next.filter((c) => c.id !== current.id).slice(0, 3));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPicks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [current.id, current.category, current.brand, current.name]);
 
-  const openProduct = (p: Product) => {
-    hapt.select();
-    nav.navigate('ProductDetail', { productId: p.id, tint: p.tint });
-  };
+  if (picks.length === 0) return null;
 
   return (
-    <View style={altStyles.list}>
-      {alternatives.map((p) => (
-        <Pressable
-          key={p.id}
-          onPress={() => openProduct(p)}
-          accessibilityRole="button"
-          accessibilityLabel={`${p.brand} ${p.name}`}
-          style={({ pressed }) => [
-            altStyles.row,
-            pressed && { opacity: 0.92 },
-          ]}
-        >
-          <View
-            style={[
-              altStyles.image,
-              { backgroundColor: tintColor(p) },
-            ]}
-          >
-            {p.imageUri ? (
-              <Image
-                source={{ uri: p.imageUri }}
-                style={StyleSheet.absoluteFillObject}
-                resizeMode="cover"
-              />
-            ) : null}
-          </View>
-          <View style={{ flex: 1, marginRight: 10 }}>
-            <View style={altStyles.brandRow}>
-              <Text style={altStyles.brand} numberOfLines={1} maxFontSizeMultiplier={1.1}>
-                {p.brand.toUpperCase()}
-              </Text>
-              <View style={altStyles.matchPill}>
-                <Text style={altStyles.matchPillText} maxFontSizeMultiplier={1.1}>
-                  {`${p.matchScore ?? 84}%`}
-                </Text>
-              </View>
-            </View>
-            <Text
-              style={altStyles.name}
-              numberOfLines={1}
-              maxFontSizeMultiplier={1.15}
-            >
-              {p.name}
-            </Text>
-          </View>
-          <Text style={altStyles.price} maxFontSizeMultiplier={1.1}>
-            {`$${Number.isInteger(p.price) ? p.price : p.price.toFixed(2)}`}
-          </Text>
-        </Pressable>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={altStyles.scrollRow}
+    >
+      {picks.map((c) => (
+        <LiveProductCard key={c.id} candidate={c} variant="alt" />
       ))}
-    </View>
+    </ScrollView>
   );
-}
-
-function pickAlternatives(current: Product): Product[] {
-  return seedProducts
-    .filter((p) => p.id !== current.id && p.category === current.category)
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, 3);
-}
-
-function tintColor(p: Product): string {
-  switch (p.tint) {
-    case 'clay':
-      return palette.clayPaper;
-    case 'sand':
-      return palette.sandPaper;
-    case 'moss':
-      return palette.mossLight;
-    default:
-      return palette.bgDeep;
-  }
 }
 
 // v10.10 — `buildWhyParagraph` was moved inside `WhyItWorksPanel`
@@ -566,64 +519,13 @@ const matchStyles = StyleSheet.create({
   },
 });
 
-// v10.12 — alternatives compressed. list gap 14 → 10, row paddingVertical
-// 6 → 3, thumbnails 54×66 → 48×58. Three rows of Alternatives save ~25pt
-// while keeping the "same vocabulary as Plan" visual read.
+// v18.2 — altStyles reduced to a single horizontal scroll row for
+// the LiveProductCard alt carousel. The legacy seed-driven list /
+// row / image / brandRow styles are gone — the alt card carries its
+// own complete visual treatment.
 const altStyles = StyleSheet.create({
-  list: {
+  scrollRow: {
     gap: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 3,
-  },
-  image: {
-    width: 48,
-    height: 58,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 3,
-  },
-  brand: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: palette.inkTertiary,
-  },
-  matchPill: {
-    paddingHorizontal: 6,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: palette.mossLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  matchPillText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 0.4,
-    color: palette.mossDeep,
-    fontVariant: ['tabular-nums'],
-  },
-  name: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 17,
-    lineHeight: 21,
-    letterSpacing: -0.2,
-    color: palette.ink,
-  },
-  price: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 16,
-    letterSpacing: -0.2,
-    color: palette.ink,
-    fontVariant: ['tabular-nums'],
+    paddingRight: 4,
   },
 });

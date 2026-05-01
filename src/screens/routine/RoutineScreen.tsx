@@ -1340,10 +1340,57 @@ function ProgressSubTab({
 // Helpers
 // ============================================================================
 
+// v18.2 — hydrate routine product ids. Now reads from the live
+// product cache first so users who saved live (AI-retrieved)
+// products to their routine see them render correctly. Falls back
+// to seed for legacy items added before v18.0.
 function hydrate(ids: string[]): Product[] {
-  return ids
-    .map((id) => seedProducts.find((p) => p.id === id))
-    .filter((p): p is Product => !!p);
+  if (ids.length === 0) return [];
+  const liveById = useAppStore.getState().liveProductsById;
+  const out: Product[] = [];
+  for (const id of ids) {
+    const live = liveById[id];
+    if (live) {
+      out.push(liveCandidateToRoutineProduct(live));
+      continue;
+    }
+    const seed = seedProducts.find((p) => p.id === id);
+    if (seed) out.push(seed);
+  }
+  return out;
+}
+
+/**
+ * v18.2 — adapter: LiveProductCandidate → Product shape used by
+ * RoutineScreen's row renderer. Mirrors the adapter on the detail
+ * screen but with no need for a tint hash (default 'sand').
+ */
+function liveCandidateToRoutineProduct(c: ReturnType<typeof useAppStore.getState>['liveProductsById'][string]): Product {
+  const adaptedCategory =
+    c.category === 'spot_treatment'
+      ? 'treatment'
+      : c.category === 'unknown'
+      ? 'serum'
+      : c.category;
+  return {
+    id: c.id,
+    brand: c.brand,
+    name: c.name,
+    category: adaptedCategory as Product['category'],
+    imageUri: c.imageUrl ?? '',
+    ingredients: c.ingredientsHighlights,
+    keyIngredients: c.ingredientsHighlights,
+    description: c.shortDescription,
+    tint: 'sand',
+    rating: 0,
+    reviewCount: 0,
+    matchScore: c.matchScore,
+    tags: [],
+    addedDate: c.sourceTimestamp,
+    price: c.price ?? 0,
+    imageUrl: c.imageUrl ?? undefined,
+    buyUrl: c.productUrl ?? undefined,
+  };
 }
 
 function tintFor(p: Product): string {
