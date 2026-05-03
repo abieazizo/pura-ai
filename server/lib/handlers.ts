@@ -11,7 +11,7 @@
  * `aiProxy.ts` translates that into a clean HTTP error response.
  */
 
-import { OpenAIClient } from '../openai/openai-client';
+import { OpenAIClient, AIError } from '../openai/openai-client';
 import {
   validateAssistantContext,
   validateBarcodeResolution,
@@ -47,6 +47,48 @@ function aiBad(method: string): never {
     502,
     `${method}: AI returned a payload that failed structural validation`
   );
+}
+
+/**
+ * v18.8 — translate an AIError thrown by runStrictStructured into a
+ * structured HandlerError the proxy will surface as a clean HTTP
+ * status. The client gateway can then distinguish:
+ *   503 — empty/length cap, retry suggested
+ *   502 — parse failure, do not retry
+ * Anything else propagates as a generic 502.
+ */
+function aiErrorStatus(reason: AIError['reason']): number {
+  switch (reason) {
+    case 'empty_content':
+    case 'length_cap':
+      return 503;
+    case 'parse_failed':
+      return 502;
+    default:
+      return 502;
+  }
+}
+
+/**
+ * Wrap an OpenAI client call so AIError gets translated to a clean
+ * HandlerError with a stable status. Other errors propagate
+ * unchanged (the dispatcher will return 502 / 500 as appropriate).
+ */
+async function withAIErrorTranslation<T>(
+  method: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof AIError) {
+      throw new HandlerError(
+        aiErrorStatus(e.reason),
+        `${method}: ${e.reason}`
+      );
+    }
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +203,10 @@ export const HANDLERS: Record<string, Handler> = {
       imageBase64: reqString(body, 'imageBase64'),
       mediaType: reqMediaType(body, 'mediaType'),
     };
-    const result = await client.validateScanPreflight(params);
+    const result = await withAIErrorTranslation(
+      'validateScanPreflight',
+      () => client.validateScanPreflight(params)
+    );
     const validated = validateScanPreflightResult(result);
     if (!validated) aiBad('validateScanPreflight');
     return validated;
@@ -233,7 +278,10 @@ export const HANDLERS: Record<string, Handler> = {
     } catch {
       bad('candidateProductsJson', 'must be valid JSON');
     }
-    const result = await client.matchProductsForUser(params);
+    const result = await withAIErrorTranslation(
+      'matchProductsForUser',
+      () => client.matchProductsForUser(params)
+    );
     const validated = validateProductMatchResult(result);
     if (!validated) aiBad('matchProductsForUser');
     return validated;
@@ -246,7 +294,10 @@ export const HANDLERS: Record<string, Handler> = {
       existingRoutineJson: reqString(body, 'existingRoutineJson'),
       basedOnScanId: reqBasedOnScanId(body),
     };
-    const result = await client.generateRoutineRecommendation(params);
+    const result = await withAIErrorTranslation(
+      'generateRoutineRecommendation',
+      () => client.generateRoutineRecommendation(params)
+    );
     const validated = validateRoutineRecommendation(result);
     if (!validated) aiBad('generateRoutineRecommendation');
     return validated;
@@ -390,7 +441,9 @@ export const HANDLERS: Record<string, Handler> = {
           : [],
       };
     }
-    const raw = await client.lookupLiveProducts({ query, scanContext, count });
+    const raw = await withAIErrorTranslation('lookupLiveProducts', () =>
+      client.lookupLiveProducts({ query, scanContext, count })
+    );
     // Stamp the source timestamp server-side so the client never sees
     // a candidate without it.
     const stamped = {

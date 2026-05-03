@@ -83,7 +83,9 @@ export function AnalysisHeader({ onClose, mode, topInset }: AnalysisHeaderProps)
           maxFontSizeMultiplier={1.15}
           numberOfLines={1}
         >
-          {mode === 'live' ? 'ANALYZING' : 'READY'}
+          {/* v18.8 — "Analyzing your scan" reads as a calm,
+              consumer-friendly title. */}
+          {mode === 'live' ? 'ANALYZING YOUR SCAN' : 'READY'}
         </Text>
         {mode === 'live' ? (
           <Animated.View style={[styles.pulseDot, dotStyle]} />

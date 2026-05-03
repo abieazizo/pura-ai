@@ -274,39 +274,34 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 // / score / settle / reveal) but only four carry text.
 // ------------------------------------------------------------------
 
-// v18.3 \u2014 premium 6-stage analyzing timeline:
-//   1 Aligning your scan      (preflight)
-//   2 Reading skin zones      (locate)
-//   3 Checking texture and tone  (partition)
-//   4 Mapping visible concerns  (detect)
-//   5 Matching products for you (score)
-//   6 Building your result     (waiting/settle)
-// Final reveal: "Ready."
+// v18.8 \u2014 consumer-friendly loading copy. Replaces the v18.3
+// technical sequence ("Aligning your scan / Reading skin zones /
+// Checking texture and tone / \u2026") with calmer language. Users
+// shouldn't need to wonder what "skin zones" means \u2014 the screen
+// just needs to feel alive, reassuring, and obviously working.
 //
-// The captions read as a real, premium beauty-tech analysis sequence
-// rather than a generic "loading" screen. Each stage tells the user
-// what the system is actually doing right now \u2014 from initial face
-// alignment through to the final live product retrieval.
+// The header now reads "Analyzing your scan" (constant); the
+// caption rotates through human-friendly subtext.
 export const CAPTION_COPY = {
-  preflight: 'Aligning your scan\u2026',
-  locate: 'Reading skin zones\u2026',
-  partition: 'Checking texture and tone\u2026',
-  detect: 'Mapping visible concerns\u2026',
-  score: 'Matching products for you\u2026',
-  waiting: 'Building your result\u2026',
+  preflight: 'This takes a few seconds\u2026',
+  locate: 'Preparing your results\u2026',
+  partition: 'Reading your skin\u2026',
+  detect: 'Matching products for your skin\u2026',
+  score: 'Almost ready\u2026',
+  waiting: 'Still working \u2014 thanks for waiting\u2026',
   reveal: 'Ready.',
 } as const;
 
 // ------------------------------------------------------------------
-// VoiceOver announcements (v18.3 mirrors the visible captions).
+// VoiceOver announcements \u2014 mirror the friendly caption copy.
 // ------------------------------------------------------------------
 
 export const A11Y_ANNOUNCEMENTS = {
-  preflight: 'Aligning your scan.',
-  locate: 'Reading skin zones.',
-  partition: 'Checking texture and tone.',
-  detect: 'Mapping visible concerns.',
-  score: 'Matching products for you.',
-  waiting: 'Building your result.',
+  preflight: 'Analyzing your scan.',
+  locate: 'Preparing your results.',
+  partition: 'Reading your skin.',
+  detect: 'Matching products for your skin.',
+  score: 'Almost ready.',
+  waiting: 'Still working.',
   reveal: 'Your result is ready.',
 } as const;

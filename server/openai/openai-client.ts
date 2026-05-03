@@ -77,6 +77,31 @@ export interface OpenAIClientConfig {
   apiKey: string;
 }
 
+/**
+ * v18.8 — typed AI error reasons. Surfaced from runStrictStructured
+ * when both retry attempts fail. Lets the handler map each cause to
+ * a clean HTTP status + a structured client message instead of a
+ * generic 500.
+ */
+export type AIErrorReason =
+  | 'empty_content'
+  | 'length_cap'
+  | 'parse_failed';
+
+export class AIError extends Error {
+  constructor(
+    public reason: AIErrorReason,
+    public schemaName: string,
+    public finishReason: string | null = null
+  ) {
+    super(
+      `OpenAIClient: ${reason} for ${schemaName}` +
+        (finishReason ? ` (finish_reason=${finishReason})` : '')
+    );
+    this.name = 'AIError';
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Schema transform — OpenAI strict-mode adjustments.
 // ----------------------------------------------------------------------------
@@ -167,8 +192,14 @@ export class OpenAIClient {
   /**
    * Run a strict structured-output call: one user message,
    * `response_format: json_schema (strict)`. Returns the parsed JSON
-   * cast to T. Throws if the model returned non-JSON or the
-   * content was empty.
+   * cast to T. Throws a typed AIError if the model returned non-JSON
+   * or the content was empty.
+   *
+   * v18.8 — retries ONCE on empty-content failures. The model
+   * occasionally returns finish_reason="length" + empty content
+   * when the reasoning budget eats the output cap; on retry with
+   * a doubled cap it almost always succeeds. Limits to one retry
+   * to avoid runaway loops.
    */
   private async runStrictStructured<T>(params: {
     system: string;
@@ -181,49 +212,72 @@ export class OpenAIClient {
     /** Override max output tokens; defaults to extraction default. */
     maxTokens?: number;
   }): Promise<T> {
-    const userContent: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
-      role: 'user',
-      content:
-        typeof params.userContent === 'string'
-          ? params.userContent
-          : params.userContent,
+    const baseMaxTokens =
+      params.maxTokens ?? AI_DEFAULTS.extraction.max_tokens;
+
+    const attempt = async (
+      maxTokens: number,
+      attemptIndex: number
+    ): Promise<{ ok: true; value: T } | { ok: false; reason: AIErrorReason; finish: string | null }> => {
+      const response = await this.openai.chat.completions.create({
+        model: params.model ?? AI_MODELS.extraction,
+        max_completion_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: params.system },
+          {
+            role: 'user',
+            content:
+              typeof params.userContent === 'string'
+                ? params.userContent
+                : params.userContent,
+          },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: params.schemaName,
+            strict: true,
+            schema: toStrictSchema(params.schema) as Record<string, unknown>,
+          },
+        },
+      });
+
+      const choice = response.choices[0];
+      const text = choice?.message?.content;
+      const finish = choice?.finish_reason ?? null;
+      if (typeof text !== 'string' || text.length === 0) {
+        return {
+          ok: false,
+          reason:
+            finish === 'length' ? 'length_cap' : 'empty_content',
+          finish,
+        };
+      }
+      try {
+        return { ok: true, value: JSON.parse(text) as T };
+      } catch {
+        return { ok: false, reason: 'parse_failed', finish };
+      }
     };
 
-    const response = await this.openai.chat.completions.create({
-      model: params.model ?? AI_MODELS.extraction,
-      max_completion_tokens:
-        params.maxTokens ?? AI_DEFAULTS.extraction.max_tokens,
-      messages: [
-        { role: 'system', content: params.system },
-        userContent,
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: params.schemaName,
-          strict: true,
-          schema: toStrictSchema(params.schema) as Record<string, unknown>,
-        },
-      },
-    });
+    // First attempt at the requested cap.
+    const first = await attempt(baseMaxTokens, 0);
+    if (first.ok) return first.value;
 
-    const message = response.choices[0]?.message;
-    const text = message?.content;
-    if (typeof text !== 'string' || text.length === 0) {
-      throw new Error(
-        `OpenAIClient: empty content for ${params.schemaName} ` +
-          `(finish_reason=${response.choices[0]?.finish_reason ?? 'unknown'})`
-      );
-    }
-    try {
-      return JSON.parse(text) as T;
-    } catch (e) {
-      throw new Error(
-        `OpenAIClient: JSON parse failed for ${params.schemaName}: ${
-          e instanceof Error ? e.message : String(e)
-        }`
-      );
-    }
+    // v18.8 — retry once. If the failure mode is `length_cap`
+    // (reasoning ate the output budget), double the cap; otherwise
+    // (likely transient empty-content), keep the same cap and just
+    // try again.
+    const secondCap =
+      first.reason === 'length_cap'
+        ? Math.min(baseMaxTokens * 2, 8192)
+        : baseMaxTokens;
+    const second = await attempt(secondCap, 1);
+    if (second.ok) return second.value;
+
+    // Both attempts failed — surface a typed error so handlers can
+    // map it to a stable HTTP status + clean client message.
+    throw new AIError(second.reason, params.schemaName, second.finish);
   }
 
   // --------------------------------------------------------------------------
@@ -285,8 +339,13 @@ export class OpenAIClient {
       userContent,
       schemaName: 'scan_preflight_result',
       schema: SCAN_PREFLIGHT_RESULT_SCHEMA,
-      // Smaller cap — preflight is intentionally tight.
-      maxTokens: 400,
+      // v18.8 — bumped 400 → 1500. The previous 400 cap repeatedly
+      // hit `finish_reason="length"` because GPT-5-mini's internal
+      // reasoning tokens count against the same budget as output.
+      // 1500 leaves enough head-room for reasoning + the small
+      // structured payload, eliminating empty-content responses
+      // on this path.
+      maxTokens: 1500,
     });
   }
 

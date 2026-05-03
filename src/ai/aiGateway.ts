@@ -132,24 +132,27 @@ export class AIValidationError extends Error {
 // text-only calls less.
 // ---------------------------------------------------------------------------
 
+// v18.8 — timeouts bumped to give the server-side runStrictStructured
+// retry room to complete. Previous values were causing AbortController
+// to fire (HTTP 0 / aborted) before the model finished; observed in
+// the wild for matchProductsForUser + generateRoutineRecommendation.
+// Each budget = realistic upper bound on a single AI attempt + the
+// server-side retry-once envelope, with a small safety margin.
 const TIMEOUT_MS = {
-  // v11.7 — preflight: tight budget. The whole point is fast.
-  validateScanPreflight: 12_000,
-  analyzeFaceScan: 60_000,
-  identifyProductFromImage: 45_000,
+  validateScanPreflight: 18_000,
+  analyzeFaceScan: 75_000,
+  identifyProductFromImage: 60_000,
   normalizeBarcodeResolution: 30_000,
-  matchProductsForUser: 30_000,
-  generateRoutineRecommendation: 30_000,
-  explainSkinScore: 20_000,
-  explainProgress: 25_000,
-  buildSearchSuggestions: 15_000,
-  answerAssistant: 60_000,
-  analyzeScannedProductAgainstUser: 75_000,
-  buildFullScanToPlanBundle: 120_000,
-  buildProgressBundle: 30_000,
-  // v18.0 — live product retrieval. Structured-output text call;
-  // 25s is generous given the 8-candidate target.
-  lookupLiveProducts: 25_000,
+  matchProductsForUser: 50_000,
+  generateRoutineRecommendation: 50_000,
+  explainSkinScore: 25_000,
+  explainProgress: 30_000,
+  buildSearchSuggestions: 18_000,
+  answerAssistant: 75_000,
+  analyzeScannedProductAgainstUser: 90_000,
+  buildFullScanToPlanBundle: 150_000,
+  buildProgressBundle: 35_000,
+  lookupLiveProducts: 40_000,
 } as const;
 
 type AIMethodName = keyof typeof TIMEOUT_MS;

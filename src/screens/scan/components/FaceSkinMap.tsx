@@ -105,15 +105,17 @@ const CATEGORY_COLOR: Record<ConcernCategory, string> = {
   tone: '#D9A75E',
 };
 
-// v17.2 — alpha values bumped vs v17.1. The Gaussian-blur softens
-// fills considerably; we need more brightness in the source so the
-// final composite reads cleanly on a real photo.
+// v18.8 — alpha values rebalanced to feel premium and restrained.
+// The v17.2 values (0.6 → 0.9) read as crayon-like and clinical on a
+// real photo. v18.8 keeps the wash visible but elegant — the user
+// can still see the concern zone clearly without it dominating
+// their face.
 const SEVERITY_ALPHA: Record<FaceConcernFinding['severity'], number> = {
   none: 0,
-  low: 0.45,
-  mild: 0.6,
-  moderate: 0.78,
-  high: 0.9,
+  low: 0.28,
+  mild: 0.36,
+  moderate: 0.46,
+  high: 0.55,
 };
 
 // ---------------------------------------------------------------------------
@@ -520,8 +522,13 @@ function PinpointHalos({
   alpha,
   defsKey,
 }: RenderInput) {
+  // v18.8 — restrained version. Previous render had 6 hard pinpoint
+  // cores at high alpha + a base wash, which read as clinical
+  // "spot markers" on the user's face. v18.8 keeps the concept of
+  // "localized glow markers" but draws 3 soft blurred dots without
+  // the sharp inner cores. Reads as premium beauty-tech, not a
+  // medical diagram.
   const blurId = `halo-${defsKey}`;
-  // 5-7 deterministic dots around the centroid of the active region.
   const dots = useMemo<Point[]>(() => {
     if (polygon && polygon.length >= 3) {
       const c = centroid(polygon);
@@ -530,59 +537,47 @@ function PinpointHalos({
       const h = b.maxY - b.minY;
       return [
         c,
-        { x: clamp01(c.x - w * 0.22), y: clamp01(c.y - h * 0.18) },
-        { x: clamp01(c.x + w * 0.24), y: clamp01(c.y - h * 0.06) },
-        { x: clamp01(c.x - w * 0.1), y: clamp01(c.y + h * 0.22) },
-        { x: clamp01(c.x + w * 0.18), y: clamp01(c.y + h * 0.18) },
-        { x: clamp01(c.x - w * 0.3), y: clamp01(c.y + h * 0.05) },
+        { x: clamp01(c.x - w * 0.2), y: clamp01(c.y - h * 0.18) },
+        { x: clamp01(c.x + w * 0.22), y: clamp01(c.y + h * 0.16) },
       ];
     }
     const { cx, cy, rx, ry } = ellipse;
     return [
       { x: cx, y: cy },
-      { x: clamp01(cx - rx * 0.5), y: clamp01(cy - ry * 0.4) },
-      { x: clamp01(cx + rx * 0.55), y: clamp01(cy - ry * 0.2) },
-      { x: clamp01(cx - rx * 0.25), y: clamp01(cy + ry * 0.5) },
-      { x: clamp01(cx + rx * 0.4), y: clamp01(cy + ry * 0.45) },
-      { x: clamp01(cx + rx * 0.2), y: clamp01(cy - ry * 0.55) },
+      { x: clamp01(cx - rx * 0.4), y: clamp01(cy - ry * 0.35) },
+      { x: clamp01(cx + rx * 0.42), y: clamp01(cy + ry * 0.4) },
     ];
   }, [polygon, ellipse]);
 
   return (
     <G>
       <Defs>
-        <Filter id={blurId} x="-30%" y="-30%" width="160%" height="160%">
-          <FeGaussianBlur stdDeviation={0.007} />
+        <Filter id={blurId} x="-40%" y="-40%" width="180%" height="180%">
+          <FeGaussianBlur stdDeviation={0.014} />
         </Filter>
       </Defs>
-      {/* Soft base wash so the dots feel grouped into a zone */}
+      {/* Soft base wash so the dots feel grouped into a zone, not
+          three random spots floating on the face. */}
       <Ellipse
         cx={ellipse.cx}
         cy={ellipse.cy}
-        rx={ellipse.rx * 0.95}
-        ry={ellipse.ry * 0.95}
+        rx={ellipse.rx}
+        ry={ellipse.ry}
         fill={color}
-        fillOpacity={alpha * 0.22}
+        fillOpacity={alpha * 0.55}
         filter={`url(#${blurId})`}
       />
+      {/* 3 soft glow markers — no sharp inner cores. */}
       {dots.map((d, i) => (
-        <G key={i}>
-          <Circle
-            cx={d.x}
-            cy={d.y}
-            r={0.022}
-            fill={color}
-            fillOpacity={alpha * 0.55}
-            filter={`url(#${blurId})`}
-          />
-          <Circle
-            cx={d.x}
-            cy={d.y}
-            r={0.009}
-            fill={color}
-            fillOpacity={Math.min(0.95, alpha * 1.05)}
-          />
-        </G>
+        <Circle
+          key={i}
+          cx={d.x}
+          cy={d.y}
+          r={0.024}
+          fill={color}
+          fillOpacity={alpha * 0.65}
+          filter={`url(#${blurId})`}
+        />
       ))}
     </G>
   );
@@ -626,63 +621,47 @@ function Micrograin({
   alpha,
   defsKey,
 }: RenderInput) {
+  // v18.8 — refined surface highlight. Previous version had a
+  // hairline stroke around the zone that read as a medical diagram
+  // outline. v18.8 drops the stroke entirely; texture / pores /
+  // oiliness now render as a soft layered wash that hints at the
+  // zone without outlining it.
   const blurId = `grain-${defsKey}`;
   return (
     <G>
       <Defs>
-        <Filter id={blurId} x="-5%" y="-5%" width="110%" height="110%">
-          <FeGaussianBlur stdDeviation={0.005} />
+        <Filter id={blurId} x="-15%" y="-15%" width="130%" height="130%">
+          <FeGaussianBlur stdDeviation={0.012} />
         </Filter>
       </Defs>
-      {/* Soft halo */}
+      {/* Outer halo, blurred wider */}
       <Ellipse
         cx={ellipse.cx}
         cy={ellipse.cy}
-        rx={ellipse.rx * 1.05}
-        ry={ellipse.ry * 1.05}
+        rx={ellipse.rx * 1.18}
+        ry={ellipse.ry * 1.18}
         fill={color}
-        fillOpacity={alpha * 0.22}
+        fillOpacity={alpha * 0.25}
         filter={`url(#${blurId})`}
       />
+      {/* Inner wash — slightly tighter, slightly stronger */}
       {polygon ? (
-        <>
-          <Polygon
-            points={pointsToString(polygon)}
-            fill={color}
-            fillOpacity={alpha * 0.45}
-            filter={`url(#${blurId})`}
-          />
-          <Polygon
-            points={pointsToString(polygon)}
-            fill="none"
-            stroke={color}
-            strokeOpacity={Math.min(0.95, alpha * 1.3)}
-            strokeWidth={0.004}
-            strokeLinejoin="round"
-          />
-        </>
+        <Polygon
+          points={pointsToString(polygon)}
+          fill={color}
+          fillOpacity={alpha * 0.55}
+          filter={`url(#${blurId})`}
+        />
       ) : (
-        <>
-          <Ellipse
-            cx={ellipse.cx}
-            cy={ellipse.cy}
-            rx={ellipse.rx}
-            ry={ellipse.ry}
-            fill={color}
-            fillOpacity={alpha * 0.45}
-            filter={`url(#${blurId})`}
-          />
-          <Ellipse
-            cx={ellipse.cx}
-            cy={ellipse.cy}
-            rx={ellipse.rx}
-            ry={ellipse.ry}
-            fill="none"
-            stroke={color}
-            strokeOpacity={Math.min(0.95, alpha * 1.3)}
-            strokeWidth={0.004}
-          />
-        </>
+        <Ellipse
+          cx={ellipse.cx}
+          cy={ellipse.cy}
+          rx={ellipse.rx}
+          ry={ellipse.ry}
+          fill={color}
+          fillOpacity={alpha * 0.55}
+          filter={`url(#${blurId})`}
+        />
       )}
     </G>
   );
@@ -861,18 +840,18 @@ export function FaceSkinMap({
         ) : null}
       </Svg>
 
-      {/* v17.2 — active-concern badge with the FULL "BREAKOUTS · CHIN"
-          label so users immediately read where on their face this
-          concern was detected. */}
+      {/* v18.8 — active-concern badge as a quiet pearl-glass tag.
+          Confirms which concern is highlighted without the previous
+          full-color clinical pill. The chip row above the photo
+          remains the primary affordance. */}
       {activeOverlay ? (
-        <View
-          style={[
-            styles.activeBadge,
-            {
-              backgroundColor: `${CATEGORY_COLOR[activeOverlay.category]}E6`,
-            },
-          ]}
-        >
+        <View style={styles.activeBadge}>
+          <View
+            style={[
+              styles.activeBadgeDot,
+              { backgroundColor: CATEGORY_COLOR[activeOverlay.category] },
+            ]}
+          />
           <Text style={styles.activeBadgeText} numberOfLines={1}>
             {activeOverlay.label}
           </Text>
@@ -913,20 +892,32 @@ const styles = StyleSheet.create({
     color: palette.inkInverse,
     opacity: 0.92,
   },
+  // v18.8 — lower-contrast pearl glass badge with a small color dot
+  // for the active concern. Reads as a quiet confirmation tag, not
+  // a clinical pill.
   activeBadge: {
     position: 'absolute',
     top: 12,
     left: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 6,
+    borderRadius: 12,
     maxWidth: '70%',
+    backgroundColor: 'rgba(11, 18, 32, 0.55)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  activeBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   activeBadgeText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 9,
-    letterSpacing: 1.4,
-    color: palette.inkInverse,
+    letterSpacing: 1.2,
+    color: 'rgba(248, 250, 252, 0.92)',
   },
   debugRibbon: {
     position: 'absolute',

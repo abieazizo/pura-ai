@@ -558,12 +558,17 @@ export async function getMatchedProductsForUser(args: {
     /* non-fatal */
   }
   aiTelemetry.countFallback('matchProductsForUser');
+  // v18.8 — softened user-facing copy. The previous "8 deterministic
+  // matches surfaced" leaked debug language into the AISourceBadge
+  // (which can show in dev builds). Replaced with calm consumer
+  // copy. The internal telemetry feature-source flag still flips
+  // to 'fallback' so the dev console can distinguish.
   aiTelemetry.setFeatureSource(
     'products',
     'fallback',
     aiGateway.isAvailable()
-      ? `AI matching unavailable; ${fallbackMatches.length} deterministic matches surfaced`
-      : `no AI proxy; ${fallbackMatches.length} deterministic matches surfaced`
+      ? 'Backup matches loaded while live recommendations reload.'
+      : 'Backup matches loaded — live recommendations reconnect when available.'
   );
   return {
     for_user_id: args.userId ?? 'current_user',
