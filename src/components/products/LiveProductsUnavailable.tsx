@@ -36,12 +36,20 @@ export interface LiveProductsUnavailableProps {
    *  "for that search", "for this scan"). Optional. */
   scope?: string;
   onRetry?: () => void;
+  /**
+   * v19.3 — optional secondary action. When set, the empty +
+   * unavailable variants render a quiet "Browse products" link
+   * below the Retry button so the screen always offers forward
+   * motion. Pass undefined to suppress.
+   */
+  onBrowse?: () => void;
 }
 
 export function LiveProductsUnavailable({
   variant,
   scope,
   onRetry,
+  onBrowse,
 }: LiveProductsUnavailableProps) {
   const message =
     variant === 'loading'
@@ -93,27 +101,48 @@ export function LiveProductsUnavailable({
         </Text>
       ) : null}
       {showRetry ? (
-        <Pressable
-          onPress={() => {
-            hapt.select();
-            onRetry();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Retry"
-          style={({ pressed }) => [
-            styles.retryBtn,
-            pressed && { opacity: 0.92 },
-          ]}
-        >
-          <ArrowClockwise
-            size={13}
-            color={palette.inkInverse}
-            weight="bold"
-          />
-          <Text style={styles.retryLabel} maxFontSizeMultiplier={1.1}>
-            Retry
-          </Text>
-        </Pressable>
+        <View style={styles.actionsRow}>
+          <Pressable
+            onPress={() => {
+              hapt.select();
+              onRetry();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
+            style={({ pressed }) => [
+              styles.retryBtn,
+              pressed && { opacity: 0.92 },
+            ]}
+          >
+            <ArrowClockwise
+              size={13}
+              color={palette.inkInverse}
+              weight="bold"
+            />
+            <Text style={styles.retryLabel} maxFontSizeMultiplier={1.1}>
+              Retry
+            </Text>
+          </Pressable>
+          {onBrowse ? (
+            <Pressable
+              onPress={() => {
+                hapt.select();
+                onBrowse();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Browse products"
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.browseBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.browseLabel} maxFontSizeMultiplier={1.1}>
+                Browse products
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -161,6 +190,15 @@ const styles = StyleSheet.create({
     color: palette.inkSecondary,
     maxWidth: '90%',
   },
+  // v19.3 — primary Retry pill + secondary "Browse products"
+  // text link sit on one row so the empty/unavailable card always
+  // offers forward motion.
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 8,
+  },
   retryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -169,12 +207,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 16,
     backgroundColor: palette.ink,
-    marginTop: 8,
   },
   retryLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
     letterSpacing: 0.2,
     color: palette.inkInverse,
+  },
+  browseBtn: {
+    paddingVertical: 8,
+  },
+  browseLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.2,
+    color: palette.clay,
   },
 });

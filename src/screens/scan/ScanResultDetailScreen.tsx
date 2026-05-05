@@ -259,6 +259,16 @@ export function ScanResultDetailScreen({
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Editorial section header — same heroKickerRow pattern
+              as the Overview so both screens read as one product
+              system. ─────────────────────────────────────────── */}
+        <View style={styles.kickerRow}>
+          <Text style={styles.kickerLabel} maxFontSizeMultiplier={1.1}>
+            WHAT WE SAW
+          </Text>
+          <View style={styles.kickerRule} />
+        </View>
+
         {/* ── Concern chips ─────────────────────────────────────── */}
         {noticeable.length > 0 ? (
           <ScrollView
@@ -465,6 +475,26 @@ const styles = StyleSheet.create({
     paddingBottom: 56,
   },
 
+  // v19.3 — editorial section header, mirrored from the Overview's
+  // heroKickerRow so the two screens read as one system.
+  kickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 14,
+  },
+  kickerLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.7,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  kickerRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: palette.hairline,
+  },
   chipRow: {
     flexDirection: 'row',
     gap: 8,

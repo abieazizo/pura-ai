@@ -176,6 +176,19 @@ export function ScanResultsFaceScreen({
     rootNav.goBack();
   };
 
+  // v19.3 — secondary "Browse products" path for the unavailable
+  // hero state. Dismisses the scan modal and lands the user on
+  // the Products tab so the screen always offers a forward
+  // motion even when live retrieval fails.
+  const openProducts = () => {
+    hapt.tap();
+    rootNav.goBack();
+    setTimeout(() => {
+      // @ts-expect-error nested tab navigation
+      rootNav.navigate?.('Tabs', { screen: 'ProductsTab' });
+    }, 60);
+  };
+
   // v19.0 — `LiveProductCard` handles its own tap-to-detail and
   // Shop-to-merchant navigation, so the screen no longer needs
   // local nav handlers for them. Keeping the screen focused on
@@ -217,6 +230,7 @@ export function ScanResultsFaceScreen({
           photoUri={scan.photoUri}
           score={score}
           delta={score.deltaSinceLast}
+          interpretation={buildScoreInterpretation(concerns)}
         />
 
         {/* ── 2. Headline + supporting line ─────────────────────── */}
@@ -230,10 +244,13 @@ export function ScanResultsFaceScreen({
         ) : null}
 
         {/* ── 3. Hero product module ────────────────────────────── */}
-        {/* v19.1 — deliberate hero framing. The kicker reads as a
-            small editorial section header; a thin hairline beneath
-            it visually frames the hero product as the page's
-            primary action. */}
+        {/* v19.3 — hero product framed as a CONCLUSION, not a card
+            from a state machine. The reason-to-believe line above
+            the card explicitly ties the recommendation to the
+            user's primary concern, so the card lands as an answer
+            ("Because forehead texture is your top concern, this
+            resurfacing serum should help most.") rather than a
+            generic AI pick. */}
         <View style={styles.heroBlock}>
           <View style={styles.heroKickerRow}>
             <Text
@@ -245,9 +262,18 @@ export function ScanResultsFaceScreen({
             <View style={styles.heroKickerRule} />
           </View>
           {heroLive ? (
-            <Animated.View style={heroAnim}>
-              <LiveProductCard candidate={heroLive} variant="hero" />
-            </Animated.View>
+            <>
+              <Text
+                style={styles.heroReason}
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={2}
+              >
+                {buildHeroReason(concerns, heroLive)}
+              </Text>
+              <Animated.View style={heroAnim}>
+                <LiveProductCard candidate={heroLive} variant="hero" />
+              </Animated.View>
+            </>
           ) : liveLoading ? (
             <LiveProductsUnavailable
               variant={liveSlow ? 'slow' : 'loading'}
@@ -258,6 +284,7 @@ export function ScanResultsFaceScreen({
               variant={liveError ? 'unavailable' : 'empty'}
               scope="for your scan"
               onRetry={retryLive}
+              onBrowse={openProducts}
             />
           )}
         </View>
@@ -470,6 +497,72 @@ function severityWord(s: Concern['severity']): string {
   }
 }
 
+/**
+ * v19.3 — score interpretation. Renders inside the ScoreSummaryCard
+ * meta line so the user understands what the band actually means
+ * in THIS scan, not in the abstract.
+ */
+function buildScoreInterpretation(concerns: Concern[]): string {
+  const noticeable = concerns.filter((c) => c.severity !== 'calm');
+  const high = noticeable.filter(
+    (c) => c.severity === 'moderate' || c.severity === 'needs-attention'
+  );
+  if (noticeable.length === 0) {
+    return 'Calm overall.';
+  }
+  if (noticeable.length === 1 && high.length === 0) {
+    return 'Mostly settled, with one mild area to watch.';
+  }
+  if (noticeable.length <= 2 && high.length === 0) {
+    return 'Mostly settled, with a couple of mild signals.';
+  }
+  if (high.length === 1) {
+    return 'A few signals to address — one stands out.';
+  }
+  return 'A few signals to address.';
+}
+
+/**
+ * v19.3 — reason-to-believe line above the hero product card.
+ * Reads as a single elegant sentence that ties the recommendation
+ * to the user's primary concern + the product's own match reason.
+ * Frames the card as a conclusion, not a state-machine output.
+ */
+function buildHeroReason(
+  concerns: Concern[],
+  hero: LiveProductCandidate
+): string {
+  const top = concerns.find((c) => c.severity !== 'calm');
+  const aiReason = (hero.matchReason ?? '').trim();
+  if (!top) {
+    // Calm scan → frame the recommendation as a daily addition.
+    return aiReason.length > 0
+      ? aiReason
+      : 'A gentle daily addition that should sit comfortably in your routine.';
+  }
+  const concern = (() => {
+    switch (top.category) {
+      case 'breakouts':
+        return 'breakouts';
+      case 'hydration':
+        return 'dryness';
+      case 'texture':
+        return 'texture';
+      case 'tone':
+        return 'tone unevenness';
+    }
+  })();
+  // Prefer the AI's matchReason when it's tight + ends cleanly.
+  if (
+    aiReason.length > 0 &&
+    aiReason.length <= 110 &&
+    /[.!]$/.test(aiReason)
+  ) {
+    return aiReason;
+  }
+  return `Because ${concern} is your top signal in this scan, this should help most.`;
+}
+
 // v19.2 — Roman numerals for the tonight list. Reads more
 // editorial than 1/2/3 and matches the calm Instrument Serif
 // vocabulary the rest of the page uses.
@@ -539,7 +632,19 @@ const styles = StyleSheet.create({
 
   heroBlock: {
     marginBottom: 0,
-    gap: 14,
+    gap: 12,
+  },
+  // v19.3 — reason-to-believe line above the hero card. Italic
+  // serif gives it premium voice without competing with the card's
+  // own typography.
+  heroReason: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    lineHeight: 21,
+    letterSpacing: -0.1,
+    color: palette.inkSecondary,
+    maxWidth: '94%',
+    marginBottom: 2,
   },
   // v19.1 — editorial hero kicker. The hairline that follows the
   // label gives the section a deliberate, magazine-style header.

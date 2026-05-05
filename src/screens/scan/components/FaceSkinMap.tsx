@@ -351,11 +351,14 @@ function pickWorstByCategory(
 }
 
 function labelFor(finding: FaceConcernFinding): string {
-  const concern = finding.concern.replace('_', ' ').toUpperCase();
+  // v19.3 — premium "TARGETED IN {region}" annotation. Replaces
+  // the technical "BREAKOUTS · ACROSS_FACE" with a calm, plain-
+  // English region phrase that ties the chip → photo → insight.
   const region = (finding.regions[0] ?? 'across_face')
-    .replace('_', ' ')
-    .toUpperCase();
-  return `${concern} · ${region}`;
+    .replace(/_/g, ' ')
+    .replace(/across face/i, 'the face')
+    .toLowerCase();
+  return `TARGETED IN ${region.toUpperCase()}`;
 }
 
 function resolveOverlays(analysis: FaceScanAnalysis): ResolvedOverlay[] {

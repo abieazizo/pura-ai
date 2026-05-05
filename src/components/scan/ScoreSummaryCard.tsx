@@ -33,12 +33,21 @@ export interface ScoreSummaryCardProps {
   score: SkinScore;
   /** Pass `score.deltaSinceLast` directly. */
   delta: number | null;
+  /**
+   * v19.3 — short human interpretation of what the score band
+   * means in THIS scan. Replaces the generic "Based on visible
+   * signals" with something the user can actually read meaning
+   * into ("Mostly settled, with one mild area to watch.").
+   * The trust line stays as a smaller helper below.
+   */
+  interpretation: string;
 }
 
 export function ScoreSummaryCard({
   photoUri,
   score,
   delta,
+  interpretation,
 }: ScoreSummaryCardProps) {
   const tier = tierLabelFor(score.tier);
   const deltaText = deltaPhrase(delta);
@@ -71,6 +80,7 @@ export function ScoreSummaryCard({
           </View>
         </View>
         <View style={styles.rule} />
+        {/* v19.3 — primary meta line: delta + interpretation. */}
         <Text
           style={styles.metaLine}
           maxFontSizeMultiplier={1.2}
@@ -78,9 +88,16 @@ export function ScoreSummaryCard({
         >
           <Text style={styles.metaDelta}>{deltaText}</Text>
           <Text style={styles.metaSep}>{'  ·  '}</Text>
-          <Text style={styles.metaHelper}>
-            Based on visible signals from this scan
-          </Text>
+          <Text style={styles.metaInterpretation}>{interpretation}</Text>
+        </Text>
+        {/* v19.3 — micro trust line. Smaller + italicised so it
+            feels like a quiet footnote, not the primary helper. */}
+        <Text
+          style={styles.trustLine}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={1}
+        >
+          Based on visible signals from this scan
         </Text>
       </View>
     </View>
@@ -158,9 +175,10 @@ const styles = StyleSheet.create({
   },
   metaLine: {
     flexShrink: 1,
+    marginBottom: 4,
   },
   metaDelta: {
-    fontFamily: 'Inter-Regular',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 12.5,
     letterSpacing: 0.1,
     color: palette.inkSecondary,
@@ -170,9 +188,20 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: palette.inkTertiary,
   },
-  metaHelper: {
-    fontFamily: 'InstrumentSerif-Italic',
+  // v19.3 — primary interpretation reads as the score's "what it
+  // means" voice. Inter-Regular + ink-secondary keeps it subtle
+  // but legible.
+  metaInterpretation: {
+    fontFamily: 'Inter-Regular',
     fontSize: 12.5,
+    lineHeight: 17,
+    color: palette.inkSecondary,
+  },
+  // v19.3 — quiet trust line beneath the meta. Smaller + italic
+  // serif so it reads as a footnote, not the primary helper.
+  trustLine: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 11.5,
     color: palette.inkTertiary,
   },
 });
