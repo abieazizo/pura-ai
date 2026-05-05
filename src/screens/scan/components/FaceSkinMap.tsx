@@ -105,17 +105,18 @@ const CATEGORY_COLOR: Record<ConcernCategory, string> = {
   tone: '#D9A75E',
 };
 
-// v18.8 — alpha values rebalanced to feel premium and restrained.
-// The v17.2 values (0.6 → 0.9) read as crayon-like and clinical on a
-// real photo. v18.8 keeps the wash visible but elegant — the user
-// can still see the concern zone clearly without it dominating
-// their face.
+// v18.10 — alpha values dropped further. v18.8's 0.28 → 0.55 still
+// read awkward on real-skin photos (the wash sat ON the face like
+// a sticker rather than feeling like a soft glow). v18.10 cuts the
+// upper bound to 0.40 — high severity still reads clearly via the
+// concern color, but the face underneath stays the dominant
+// element.
 const SEVERITY_ALPHA: Record<FaceConcernFinding['severity'], number> = {
   none: 0,
-  low: 0.28,
-  mild: 0.36,
-  moderate: 0.46,
-  high: 0.55,
+  low: 0.18,
+  mild: 0.24,
+  moderate: 0.32,
+  high: 0.4,
 };
 
 // ---------------------------------------------------------------------------
@@ -515,72 +516,14 @@ function WarmPatch({ polygon, ellipse, color, alpha, defsKey }: RenderInput) {
   );
 }
 
-function PinpointHalos({
-  polygon,
-  ellipse,
-  color,
-  alpha,
-  defsKey,
-}: RenderInput) {
-  // v18.8 — restrained version. Previous render had 6 hard pinpoint
-  // cores at high alpha + a base wash, which read as clinical
-  // "spot markers" on the user's face. v18.8 keeps the concept of
-  // "localized glow markers" but draws 3 soft blurred dots without
-  // the sharp inner cores. Reads as premium beauty-tech, not a
-  // medical diagram.
-  const blurId = `halo-${defsKey}`;
-  const dots = useMemo<Point[]>(() => {
-    if (polygon && polygon.length >= 3) {
-      const c = centroid(polygon);
-      const b = polygonBounds(polygon);
-      const w = b.maxX - b.minX;
-      const h = b.maxY - b.minY;
-      return [
-        c,
-        { x: clamp01(c.x - w * 0.2), y: clamp01(c.y - h * 0.18) },
-        { x: clamp01(c.x + w * 0.22), y: clamp01(c.y + h * 0.16) },
-      ];
-    }
-    const { cx, cy, rx, ry } = ellipse;
-    return [
-      { x: cx, y: cy },
-      { x: clamp01(cx - rx * 0.4), y: clamp01(cy - ry * 0.35) },
-      { x: clamp01(cx + rx * 0.42), y: clamp01(cy + ry * 0.4) },
-    ];
-  }, [polygon, ellipse]);
-
-  return (
-    <G>
-      <Defs>
-        <Filter id={blurId} x="-40%" y="-40%" width="180%" height="180%">
-          <FeGaussianBlur stdDeviation={0.014} />
-        </Filter>
-      </Defs>
-      {/* Soft base wash so the dots feel grouped into a zone, not
-          three random spots floating on the face. */}
-      <Ellipse
-        cx={ellipse.cx}
-        cy={ellipse.cy}
-        rx={ellipse.rx}
-        ry={ellipse.ry}
-        fill={color}
-        fillOpacity={alpha * 0.55}
-        filter={`url(#${blurId})`}
-      />
-      {/* 3 soft glow markers — no sharp inner cores. */}
-      {dots.map((d, i) => (
-        <Circle
-          key={i}
-          cx={d.x}
-          cy={d.y}
-          r={0.024}
-          fill={color}
-          fillOpacity={alpha * 0.65}
-          filter={`url(#${blurId})`}
-        />
-      ))}
-    </G>
-  );
+function PinpointHalos(props: RenderInput) {
+  // v18.10 — pinpoint markers DROPPED entirely. The previous "3
+  // glow markers + base wash" treatment still read as awkward
+  // markers on a real face. v18.10 unifies breakouts on the same
+  // single soft feathered wash that redness uses, with no markers.
+  // The concern is communicated by color + zone + active-concern
+  // badge, not by ANY localized markers on the face.
+  return <FeatheredWash {...props} />;
 }
 
 function LilacArc({ polygon, ellipse, color, alpha, defsKey }: RenderInput) {
@@ -867,8 +810,10 @@ export function FaceSkinMap({
   );
 }
 
-// Suppress unused-import for FeColorMatrix (kept for future use).
+// Suppress unused-imports kept for future use / referenced in
+// commented-out code paths.
 void FeColorMatrix;
+void Circle;
 
 const styles = StyleSheet.create({
   frame: {

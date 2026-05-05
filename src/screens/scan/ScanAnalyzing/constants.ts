@@ -274,18 +274,21 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 // / score / settle / reveal) but only four carry text.
 // ------------------------------------------------------------------
 
-// v18.8 \u2014 consumer-friendly loading copy. Replaces the v18.3
-// technical sequence ("Aligning your scan / Reading skin zones /
-// Checking texture and tone / \u2026") with calmer language. Users
-// shouldn't need to wonder what "skin zones" means \u2014 the screen
-// just needs to feel alive, reassuring, and obviously working.
-//
-// The header now reads "Analyzing your scan" (constant); the
-// caption rotates through human-friendly subtext.
+// v18.10 \u2014 final loading copy. Per the v18.10 brief: header reads
+// "Analyzing your scan", and the rotating subtext is the simplest
+// possible consumer-facing sequence:
+//   \u2022 "This takes a few seconds"
+//   \u2022 "Preparing your results"
+//   \u2022 "Matching products for your skin"
+//   \u2022 "Almost ready"
+// Long-running fallback: "Still working \u2014 thanks for waiting".
+// Every prior technical phrase ("Aligning features", "Reading skin
+// zones", "Checking texture and tone", "Mapping visible concerns")
+// is gone.
 export const CAPTION_COPY = {
   preflight: 'This takes a few seconds\u2026',
   locate: 'Preparing your results\u2026',
-  partition: 'Reading your skin\u2026',
+  partition: 'Preparing your results\u2026',
   detect: 'Matching products for your skin\u2026',
   score: 'Almost ready\u2026',
   waiting: 'Still working \u2014 thanks for waiting\u2026',
@@ -299,7 +302,7 @@ export const CAPTION_COPY = {
 export const A11Y_ANNOUNCEMENTS = {
   preflight: 'Analyzing your scan.',
   locate: 'Preparing your results.',
-  partition: 'Reading your skin.',
+  partition: 'Preparing your results.',
   detect: 'Matching products for your skin.',
   score: 'Almost ready.',
   waiting: 'Still working.',

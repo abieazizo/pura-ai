@@ -264,13 +264,16 @@ export class OpenAIClient {
     const first = await attempt(baseMaxTokens, 0);
     if (first.ok) return first.value;
 
-    // v18.8 — retry once. If the failure mode is `length_cap`
+    // v18.8 / v18.10 — retry once. If the failure mode is `length_cap`
     // (reasoning ate the output budget), double the cap; otherwise
     // (likely transient empty-content), keep the same cap and just
-    // try again.
+    // try again. v18.10 raised the ceiling 8192 → 16384 so the
+    // doubled retry on a 6144 starting cap actually doubles
+    // (12288) instead of saturating at 8192 and producing the same
+    // length failure.
     const secondCap =
       first.reason === 'length_cap'
-        ? Math.min(baseMaxTokens * 2, 8192)
+        ? Math.min(baseMaxTokens * 2, 16384)
         : baseMaxTokens;
     const second = await attempt(secondCap, 1);
     if (second.ok) return second.value;
@@ -339,13 +342,16 @@ export class OpenAIClient {
       userContent,
       schemaName: 'scan_preflight_result',
       schema: SCAN_PREFLIGHT_RESULT_SCHEMA,
-      // v18.8 — bumped 400 → 1500. The previous 400 cap repeatedly
-      // hit `finish_reason="length"` because GPT-5-mini's internal
-      // reasoning tokens count against the same budget as output.
-      // 1500 leaves enough head-room for reasoning + the small
-      // structured payload, eliminating empty-content responses
-      // on this path.
-      maxTokens: 1500,
+      // v18.10 — bumped 1500 → 4096. v18.8's 1500 cap was still
+      // hitting `finish_reason="length"` in the wild because
+      // GPT-5-mini's reasoning tokens for an image-bearing call
+      // consume far more budget than text-only calls. 4096 matches
+      // the extraction default and gives the model enough room
+      // for vision reasoning + the small structured payload.
+      // Combined with the runStrictStructured retry envelope
+      // (which doubles the cap on a length failure), preflight
+      // empty-content responses should now be rare.
+      maxTokens: 4096,
     });
   }
 
@@ -629,6 +635,12 @@ export class OpenAIClient {
       userContent,
       schemaName: 'product_match_result',
       schema: PRODUCT_MATCH_RESULT_SCHEMA,
+      // v18.10 — explicit 6144 cap. The structured ProductMatchResult
+      // for 24 candidates with reasons is large; the previous default
+      // (4096) was hitting `finish_reason="length"` on real runs and
+      // returning empty content. 6144 + the runStrictStructured
+      // retry-with-double envelope ensures the call completes.
+      maxTokens: 6144,
     });
   }
 
@@ -685,6 +697,11 @@ export class OpenAIClient {
       userContent,
       schemaName: 'routine_recommendation',
       schema: ROUTINE_RECOMMENDATION_SCHEMA,
+      // v18.10 — explicit 6144 cap. The structured RoutineRecommendation
+      // (morning + evening + saved_for_later RoutineAction arrays) has
+      // historically hit `finish_reason="length"` on real runs at the
+      // default 4096. 6144 + retry envelope eliminates the failure.
+      maxTokens: 6144,
     });
   }
 

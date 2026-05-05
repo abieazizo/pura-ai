@@ -556,48 +556,38 @@ export async function getMatchedProductsForUser(args: {
     return result;
   }
 
-  // ── v13.1 — Deterministic fallback ranking ──
+  // v18.10 — DEMOTED FALLBACK PATH.
   //
-  // Previously when AI matching failed, the code logged "fallback to
-  // seeded matchScore" and left `aiTopMatches` empty. The result
-  // screen then resolved to a generic concern→category fallback
-  // without match scores or AI-style reasons — cards looked
-  // demo-like.
+  // Previous versions wrote `buildDeterministicMatches(candidates)`
+  // into `aiTopMatches` whenever the AI call failed. The result
+  // screen + Products tab + Home all then rendered seeded picks as
+  // if they were the live AI answer. Per the v18.10 brief that's
+  // not acceptable as the normal visible user experience.
   //
-  // This branch builds a realistic ranking from the user's actual
-  // scan findings + product `inferConcerns` mapping + a small set
-  // of skin-profile signals. Match scores are bucketed (88-95 strong
-  // / 78-87 fair / 70-77 alternative) and reasons reference the
-  // user's named concern, not a generic one-size-fits-all line. The
-  // result is written into `aiTopMatches` so the result screen and
-  // Products tab both show real-feeling rankings even when AI is
-  // offline.
-  const fallbackMatches = buildDeterministicMatches(candidates);
-  try {
-    useAppStore.getState().setAiTopMatches(fallbackMatches);
-  } catch {
-    /* non-fatal */
-  }
+  // After v18.10:
+  //   • `aiTopMatches` is left UNTOUCHED on AI failure (it keeps
+  //     whatever the previous successful run wrote, or stays
+  //     empty if there was none).
+  //   • `getMatchedProductsForUser` returns `null` so callers
+  //     surface their LiveProductsUnavailable + Retry state,
+  //     never silently falling back to seed-shaped content.
+  //   • The deterministic ranking helper remains in the codebase
+  //     for the explicit assistantMock + dev tooling path
+  //     (`buildDeterministicMatches`) but is no longer surfaced
+  //     to the normal recommendation screens.
+  //
+  // Telemetry still flips to 'fallback' so the dev badge can
+  // distinguish AI-success from AI-failed without changing the
+  // visible UX.
   aiTelemetry.countFallback('matchProductsForUser');
-  // v18.8 — softened user-facing copy. The previous "8 deterministic
-  // matches surfaced" leaked debug language into the AISourceBadge
-  // (which can show in dev builds). Replaced with calm consumer
-  // copy. The internal telemetry feature-source flag still flips
-  // to 'fallback' so the dev console can distinguish.
   aiTelemetry.setFeatureSource(
     'products',
     'fallback',
     aiGateway.isAvailable()
-      ? 'Backup matches loaded while live recommendations reload.'
-      : 'Backup matches loaded — live recommendations reconnect when available.'
+      ? 'Live recommendations are reloading.'
+      : 'Live recommendations reconnect when the proxy is available.'
   );
-  return {
-    for_user_id: args.userId ?? 'current_user',
-    based_on_scan_id: args.basedOnScanId ?? null,
-    top_pick_product_id: fallbackMatches[0]?.product_id ?? null,
-    matches: fallbackMatches,
-    alternatives: fallbackMatches.slice(3, 7),
-  };
+  return null;
 }
 
 // ---------------------------------------------------------------------------
