@@ -237,8 +237,27 @@ export async function lookupForScan(
 ): Promise<LiveProductCandidate[]> {
   const ai = scan.aiAnalysis;
   if (!ai) {
-    aiLog.warn('liveProducts', 'scan has no aiAnalysis');
-    return [];
+    // v19.4 — defensive free-text fallback. Previous version
+    // returned [] which left every consumer screen stuck on its
+    // empty state when the scan didn't carry an AI analysis.
+    // Now we synthesise a query from the legacy `concerns` array
+    // (which every scan has) and call the free-text lookup.
+    const concerns = scan.concerns ?? [];
+    const top = concerns.find((c) => c.severity !== 'calm') ?? concerns[0];
+    const fallbackQuery = top
+      ? `best products for ${top.severity} ${
+          top.category === 'tone' ? 'dark marks' : top.category
+        } on the ${top.region.replace(/across the face/i, 'face')}`
+      : 'best gentle daily skincare products for balanced skin';
+    aiLog.warn(
+      'liveProducts',
+      'scan has no aiAnalysis; using free-text fallback',
+      { scanId: scan.id, query: fallbackQuery }
+    );
+    return lookupLiveProducts(fallbackQuery, {
+      count: opts.count ?? 6,
+      fresh: opts.fresh,
+    });
   }
   const primary = ai.primary_concern ?? 'overall_skin';
   const region = ai.findings[0]?.regions[0] ?? 'across_face';

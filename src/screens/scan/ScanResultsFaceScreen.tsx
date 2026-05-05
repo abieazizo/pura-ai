@@ -51,7 +51,8 @@ import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { ScoreSummaryCard } from '@/components/scan/ScoreSummaryCard';
 import { ResultSecondaryActions } from '@/components/scan/ResultSecondaryActions';
-import { lookupForScan } from '@/api/liveProducts';
+import { lookupForScan, lookupLiveProducts } from '@/api/liveProducts';
+import { aiLog } from '@/ai/aiLog';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Concern } from '@/types';
 import type {
@@ -91,8 +92,22 @@ export function ScanResultsFaceScreen({
   const [liveError, setLiveError] = useState<boolean>(false);
   const [liveAttempt, setLiveAttempt] = useState<number>(0);
 
+  // v19.4 — actual product retrieval pipeline. The previous version
+  // had a hard `if (!scan?.aiAnalysis) return;` early-return that
+  // left scans without an AI analysis (deterministic-fallback
+  // scans, partial-AI scans, or any scan from before the AI pipeline
+  // ran successfully) STUCK on the empty state — the effect never
+  // set `liveLoading`, never fired retrieval, and Retry just re-ran
+  // the same dead path. v19.4 ALWAYS fires retrieval:
+  //   • If scan.aiAnalysis is present → use lookupForScan, which
+  //     scopes the query by the AI's primary_concern + region.
+  //   • Otherwise → derive a free-text query from the scan's
+  //     `concerns` array (which every scan has, even deterministic
+  //     ones via deriveConcerns) and use lookupLiveProducts.
+  // Structured aiLog signals at every step so failures are visible
+  // in the dev console.
   useEffect(() => {
-    if (!scan?.aiAnalysis) return;
+    if (!scan) return;
     let cancelled = false;
     setLiveLoading(true);
     setLiveSlow(false);
@@ -100,14 +115,58 @@ export function ScanResultsFaceScreen({
     const slowTimer = setTimeout(() => {
       if (!cancelled) setLiveSlow(true);
     }, 5000);
-    lookupForScan(scan, { fresh: liveAttempt > 0 })
+
+    const run = async (): Promise<LiveProductCandidate[]> => {
+      if (scan.aiAnalysis) {
+        aiLog.info('result.products', 'lookupForScan path', {
+          scanId: scan.id,
+          primary_concern: scan.aiAnalysis.primary_concern,
+        });
+        const picks = await lookupForScan(scan, {
+          fresh: liveAttempt > 0,
+        });
+        if (picks.length > 0) return picks;
+        // Fallback: scan-driven retrieval returned empty (rare but
+        // possible). Try a free-text query so we never bottom out
+        // on the empty state when there ARE concerns to act on.
+        aiLog.warn(
+          'result.products',
+          'lookupForScan returned empty; trying free-text fallback'
+        );
+        return lookupLiveProducts(buildFreeTextQuery(concerns), {
+          count: 6,
+          fresh: liveAttempt > 0,
+        });
+      }
+      // No AI analysis on this scan — derive a free-text query
+      // from the deterministic concerns and use lookupLiveProducts.
+      const query = buildFreeTextQuery(concerns);
+      aiLog.info('result.products', 'free-text fallback path', {
+        scanId: scan.id,
+        query,
+      });
+      return lookupLiveProducts(query, {
+        count: 6,
+        fresh: liveAttempt > 0,
+      });
+    };
+
+    run()
       .then((picks) => {
         if (cancelled) return;
+        aiLog.info('result.products', 'retrieval resolved', {
+          scanId: scan.id,
+          n: picks.length,
+        });
         setLiveCandidates(picks);
         setLiveError(picks.length === 0);
       })
-      .catch(() => {
+      .catch((e) => {
         if (cancelled) return;
+        aiLog.error('result.products', 'retrieval threw', {
+          scanId: scan.id,
+          error: e instanceof Error ? e.message : String(e),
+        });
         setLiveCandidates([]);
         setLiveError(true);
       })
@@ -117,11 +176,12 @@ export function ScanResultsFaceScreen({
         setLiveLoading(false);
         setLiveSlow(false);
       });
+
     return () => {
       cancelled = true;
       clearTimeout(slowTimer);
     };
-  }, [scan?.id, scan?.aiAnalysis, liveAttempt]);
+  }, [scan?.id, scan?.aiAnalysis, liveAttempt, concerns, scan]);
 
   const heroLive = liveCandidates[0] ?? null;
   const altLive = liveCandidates.slice(1, 6);
@@ -495,6 +555,48 @@ function severityWord(s: Concern['severity']): string {
     case 'needs-attention':
       return 'pronounced';
   }
+}
+
+/**
+ * v19.4 — derive a free-text retrieval query from the scan's
+ * `concerns` array. Used as the fallback path when scan.aiAnalysis
+ * is missing (deterministic scan, AI proxy was down at scan time,
+ * or aiAnalysis hasn't hydrated yet). Every scan has a non-empty
+ * concerns array via translateAnalysisToScan / deriveConcerns, so
+ * this always produces a usable query.
+ *
+ * The query is intentionally short and natural: it reads as a real
+ * skincare-shopper sentence ("best gentle products for mild
+ * forehead texture") rather than a structured payload.
+ */
+function buildFreeTextQuery(concerns: Concern[]): string {
+  const noticeable = concerns.filter((c) => c.severity !== 'calm');
+  if (noticeable.length === 0) {
+    return 'best gentle daily skincare products for balanced skin';
+  }
+  const top = noticeable[0];
+  const concernPhrase = (() => {
+    switch (top.category) {
+      case 'breakouts':
+        return 'breakouts';
+      case 'hydration':
+        return 'dryness and hydration';
+      case 'texture':
+        return 'skin texture';
+      case 'tone':
+        return 'tone unevenness and dark marks';
+    }
+  })();
+  const region = top.region.replace(/across the face/i, 'face');
+  const sevWord =
+    top.severity === 'mild'
+      ? 'mild'
+      : top.severity === 'moderate'
+      ? 'moderate'
+      : top.severity === 'needs-attention'
+      ? 'pronounced'
+      : '';
+  return `best products for ${sevWord} ${concernPhrase} on the ${region}`.trim();
 }
 
 /**
