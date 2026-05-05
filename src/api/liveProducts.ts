@@ -116,6 +116,7 @@ import {
   sanitizeAndEnrich,
   sephoraSearchUrl,
 } from '@/lib/commerceEnrichment';
+import { buildSafetyProfile } from '@/utils/safetyProfile';
 
 /**
  * Build a Sephora search URL keyed by brand + name. Re-exported for
@@ -167,9 +168,34 @@ export async function lookupLiveProducts(
     aiTelemetry.countFallback('lookupLiveProducts');
     return [];
   }
+  // v18.9 — append the user's safety profile to the search query
+  // so the model biases ranking toward gentle / barrier-supportive
+  // options when the user has flagged a condition. Pure ingredient
+  // / brand queries ("niacinamide", "salicylic acid") still
+  // surface the canonical answer; the safety bias just nudges
+  // ranking, not exclusion.
+  let composedQuery = trimmed;
+  try {
+    const s = useAppStore.getState();
+    const safety = buildSafetyProfile({
+      skinType: s.skinType,
+      sensitivity: s.sensitivity,
+      skinConditions: s.skinConditions,
+      prescriptionFlag: s.prescriptionFlag,
+      fragranceSensitive: s.fragranceSensitive,
+      activeIrritation: s.activeIrritation,
+      pregnancyCaution: s.pregnancyCaution,
+      avoidIngredients: s.avoidIngredients,
+    });
+    if (safety.hasSignal) {
+      composedQuery = `${trimmed}. SAFETY: ${safety.promptSummary}`;
+    }
+  } catch {
+    /* keep base query */
+  }
   try {
     const result = await aiGateway.lookupLiveProducts({
-      query: trimmed,
+      query: composedQuery,
       count: opts.count ?? 8,
     });
     const sanitized = sanitizeAndEnrich(result.candidates).sort(
@@ -218,6 +244,24 @@ export async function lookupForScan(
   const region = ai.findings[0]?.regions[0] ?? 'across_face';
   const severity = ai.findings[0]?.severity ?? 'mild';
   const sensitivities = ai.plan_inputs.contraindication_tags;
+  // v18.9 — pull the safety profile and bias the live retrieval
+  // toward gentler / barrier-supportive products when flagged.
+  let safetyOverride: ReturnType<typeof buildSafetyProfile> | null = null;
+  try {
+    const s = useAppStore.getState();
+    safetyOverride = buildSafetyProfile({
+      skinType: s.skinType,
+      sensitivity: s.sensitivity,
+      skinConditions: s.skinConditions,
+      prescriptionFlag: s.prescriptionFlag,
+      fragranceSensitive: s.fragranceSensitive,
+      activeIrritation: s.activeIrritation,
+      pregnancyCaution: s.pregnancyCaution,
+      avoidIngredients: s.avoidIngredients,
+    });
+  } catch {
+    /* keep null */
+  }
   const query = [
     `Recommend products for ${primary.replace('_', ' ')}`,
     region !== 'across_face' ? `on the ${region.replace('_', ' ')}` : null,
@@ -226,6 +270,9 @@ export async function lookupForScan(
       : null,
     sensitivities.length > 0
       ? `avoid: ${sensitivities.slice(0, 3).join(', ')}`
+      : null,
+    safetyOverride && safetyOverride.hasSignal
+      ? `SAFETY: ${safetyOverride.promptSummary}`
       : null,
   ]
     .filter(Boolean)

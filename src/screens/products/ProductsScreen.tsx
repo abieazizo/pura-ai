@@ -125,17 +125,36 @@ export function ProductsScreen() {
     []
   );
   const [liveSearching, setLiveSearching] = useState(false);
+  // v18.9 — tiered loading copy. After 5 s show "Still working —
+  // thanks for waiting…". After 25 s the search has materially
+  // exceeded the model's typical budget; hard-fail to the empty/
+  // unavailable state with a Retry button.
+  const [searchSlow, setSearchSlow] = useState(false);
+  const [searchTimedOut, setSearchTimedOut] = useState(false);
+  const [searchAttempt, setSearchAttempt] = useState(0);
 
   useEffect(() => {
     const q = debouncedQuery.trim();
     if (q.length === 0) {
       setLiveResults([]);
       setLiveSearching(false);
+      setSearchSlow(false);
+      setSearchTimedOut(false);
       return;
     }
     let cancelled = false;
     setLiveSearching(true);
-    lookupLiveProducts(q, { count: 10 })
+    setSearchSlow(false);
+    setSearchTimedOut(false);
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setSearchSlow(true);
+    }, 5000);
+    const hardTimer = setTimeout(() => {
+      if (cancelled) return;
+      setSearchTimedOut(true);
+      setLiveSearching(false);
+    }, 25000);
+    lookupLiveProducts(q, { count: 10, fresh: searchAttempt > 0 })
       .then((picks) => {
         if (cancelled) return;
         setLiveResults(picks);
@@ -146,12 +165,19 @@ export function ProductsScreen() {
       })
       .finally(() => {
         if (cancelled) return;
+        clearTimeout(slowTimer);
+        clearTimeout(hardTimer);
         setLiveSearching(false);
+        setSearchSlow(false);
       });
     return () => {
       cancelled = true;
+      clearTimeout(slowTimer);
+      clearTimeout(hardTimer);
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, searchAttempt]);
+
+  const retrySearch = () => setSearchAttempt((n) => n + 1);
 
   // Emergency fallback: only consulted when AI returns nothing.
   const seedFallbackResults = useMemo(
@@ -242,21 +268,23 @@ export function ProductsScreen() {
             </View>
           ) : liveSearching ? (
             <View style={liveStyles.unavailableWrap}>
-              <LiveProductsUnavailable
-                variant="loading"
-                scope={`for "${debouncedQuery}"`}
-              />
+              {/* v18.9 — tiered search loading state.
+                  • 0–5 s  → "Searching products for X…"
+                  • 5–25 s → "Still working — thanks for waiting"
+                  • > 25 s → hard-fail to the empty/timeout branch
+                              below (searchTimedOut === true). */}
+              {searchSlow ? (
+                <SearchSlowNote query={debouncedQuery} />
+              ) : (
+                <SearchLoadingNote query={debouncedQuery} />
+              )}
             </View>
           ) : (
             <View style={liveStyles.unavailableWrap}>
-              {/* v18.4 — honest empty state. If a quiet local fuzzy
-                  match exists, surface it under a clear "Catalog
-                  fallback" heading so it never masquerades as a
-                  live answer. */}
               <LiveProductsUnavailable
-                variant="empty"
+                variant={searchTimedOut ? 'unavailable' : 'empty'}
                 scope={`for "${debouncedQuery}"`}
-                onRetry={() => setQuery(debouncedQuery + ' ')}
+                onRetry={retrySearch}
               />
               {seedFallbackResults.length > 0 ? (
                 <View style={liveStyles.fallbackWrap}>
@@ -311,6 +339,51 @@ export function ProductsScreen() {
 // renders when AI suggestions exist — so its presence on screen is
 // itself a strong signal that AI is alive for this user.
 // ---------------------------------------------------------------------------
+
+/**
+ * v18.9 — premium search loading copy.
+ * 0–5 s window. Reads as alive, not technical.
+ */
+function SearchLoadingNote({ query }: { query: string }) {
+  return (
+    <View style={searchNoteStyles.card}>
+      <Text style={searchNoteStyles.headline} maxFontSizeMultiplier={1.2}>
+        Searching products…
+      </Text>
+      <Text
+        style={searchNoteStyles.sub}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={2}
+      >
+        Finding the best matches for{' '}
+        <Text style={{ fontStyle: 'italic' }}>{`"${query}"`}</Text>.
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * v18.9 — slow-search reassurance.
+ * Triggered after 5 s of waiting. Tells the user the screen
+ * isn't frozen.
+ */
+function SearchSlowNote({ query }: { query: string }) {
+  return (
+    <View style={searchNoteStyles.card}>
+      <Text style={searchNoteStyles.headline} maxFontSizeMultiplier={1.2}>
+        Still working — thanks for waiting…
+      </Text>
+      <Text
+        style={searchNoteStyles.sub}
+        maxFontSizeMultiplier={1.2}
+        numberOfLines={2}
+      >
+        Pulling live picks for{' '}
+        <Text style={{ fontStyle: 'italic' }}>{`"${query}"`}</Text>.
+      </Text>
+    </View>
+  );
+}
 
 function AISuggestionRow({
   chips,
@@ -503,5 +576,33 @@ const styles = StyleSheet.create({
   },
   searchScroll: {
     paddingBottom: 120,
+  },
+});
+
+// v18.9 — premium search loading copy. Lives alongside the existing
+// liveStyles so the search results column has a coherent visual
+// language across loading / slow / empty / unavailable states.
+const searchNoteStyles = StyleSheet.create({
+  card: {
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    borderRadius: 18,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    gap: 6,
+  },
+  headline: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    color: palette.ink,
+  },
+  sub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: palette.inkSecondary,
   },
 });

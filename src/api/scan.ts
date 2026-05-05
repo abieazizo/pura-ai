@@ -20,6 +20,7 @@ import { aiLog } from '@/ai/aiLog';
 import { aiTelemetry } from '@/ai/aiTelemetry';
 import { translateAnalysisToScan, buildPreviousSummary } from '@/ai/translateAnalysis';
 import { useAppStore } from '@/store/useAppStore';
+import { buildSafetyProfile } from '@/utils/safetyProfile';
 import type { ProductIdentity, ProductMatchResult } from '@/ai/ai-contracts';
 
 const delay = (ms: number) =>
@@ -31,6 +32,20 @@ const delay = (ms: number) =>
 
 function buildUserProfileSummary(): string {
   const s = useAppStore.getState();
+  // v18.9 — include the safety profile so analyzeFaceScan biases
+  // its findings + plan_inputs toward conservative actives when the
+  // user has flagged a condition. The AI prompt reads
+  // `safety_profile.summary` as a natural-language override.
+  const safety = buildSafetyProfile({
+    skinType: s.skinType,
+    sensitivity: s.sensitivity,
+    skinConditions: s.skinConditions,
+    prescriptionFlag: s.prescriptionFlag,
+    fragranceSensitive: s.fragranceSensitive,
+    activeIrritation: s.activeIrritation,
+    pregnancyCaution: s.pregnancyCaution,
+    avoidIngredients: s.avoidIngredients,
+  });
   return JSON.stringify({
     name: s.name || null,
     age: s.age,
@@ -41,6 +56,13 @@ function buildUserProfileSummary(): string {
     effort: s.effort,
     goal: s.goal,
     price_tier: s.priceTier,
+    safety_profile: {
+      bias: safety.bias,
+      conditions: safety.conditions,
+      avoid_ingredients: safety.avoidIngredients,
+      avoid_categories: safety.avoidCategories,
+      summary: safety.promptSummary,
+    },
   });
 }
 

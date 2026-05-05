@@ -61,6 +61,7 @@ import { SkinScoreDial } from '@/components/SkinScoreDial';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
+import { SafetyNote } from '@/components/products/SafetyNote';
 import { FaceSkinMap } from '@/screens/scan/components/FaceSkinMap';
 import { lookupForScan } from '@/api/liveProducts';
 import type { RootStackParamList } from '@/navigation/types';
@@ -329,6 +330,12 @@ export function ScanResultsFaceScreen({ scanId }: ScanResultsFaceScreenProps) {
             5. ALSO MATCHED (alternatives)
             6. Image quality (only when relevant)
             7. Disclaimer */}
+
+        {/* v18.9 — Safety note. Renders ABOVE the hero so the user
+            knows the recommendation policy has been adjusted before
+            they read the hero card. Auto-hides for users with no
+            safety signal. */}
+        <SafetyNote context="result" />
 
         {/* ── 2. YOUR NEXT MOVE — live product retrieval ─────────────── */}
         <View style={styles.section}>

@@ -949,7 +949,29 @@ export class OpenAIClient {
       '• Avoid duplicates — never two products from the same brand in ' +
       'the same category.\n' +
       '• Honor sensitivities: skip fragranced or actives-heavy picks ' +
-      'when the user is flagged sensitive.';
+      'when the user is flagged sensitive.\n\n' +
+      'SAFETY (v18.9 — non-negotiable):\n' +
+      '• If the query string contains "SAFETY:" followed by guidance, ' +
+      'that guidance is CANONICAL. Apply it as a hard ranking + ' +
+      'filtering bias. The user has marked themselves as sensitive, ' +
+      'reactive, on prescription, pregnant, or actively flaring.\n' +
+      '• When SAFETY says "STRONGLY restrict to gentle…" — exclude ' +
+      'any product whose primary action is exfoliation, retinoid, or ' +
+      'high-strength acid. Replace with barrier-supportive, ' +
+      'fragrance-free, sensitive-safe alternatives.\n' +
+      '• When SAFETY mentions a specific condition (rosacea, eczema, ' +
+      'dermatitis, psoriasis, melasma, acne treatment regimen) — bias ' +
+      'toward formulas with established gentleness for that condition. ' +
+      'Never claim to "treat" or "cure"; just rank gentle, supportive ' +
+      'products higher.\n' +
+      '• When SAFETY mentions pregnancy/breastfeeding caution — do NOT ' +
+      'surface retinoids, salicylic acid above 2%, or hydroquinone. ' +
+      'Bias toward azelaic acid (lower strength), niacinamide, ' +
+      'mineral SPF, ceramides, hyaluronic acid.\n' +
+      '• When SAFETY lists `avoid_ingredients`, exclude any product ' +
+      'whose key actives include those ingredients.\n' +
+      '• Use cautious, supportive language in matchReason. Never ' +
+      'diagnose, never claim treatment, never use medical absolutes.';
 
     const userContent = JSON.stringify({
       query: params.query,
@@ -1013,7 +1035,35 @@ export class OpenAIClient {
       '• Do not invent products that are not in top_matches or ' +
       'active_product_identity. When asked for general options, name ' +
       'categories ("a salicylic acid cleanser") rather than fictional ' +
-      'specific products.';
+      'specific products.\n\n' +
+      'SAFETY (v18.9 — non-negotiable):\n' +
+      '• Inspect user_profile.sensitivities. If ANY entry starts with ' +
+      '"safety_bias:" / "condition:" / "avoid_category:" / ' +
+      '"avoid_ingredient:" / "safety_summary:", the user has flagged ' +
+      'a skin condition, active irritation, prescription use, ' +
+      'pregnancy/breastfeeding caution, or specific ingredient ' +
+      'avoidances.\n' +
+      '• When safety_bias is "moderate" or "high", lead the answer ' +
+      'with one short, calm acknowledgment ("Because you marked ' +
+      'sensitive/reactive skin, I prioritized gentler options.") ' +
+      'and then name a GENTLE product class (a barrier-repair cream, ' +
+      'a fragrance-free moisturizer, a low-strength azelaic acid). ' +
+      'Never recommend strong acids, high-strength retinoids, or ' +
+      'physical scrubs in this case.\n' +
+      '• When a "condition:" tag is present (rosacea, eczema, ' +
+      'dermatitis, psoriasis, melasma, acne_treatment), do NOT ' +
+      'diagnose, do NOT use medical absolutes, do NOT claim to treat ' +
+      'or cure. Frame everything as gentle support: "for reactive ' +
+      'skin, a fragrance-free ceramide cream tends to feel calmer."\n' +
+      '• When pregnancy_caution is high, never casually surface ' +
+      'retinoids or high-strength salicylic acid. Suggest checking ' +
+      'with their clinician for ingredient-specific questions.\n' +
+      '• If the user asks something that sounds like a treatment / ' +
+      'medical question, answer carefully: "Pura AI gives skincare ' +
+      'guidance, not medical advice — for [condition] specifically, ' +
+      'check with your dermatologist." Then offer one supportive ' +
+      'product-class suggestion.\n' +
+      '• Never imply the scan diagnoses a medical condition.';
 
     const payload = {
       assistant_context: params.context,

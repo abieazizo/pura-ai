@@ -27,6 +27,21 @@ import type {
 
 export type AppearanceMode = 'light' | 'dark' | 'system';
 
+/**
+ * v18.9 — Skin conditions enum. Captures the conditions that
+ * meaningfully change recommendation policy. "other" lets the user
+ * mark something not in the list without forcing a free-text field
+ * the AI can't reliably reason about.
+ */
+export type SkinCondition =
+  | 'rosacea'
+  | 'eczema'
+  | 'dermatitis'
+  | 'psoriasis'
+  | 'acne_treatment'
+  | 'melasma'
+  | 'other';
+
 export interface AppState {
   user: User | null;
   scans: Scan[];
@@ -82,6 +97,33 @@ export interface AppState {
   hasAnsweredTodayContext: boolean;
   hasAnsweredPriceTier: boolean;
   hasAnsweredRoutineFitback: boolean;
+
+  /**
+   * v18.9 — Safety profile.
+   *
+   * Structured medical-adjacent flags the user can opt into during
+   * onboarding (or update later from Profile > Safety preferences).
+   * EVERY field defaults to a neutral "unknown" / empty so users who
+   * never answer them get the standard recommendation experience.
+   *
+   * The profile is consulted by:
+   *   • api/products.matchProductsForUser   (skinStateSummary)
+   *   • api/products.getRoutineRecommendation (routine bias)
+   *   • api/liveProducts.lookupForScan      (server prompt)
+   *   • api/assistant                        (assistant grounding)
+   *   • api/searchProducts                   (when scan + safety
+   *                                           context attached)
+   *
+   * Wired via `buildSafetyProfile()` in src/utils/safetyProfile.ts
+   * which reduces these fields to a derived `bias` signal the
+   * server prompts read directly.
+   */
+  skinConditions: SkinCondition[];
+  prescriptionFlag: 'yes' | 'no' | 'prefer-not-to-say' | null;
+  fragranceSensitive: 'yes' | 'no' | 'unsure' | null;
+  activeIrritation: 'yes' | 'no' | null;
+  pregnancyCaution: 'yes' | 'no' | 'prefer-not-to-say' | null;
+  avoidIngredients: string[];
 
   hasSeenProductsScrollHint: boolean;
 
@@ -196,6 +238,17 @@ export interface AppState {
    */
   cacheLiveProducts: (candidates: LiveProductCandidate[]) => void;
 
+  /**
+   * v18.9 — safety profile setters. Called by the new Safety
+   * preferences panel in onboarding / Profile.
+   */
+  setSkinConditions: (next: SkinCondition[]) => void;
+  setPrescriptionFlag: (v: AppState['prescriptionFlag']) => void;
+  setFragranceSensitive: (v: AppState['fragranceSensitive']) => void;
+  setActiveIrritation: (v: AppState['activeIrritation']) => void;
+  setPregnancyCaution: (v: AppState['pregnancyCaution']) => void;
+  setAvoidIngredients: (next: string[]) => void;
+
   finishOnboarding: () => void;
 
   devLoadPopulated: () => void;
@@ -238,6 +291,15 @@ const blankState = {
   hasAnsweredPriceTier: false,
   hasAnsweredRoutineFitback: false,
   hasSeenProductsScrollHint: false,
+
+  // v18.9 — safety profile defaults: every field neutral so users
+  // who never opt in get the standard recommendation experience.
+  skinConditions: [] as SkinCondition[],
+  prescriptionFlag: null as AppState['prescriptionFlag'],
+  fragranceSensitive: null as AppState['fragranceSensitive'],
+  activeIrritation: null as AppState['activeIrritation'],
+  pregnancyCaution: null as AppState['pregnancyCaution'],
+  avoidIngredients: [] as string[],
 
   // v7.7 scan analyzing
   inFlightScan: null as InFlightScan | null,
@@ -516,6 +578,14 @@ export const useAppStore = create<AppState>()(
           return { liveProductsById: next };
         }),
 
+      // v18.9 — safety profile setters.
+      setSkinConditions: (next) => set({ skinConditions: next }),
+      setPrescriptionFlag: (v) => set({ prescriptionFlag: v }),
+      setFragranceSensitive: (v) => set({ fragranceSensitive: v }),
+      setActiveIrritation: (v) => set({ activeIrritation: v }),
+      setPregnancyCaution: (v) => set({ pregnancyCaution: v }),
+      setAvoidIngredients: (next) => set({ avoidIngredients: next }),
+
       finishOnboarding: () => {
         const s = get();
         const rawName = (s.name ?? '').trim();
@@ -593,6 +663,15 @@ export const useAppStore = create<AppState>()(
         hasAnsweredPriceTier: state.hasAnsweredPriceTier,
         hasAnsweredRoutineFitback: state.hasAnsweredRoutineFitback,
         hasSeenProductsScrollHint: state.hasSeenProductsScrollHint,
+
+        // v18.9 — persist the safety profile so flagged users keep
+        // gentler recommendations across sessions.
+        skinConditions: state.skinConditions,
+        prescriptionFlag: state.prescriptionFlag,
+        fragranceSensitive: state.fragranceSensitive,
+        activeIrritation: state.activeIrritation,
+        pregnancyCaution: state.pregnancyCaution,
+        avoidIngredients: state.avoidIngredients,
         // v7.7 — persist the last reveal so returning users re-enter the
         // results screens cleanly. `inFlightScan` is explicitly NOT persisted:
         // a half-run choreography should never survive app kill.

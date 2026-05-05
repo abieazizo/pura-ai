@@ -48,6 +48,7 @@ import {
 } from '@/utils/skinScore';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
+import { SafetyNote } from '@/components/products/SafetyNote';
 import { lookupForScan } from '@/api/liveProducts';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import type { Concern, ConcernCategory, Severity } from '@/types';
@@ -244,6 +245,11 @@ export function PlanScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* v18.9 — Safety-aware note. Auto-hides for unflagged users. */}
+        <View style={styles.section}>
+          <SafetyNote context="plan" />
+        </View>
 
         {/* ── BEST PRODUCT — v18.4 LIVE retrieval with empty UX ─────── */}
         <View style={styles.section}>

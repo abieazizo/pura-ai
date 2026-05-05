@@ -33,6 +33,7 @@ import type {
 } from '@/ai/ai-contracts';
 import { useAppStore } from '@/store/useAppStore';
 import { computeSkinScore } from '@/utils/skinScore';
+import { buildSafetyProfile } from '@/utils/safetyProfile';
 
 // ---------------------------------------------------------------------------
 // Catalog reads (unchanged from v10.15).
@@ -244,6 +245,19 @@ function buildSkinStateSummary(): string {
   const scans = s.scans;
   const latest = scans[scans.length - 1];
   const score = computeSkinScore(scans);
+  // v18.9 — derive the safety profile and include both the
+  // structured shape AND the natural-language promptSummary so the
+  // AI prompt has every signal it needs to bias recommendations.
+  const safety = buildSafetyProfile({
+    skinType: s.skinType,
+    sensitivity: s.sensitivity,
+    skinConditions: s.skinConditions,
+    prescriptionFlag: s.prescriptionFlag,
+    fragranceSensitive: s.fragranceSensitive,
+    activeIrritation: s.activeIrritation,
+    pregnancyCaution: s.pregnancyCaution,
+    avoidIngredients: s.avoidIngredients,
+  });
   return JSON.stringify({
     user_profile: {
       skin_type: s.skinType,
@@ -252,6 +266,13 @@ function buildSkinStateSummary(): string {
       sun_exposure: s.sunExposure,
       effort: s.effort,
       price_tier: s.priceTier,
+    },
+    safety_profile: {
+      bias: safety.bias,
+      conditions: safety.conditions,
+      avoid_ingredients: safety.avoidIngredients,
+      avoid_categories: safety.avoidCategories,
+      summary: safety.promptSummary,
     },
     latest_score: {
       value: score.value,

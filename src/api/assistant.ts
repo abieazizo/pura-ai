@@ -13,6 +13,7 @@ import { aiGateway, tryAi } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
 import { aiTelemetry } from '@/ai/aiTelemetry';
 import { useAppStore } from '@/store/useAppStore';
+import { buildSafetyProfile } from '@/utils/safetyProfile';
 import { computeSkinScore } from '@/utils/skinScore';
 import type {
   AssistantContext,
@@ -166,11 +167,41 @@ function buildAssistantContext(latestScan: Scan | undefined): AssistantContext {
   const scans = s.scans;
   const aiActive = s.aiActiveProductIdentity;
 
+  // v18.9 — derive the safety profile and fold it into the
+  // assistant's `sensitivities` tag list. The system prompt was
+  // already instructed to honor sensitivities; v18.9 reuses that
+  // hook to carry the structured safety bias without changing the
+  // AssistantContext shape.
+  const safety = buildSafetyProfile({
+    skinType: s.skinType,
+    sensitivity: s.sensitivity,
+    skinConditions: s.skinConditions,
+    prescriptionFlag: s.prescriptionFlag,
+    fragranceSensitive: s.fragranceSensitive,
+    activeIrritation: s.activeIrritation,
+    pregnancyCaution: s.pregnancyCaution,
+    avoidIngredients: s.avoidIngredients,
+  });
+  const sensitivityTags = [...mapSensitivityToTags(s.sensitivity)];
+  if (safety.hasSignal) {
+    sensitivityTags.push(`safety_bias:${safety.bias}`);
+    for (const c of safety.conditions) {
+      sensitivityTags.push(`condition:${c}`);
+    }
+    for (const a of safety.avoidCategories) {
+      sensitivityTags.push(`avoid_category:${a}`);
+    }
+    for (const ing of safety.avoidIngredients) {
+      sensitivityTags.push(`avoid_ingredient:${ing}`);
+    }
+    sensitivityTags.push(`safety_summary:${safety.promptSummary}`);
+  }
+
   return {
     user_profile: {
       skin_type: mapAppSkinTypeToAiSkinType(s.skinType),
       top_goals: mapGoalToTopGoal(s.goal),
-      sensitivities: mapSensitivityToTags(s.sensitivity),
+      sensitivities: sensitivityTags,
     },
     latest_scan: latestScan?.aiAnalysis ?? scanToAnalysisLite(latestScan),
     latest_score: buildLatestScoreContext(scans),
