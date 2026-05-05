@@ -31,6 +31,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import type { NavigationProp } from '@react-navigation/native';
@@ -72,11 +78,16 @@ export function ScanResultsFaceScreen({
 
   const concerns = scan ? getConcerns(scan, previous) : [];
 
-  // Hero product retrieval state machine.
+  // v19.2 — hero product retrieval state machine.
+  // Adds a `slow` threshold: after 5 s of loading the UI escalates
+  // from "Finding your best match…" to "Still finding your best
+  // match… / Thanks for waiting — this can take a few more seconds."
+  // so the screen never feels frozen.
   const [liveCandidates, setLiveCandidates] = useState<
     LiveProductCandidate[]
   >([]);
   const [liveLoading, setLiveLoading] = useState<boolean>(false);
+  const [liveSlow, setLiveSlow] = useState<boolean>(false);
   const [liveError, setLiveError] = useState<boolean>(false);
   const [liveAttempt, setLiveAttempt] = useState<number>(0);
 
@@ -84,7 +95,11 @@ export function ScanResultsFaceScreen({
     if (!scan?.aiAnalysis) return;
     let cancelled = false;
     setLiveLoading(true);
+    setLiveSlow(false);
     setLiveError(false);
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setLiveSlow(true);
+    }, 5000);
     lookupForScan(scan, { fresh: liveAttempt > 0 })
       .then((picks) => {
         if (cancelled) return;
@@ -98,16 +113,33 @@ export function ScanResultsFaceScreen({
       })
       .finally(() => {
         if (cancelled) return;
+        clearTimeout(slowTimer);
         setLiveLoading(false);
+        setLiveSlow(false);
       });
     return () => {
       cancelled = true;
+      clearTimeout(slowTimer);
     };
   }, [scan?.id, scan?.aiAnalysis, liveAttempt]);
 
   const heroLive = liveCandidates[0] ?? null;
   const altLive = liveCandidates.slice(1, 6);
   const retryLive = () => setLiveAttempt((n) => n + 1);
+
+  // v19.2 — hero product fade-in. When the LiveProductCard hero
+  // lands (after loading), it fades in over 280ms so the screen
+  // doesn't pop from "loading state" to "card" in a single frame.
+  const heroOpacity = useSharedValue(0);
+  useEffect(() => {
+    heroOpacity.value = withTiming(heroLive ? 1 : 0, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [heroLive, heroOpacity]);
+  const heroAnim = useAnimatedStyle(() => ({
+    opacity: heroOpacity.value,
+  }));
 
   // v19.0 — premium headline + one supporting line.
   const headline = useMemo(
@@ -213,9 +245,14 @@ export function ScanResultsFaceScreen({
             <View style={styles.heroKickerRule} />
           </View>
           {heroLive ? (
-            <LiveProductCard candidate={heroLive} variant="hero" />
+            <Animated.View style={heroAnim}>
+              <LiveProductCard candidate={heroLive} variant="hero" />
+            </Animated.View>
           ) : liveLoading ? (
-            <LiveProductsUnavailable variant="loading" scope="for your scan" />
+            <LiveProductsUnavailable
+              variant={liveSlow ? 'slow' : 'loading'}
+              scope="for your scan"
+            />
           ) : (
             <LiveProductsUnavailable
               variant={liveError ? 'unavailable' : 'empty'}
@@ -248,6 +285,11 @@ export function ScanResultsFaceScreen({
         />
 
         {/* ── 5. Tonight ────────────────────────────────────────── */}
+        {/* v19.2 — editorial tonight guidance. Replaces the dense
+            numbered-list look with breathable rows: serif italic
+            "I." / "II." / "III." numerals + concise step text +
+            hairlines between rows. Reads like a calm magazine
+            recipe, not a checklist app. */}
         {tonight.length > 0 ? (
           <View
             style={styles.section}
@@ -255,25 +297,32 @@ export function ScanResultsFaceScreen({
               tonightYRef.current = e.nativeEvent.layout.y;
             }}
           >
-            <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-              TONIGHT
-            </Text>
+            <View style={styles.heroKickerRow}>
+              <Text style={styles.heroKicker} maxFontSizeMultiplier={1.1}>
+                TONIGHT
+              </Text>
+              <View style={styles.heroKickerRule} />
+            </View>
             <View style={styles.tonightList}>
               {tonight.map((step, i) => (
-                <View key={i} style={styles.tonightItem}>
-                  <Text
-                    style={styles.tonightNum}
-                    maxFontSizeMultiplier={1.15}
-                  >
-                    {i + 1}
-                  </Text>
-                  <Text
-                    style={styles.tonightText}
-                    maxFontSizeMultiplier={1.2}
-                    numberOfLines={3}
-                  >
-                    {step}
-                  </Text>
+                <View key={i}>
+                  {i > 0 ? <View style={styles.tonightDivider} /> : null}
+                  <View style={styles.tonightItem}>
+                    <Text
+                      style={styles.tonightNum}
+                      maxFontSizeMultiplier={1.15}
+                      allowFontScaling={false}
+                    >
+                      {ROMAN[i] ?? `${i + 1}`}
+                    </Text>
+                    <Text
+                      style={styles.tonightText}
+                      maxFontSizeMultiplier={1.2}
+                      numberOfLines={3}
+                    >
+                      {step}
+                    </Text>
+                  </View>
                 </View>
               ))}
             </View>
@@ -421,6 +470,11 @@ function severityWord(s: Concern['severity']): string {
   }
 }
 
+// v19.2 — Roman numerals for the tonight list. Reads more
+// editorial than 1/2/3 and matches the calm Instrument Serif
+// vocabulary the rest of the page uses.
+const ROMAN = ['I.', 'II.', 'III.', 'IV.', 'V.'];
+
 function qualityCopy(analysis: FaceScanAnalysis): string {
   const issues = analysis.image_quality.issues;
   if (issues.includes('blurry'))
@@ -519,28 +573,35 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  tonightList: { gap: 12 },
+  // v19.2 — editorial tonight rendering.
+  tonightList: { paddingTop: 14 },
   tonightItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 14,
+    paddingVertical: 12,
   },
   tonightNum: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    lineHeight: 24,
-    letterSpacing: -0.4,
-    color: palette.clay,
-    width: 22,
-    fontVariant: ['tabular-nums'],
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    color: palette.inkTertiary,
+    width: 30,
+    paddingTop: 1,
   },
   tonightText: {
     flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 14.5,
+    lineHeight: 21,
     color: palette.ink,
-    paddingTop: 3,
+    paddingTop: 1,
+  },
+  tonightDivider: {
+    height: 1,
+    backgroundColor: palette.hairline,
+    marginLeft: 44,
   },
 
   altRow: { gap: 10, paddingRight: 4 },

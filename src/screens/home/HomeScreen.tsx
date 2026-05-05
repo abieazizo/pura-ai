@@ -27,11 +27,7 @@ import { hapt } from '@/utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { CATEGORY_LABEL, getConcerns, severityLabel } from '@/utils/concerns';
 import { AIStatusBanner } from '@/components/dev/AIStatusBanner';
-import {
-  buildSkinScoreWhy,
-  computeSkinScore,
-  deltaPhrase,
-} from '@/utils/skinScore';
+import { computeSkinScore, deltaPhrase } from '@/utils/skinScore';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { lookupForScan, lookupLiveProducts } from '@/api/liveProducts';
@@ -310,18 +306,13 @@ export function HomeScreen() {
           >
             {score.headline}
           </Text>
-
-          {/* v10.13 — Skin Score "why" line. Names which concerns
-              moved so the number + delta chip at the top don't read
-              as arbitrary. "Breakouts calming, hydration still needs
-              work" is more meaningful than "Up 4 since last scan." */}
-          <Text
-            style={styles.scoreWhyLine}
-            maxFontSizeMultiplier={1.2}
-            numberOfLines={2}
-          >
-            {buildSkinScoreWhy(scans)}
-          </Text>
+          {/* v19.2 — buildSkinScoreWhy line removed. The dial's
+              delta caption + the new "SKIN SCORE · Based on visible
+              signals" semantic row + the editorial headline already
+              communicate the score's meaning. The whyline read as
+              a fourth layer and made the home feel busier than
+              the result screen. Removing it brings Home into
+              parity with the result-screen score philosophy. */}
         </View>
 
         {/* ── B. What changed — 3 concise findings max ──────────────── */}

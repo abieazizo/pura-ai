@@ -26,6 +26,7 @@ import { hapt } from '@/utils/haptics';
 
 export type LiveProductsUnavailableVariant =
   | 'loading'
+  | 'slow'
   | 'empty'
   | 'unavailable';
 
@@ -44,17 +45,24 @@ export function LiveProductsUnavailable({
 }: LiveProductsUnavailableProps) {
   const message =
     variant === 'loading'
-      ? `Finding real products${scope ? ` ${scope}` : ''}…`
+      ? `Finding your best match${scope ? ` ${scope}` : ''}…`
+      : variant === 'slow'
+      ? 'Still finding your best match…'
       : variant === 'empty'
-      ? `We couldn't find live products${scope ? ` ${scope}` : ''} just now.`
-      : `Live retrieval is offline right now.`;
+      ? `No strong match${scope ? ` ${scope}` : ''} just now.`
+      : 'Live recommendations are offline.';
 
   const sub =
     variant === 'loading'
-      ? null
+      ? 'A quiet moment of taste.'
+      : variant === 'slow'
+      ? 'Thanks for waiting — this can take a few more seconds.'
       : variant === 'empty'
-      ? 'Try a broader search, or pull again.'
-      : 'Reconnect the AI proxy and pull again.';
+      ? 'Try a broader concern, or pull again.'
+      : 'Pull again in a moment, or browse products.';
+
+  const showRetry =
+    onRetry && (variant === 'empty' || variant === 'unavailable');
 
   return (
     <View style={styles.card}>
@@ -66,7 +74,14 @@ export function LiveProductsUnavailable({
             weight="duotone"
           />
         ) : (
-          <View style={styles.dotPulse} />
+          // Loading + slow + unavailable all show the soft pulse;
+          // the loading + slow variants animate via opacity below.
+          <View
+            style={[
+              styles.dotPulse,
+              variant === 'slow' && { backgroundColor: palette.amber },
+            ]}
+          />
         )}
       </View>
       <Text style={styles.headline} maxFontSizeMultiplier={1.2}>
@@ -77,7 +92,7 @@ export function LiveProductsUnavailable({
           {sub}
         </Text>
       ) : null}
-      {variant !== 'loading' && onRetry ? (
+      {showRetry ? (
         <Pressable
           onPress={() => {
             hapt.select();

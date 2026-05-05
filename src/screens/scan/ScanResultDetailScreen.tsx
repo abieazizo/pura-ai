@@ -20,7 +20,7 @@
  * No debug ribbon, no diagnostic text, no machine-vision framing.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   Pressable,
@@ -29,6 +29,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
@@ -136,20 +142,35 @@ export function ScanResultDetailScreen({
 
   if (!scan) return null;
 
-  // Confidence-aware suppression. If the AI's image_quality is poor
-  // OR the active finding's confidence is low, we render the photo
-  // without the localized overlay and explain calmly that the map
-  // softened for this scan.
-  const lowQuality =
-    scan.aiAnalysis &&
+  // v19.2 — three-tier confidence governance.
+  //
+  //   STRONG  (image quality OK + finding confidence ≥ 0.7)
+  //     → render overlay normally; precise zone language.
+  //   MEDIUM  (mild quality issues OR finding confidence 0.5–0.7)
+  //     → render overlay with reduced alpha + a soft caveat
+  //       beneath the headline ("Roughly around the {region}.").
+  //   WEAK    (poor quality OR finding confidence < 0.5)
+  //     → suppress overlay entirely; the panel reads as a calm
+  //       general summary with no false precision.
+  //
+  // This protects against the failure mode where the AI maps
+  // hair / collar / poor crop as a facial zone. Trust > theatrics.
+  const aiQualityScore =
+    scan.aiAnalysis?.image_quality.confidence ?? 1;
+  const aiQualityIssues = scan.aiAnalysis?.image_quality.issues ?? [];
+  const qualityWeak =
+    !!scan.aiAnalysis &&
     (!scan.aiAnalysis.image_quality.usable ||
-      scan.aiAnalysis.image_quality.confidence < 0.55 ||
-      scan.aiAnalysis.image_quality.issues.length > 0);
+      aiQualityScore < 0.5 ||
+      aiQualityIssues.includes('partial_face') ||
+      aiQualityIssues.includes('occluded'));
+  const qualityMedium =
+    !qualityWeak &&
+    (aiQualityScore < 0.7 || aiQualityIssues.length > 0);
+
   const activeFindingConfidence =
     scan.aiAnalysis?.findings.find((f) => {
       const cat = f.concern;
-      // Match on concern → category mapping subset that overlaps
-      // the chip set.
       switch (cat) {
         case 'breakouts':
         case 'redness':
@@ -167,9 +188,25 @@ export function ScanResultDetailScreen({
           return false;
       }
     })?.confidence ?? null;
-  const lowConfidence =
-    activeFindingConfidence !== null && activeFindingConfidence < 0.5;
-  const overlaySuppressed = !!lowQuality || lowConfidence;
+
+  const tier: 'strong' | 'medium' | 'weak' = (() => {
+    if (qualityWeak) return 'weak';
+    if (
+      activeFindingConfidence !== null &&
+      activeFindingConfidence < 0.5
+    ) {
+      return 'weak';
+    }
+    if (qualityMedium) return 'medium';
+    if (
+      activeFindingConfidence !== null &&
+      activeFindingConfidence < 0.7
+    ) {
+      return 'medium';
+    }
+    return 'strong';
+  })();
+  const overlaySuppressed = tier === 'weak';
 
   const close = () => {
     hapt.select();
@@ -178,6 +215,22 @@ export function ScanResultDetailScreen({
 
   const screenW = Dimensions.get('window').width;
   const mapWidth = Math.min(screenW - 40, 460);
+
+  // v19.2 — premium concern-switch motion. The overlay container
+  // fades out → in across a chip change so the new concern's
+  // wash arrives with intent, not a snap. 220ms is long enough
+  // to register, short enough to never feel sluggish.
+  const overlayOpacity = useSharedValue(1);
+  useEffect(() => {
+    overlayOpacity.value = 0.35;
+    overlayOpacity.value = withTiming(1, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [activeCategory, overlayOpacity]);
+  const overlayAnim = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
+  }));
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -254,14 +307,14 @@ export function ScanResultDetailScreen({
 
         {/* ── Face-focused image + overlay ─────────────────────── */}
         {scan.aiAnalysis && !overlaySuppressed ? (
-          <View style={styles.mapBlock}>
+          <Animated.View style={[styles.mapBlock, overlayAnim]}>
             <FaceSkinMap
               photoUri={scan.photoUri}
               aiAnalysis={scan.aiAnalysis}
               selectedCategory={activeCategory}
               width={mapWidth}
             />
-          </View>
+          </Animated.View>
         ) : (
           <View
             style={[styles.mapBlock, styles.suppressedFrame, { width: mapWidth }]}
@@ -300,6 +353,14 @@ export function ScanResultDetailScreen({
             const copy = COPY_FOR[activeConcern.category](
               regionLabel(activeConcern.region)
             );
+            // v19.2 — medium-confidence soft caveat. When the AI
+            // is moderately sure but not strongly sure, we widen
+            // the language so we don't claim false precision
+            // without hiding the insight entirely.
+            const softCaveat =
+              tier === 'medium'
+                ? 'Roughly around this area in this scan.'
+                : null;
             return (
               <View style={styles.insightPanel}>
                 <Text style={styles.insightKicker} maxFontSizeMultiplier={1.1}>
@@ -312,6 +373,15 @@ export function ScanResultDetailScreen({
                 >
                   {copy.headline}
                 </Text>
+                {softCaveat ? (
+                  <Text
+                    style={styles.insightCaveat}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={1}
+                  >
+                    {softCaveat}
+                  </Text>
+                ) : null}
                 <Text
                   style={styles.insightBody}
                   maxFontSizeMultiplier={1.2}
@@ -479,6 +549,16 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.4,
     color: palette.ink,
+  },
+  // v19.2 — medium-confidence soft caveat. Sits between the
+  // headline and body when the AI is moderately sure.
+  insightCaveat: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkTertiary,
+    marginTop: -2,
+    marginBottom: 4,
   },
   insightBody: {
     fontFamily: 'Inter-Regular',
