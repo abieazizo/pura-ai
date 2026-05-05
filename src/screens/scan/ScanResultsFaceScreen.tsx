@@ -198,10 +198,20 @@ export function ScanResultsFaceScreen({
         ) : null}
 
         {/* ── 3. Hero product module ────────────────────────────── */}
+        {/* v19.1 — deliberate hero framing. The kicker reads as a
+            small editorial section header; a thin hairline beneath
+            it visually frames the hero product as the page's
+            primary action. */}
         <View style={styles.heroBlock}>
-          <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-            BEST NEXT STEP TONIGHT
-          </Text>
+          <View style={styles.heroKickerRow}>
+            <Text
+              style={styles.heroKicker}
+              maxFontSizeMultiplier={1.1}
+            >
+              BEST NEXT STEP TONIGHT
+            </Text>
+            <View style={styles.heroKickerRule} />
+          </View>
           {heroLive ? (
             <LiveProductCard candidate={heroLive} variant="hero" />
           ) : liveLoading ? (
@@ -327,32 +337,42 @@ export function ScanResultsFaceScreen({
 // Premium headline + supporting copy.
 // ---------------------------------------------------------------------------
 
+/**
+ * v19.1 — premium headline + support generation.
+ *
+ * The previous version trusted the AI's why_line / explanation
+ * verbatim if they were short enough. That gave inconsistent results
+ * — sometimes elegant ("Breakouts calming, hydration steady"),
+ * sometimes flat ("Skin looks generally calm with mild texture.").
+ *
+ * v19.1 always writes the headline DETERMINISTICALLY off the actual
+ * top concern + region, so every result reads with the same calm
+ * editorial voice. The AI's `explanation` is preserved as the
+ * support sentence ONLY when it's well-formed; otherwise we write
+ * a confident contextual one.
+ */
 function buildPremiumHeadline(
   concerns: Concern[],
-  analysis: FaceScanAnalysis | undefined
+  _analysis: FaceScanAnalysis | undefined
 ): string {
-  // Prefer the AI's why_line when present and reasonably formed —
-  // it usually reads cleanest. Fall back to a confident concern-led
-  // headline.
-  const ai = analysis?.skin_score?.why_line?.trim();
-  if (ai && ai.length > 0 && ai.length <= 90) {
-    return ai;
-  }
   const noticeable = concerns.filter((c) => c.severity !== 'calm');
   if (noticeable.length === 0) {
-    return 'Your overall complexion looks balanced today.';
+    return 'Your complexion looks balanced today.';
   }
   const top = noticeable[0];
-  const region = top.region.replace(/across the face/i, 'overall');
+  const region = headlineRegion(top.region);
+  const sevWord = severityWord(top.severity);
   switch (top.category) {
     case 'breakouts':
-      return `One mild ${top.category} area on your ${region} stands out most.`;
+      return noticeable.length === 1
+        ? `Mostly calm skin with one ${sevWord} area on the ${region}.`
+        : `One ${sevWord} area on the ${region} stands out most.`;
     case 'hydration':
-      return `Mostly calm skin with a hint of dryness on your ${region}.`;
+      return `Mostly calm skin with ${sevWord} dryness on the ${region}.`;
     case 'texture':
-      return `Mostly calm skin with mild ${region} texture.`;
+      return `Mostly calm skin with ${sevWord} ${region} texture.`;
     case 'tone':
-      return `One mild tone area on your ${region} stands out most.`;
+      return `Light tone unevenness across the ${region} is the strongest signal.`;
   }
 }
 
@@ -360,15 +380,45 @@ function buildPremiumSupport(
   concerns: Concern[],
   analysis: FaceScanAnalysis | undefined
 ): string | null {
+  // Trust the AI's explanation ONLY when it's a single tight
+  // sentence (≤ 110 chars, ends with `.`). Otherwise rewrite.
   const ai = analysis?.skin_score?.explanation?.trim();
-  if (ai && ai.length > 0 && ai.length <= 130) {
+  if (ai && ai.length > 0 && ai.length <= 110 && /\.$/.test(ai)) {
     return ai;
   }
   const noticeable = concerns.filter((c) => c.severity !== 'calm');
   if (noticeable.length === 0) {
-    return 'Nothing stands out tonight. Stay the course with your usual gentle routine.';
+    return 'Stay the course with your usual gentle routine tonight.';
   }
-  return 'One area to watch — the rest reads calm. Your best next step is below.';
+  if (noticeable.length === 1) {
+    return 'One area to watch — the rest reads calm.';
+  }
+  return 'A couple of subtle signals to address — nothing alarming.';
+}
+
+function headlineRegion(raw: string): string {
+  const r = raw.trim().toLowerCase();
+  if (!r || r === 'across the face' || r === 'the face') return 'face';
+  if (r.includes('forehead')) return 'forehead';
+  if (r.includes('cheek')) return 'cheeks';
+  if (r.includes('chin')) return 'chin';
+  if (r.includes('nose') || r.includes('t-zone') || r.includes('t zone'))
+    return 'T-zone';
+  if (r.includes('under') && r.includes('eye')) return 'under-eye area';
+  return r;
+}
+
+function severityWord(s: Concern['severity']): string {
+  switch (s) {
+    case 'calm':
+      return 'subtle';
+    case 'mild':
+      return 'mild';
+    case 'moderate':
+      return 'noticeable';
+    case 'needs-attention':
+      return 'pronounced';
+  }
 }
 
 function qualityCopy(analysis: FaceScanAnalysis): string {
@@ -435,7 +485,26 @@ const styles = StyleSheet.create({
 
   heroBlock: {
     marginBottom: 0,
-    gap: 12,
+    gap: 14,
+  },
+  // v19.1 — editorial hero kicker. The hairline that follows the
+  // label gives the section a deliberate, magazine-style header.
+  heroKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  heroKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.7,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  heroKickerRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: palette.hairline,
   },
 
   section: {

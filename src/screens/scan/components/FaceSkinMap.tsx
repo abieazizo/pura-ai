@@ -634,6 +634,14 @@ export interface FaceSkinMapProps {
   /** v17.2 — show a small dev diagnostic ribbon ("LIVE polys 2/3,
    *  landmarks ✓"). Off by default. */
   showDebug?: boolean;
+  /**
+   * v19.1 — when true AND face_overlay is present, zoom into the AI's
+   * face_box so the face fills ~85% of the frame. Both the photo and
+   * the SVG overlay receive the same transform so concern overlays
+   * stay aligned. Default true: any consumer that doesn't want the
+   * zoom can opt out.
+   */
+  focusOnFace?: boolean;
 }
 
 export function FaceSkinMap({
@@ -643,6 +651,7 @@ export function FaceSkinMap({
   width,
   fallbackAspectRatio = 4 / 5,
   showDebug = false,
+  focusOnFace = true,
 }: FaceSkinMapProps) {
   const [aspectRatio, setAspectRatio] = useState<number>(fallbackAspectRatio);
 
@@ -682,6 +691,56 @@ export function FaceSkinMap({
     [overlays, effectiveCategory]
   );
 
+  // v19.1 — face-box zoom math. When focusOnFace is on AND the AI
+  // returned a usable face_box, compute a transform that centers
+  // the face in the visible frame and scales it to fill ~85% of the
+  // smaller dimension. The same scale + translate is applied to BOTH
+  // the photo and the SVG (via a viewBox change) so overlays stay
+  // pixel-aligned with the face. When focusOnFace is off, both
+  // render at their natural 0..1 mapping.
+  const zoom = useMemo(() => {
+    if (!focusOnFace || !overlay) {
+      return { scale: 1, tx: 0, ty: 0, viewBox: '0 0 1 1' };
+    }
+    const fb = overlay.face_box;
+    // Guard against pathological bounds.
+    const fbW = Math.max(0.05, Math.min(1, fb.width));
+    const fbH = Math.max(0.05, Math.min(1, fb.height));
+    // Use the LARGER dimension so the whole face fits, with target
+    // fill-factor 0.78 (face_box typically excludes hair/chin tip;
+    // 0.78 leaves a tasteful margin around the face without zooming
+    // so far that the chip bar's sibling space feels claustrophobic).
+    const fillFactor = 0.78;
+    const scale = fillFactor / Math.max(fbW, fbH);
+    const cx = fb.x + fbW / 2;
+    const cy = fb.y + fbH / 2;
+    // Translate so face center lands at frame center. RN transform
+    // origin is the View's center, so the translate after scale is:
+    //   T = W * S * (0.5 - cx)
+    const tx = width * scale * (0.5 - cx);
+    const ty = height * scale * (0.5 - cy);
+    // SVG viewBox: visible region in normalized image coords.
+    const visibleW = 1 / scale;
+    const visibleH = 1 / scale;
+    const visibleX = cx - visibleW / 2;
+    const visibleY = cy - visibleH / 2;
+    return {
+      scale,
+      tx,
+      ty,
+      viewBox: `${visibleX} ${visibleY} ${visibleW} ${visibleH}`,
+    };
+  }, [focusOnFace, overlay, width, height]);
+
+  const photoTransform =
+    zoom.scale === 1
+      ? undefined
+      : ([
+          { scale: zoom.scale },
+          { translateX: zoom.tx },
+          { translateY: zoom.ty },
+        ] as const);
+
   // v19.0 — debug ribbon REMOVED entirely from FaceSkinMap.
   // The previous "LIVE overlay ✓ landmarks ✓ polys 2/3" diagnostic
   // was leaking into the consumer surface in dev builds. Diagnostic
@@ -694,6 +753,8 @@ export function FaceSkinMap({
   // screen owns the explanation in calm consumer copy.
 
   if (!overlay) {
+    // No face_overlay payload — render the photo plain. Without a
+    // face_box, we can't safely zoom; show the photo as-is.
     return (
       <View style={[styles.frame, { width, height }]}>
         <Image
@@ -707,11 +768,17 @@ export function FaceSkinMap({
   }
 
   if (overlays.length === 0) {
+    // Calm scan with face_overlay present — apply the face-zoom
+    // transform so the photo still reads as face-focused even
+    // though there are no concern overlays to render.
     return (
       <View style={[styles.frame, { width, height }]}>
         <Image
           source={photoUri}
-          style={StyleSheet.absoluteFillObject}
+          style={[
+            StyleSheet.absoluteFillObject,
+            photoTransform ? { transform: photoTransform as never } : null,
+          ]}
           contentFit="cover"
           transition={0}
         />
@@ -725,7 +792,10 @@ export function FaceSkinMap({
     <View style={[styles.frame, { width, height }]}>
       <Image
         source={photoUri}
-        style={StyleSheet.absoluteFillObject}
+        style={[
+          StyleSheet.absoluteFillObject,
+          photoTransform ? { transform: photoTransform as never } : null,
+        ]}
         contentFit="cover"
         transition={0}
       />
@@ -733,7 +803,7 @@ export function FaceSkinMap({
       <Svg
         width={width}
         height={height}
-        viewBox="0 0 1 1"
+        viewBox={zoom.viewBox}
         preserveAspectRatio="none"
         style={StyleSheet.absoluteFill}
         pointerEvents="none"

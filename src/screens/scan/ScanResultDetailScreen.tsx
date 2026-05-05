@@ -51,14 +51,57 @@ const CHIP_COLOR: Record<ConcernCategory, string> = {
   tone: '#D9A75E',
 };
 
-const NEXT_STEP_FOR: Record<ConcernCategory, string> = {
-  breakouts:
-    'Spot care only on a new blemish, then keep the rest of the routine gentle.',
-  hydration:
-    'Layer a hydrating serum tonight before moisturizer.',
-  texture:
-    'A gentle chemical exfoliant once or twice this week — never with retinol.',
-  tone: 'Daily SPF + a niacinamide or vitamin-C serum in the morning.',
+// v19.1 — premium per-concern copy. The previous version surfaced
+// raw `concern.finding` / `concern.interpretation` strings, which
+// can read as technical AI output ("Visible faint forehead lines
+// and light surface texture..."). v19.1 writes intentional,
+// elevated copy keyed to the concern + region. Each entry has:
+//   • headline (italic-serif, the "what we noticed")
+//   • body    (Inter regular, plain-English context)
+//   • action  (Inter-SemiBold, the one practical next step)
+/**
+ * v19.1 — flatten raw region strings to clean editorial labels.
+ * The AI sometimes returns "across the face" / "the t-zone" / etc.;
+ * this normalises to lowercase phrases that read cleanly inside
+ * the headline templates ("across the cheeks", "across the
+ * forehead", "the chin", etc.).
+ */
+function regionLabel(raw: string): string {
+  const r = raw.trim().toLowerCase();
+  if (!r || r === 'across the face' || r === 'the face') return 'face';
+  if (r.includes('forehead')) return 'forehead';
+  if (r.includes('cheek')) return 'cheeks';
+  if (r.includes('chin')) return 'chin';
+  if (r.includes('nose') || r.includes('t-zone') || r.includes('t zone'))
+    return 'T-zone';
+  if (r.includes('under') && r.includes('eye')) return 'under-eye area';
+  return r;
+}
+
+const COPY_FOR: Record<
+  ConcernCategory,
+  (region: string) => { headline: string; body: string; action: string }
+> = {
+  texture: (region) => ({
+    headline: `Mild texture across the ${region}.`,
+    body: 'Fine surface roughness — typical, and easy to soften with the right cadence.',
+    action: 'Try a gentle resurfacing serum a couple of nights this week. Skip on retinol nights.',
+  }),
+  breakouts: (region) => ({
+    headline: `One mild area on the ${region}.`,
+    body: 'Localised congestion. Most of your skin still reads calm.',
+    action: 'Spot-treat only the new blemish. Keep the rest of the routine gentle.',
+  }),
+  hydration: (region) => ({
+    headline: `A hint of dryness on the ${region}.`,
+    body: 'Skin reads slightly thirsty here. Easy to correct with one extra layer.',
+    action: 'Layer a hydrating serum tonight before your moisturizer.',
+  }),
+  tone: (region) => ({
+    headline: `Light unevenness across the ${region}.`,
+    body: 'Subtle warm shifts in tone. They fade gently with the right routine over weeks.',
+    action: 'Daily SPF in the morning, plus a niacinamide or vitamin-C serum.',
+  }),
 };
 
 export function ScanResultDetailScreen({
@@ -253,54 +296,60 @@ export function ScanResultDetailScreen({
 
         {/* ── Insight panel ─────────────────────────────────────── */}
         {activeConcern ? (
-          <View style={styles.insightPanel}>
-            <Text style={styles.insightKicker} maxFontSizeMultiplier={1.1}>
-              {CATEGORY_LABEL[activeConcern.category].toUpperCase()}
-            </Text>
-            <Text
-              style={styles.insightHeadline}
-              maxFontSizeMultiplier={1.15}
-              numberOfLines={3}
-            >
-              {activeConcern.finding}
-            </Text>
-            <Text
-              style={styles.insightBody}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={3}
-            >
-              {activeConcern.interpretation}
-            </Text>
-            <View
-              style={[
-                styles.actionRow,
-                {
-                  borderColor: CHIP_COLOR[activeConcern.category],
-                  backgroundColor: `${CHIP_COLOR[activeConcern.category]}10`,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.actionDot,
-                  { backgroundColor: CHIP_COLOR[activeConcern.category] },
-                ]}
-              />
-              <Text
-                style={styles.actionText}
-                maxFontSizeMultiplier={1.2}
-                numberOfLines={3}
-              >
-                {NEXT_STEP_FOR[activeConcern.category] ??
-                  activeConcern.nextStep}
-              </Text>
-              <CaretRight
-                size={13}
-                color={palette.inkTertiary}
-                weight="bold"
-              />
-            </View>
-          </View>
+          (() => {
+            const copy = COPY_FOR[activeConcern.category](
+              regionLabel(activeConcern.region)
+            );
+            return (
+              <View style={styles.insightPanel}>
+                <Text style={styles.insightKicker} maxFontSizeMultiplier={1.1}>
+                  {CATEGORY_LABEL[activeConcern.category].toUpperCase()}
+                </Text>
+                <Text
+                  style={styles.insightHeadline}
+                  maxFontSizeMultiplier={1.15}
+                  numberOfLines={3}
+                >
+                  {copy.headline}
+                </Text>
+                <Text
+                  style={styles.insightBody}
+                  maxFontSizeMultiplier={1.2}
+                  numberOfLines={3}
+                >
+                  {copy.body}
+                </Text>
+                <View
+                  style={[
+                    styles.actionRow,
+                    {
+                      borderColor: CHIP_COLOR[activeConcern.category],
+                      backgroundColor: `${CHIP_COLOR[activeConcern.category]}10`,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.actionDot,
+                      { backgroundColor: CHIP_COLOR[activeConcern.category] },
+                    ]}
+                  />
+                  <Text
+                    style={styles.actionText}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={3}
+                  >
+                    {copy.action}
+                  </Text>
+                  <CaretRight
+                    size={13}
+                    color={palette.inkTertiary}
+                    weight="bold"
+                  />
+                </View>
+              </View>
+            );
+          })()
         ) : (
           <View style={styles.calmPanel}>
             <Text style={styles.calmText} maxFontSizeMultiplier={1.2}>
