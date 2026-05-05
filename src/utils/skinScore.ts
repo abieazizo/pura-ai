@@ -165,6 +165,25 @@ export function formatDelta(delta: number | null): string {
 }
 
 /**
+ * v19.0 — premium delta copy.
+ *
+ * Replaces awkward "0 since last" with calm, human language:
+ *   • null            → "First scan"
+ *   • 0 or |Δ| ≤ 1    → "Unchanged since last scan"
+ *   • +N (N ≥ 2)      → "+N since last scan"
+ *   • -N (N ≥ 2)      → "-N since last scan"
+ *
+ * The ±1 deadband is intentional: scan-to-scan score noise of 1 point
+ * should NOT read as a meaningful change to the user.
+ */
+export function deltaPhrase(delta: number | null): string {
+  if (delta === null) return 'First scan';
+  if (Math.abs(delta) <= 1) return 'Unchanged since last scan';
+  if (delta > 0) return `+${delta} since last scan`;
+  return `${delta} since last scan`;
+}
+
+/**
  * Human "since when" phrasing. "since your first scan" when this is the
  * day-1 → today delta; "since last scan" / "since last week" based on gap.
  */

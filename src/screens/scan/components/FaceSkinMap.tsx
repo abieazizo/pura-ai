@@ -682,14 +682,16 @@ export function FaceSkinMap({
     [overlays, effectiveCategory]
   );
 
-  // Debug diagnostic — counts polygons that passed the trust check.
-  const debugLine = useMemo(() => {
-    if (!showDebug || !overlay) return '';
-    const trustworthy = overlays.filter((o) => !!o.polygon).length;
-    return `LIVE  overlay ✓  landmarks ✓  polys ${trustworthy}/${overlays.length}`;
-  }, [overlays, overlay, showDebug]);
+  // v19.0 — debug ribbon REMOVED entirely from FaceSkinMap.
+  // The previous "LIVE overlay ✓ landmarks ✓ polys 2/3" diagnostic
+  // was leaking into the consumer surface in dev builds. Diagnostic
+  // signal still flows via aiLog.info from the api/scan.ts handler.
+  // No machine-vision text on the user-facing skin map ever again.
 
   // ----- Graceful states ------------------------------------------------
+  // No `face_overlay` payload (old persisted scans) → render the
+  // photo plain. No "ZONE LOCALIZATION UNAVAILABLE" tag — the parent
+  // screen owns the explanation in calm consumer copy.
 
   if (!overlay) {
     return (
@@ -700,18 +702,6 @@ export function FaceSkinMap({
           contentFit="cover"
           transition={0}
         />
-        <View style={styles.fallbackTag}>
-          <Text style={styles.fallbackText}>
-            ZONE LOCALIZATION UNAVAILABLE FOR THIS SCAN
-          </Text>
-        </View>
-        {showDebug ? (
-          <View style={styles.debugRibbon}>
-            <Text style={styles.debugText}>
-              FALLBACK  no face_overlay in payload
-            </Text>
-          </View>
-        ) : null}
       </View>
     );
   }
@@ -725,16 +715,6 @@ export function FaceSkinMap({
           contentFit="cover"
           transition={0}
         />
-        <View style={styles.fallbackTag}>
-          <Text style={styles.fallbackText}>
-            NO FOCAL ZONES IN THIS SCAN
-          </Text>
-        </View>
-        {showDebug && debugLine ? (
-          <View style={styles.debugRibbon}>
-            <Text style={styles.debugText}>{debugLine}</Text>
-          </View>
-        ) : null}
       </View>
     );
   }
@@ -801,11 +781,6 @@ export function FaceSkinMap({
         </View>
       ) : null}
 
-      {showDebug && debugLine ? (
-        <View style={styles.debugRibbon}>
-          <Text style={styles.debugText}>{debugLine}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }

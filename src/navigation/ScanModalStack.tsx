@@ -9,6 +9,7 @@ import { ScanCaptureScreen } from '@/screens/scan/ScanCaptureScreen';
 import { ScanAnalyzingScreen } from '@/screens/scan/ScanAnalyzingScreen';
 import { ScanAnalyzingFaceScreen } from '@/screens/scan/ScanAnalyzing';
 import { ScanResultsFaceScreen } from '@/screens/scan/ScanResultsFaceScreen';
+import { ScanResultDetailScreen } from '@/screens/scan/ScanResultDetailScreen';
 import { ScanResultsProductScreen } from '@/screens/scan/ScanResultsProductScreen';
 import { ScanTutorial } from '@/screens/scan/ScanTutorial';
 import { BarcodeAnalyzingScreen } from '@/screens/scan/BarcodeAnalyzingScreen';
@@ -54,6 +55,11 @@ export function ScanModalStack({ route }: any) {
 
       <Stack.Screen name="ScanResultsFace">
         {({ route: r }) => <ScanResultsFaceScreen scanId={r.params.scanId} />}
+      </Stack.Screen>
+
+      {/* v19.0 — Layer 2 detail screen reached from "See full skin map". */}
+      <Stack.Screen name="ScanResultDetail">
+        {({ route: r }) => <ScanResultDetailScreen scanId={r.params.scanId} />}
       </Stack.Screen>
 
       <Stack.Screen name="ScanResultsProduct">

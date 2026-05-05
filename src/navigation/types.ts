@@ -97,6 +97,10 @@ export type ScanStackParamList = {
   ScanCapture: { initialMode?: ScanModalMode } | undefined;
   ScanAnalyzing: { photoUri: string; mode: 'face' | 'product' };
   ScanResultsFace: { scanId: string };
+  /** v19.0 — Layer 2 of the result split. Reached from the Overview
+   *  screen via "See full skin map". Renders the face-focused crop
+   *  + concern chips + insight panel + premium overlay. */
+  ScanResultDetail: { scanId: string };
   ScanResultsProduct: { product: Product; matchPercent: number };
   /** v10.32 — barcode lookup loading state. The screen kicks off the
    *  AI gateway call on mount and replaces itself with BarcodeResult

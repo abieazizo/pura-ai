@@ -30,7 +30,7 @@ import { AIStatusBanner } from '@/components/dev/AIStatusBanner';
 import {
   buildSkinScoreWhy,
   computeSkinScore,
-  formatDelta,
+  deltaPhrase,
 } from '@/utils/skinScore';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
@@ -280,14 +280,27 @@ export function HomeScreen() {
               size={204}
               showTier
               previousValue={previous?.overallScore ?? null}
-              deltaCaption={
-                score.deltaSinceLast !== null
-                  ? `${formatDelta(
-                      score.deltaSinceLast
-                    )} since last scan`
-                  : 'first reading'
-              }
+              deltaCaption={deltaPhrase(score.deltaSinceLast).toLowerCase()}
             />
+          </View>
+          {/* v19.0 — clear semantics on the Home score. Reads as
+              "Skin score · Based on visible signals" beneath the
+              dial without competing with the existing headline. */}
+          <View style={styles.scoreSemanticRow}>
+            <Text
+              style={styles.scoreSemanticLabel}
+              maxFontSizeMultiplier={1.1}
+            >
+              SKIN SCORE
+            </Text>
+            <View style={styles.scoreSemanticDivider} />
+            <Text
+              style={styles.scoreSemanticHelper}
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+            >
+              Based on visible signals
+            </Text>
           </View>
 
           <Text
@@ -826,6 +839,34 @@ const styles = StyleSheet.create({
   dialWrap: {
     alignItems: 'center',
     paddingVertical: 6,
+  },
+  // v19.0 — score semantics row sits between the dial and the
+  // headline. "SKIN SCORE · Based on visible signals" — clarifies
+  // what the number is without competing with the dial.
+  scoreSemanticRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 10,
+    paddingHorizontal: 20,
+  },
+  scoreSemanticLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: palette.inkTertiary,
+    textTransform: 'uppercase',
+  },
+  scoreSemanticDivider: {
+    width: 1,
+    height: 10,
+    backgroundColor: palette.hairline,
+  },
+  scoreSemanticHelper: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 12.5,
+    color: palette.inkTertiary,
   },
   // v10.1 — headline grew. With the redundant kicker gone, the headline
   // carries the whole post-dial beat. 26pt serif + tighter letter-
