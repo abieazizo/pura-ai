@@ -42,8 +42,8 @@ import {
 } from '@/utils/concerns';
 import {
   computeSkinScore,
-  formatDelta,
-  sinceLastPhrase,
+  // v19.13 — formatDelta + sinceLastPhrase removed in favor of
+  // inline deltaPhrase rules; "0 since last week" was cryptic.
   tierLabel,
 } from '@/utils/skinScore';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
@@ -211,6 +211,10 @@ export function PlanScreen() {
             <Text style={styles.scoreStampTier} maxFontSizeMultiplier={1.1}>
               {tierLabel(score.tier)}
             </Text>
+            {/* v19.13 — premium delta copy: was "0 since last week" /
+                "+6 since 2 days ago" — cryptic. Now uses the same
+                `deltaPhrase()` rules as ScoreSummaryCard so 0 reads
+                as "Same as last scan", null as "First scan", etc. */}
             {score.deltaSinceLast !== null ? (
               <>
                 <View style={styles.scoreStampDivider} />
@@ -218,10 +222,11 @@ export function PlanScreen() {
                   style={styles.scoreStampDelta}
                   maxFontSizeMultiplier={1.1}
                 >
-                  {`${formatDelta(score.deltaSinceLast)} ${sinceLastPhrase(
-                    score.latestAt,
-                    score.scanCount
-                  )}`}
+                  {Math.abs(score.deltaSinceLast) <= 1
+                    ? 'No major change since last scan'
+                    : score.deltaSinceLast > 0
+                    ? `Up ${score.deltaSinceLast} since last scan`
+                    : `Down ${Math.abs(score.deltaSinceLast)} since last scan`}
                 </Text>
               </>
             ) : null}

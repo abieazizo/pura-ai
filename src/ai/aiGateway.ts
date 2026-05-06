@@ -160,7 +160,15 @@ export class AIValidationError extends Error {
 // Combined with v19.6's candidate pre-filter (10 instead of 24),
 // the call now finishes well inside the budget on normal scans.
 const TIMEOUT_MS = {
-  validateScanPreflight: 18_000,
+  // v19.13 — bumped 18_000 → 35_000. Vision preflight calls
+  // (image-bearing GPT-5-mini analysis) regularly exceed 18 s in
+  // the wild because of vision encoding + reasoning overhead;
+  // diagnostics were surfacing `validateScanPreflight FAIL ->
+  // client timeout after 18000ms` on cold starts. 35 s gives the
+  // single attempt + the runStrictStructured retry envelope room
+  // to breathe. Combined with the v19.10 no-retry-on-timeout
+  // policy this caps worst case at 35 s.
+  validateScanPreflight: 35_000,
   analyzeFaceScan: 75_000,
   identifyProductFromImage: 60_000,
   normalizeBarcodeResolution: 30_000,
@@ -168,7 +176,11 @@ const TIMEOUT_MS = {
   generateRoutineRecommendation: 90_000,
   explainSkinScore: 25_000,
   explainProgress: 30_000,
-  buildSearchSuggestions: 18_000,
+  // v19.13 — bumped 18_000 → 25_000 for the same reason as
+  // preflight. Search suggestions are non-critical (gateway
+  // swallows failures silently) but a 25s budget reduces the
+  // visible "no chips" surface on cold starts.
+  buildSearchSuggestions: 25_000,
   answerAssistant: 75_000,
   analyzeScannedProductAgainstUser: 90_000,
   buildFullScanToPlanBundle: 150_000,

@@ -136,6 +136,38 @@ export function buildSearchUrl(candidate: LiveProductCandidate): string {
   return sephoraSearchUrl(candidate.brand, candidate.name);
 }
 
+/**
+ * v19.13 — defensive dedup. The AI's lean schema doesn't enforce
+ * id uniqueness across candidates, and brand/name collisions in
+ * its corpus do happen on rare occasions. We dedup by:
+ *   1. Exact id match (canonical case).
+ *   2. Brand+name slug fallback (catches the case where the AI
+ *      returns the same product under two slightly different ids).
+ * Preserves order — the first occurrence wins, which is what the
+ * matchScore sort already guarantees.
+ */
+function dedupCandidates(
+  candidates: LiveProductCandidate[]
+): LiveProductCandidate[] {
+  const seenIds = new Set<string>();
+  const seenBrandName = new Set<string>();
+  const out: LiveProductCandidate[] = [];
+  for (const c of candidates) {
+    const id = (c.id ?? '').trim().toLowerCase();
+    const brandName = `${(c.brand ?? '').trim().toLowerCase()}::${(
+      c.name ?? ''
+    )
+      .trim()
+      .toLowerCase()}`;
+    if (id.length > 0 && seenIds.has(id)) continue;
+    if (brandName !== '::' && seenBrandName.has(brandName)) continue;
+    if (id.length > 0) seenIds.add(id);
+    if (brandName !== '::') seenBrandName.add(brandName);
+    out.push(c);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Public retrieval API.
 // ---------------------------------------------------------------------------
@@ -218,8 +250,10 @@ export async function lookupLiveProducts(
       // budget. Free-text callers can still override.
       count: requestedCount,
     });
-    const sanitized = sanitizeAndEnrich(result.candidates).sort(
-      (a, b) => b.matchScore - a.matchScore
+    const sanitized = dedupCandidates(
+      sanitizeAndEnrich(result.candidates).sort(
+        (a, b) => b.matchScore - a.matchScore
+      )
     );
     writeCache(key, sanitized, result.confidence);
     cacheCandidates(sanitized);
@@ -363,8 +397,10 @@ export async function lookupForScan(
         sensitivities,
       },
     });
-    const sanitized = sanitizeAndEnrich(result.candidates).sort(
-      (a, b) => b.matchScore - a.matchScore
+    const sanitized = dedupCandidates(
+      sanitizeAndEnrich(result.candidates).sort(
+        (a, b) => b.matchScore - a.matchScore
+      )
     );
     writeCache(key, sanitized, result.confidence);
     cacheCandidates(sanitized);

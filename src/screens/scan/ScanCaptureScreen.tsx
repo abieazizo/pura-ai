@@ -373,14 +373,17 @@ export function ScanCaptureScreen({
         />
       </Animated.View>
 
-      {/* v19.11 — Lighting Assist toggle. Lives top-right in face
-          mode only. Premium pill-shaped button with a Lightbulb
-          icon. Tapping toggles the persisted preference and the
-          overlay fades in/out via LightingAssist's animated
-          opacity. */}
+      {/* v19.13 — Lighting Assist toggle, hardened against tap
+          regression. The previous v19.11 wrapper used a full-width
+          SafeAreaView with `right: 0` only; depending on RN layout
+          resolution this could extend across the top of the screen
+          and intercept touches over the close button on the left.
+          v19.13 renders the pill in an explicit-width absolute
+          container anchored top-right, so it physically cannot
+          overlap the close button, AND keeps `pointerEvents='box-none'`
+          on the wrapper so only the pill itself catches touches. */}
       {mode === 'face' && permission?.granted ? (
-        <SafeAreaView
-          edges={['top']}
+        <View
           pointerEvents="box-none"
           style={styles.lightingToggleSafeArea}
         >
@@ -395,7 +398,7 @@ export function ScanCaptureScreen({
                 ? 'Disable Lighting Assist'
                 : 'Enable Lighting Assist'
             }
-            hitSlop={10}
+            hitSlop={12}
             style={({ pressed }) => [
               styles.lightingToggle,
               lightingAssistEnabled && styles.lightingToggleActive,
@@ -419,7 +422,7 @@ export function ScanCaptureScreen({
               {lightingAssistEnabled ? 'Lighting Assist On' : 'Lighting Assist'}
             </Text>
           </Pressable>
-        </SafeAreaView>
+        </View>
       ) : null}
 
       {/* Full-screen paper flash, 30% opacity, 120ms */}
@@ -460,18 +463,22 @@ const styles = StyleSheet.create({
     color: 'rgba(250,247,244,0.8)',
     marginBottom: space.md,
   },
-  // v19.11 — Lighting Assist toggle. Pill sits in the top-right of
-  // the safe area, flush with the existing scan chrome. Two states:
-  //  - off: dark translucent pill on top of the camera, white text
-  //  - on:  bright white pill, dark text — visually echoes the
-  //         halo overlay that's now active on the screen.
+  // v19.13 — Lighting Assist toggle wrapper. Anchored top-right
+  // with EXPLICIT non-overlapping bounds — the previous v19.11
+  // version used `right: 0` without a left bound, which RN layout
+  // could resolve as a full-width strip across the top, blocking
+  // the close button below. This version renders the wrapper as
+  // an inset, right-aligned strip ~52pt tall (status bar + small
+  // padding) and only ~180pt wide. The pill itself is the only
+  // child and the only thing that catches touches.
   lightingToggleSafeArea: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    paddingTop: 12,
-    paddingRight: 14,
+    top: 56, // clears typical status bar / dynamic island
+    right: 14,
+    width: 180,
+    height: 38,
     alignItems: 'flex-end',
+    justifyContent: 'flex-start',
   },
   lightingToggle: {
     flexDirection: 'row',

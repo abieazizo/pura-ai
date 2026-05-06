@@ -1,51 +1,49 @@
 /**
- * LightingAssist — v19.11 / v19.12 front-camera screen ring-light overlay.
+ * LightingAssist — v19.13 front-camera screen ring-light overlay.
  *
- * Front-camera face scans in indoor lighting are frequently underlit.
- * The phone's front sensor is small, the user's hand shadows the
- * frame, and acne / redness / texture detail wash out at low light.
- * Native rear-camera torches help in product/barcode mode but front
- * cameras have no hardware torch on iOS or most Android devices.
+ * v19.11 used 4 perimeter bands (top/bottom 18%, left/right 12%).
+ * v19.13 redesigns this as a true ring-light: most of the screen is
+ * bright (#FAFAFA), with a soft FACE-OVAL CUTOUT in the center
+ * where the camera preview shows through. The user's face is now
+ * physically surrounded by bright light from above, below, and
+ * both sides — exactly like a Snapchat-style selfie assist.
  *
- * This component is the cross-platform alternative: a soft, premium,
- * sustained white halo rendered AROUND the camera preview that turns
- * the phone screen itself into a ring light. The user holds the
- * phone in their normal scan position; the bright halo reflects off
- * their face and the front sensor gets a materially brighter,
- * higher-contrast frame to capture redness / texture / pores.
+ * Implementation:
+ *   • An SVG with a single bright rect filling the screen,
+ *     masked by a face-shaped ellipse cutout in the upper-middle
+ *     third (where front-camera selfie face composition naturally
+ *     lands). The mask uses a radial gradient so the bright→clear
+ *     transition feathers softly instead of slamming a hard edge.
+ *   • The ellipse is sized so the face is comfortably framed and
+ *     visible while ~70% of the screen remains bright illumination.
+ *   • Color #FAFAFA (250 RGB) — slightly warmer than pure white so
+ *     it's less harsh on the user's eyes.
  *
  * Design rules:
- *   • Premium, not crude. A flat blinding white screen is harsh;
- *     this is a soft 250 RGB neutral with a subtle vignette so the
- *     center stays gentle and the perimeter brightens.
- *   • Pointer-events: 'none'. The user can still tap the capture
- *     row, mode switcher, and exit button beneath.
- *   • Renders only when `enabled` is true; zero overhead when off.
- *   • Pairs with a small "Lighting Assist On" pill in the scan UI
- *     so the state is unambiguous.
- *   • Expo Go safe — NO native modules required. The brightness
- *     comes entirely from the screen's existing backlight + the
- *     overlay's bright bands.
- *
- * v19.12 — REMOVED the optional `expo-brightness` dynamic require.
- *   The package isn't installed in package.json, and Metro evaluates
- *   `require()` paths at bundle time even when wrapped in try/catch.
- *   The require was a real risk for breaking the Metro bundle. The
- *   overlay-only approach is what the user asked for and works
- *   reliably in Expo Go without ANY native modules. If a native
- *   build wants to bump system brightness too, that's a separate
- *   future addition (a development build can install
- *   `expo-brightness` and add a real import).
+ *   • Premium, not crude. The feathered cutout is what makes this
+ *     feel intentional rather than a flat white screen dump.
+ *   • Pointer-events: 'none'. Capture row, mode switcher, and
+ *     toggle pill underneath all receive taps unobstructed.
+ *   • Renders only when `enabled` is true; fades in/out 220 ms.
+ *   • Expo Go safe — pure SVG + Reanimated. No native modules.
  */
 
 import React, { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, {
+  Defs,
+  Ellipse,
+  Mask,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 
 export interface LightingAssistProps {
   enabled: boolean;
@@ -53,6 +51,7 @@ export interface LightingAssistProps {
 
 export function LightingAssist({ enabled }: LightingAssistProps) {
   const opacity = useSharedValue(0);
+  const { width, height } = Dimensions.get('window');
 
   useEffect(() => {
     opacity.value = withTiming(enabled ? 1 : 0, {
@@ -65,96 +64,102 @@ export function LightingAssist({ enabled }: LightingAssistProps) {
     opacity: opacity.value,
   }));
 
-  // Avoid mounting the halo at all when disabled and faded out.
-  // (Reanimated's shared value reads here are intentionally
-  // referenced inside the animated style; gating the JSX render
-  // with `opacity.value === 0` is a tiny optimization but doesn't
-  // affect correctness when the value is mid-transition.)
-  if (!enabled) {
-    // Still render an invisible placeholder so the fade-out
-    // animation completes before unmount; the absoluteFill view
-    // itself is cheap.
-  }
+  // Face oval — centered horizontally, slightly above vertical
+  // center (front-camera selfie composition naturally lands the
+  // face in the upper-middle third of the frame).
+  const cx = width / 2;
+  const cy = height * 0.42;
+  // Oval slightly taller than wide — matches a real face shape.
+  const rx = Math.min(width * 0.36, 180);
+  const ry = Math.min(height * 0.26, 230);
 
   return (
     <Animated.View
       pointerEvents="none"
       style={[StyleSheet.absoluteFillObject, haloStyle]}
     >
-      {/* Outer halo — soft warm white. The 4 edge bands are bright
-          enough to physically reflect onto the face when the phone
-          is held at typical front-camera distance (~30cm), but the
-          center stays empty so the camera preview reads naturally.
-          Color #FAFAFA (250 RGB) instead of pure #FFFFFF — slightly
-          warmer and visually less harsh on the user's eyes. */}
-      <View style={styles.topBand} />
-      <View style={styles.bottomBand} />
-      <View style={styles.leftBand} />
-      <View style={styles.rightBand} />
-      {/* Subtle inner vignette so the bands feather into the
-          preview rather than slamming a hard edge. */}
-      <View style={styles.innerVignetteTop} />
-      <View style={styles.innerVignetteBottom} />
+      <Svg
+        width={width}
+        height={height}
+        style={StyleSheet.absoluteFillObject}
+      >
+        <Defs>
+          {/* Radial gradient driving the mask: white (= keep the
+              bright rect visible) at the perimeter, transparent
+              (= cut out the bright rect, showing camera preview)
+              at the face center. The 0.65 stop holds the bright
+              area through ~65% of the radius before fading, so
+              the perimeter reads as solid illumination. */}
+          <RadialGradient
+            id="ring-mask-grad"
+            cx={cx}
+            cy={cy}
+            rx={rx}
+            ry={ry}
+            gradientUnits="userSpaceOnUse"
+          >
+            <Stop offset="0" stopColor="#000" stopOpacity="1" />
+            <Stop offset="0.65" stopColor="#000" stopOpacity="0.4" />
+            <Stop offset="1" stopColor="#FFF" stopOpacity="1" />
+          </RadialGradient>
+          <Mask
+            id="ring-mask"
+            x="0"
+            y="0"
+            width={width}
+            height={height}
+            maskUnits="userSpaceOnUse"
+          >
+            <Rect
+              x="0"
+              y="0"
+              width={width}
+              height={height}
+              fill="url(#ring-mask-grad)"
+            />
+          </Mask>
+        </Defs>
+        {/* The bright fill — soft warm white, masked so the face
+            oval is left clear for the camera preview. */}
+        <Rect
+          x="0"
+          y="0"
+          width={width}
+          height={height}
+          fill="#FAFAFA"
+          mask="url(#ring-mask)"
+        />
+        {/* Subtle inner ring — a soft glow around the face oval
+            edge to make the assist feel intentional rather than a
+            flat backdrop. Low opacity so it never reads as a
+            crude outline. */}
+        <Ellipse
+          cx={cx}
+          cy={cy}
+          rx={rx}
+          ry={ry}
+          stroke="#FAFAFA"
+          strokeOpacity={0.35}
+          strokeWidth={6}
+          fill="transparent"
+        />
+      </Svg>
+      {/* Belt-and-braces extra brightness layer at the edges —
+          some Android renderers feather the SVG mask less crisply
+          than iOS, so a thin solid band on the very perimeter
+          reinforces the ring-light effect everywhere. */}
+      <View pointerEvents="none" style={styles.edgeReinforce} />
     </Animated.View>
   );
 }
 
-/**
- * Width of the bright bands around the preview. 18% top/bottom
- * leaves the center 64% as the camera-preview safe zone — large
- * enough to frame the face comfortably, with two thick bright bands
- * close enough to the face plane to act as ring-light reflectors.
- */
-const BAND_TB = '18%';
-const BAND_LR = '12%';
-
 const styles = StyleSheet.create({
-  topBand: {
+  edgeReinforce: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: BAND_TB,
+    height: 8,
     backgroundColor: '#FAFAFA',
-  },
-  bottomBand: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: BAND_TB,
-    backgroundColor: '#FAFAFA',
-  },
-  leftBand: {
-    position: 'absolute',
-    top: BAND_TB,
-    bottom: BAND_TB,
-    left: 0,
-    width: BAND_LR,
-    backgroundColor: '#FAFAFA',
-  },
-  rightBand: {
-    position: 'absolute',
-    top: BAND_TB,
-    bottom: BAND_TB,
-    right: 0,
-    width: BAND_LR,
-    backgroundColor: '#FAFAFA',
-  },
-  innerVignetteTop: {
-    position: 'absolute',
-    top: BAND_TB,
-    left: BAND_LR,
-    right: BAND_LR,
-    height: 24,
-    backgroundColor: 'rgba(250,250,250,0.45)',
-  },
-  innerVignetteBottom: {
-    position: 'absolute',
-    bottom: BAND_TB,
-    left: BAND_LR,
-    right: BAND_LR,
-    height: 24,
-    backgroundColor: 'rgba(250,250,250,0.45)',
   },
 });

@@ -42,6 +42,7 @@ import { Image as RNImage, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, {
   Circle,
+  ClipPath,
   Defs,
   Ellipse,
   FeColorMatrix,
@@ -817,6 +818,23 @@ export function FaceSkinMap({
             <Stop offset="0.6" stopColor="#0B1220" stopOpacity="0" />
             <Stop offset="1" stopColor="#0B1220" stopOpacity="0.18" />
           </LinearGradient>
+          {/* v19.13 — face clip path. Every concern overlay is now
+              clipped to a face-shaped ellipse derived from the AI's
+              `face_box`. Even if the underlying ellipse / polygon
+              extends into hair, collar, or background (a common
+              GPT-5-mini polygon drift), the clip path prevents the
+              wash from rendering OUTSIDE the face. The clip ellipse
+              is INSET 4% on each axis from face_box so the highlight
+              stops cleanly at the face boundary instead of bleeding
+              to the bounding-box edge. */}
+          <ClipPath id="face-clip">
+            <Ellipse
+              cx={overlay.face_box.x + overlay.face_box.width / 2}
+              cy={overlay.face_box.y + overlay.face_box.height / 2}
+              rx={overlay.face_box.width * 0.46}
+              ry={overlay.face_box.height * 0.48}
+            />
+          </ClipPath>
         </Defs>
         <Rect x={0} y={0} width={1} height={1} fill="url(#vignette-top)" />
 
@@ -824,13 +842,15 @@ export function FaceSkinMap({
           (() => {
             const Renderer = STYLE_RENDERERS[activeOverlay.style];
             return (
-              <Renderer
-                polygon={activeOverlay.polygon}
-                ellipse={activeOverlay.regionShape}
-                color={activeOverlay.color}
-                alpha={activeOverlay.alpha}
-                defsKey={activeOverlay.category}
-              />
+              <G clipPath="url(#face-clip)">
+                <Renderer
+                  polygon={activeOverlay.polygon}
+                  ellipse={activeOverlay.regionShape}
+                  color={activeOverlay.color}
+                  alpha={activeOverlay.alpha}
+                  defsKey={activeOverlay.category}
+                />
+              </G>
             );
           })()
         ) : null}
