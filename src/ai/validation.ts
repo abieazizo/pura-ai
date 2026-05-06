@@ -724,12 +724,24 @@ function validateLiveProductCandidate(
   v: unknown
 ): LiveProductCandidate | null {
   if (!isObject(v)) return null;
+  // v19.8 — strict checks only on truly required identity fields
+  // (id, brand, name, category). Everything else now defaults to
+  // a safe value when the AI returns something off-spec, instead
+  // of nulling the whole candidate. The previous strict-imageSource
+  // / strict-availability checks were dropping otherwise-good
+  // candidates whenever GPT-5-mini emitted a slightly-off enum
+  // value (rare but observed in the wild). Now a candidate with
+  // valid id/brand/name/category always survives.
   if (!isNonEmptyString(v.id)) return null;
   if (!isNonEmptyString(v.brand)) return null;
   if (!isNonEmptyString(v.name)) return null;
   if (!inEnum(v.category, PRODUCT_CATEGORIES)) return null;
-  if (!inEnum(v.imageSource, IMAGE_SOURCE_ENUM)) return null;
-  if (!inEnum(v.availability, AVAILABILITY_ENUM)) return null;
+  const imageSource = inEnum(v.imageSource, IMAGE_SOURCE_ENUM)
+    ? v.imageSource
+    : ('none' as const);
+  const availability = inEnum(v.availability, AVAILABILITY_ENUM)
+    ? v.availability
+    : ('unknown' as const);
   const matchScore = isFiniteNumber(v.matchScore)
     ? clampInt(v.matchScore, 0, 100)
     : 60;
@@ -751,10 +763,10 @@ function validateLiveProductCandidate(
     merchantName: isString(v.merchantName) ? v.merchantName : null,
     productUrl: isString(v.productUrl) ? v.productUrl : null,
     imageUrl: isString(v.imageUrl) ? v.imageUrl : null,
-    imageSource: v.imageSource,
+    imageSource,
     shortDescription: isString(v.shortDescription) ? v.shortDescription : '',
     matchReason: isString(v.matchReason) ? v.matchReason : '',
-    availability: v.availability,
+    availability,
     sourceTimestamp: isNonEmptyString(v.sourceTimestamp)
       ? v.sourceTimestamp
       : new Date().toISOString(),

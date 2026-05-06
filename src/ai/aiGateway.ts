@@ -154,7 +154,16 @@ const TIMEOUT_MS = {
   analyzeScannedProductAgainstUser: 90_000,
   buildFullScanToPlanBundle: 150_000,
   buildProgressBundle: 35_000,
-  lookupLiveProducts: 40_000,
+  // v19.8 — bumped 40_000 → 90_000. Same root cause as v19.6's
+  // matchProductsForUser fix: 8 candidates × 16 structured fields
+  // is a 4-5K token response. The first runStrictStructured attempt
+  // at the 4096-cap regularly hits length cap; the retry envelope
+  // pushes total wall-clock to 60-120s. The previous 40s client
+  // timeout fired the AbortController mid-flight and surfaced as
+  // `AIProxyError: lookupLiveProducts -> HTTP 0 -> client timeout
+  // after 40000ms`. 90s covers one full attempt at the bumped
+  // 6144 cap (below) plus the server-side retry envelope.
+  lookupLiveProducts: 90_000,
 } as const;
 
 type AIMethodName = keyof typeof TIMEOUT_MS;

@@ -1001,6 +1001,14 @@ export class OpenAIClient {
       userContent,
       schemaName: 'live_product_lookup',
       schema: LIVE_PRODUCT_LOOKUP_SCHEMA,
+      // v19.8 — explicit 6144 cap. The default extraction cap (4096)
+      // was regularly hitting `finish_reason="length"` for 8-candidate
+      // responses with 16 structured fields each. 6144 + the
+      // runStrictStructured retry-doubled-cap envelope (12288 on
+      // retry) means the first attempt now succeeds for normal
+      // candidate counts and the second attempt only fires on
+      // genuinely large responses.
+      maxTokens: 6144,
     });
   }
 
