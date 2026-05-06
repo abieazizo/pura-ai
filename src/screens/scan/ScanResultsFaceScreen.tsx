@@ -77,7 +77,19 @@ export function ScanResultsFaceScreen({
     ? scans.filter((s) => s.capturedAt < scan.capturedAt).slice(-1)[0]
     : undefined;
 
-  const concerns = scan ? getConcerns(scan, previous) : [];
+  // v19.7 — stable `concerns` ref. Was: `getConcerns(...)` called
+  // inline every render, which returned a NEW array reference each
+  // time. That alone wouldn't break anything — except the retrieval
+  // effect below had `concerns` in its dep array, so EVERY render
+  // re-ran the effect, cancelled the in-flight fetch, and started a
+  // new one. The hero card sat in "Still finding your best match…"
+  // forever because no `run()` ever completed without being
+  // cancelled by the next render's cleanup. Memoising on the scan id
+  // makes the ref stable across renders.
+  const concerns = useMemo(
+    () => (scan ? getConcerns(scan, previous) : []),
+    [scan, previous]
+  );
 
   // v19.2 — hero product retrieval state machine.
   // Adds a `slow` threshold: after 5 s of loading the UI escalates
@@ -201,7 +213,18 @@ export function ScanResultsFaceScreen({
       clearTimeout(slowTimer);
       clearTimeout(ceilingTimer);
     };
-  }, [scan?.id, scan?.aiAnalysis, liveAttempt, concerns, scan]);
+    // v19.7 — deps DELIBERATELY scoped to scan id + aiAnalysis +
+    // explicit retry counter. The previous version included
+    // `concerns` and `scan` (full object), which churned on every
+    // render because `getConcerns()` returned a new array ref each
+    // call. That made the effect re-run every render, cancel the
+    // in-flight fetch, and never let `run()` complete — the hero
+    // sat in "Still finding your best match…" forever. The
+    // `concerns` value used inside `run()` is captured fresh via
+    // closure when the effect actually fires (on scan change /
+    // retry), so we don't need it in the dep array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scan?.id, scan?.aiAnalysis, liveAttempt]);
 
   const heroLive = liveCandidates[0] ?? null;
   const altLive = liveCandidates.slice(1, 6);
