@@ -352,14 +352,18 @@ function pickWorstByCategory(
 }
 
 function labelFor(finding: FaceConcernFinding): string {
-  // v19.3 — premium "TARGETED IN {region}" annotation. Replaces
-  // the technical "BREAKOUTS · ACROSS_FACE" with a calm, plain-
-  // English region phrase that ties the chip → photo → insight.
-  const region = (finding.regions[0] ?? 'across_face')
-    .replace(/_/g, ' ')
-    .replace(/across face/i, 'the face')
-    .toLowerCase();
-  return `TARGETED IN ${region.toUpperCase()}`;
+  // v19.14 — softer, more honest annotation. "TARGETED IN" sounded
+  // clinical and overconfident — the AI is doing a best-effort
+  // localization, not a guided treatment beam. New phrasing reads
+  // as observation rather than precision targeting:
+  //   • across_face → "Across the face"
+  //   • forehead    → "Around the forehead"
+  //   • left_cheek  → "Around the left cheek"
+  //   • etc.
+  const raw = finding.regions[0] ?? 'across_face';
+  if (raw === 'across_face') return 'Across the face';
+  const phrase = raw.replace(/_/g, ' ').toLowerCase();
+  return `Around the ${phrase}`;
 }
 
 function resolveOverlays(analysis: FaceScanAnalysis): ResolvedOverlay[] {
@@ -908,18 +912,22 @@ const styles = StyleSheet.create({
   // v18.8 — lower-contrast pearl glass badge with a small color dot
   // for the active concern. Reads as a quiet confirmation tag, not
   // a clinical pill.
+  // v19.14 — badge shifted bottom-left and rephrased as
+  // sentence-case "Around the {region}". Top-of-photo badges read
+  // as label tags; bottom-anchored reads as caption — closer to
+  // the "what we saw" insight voice the page wants.
   activeBadge: {
     position: 'absolute',
-    top: 12,
+    bottom: 12,
     left: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    maxWidth: '70%',
-    backgroundColor: 'rgba(11, 18, 32, 0.55)',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 13,
+    maxWidth: '76%',
+    backgroundColor: 'rgba(11, 18, 32, 0.62)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 7,
   },
   activeBadgeDot: {
     width: 6,
@@ -927,10 +935,12 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   activeBadgeText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: 'rgba(248, 250, 252, 0.92)',
+    // v19.14 — Inter-Regular sentence case beats Inter-SemiBold
+    // ALL CAPS for the calm, observational voice this page wants.
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    letterSpacing: 0.1,
+    color: 'rgba(248, 250, 252, 0.95)',
   },
   debugRibbon: {
     position: 'absolute',

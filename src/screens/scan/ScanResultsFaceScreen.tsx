@@ -334,19 +334,23 @@ export function ScanResultsFaceScreen({
       <StatusBar style="dark" />
 
       <View style={styles.header}>
+        {/* v19.14 — result-screen close button hardened the same
+            way as the camera screen + skin-map back button:
+            hitSlop bumped 8 → 18, slightly larger hit area, and
+            a press-scale gesture so the tap reads visibly. */}
         <Pressable
           onPress={close}
           style={({ pressed }) => [
             styles.closeBtn,
-            pressed && { opacity: 0.85 },
+            pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
           ]}
           accessibilityRole="button"
           accessibilityLabel="Close results"
-          hitSlop={8}
+          hitSlop={18}
         >
-          <X size={18} weight="duotone" color={palette.ink} />
+          <X size={20} weight="bold" color={palette.ink} />
         </Pressable>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 42 }} />
       </View>
 
       <ScrollView
@@ -769,10 +773,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   closeBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    // v19.14 — 40 → 42, hairline border, slightly tighter padding.
+    // Reads as a deliberate control rather than a quiet shadow.
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },

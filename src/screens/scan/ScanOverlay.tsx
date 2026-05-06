@@ -180,15 +180,24 @@ export function ScanOverlay({
         />
       </View>
 
-      {/* TOP BAR — close (left) + help (right) — nothing else */}
+      {/* TOP BAR — close (left) + help (right). v19.14 hardened
+          for tappability on every device:
+            • hitSlop bumped 8 → 16 (button size effectively
+              becomes 70x70).
+            • Larger insets.top + 16 (was +12) so the chips
+              clear the dynamic island reliably.
+            • Stronger background opacity (0.45 → 0.65) and
+              hairline border so the chips remain readable when
+              the auto Lighting Assist halo brightens the
+              perimeter behind them. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Close scanner"
         onPress={handleExit}
-        hitSlop={8}
+        hitSlop={16}
         style={({ pressed }) => [
           styles.chipBtn,
-          { top: insets.top + 12, left: 16 },
+          { top: insets.top + 16, left: 16 },
           pressed && styles.chipBtnPressed,
         ]}
       >
@@ -199,10 +208,10 @@ export function ScanOverlay({
         accessibilityRole="button"
         accessibilityLabel="Open scan tutorial"
         onPress={handleHelp}
-        hitSlop={8}
+        hitSlop={16}
         style={({ pressed }) => [
           styles.chipBtn,
-          { top: insets.top + 12, right: 16 },
+          { top: insets.top + 16, right: 16 },
           pressed && styles.chipBtnPressed,
         ]}
       >
@@ -319,12 +328,15 @@ const styles = StyleSheet.create({
   },
   chipBtn: {
     position: 'absolute',
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(11,18,32,0.45)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    // v19.14 — bumped from rgba(11,18,32,0.45) to 0.65 so the
+    // button stays readable when the auto Lighting Assist
+    // brightens the perimeter behind it.
+    backgroundColor: 'rgba(11,18,32,0.65)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },

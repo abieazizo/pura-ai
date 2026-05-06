@@ -944,23 +944,37 @@ export class OpenAIClient {
       requested_count: count,
     });
 
-    // v19.9 — call the LEAN schema. The model returns 10 fields per
-    // candidate; the validator + sanitizeAndEnrich fill the remaining
-    // 6 fields (currency/availability/skinTypeTags/merchantName/
-    // productUrl/imageUrl/imageSource) deterministically post-AI.
-    // The `as unknown as LiveProductLookupResult` cast is intentional:
-    // the AI literally produces the lean shape, and we hand off to
-    // the handler's validation which fills the rest.
+    // v19.14 — model swap. The previous v19.9-v19.13 stack used
+    // AI_MODELS.extraction = 'gpt-5-mini' for this call. GPT-5-mini
+    // is a REASONING model: variable per-call latency 15-30s for
+    // structured output, occasionally spiking to 35-45s on cold
+    // starts. With the runStrictStructured retry envelope, total
+    // wall-clock could easily hit the gateway's 45s ceiling and
+    // surface as `client timeout after 45000ms` in diagnostics.
+    //
+    // gpt-4o-mini is a NON-reasoning model: 2-5s typical for the
+    // same lean structured task, with much tighter variance. The
+    // model has been stable in production since 2024 and supports
+    // strict json_schema response_format identically. The lookup
+    // doesn't benefit from gpt-5-mini's reasoning anyway — the
+    // task is "rank real products by fit", not "deduce a complex
+    // relationship".
+    //
+    // The other gpt-5-mini callers (analyzeFaceScan,
+    // matchProductsForUser, etc.) keep gpt-5-mini because their
+    // tasks DO benefit from reasoning. This swap is scoped to
+    // lookupLiveProducts only.
     const lean = await this.runStrictStructured<LiveProductLookupResultLean>({
       system,
       userContent,
       schemaName: 'live_product_lookup_lean',
       schema: LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
-      // v19.9 — 6144 → 2048. With the slimmer 10-field schema and
-      // count=4, output is ~600-800 tokens. 2048 leaves headroom for
-      // GPT-5-mini reasoning. The runStrictStructured retry envelope
-      // doubles to 4096 on a length cap (rare with this schema).
-      maxTokens: 2048,
+      // v19.14 — explicit non-reasoning model.
+      model: 'gpt-4o-mini',
+      // v19.14 — 2048 → 1536. gpt-4o-mini doesn't burn reasoning
+      // tokens, so the 600-800 output tokens fit comfortably in
+      // 1536. Tighter cap = tighter latency tail.
+      maxTokens: 1536,
     });
 
     return lean as unknown as LiveProductLookupResult;

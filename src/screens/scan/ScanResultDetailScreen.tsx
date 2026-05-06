@@ -214,7 +214,13 @@ export function ScanResultDetailScreen({
   };
 
   const screenW = Dimensions.get('window').width;
-  const mapWidth = Math.min(screenW - 40, 460);
+  // v19.14 — image sized down. Previous v19.0 width
+  // (`min(screenW - 40, 460)`) made the photo fill almost the full
+  // device width and felt enormous on phones (especially the
+  // 4 by 5 portrait crop the AI returns). v19.14 caps at 320 pt and
+  // adds a clear horizontal inset so the page reads as an insight
+  // panel with a supporting visual, not a blown-up photo.
+  const mapWidth = Math.min(screenW - 64, 320);
 
   // v19.2 — premium concern-switch motion. The overlay container
   // fades out → in across a chip change so the new concern's
@@ -237,22 +243,26 @@ export function ScanResultDetailScreen({
       <StatusBar style="dark" />
 
       <View style={styles.header}>
+        {/* v19.14 — back button hardened for tappability:
+            • hitSlop bumped 8 → 18 (effective ~78×78pt area)
+            • higher-contrast bg-deep background + 1pt border
+            • visible icon stroke weight bumped to bold */}
         <Pressable
           onPress={close}
           style={({ pressed }) => [
             styles.backBtn,
-            pressed && { opacity: 0.85 },
+            pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={8}
+          accessibilityLabel="Back to results"
+          hitSlop={18}
         >
-          <ArrowLeft size={18} color={palette.ink} weight="bold" />
+          <ArrowLeft size={20} color={palette.ink} weight="bold" />
         </Pressable>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={1.15}>
           Skin map
         </Text>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 42 }} />
       </View>
 
       <ScrollView
@@ -448,17 +458,24 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
 
   header: {
-    height: 52,
-    paddingHorizontal: 20,
+    // v19.14 — taller header (60 vs 52) gives the back button
+    // breathing room beneath the dynamic island.
+    height: 60,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    // v19.14 — 40 → 42, hairline border for definition, slightly
+    // deeper bg so the icon stays readable against any photo
+    // background that bleeds in via translucent header.
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },

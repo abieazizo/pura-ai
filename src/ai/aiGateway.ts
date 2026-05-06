@@ -185,27 +185,19 @@ const TIMEOUT_MS = {
   analyzeScannedProductAgainstUser: 90_000,
   buildFullScanToPlanBundle: 150_000,
   buildProgressBundle: 35_000,
-  // v19.10 — bumped 25_000 → 45_000.
+  // v19.14 — DROPPED 45_000 → 25_000. v19.10's 45s budget existed
+  // to cover gpt-5-mini's variable reasoning latency. v19.14
+  // swaps lookupLiveProducts to gpt-4o-mini (non-reasoning, 2-5s
+  // typical) so the budget can shrink dramatically:
+  //   • Median: 3-6s
+  //   • Worst case: 15-20s
+  //   • Cold start max observed: ~22s
+  // 25s covers a cold-start worst case with comfortable headroom
+  // and surfaces a 25s timeout MUCH faster than the 45s ceiling
+  // when the proxy or upstream is genuinely down.
   //
-  // v19.9's lean pipeline (10-field schema, count=4, ~600-token
-  // prompt) drops normal-case wall-clock to 5-15s, but real-world
-  // GPT-5-mini reasoning is variable: p99 can hit 25-35s on cold
-  // first calls or when the model decides the query needs more
-  // deliberation. v19.9's 25s ceiling fired on those, and combined
-  // with the gateway's old retry-on-timeout policy (now removed
-  // in v19.10) produced a 50s wall-clock surfacing as
-  // `client timeout after 25000ms`.
-  //
-  // 45s is the SINGLE source of truth for this method's budget.
-  // The screen-level 25s ceilings (ScanResultsFaceScreen,
-  // ProductsScreen) are removed in v19.10; the gateway's
-  // AbortController is the only timer.
-  //
-  // Worst case: 45s, then graceful unavailable + retry. No retry
-  // amplification — `AIProxyError.isTransient()` now returns false
-  // when `timedOut === true`, so the gateway no longer wastes
-  // another 45s on a request that already proved too slow.
-  lookupLiveProducts: 45_000,
+  // No retry on timeout (v19.10 policy preserved). Worst case = 25s.
+  lookupLiveProducts: 25_000,
 } as const;
 
 type AIMethodName = keyof typeof TIMEOUT_MS;

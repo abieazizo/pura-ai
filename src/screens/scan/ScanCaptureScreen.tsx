@@ -9,7 +9,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Lightbulb, X } from 'phosphor-react-native';
+import { X } from 'phosphor-react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { hapt } from '@/utils/haptics';
 import { ScanOverlay } from '@/screens/scan/ScanOverlay';
@@ -119,16 +119,62 @@ export function ScanCaptureScreen({
     }
   }, [permission, requestPermission, fade]);
 
-  // v19.11 — Lighting Assist. Persisted across sessions; only
-  // physically renders when the camera is in face mode (the use
-  // case it was designed for; product/barcode modes use the rear
-  // camera and don't benefit). The toggle is exposed top-right
-  // when in face mode.
-  const lightingAssistEnabled = useAppStore((s) => s.lightingAssistEnabled);
-  const setLightingAssistEnabled = useAppStore(
-    (s) => s.setLightingAssistEnabled
+  // v19.14 — Lighting Assist. Behavior:
+  //   • AUTO-detect when the room is dark via a one-shot
+  //     low-quality probe taken ~900 ms after camera ready.
+  //   • The persisted `lightingAssistEnabled` setting is now a
+  //     soft "force-on" override — leave it false for pure
+  //     auto, set true if a future settings UI exposes a manual
+  //     opt-in.
+  const lightingAssistForceOn = useAppStore(
+    (s) => s.lightingAssistEnabled
   );
-  const lightingAssistActive = mode === 'face' && lightingAssistEnabled;
+  const [autoDark, setAutoDark] = useState<boolean>(false);
+  const probedRef = useRef(false);
+
+  // Run the luminance probe once when the camera is ready in face
+  // mode. We use takePictureAsync at the lowest reasonable quality
+  // and use the base64 length as a coarse luminance proxy: at fixed
+  // JPEG quality, darker scenes compress to smaller payloads (less
+  // visual entropy). Threshold tuned empirically — sub-32 KB
+  // typically corresponds to a noticeably dim indoor scene.
+  useEffect(() => {
+    if (mode !== 'face' || !permission?.granted || probedRef.current) {
+      return;
+    }
+    probedRef.current = true;
+    const t = setTimeout(async () => {
+      try {
+        const cam = cameraRef.current;
+        if (!cam) {
+          // Fall back to ON if we couldn't probe — better to help
+          // than not. Common case is the camera initialised after
+          // the timeout fired.
+          setAutoDark(true);
+          return;
+        }
+        const photo = await cam.takePictureAsync({
+          quality: 0.05,
+          base64: true,
+          skipProcessing: true,
+        });
+        const b64 = photo?.base64 ?? '';
+        const bytes = Math.floor((b64.length * 3) / 4);
+        // < 32 KB at quality 0.05 => dim scene => assist on.
+        // > 80 KB => clearly bright => assist off.
+        // Between => borderline; default off to avoid washing
+        // out an already-bright preview.
+        setAutoDark(bytes < 32_000);
+      } catch {
+        // Probe failed; default ON in face mode — the perimeter
+        // ring is restrained enough that being on by mistake is
+        // not visually disruptive.
+        setAutoDark(true);
+      }
+    }, 900);
+    return () => clearTimeout(t);
+  }, [mode, permission?.granted]);
+  void lightingAssistForceOn; // silenced; passed below as `forceOn`
 
   // §3.2 — Trigger 1 check-in sheet. Fires only when:
   //   • the user has scanned before (not their very first scan),
@@ -347,12 +393,16 @@ export function ScanCaptureScreen({
         onBarcodeScanned={mode === 'barcode' ? handleBarcodeScanned : undefined}
       />
 
-      {/* v19.11 — front-camera ring-light overlay. Renders a soft
-          white halo around the preview to act as a screen-based
-          ring light. pointerEvents='none' so the capture row + mode
-          switcher beneath still receive taps. Only shows in face
-          mode; persisted via useAppStore.lightingAssistEnabled. */}
-      <LightingAssist enabled={lightingAssistActive} />
+      {/* v19.14 — auto front-camera ring light. The component now
+          fades in only when the luminance probe says the room is
+          dark, OR when the user explicitly forces it on. Only
+          renders meaningfully in face mode (back-camera scans
+          don't benefit). Restrained perimeter halo only — the
+          camera preview's center 70% stays untouched. */}
+      <LightingAssist
+        autoDark={mode === 'face' && permission?.granted && autoDark}
+        forceOn={mode === 'face' && lightingAssistForceOn}
+      />
 
       <Animated.View
         style={[StyleSheet.absoluteFillObject, fadeStyle]}
@@ -373,57 +423,17 @@ export function ScanCaptureScreen({
         />
       </Animated.View>
 
-      {/* v19.13 — Lighting Assist toggle, hardened against tap
-          regression. The previous v19.11 wrapper used a full-width
-          SafeAreaView with `right: 0` only; depending on RN layout
-          resolution this could extend across the top of the screen
-          and intercept touches over the close button on the left.
-          v19.13 renders the pill in an explicit-width absolute
-          container anchored top-right, so it physically cannot
-          overlap the close button, AND keeps `pointerEvents='box-none'`
-          on the wrapper so only the pill itself catches touches. */}
-      {mode === 'face' && permission?.granted ? (
-        <View
-          pointerEvents="box-none"
-          style={styles.lightingToggleSafeArea}
-        >
-          <Pressable
-            onPress={() => {
-              hapt.select();
-              setLightingAssistEnabled(!lightingAssistEnabled);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={
-              lightingAssistEnabled
-                ? 'Disable Lighting Assist'
-                : 'Enable Lighting Assist'
-            }
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.lightingToggle,
-              lightingAssistEnabled && styles.lightingToggleActive,
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <Lightbulb
-              size={14}
-              color={
-                lightingAssistEnabled ? palette.ink : palette.inkInverse
-              }
-              weight={lightingAssistEnabled ? 'fill' : 'regular'}
-            />
-            <Text
-              style={[
-                styles.lightingToggleLabel,
-                lightingAssistEnabled && styles.lightingToggleLabelActive,
-              ]}
-              maxFontSizeMultiplier={1.1}
-            >
-              {lightingAssistEnabled ? 'Lighting Assist On' : 'Lighting Assist'}
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {/* v19.14 — REMOVED the v19.11/v19.13 manual toggle pill.
+          Two issues forced this:
+            1. The 180-pt-wide pill physically overlapped the
+               help button at top-right, blocking taps.
+            2. Lighting Assist becomes AUTO in v19.14 — the
+               component decides on/off internally based on a
+               low-quality luminance probe taken once per scan
+               session — so no manual toggle is required. The
+               persisted preference (`lightingAssistEnabled`)
+               now serves as a soft "force-on" override only;
+               normal users see fully automatic behavior. */}
 
       {/* Full-screen paper flash, 30% opacity, 120ms */}
       <Animated.View
@@ -463,45 +473,5 @@ const styles = StyleSheet.create({
     color: 'rgba(250,247,244,0.8)',
     marginBottom: space.md,
   },
-  // v19.13 — Lighting Assist toggle wrapper. Anchored top-right
-  // with EXPLICIT non-overlapping bounds — the previous v19.11
-  // version used `right: 0` without a left bound, which RN layout
-  // could resolve as a full-width strip across the top, blocking
-  // the close button below. This version renders the wrapper as
-  // an inset, right-aligned strip ~52pt tall (status bar + small
-  // padding) and only ~180pt wide. The pill itself is the only
-  // child and the only thing that catches touches.
-  lightingToggleSafeArea: {
-    position: 'absolute',
-    top: 56, // clears typical status bar / dynamic island
-    right: 14,
-    width: 180,
-    height: 38,
-    alignItems: 'flex-end',
-    justifyContent: 'flex-start',
-  },
-  lightingToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: 30,
-    paddingHorizontal: 12,
-    borderRadius: 15,
-    backgroundColor: 'rgba(11,18,32,0.55)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(250,247,244,0.18)',
-  },
-  lightingToggleActive: {
-    backgroundColor: '#FAFAFA',
-    borderColor: 'rgba(11,18,32,0.12)',
-  },
-  lightingToggleLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 0.3,
-    color: palette.inkInverse,
-  },
-  lightingToggleLabelActive: {
-    color: palette.ink,
-  },
+  // v19.14 — manual lighting toggle styles removed.
 });
