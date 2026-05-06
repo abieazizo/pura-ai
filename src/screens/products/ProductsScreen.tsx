@@ -126,9 +126,15 @@ export function ProductsScreen() {
   );
   const [liveSearching, setLiveSearching] = useState(false);
   // v18.9 — tiered loading copy. After 5 s show "Still working —
-  // thanks for waiting…". After 25 s the search has materially
-  // exceeded the model's typical budget; hard-fail to the empty/
-  // unavailable state with a Retry button.
+  // thanks for waiting…".
+  // v19.10 — REMOVED the redundant screen-level 25 s hard-ceiling.
+  // The ceiling competed with the gateway's own 25 s AbortController
+  // and produced the user-visible `client timeout after 25000ms`
+  // log even when the gateway was still running. The gateway is
+  // now the SINGLE source of truth (45 s budget, no retry on
+  // timeout). The variant for the unavailable card is chosen
+  // post-hoc from the elapsed wall-clock so the user still gets
+  // the right copy when the gateway DID time out.
   const [searchSlow, setSearchSlow] = useState(false);
   const [searchTimedOut, setSearchTimedOut] = useState(false);
   const [searchAttempt, setSearchAttempt] = useState(0);
@@ -143,37 +149,38 @@ export function ProductsScreen() {
       return;
     }
     let cancelled = false;
+    const t0 = Date.now();
     setLiveSearching(true);
     setSearchSlow(false);
     setSearchTimedOut(false);
     const slowTimer = setTimeout(() => {
       if (!cancelled) setSearchSlow(true);
     }, 5000);
-    const hardTimer = setTimeout(() => {
-      if (cancelled) return;
-      setSearchTimedOut(true);
-      setLiveSearching(false);
-    }, 25000);
     lookupLiveProducts(q, { count: 10, fresh: searchAttempt > 0 })
       .then((picks) => {
         if (cancelled) return;
         setLiveResults(picks);
+        // v19.10 — empty-after-30s ⇒ likely gateway timeout (the API
+        // layer swallows AIProxyError and returns []), so flip the
+        // variant copy to "unavailable" rather than "empty".
+        if (picks.length === 0 && Date.now() - t0 > 30_000) {
+          setSearchTimedOut(true);
+        }
       })
       .catch(() => {
         if (cancelled) return;
         setLiveResults([]);
+        setSearchTimedOut(Date.now() - t0 > 30_000);
       })
       .finally(() => {
         if (cancelled) return;
         clearTimeout(slowTimer);
-        clearTimeout(hardTimer);
         setLiveSearching(false);
         setSearchSlow(false);
       });
     return () => {
       cancelled = true;
       clearTimeout(slowTimer);
-      clearTimeout(hardTimer);
     };
   }, [debouncedQuery, searchAttempt]);
 

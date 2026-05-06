@@ -104,7 +104,18 @@ export class AIProxyError extends Error {
     public method: string,
     public status: number,
     public requestId: string,
-    detail: string
+    detail: string,
+    /**
+     * v19.10 — explicit flag distinguishing a CLIENT-SIDE
+     * AbortController timeout from a real network failure or 5xx.
+     * Both produce status=0 historically, but they call for
+     * different retry behavior:
+     *   • timeout: model is genuinely slow — retrying with the
+     *     same budget just doubles wall-clock for the same outcome
+     *     (50s→90s of "timeout"). Skip retry.
+     *   • non-timeout network/5xx: real transient — retry once.
+     */
+    public timedOut: boolean = false
   ) {
     super(
       `AIProxyError: ${method} -> HTTP ${status} (req=${requestId}): ${detail}`
@@ -112,8 +123,16 @@ export class AIProxyError extends Error {
     this.name = 'AIProxyError';
   }
 
-  /** True when this error is worth retrying (network / 5xx). */
+  /**
+   * True when this error is worth retrying. v19.10 — timeouts no
+   * longer count as transient. The previous "status === 0" rule
+   * conflated network failures with budget-exceeded, and the retry
+   * envelope kept restarting an already-too-short request, which
+   * is exactly what produced the user-visible
+   * `client timeout after 25000ms` after a full 50s wall-clock.
+   */
   isTransient(): boolean {
+    if (this.timedOut) return false;
     return this.status === 0 || (this.status >= 500 && this.status < 600);
   }
 }
@@ -154,25 +173,27 @@ const TIMEOUT_MS = {
   analyzeScannedProductAgainstUser: 90_000,
   buildFullScanToPlanBundle: 150_000,
   buildProgressBundle: 35_000,
-  // v19.9 — bumped 90_000 → 25_000. The previous v19.8 budget masked
-  // the real bug rather than fixing it: the lookupLiveProducts call
-  // was so expensive (8 candidates × 16 structured fields, ~3000-token
-  // system prompt with a URL precedence list, GPT-5-mini reasoning
-  // overhead) that it was genuinely taking 60-90s and timing out
-  // anyway. v19.9 redesigns the pipeline:
-  //   • LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA — model emits 10 fields per
-  //     candidate instead of 16. merchantName/productUrl/imageUrl/
-  //     imageSource are filled in deterministically post-AI by
-  //     `sanitizeAndEnrich` (BRAND_DTC table + Sephora-search).
-  //   • count default 8 → 4 (matches what the result screen renders).
-  //   • System prompt ~3000 tokens → ~600 tokens (URL precedence
-  //     list + SAFETY block removed — the SAFETY: prefix in the
-  //     query is enough signal for ranking bias).
-  //   • Server maxTokens 6144 → 2048 (output is now ~600-800 tokens).
-  // Net: per-attempt wall-clock 30-60s → 5-15s. 25s budget covers
-  // one full attempt + the runStrictStructured retry envelope's
-  // doubled cap (4096) on the rare length-cap retry.
-  lookupLiveProducts: 25_000,
+  // v19.10 — bumped 25_000 → 45_000.
+  //
+  // v19.9's lean pipeline (10-field schema, count=4, ~600-token
+  // prompt) drops normal-case wall-clock to 5-15s, but real-world
+  // GPT-5-mini reasoning is variable: p99 can hit 25-35s on cold
+  // first calls or when the model decides the query needs more
+  // deliberation. v19.9's 25s ceiling fired on those, and combined
+  // with the gateway's old retry-on-timeout policy (now removed
+  // in v19.10) produced a 50s wall-clock surfacing as
+  // `client timeout after 25000ms`.
+  //
+  // 45s is the SINGLE source of truth for this method's budget.
+  // The screen-level 25s ceilings (ScanResultsFaceScreen,
+  // ProductsScreen) are removed in v19.10; the gateway's
+  // AbortController is the only timer.
+  //
+  // Worst case: 45s, then graceful unavailable + retry. No retry
+  // amplification — `AIProxyError.isTransient()` now returns false
+  // when `timedOut === true`, so the gateway no longer wastes
+  // another 45s on a request that already proved too slow.
+  lookupLiveProducts: 45_000,
 } as const;
 
 type AIMethodName = keyof typeof TIMEOUT_MS;
@@ -422,7 +443,11 @@ async function proxyFetch<TRaw>(
       : e instanceof Error
       ? e.message
       : 'network error';
-    throw new AIProxyError(method, 0, requestId, detail);
+    // v19.10 — surface the timedOut bit explicitly so the retry
+    // envelope can decide intelligently. A timeout means the
+    // BUDGET was exceeded; retrying under the same budget is
+    // just expensive theatre.
+    throw new AIProxyError(method, 0, requestId, detail, timedOut);
   } finally {
     clearTimeout(timer);
   }
@@ -523,11 +548,24 @@ async function runMethod<TRaw, T>(args: {
       const dur = Date.now() - start;
       const errMsg =
         firstError instanceof Error ? firstError.message : String(firstError);
-      aiLog.warn('aiGateway.call', `${method} failed (no retry)`, {
-        requestId,
-        durationMs: dur,
-        error: errMsg,
-      });
+      // v19.10 — make the retry-skipped reason explicit in the log.
+      // Helps the diagnostics screen surface "timed out, did not
+      // retry" vs "validation failed, did not retry" cleanly.
+      const reason =
+        firstError instanceof AIProxyError && firstError.timedOut
+          ? 'timeout'
+          : firstError instanceof AIValidationError
+          ? 'validation'
+          : '4xx';
+      aiLog.warn(
+        'aiGateway.call',
+        `${method} failed (no retry, reason=${reason})`,
+        {
+          requestId,
+          durationMs: dur,
+          error: errMsg,
+        }
+      );
       aiTelemetry.completeMethodCallFail(method as AIMethodKey, dur, errMsg);
       throw firstError;
     }

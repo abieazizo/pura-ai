@@ -127,24 +127,19 @@ export function ScanResultsFaceScreen({
     const slowTimer = setTimeout(() => {
       if (!cancelled) setLiveSlow(true);
     }, 5000);
-    // v19.5 — HARD CEILING. v19.4 fixed the early-return that left
-    // no-AI scans stuck on "empty", but if lookupForScan itself
-    // hangs (gateway timeout 40s × server retry = up to 80s real
-    // wall-clock), the user sees "Still finding…" forever. The
-    // 25s hard ceiling stops loading and flips to the unavailable
-    // state with Retry. The in-flight fetch keeps running but
-    // its result is ignored via the `cancelled` flag.
-    const ceilingTimer = setTimeout(() => {
-      if (cancelled) return;
-      cancelled = true;
-      clearTimeout(slowTimer);
-      setLiveLoading(false);
-      setLiveSlow(false);
-      setLiveError(true);
-      aiLog.warn('result.products', 'retrieval hard-ceiling fired (25s)', {
-        scanId: scan.id,
-      });
-    }, 25000);
+    // v19.10 — REMOVED the screen-level 25s hard ceiling. The
+    // ceiling was firing IN PARALLEL with the gateway's own 25s
+    // AbortController and the retry envelope, producing a
+    // user-visible `client timeout after 25000ms` while the
+    // gateway was still running its retry. With v19.10's gateway
+    // timeout bumped to 45s and retry-on-timeout disabled,
+    // the gateway is the SINGLE source of truth for the budget:
+    //   • success in 5-15s typical
+    //   • graceful AIProxyError at 45s worst case
+    //   • lookupForScan/lookupLiveProducts catch the error and
+    //     return [], surfacing here as picks.length === 0 →
+    //     `setLiveError(true)` → unavailable + retry UI
+    // No competing timer; no redundant cancellation.
 
     const run = async (): Promise<LiveProductCandidate[]> => {
       if (scan.aiAnalysis) {
@@ -203,7 +198,6 @@ export function ScanResultsFaceScreen({
       .finally(() => {
         if (cancelled) return;
         clearTimeout(slowTimer);
-        clearTimeout(ceilingTimer);
         setLiveLoading(false);
         setLiveSlow(false);
       });
@@ -211,7 +205,6 @@ export function ScanResultsFaceScreen({
     return () => {
       cancelled = true;
       clearTimeout(slowTimer);
-      clearTimeout(ceilingTimer);
     };
     // v19.7 — deps DELIBERATELY scoped to scan id + aiAnalysis +
     // explicit retry counter. The previous version included
