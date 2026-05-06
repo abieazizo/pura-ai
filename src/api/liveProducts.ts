@@ -133,7 +133,7 @@ export function buildSearchUrl(candidate: LiveProductCandidate): string {
 export interface LookupOpts {
   /** Optional explicit scan id used for cache scoping. */
   scanId?: string | null;
-  /** Override the default candidate count (default 8). */
+  /** Override the default candidate count (default 4 in v19.9; was 8). */
   count?: number;
   /** When true, bypass the cache. Default false. */
   fresh?: boolean;
@@ -196,7 +196,11 @@ export async function lookupLiveProducts(
   try {
     const result = await aiGateway.lookupLiveProducts({
       query: composedQuery,
-      count: opts.count ?? 8,
+      // v19.9 — default 8 → 4. The result screen only needs ONE
+      // hero + ≤3 alternatives; halving the candidate count halves
+      // output tokens directly and brings the call inside a 25s
+      // budget. Free-text callers can still override.
+      count: opts.count ?? 4,
     });
     const sanitized = sanitizeAndEnrich(result.candidates).sort(
       (a, b) => b.matchScore - a.matchScore
@@ -255,7 +259,8 @@ export async function lookupForScan(
       { scanId: scan.id, query: fallbackQuery }
     );
     return lookupLiveProducts(fallbackQuery, {
-      count: opts.count ?? 6,
+      // v19.9 — 6 → 4 to match the new fast-path target.
+      count: opts.count ?? 4,
       fresh: opts.fresh,
     });
   }
@@ -320,7 +325,11 @@ export async function lookupForScan(
   try {
     const result = await aiGateway.lookupLiveProducts({
       query,
-      count: opts.count ?? 8,
+      // v19.9 — default 8 → 4. Same reasoning as the free-text path:
+      // result screen needs hero + ≤3 alternatives, the fast budget
+      // (25s client / 2048 tokens server) doesn't accommodate 8 with
+      // the lean schema's reasoning headroom.
+      count: opts.count ?? 4,
       scanContext: {
         primary_concern: ai.primary_concern,
         secondary_concerns: ai.secondary_concerns,

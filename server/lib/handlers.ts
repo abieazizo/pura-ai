@@ -401,10 +401,14 @@ export const HANDLERS: Record<string, Handler> = {
   async lookupLiveProducts(client, body) {
     const query = reqString(body, 'query');
     const countRaw = body['count'];
+    // v19.9 — default 8 → 4 and ceiling 12 → 8. The lean schema +
+    // 2048-token cap can comfortably handle 8 in the worst case;
+    // 4 is the realistic target for the result screen (hero + ≤3
+    // alternatives) and what every client-side caller now passes.
     const count =
       typeof countRaw === 'number' && Number.isFinite(countRaw)
-        ? Math.max(1, Math.min(12, Math.round(countRaw)))
-        : 8;
+        ? Math.max(1, Math.min(8, Math.round(countRaw)))
+        : 4;
     let scanContext:
       | {
           primary_concern: string | null;

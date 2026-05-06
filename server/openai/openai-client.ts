@@ -55,7 +55,7 @@ import {
   AI_MODELS,
   BARCODE_RESOLUTION_SCHEMA,
   FACE_SCAN_ANALYSIS_SCHEMA,
-  LIVE_PRODUCT_LOOKUP_SCHEMA,
+  LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
   PRODUCT_IDENTITY_SCHEMA,
   PRODUCT_MATCH_RESULT_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
@@ -63,6 +63,7 @@ import {
   SCAN_PREFLIGHT_RESULT_SCHEMA,
   SEARCH_SUGGESTION_RESULT_SCHEMA,
   SKIN_SCORE_EXPLANATION_SCHEMA,
+  type LiveProductLookupResultLean,
 } from '../../src/ai/ai-contracts';
 
 // Re-export for server consumers that previously reached these from
@@ -879,116 +880,63 @@ export class OpenAIClient {
       skin_type: string;
       sensitivities: string[];
     };
-    /** How many candidates to return (default 8). The model still
-     *  picks fewer if it can't honestly fill the slot. */
+    /** How many candidates to return (default 4 in v19.9). The model
+     *  still picks fewer if it can't honestly fill the slot. */
     count?: number;
   }): Promise<LiveProductLookupResult> {
-    const count = Math.max(1, Math.min(12, params.count ?? 8));
+    // v19.9 — default 8 → 4. The result screen shows ONE hero + at
+    // most 3 alternatives; 4 is the right number, and halving the
+    // candidate count halves output tokens directly.
+    const count = Math.max(1, Math.min(8, params.count ?? 4));
+
+    // v19.9 — drastically trimmed system prompt. The previous v18.0/
+    // v18.9 prompt was ~150 lines (~3000 input tokens) explaining a
+    // URL precedence list, image-source enum, availability enum,
+    // currency rules, and a 50-line SAFETY block. All of those
+    // concerns are handled deterministically post-AI in
+    // `sanitizeAndEnrich` (URLs/merchant) and the validator
+    // (defaults for currency/availability/imageSource/skinTypeTags).
+    // Result: ~3000 → ~600 system tokens, ~10x the model's reasoning
+    // budget freed up for the actual product selection.
     const system =
-      'You are Pura AI\'s live product retrieval engine. Given a ' +
-      'query and optional scan context, you return real, named, ' +
-      'commercially available skincare products that fit the ask. ' +
-      'You are NOT ranking a fixed catalog — you are choosing real ' +
-      'products from your knowledge of the global skincare market.\n\n' +
-      'Hard rules (v18.0):\n' +
-      '• Return EXACTLY the JSON object specified by the schema.\n' +
-      '• Every product must be a REAL product made by a REAL brand. ' +
-      'No fabricated names, no "Brand X" placeholders, no fictional ' +
-      'SKUs. If you would be guessing, leave the slot out.\n' +
-      `• Aim for ${count} candidates ranked by fit. Return fewer when ` +
-      'you cannot honestly fill the slot at high confidence.\n' +
-      '• `id` must be a stable, lowercase, hyphenated slug derived ' +
-      'from brand+name (e.g. "the-ordinary-niacinamide-10-zinc-1"). ' +
-      'No spaces, no special characters except hyphens.\n' +
-      '• `category` must be one of: cleanser, toner, serum, ' +
-      'moisturizer, spot_treatment, spf, mask, unknown. Pick the best ' +
-      'fit; never invent categories.\n' +
-      '• `concernTags` must use the canonical concern enum: ' +
-      'breakouts, hydration, texture, dark_marks, redness, oiliness, ' +
-      'sensitivity, pores. Pick the 1–4 concerns the product is ' +
-      'genuinely formulated for.\n' +
-      '• `ingredientsHighlights`: 2–5 hero actives with strength when ' +
-      'known ("salicylic acid 2%", "niacinamide 10%", "ceramide-3"). ' +
-      'No filler.\n' +
-      '• `price`: provide your best estimate of the typical recent ' +
-      'US retail price as a number (e.g. 16, 32.99). Skincare retail ' +
-      'prices are public knowledge for major brands — use it. Only ' +
-      'return null when you genuinely have no idea (rare/niche brand). ' +
-      'Do NOT round to obvious dummy values like 10, 20, 50.\n' +
-      '• `currency`: "USD" by default; use the merchant\'s currency ' +
-      'when you cite a non-US merchant.\n' +
-      '• `merchantName` + `productUrl`: ALWAYS populate these. Pick ' +
-      'the most credible commerce destination for this product, in ' +
-      'this priority order:\n' +
-      '   1. Brand DTC site for the major brands you reliably know — ' +
-      'e.g. The Ordinary → theordinary.com, CeraVe → cerave.com, ' +
-      'La Roche-Posay → laroche-posay.us, Paula\'s Choice → ' +
-      'paulaschoice.com, COSRX → cosrx.com, Beauty of Joseon → ' +
-      'beautyofjoseon.com, Kiehl\'s → kiehls.com, Supergoop → ' +
-      'supergoop.com, Naturium → naturium.com, Glow Recipe → ' +
-      'glowrecipe.com, Youth To The People → youthtothepeople.com.\n' +
-      '   2. A Sephora search URL when the brand is sold at Sephora: ' +
-      'https://www.sephora.com/search?keyword={brand}+{product}\n' +
-      '   3. An Ulta search URL when the brand is more drugstore-side: ' +
-      'https://www.ulta.com/shop?Ntt={brand}+{product}\n' +
-      '   4. An Amazon search URL as a last resort: ' +
-      'https://www.amazon.com/s?k={brand}+{product}\n' +
-      'Only return null for productUrl when you genuinely cannot ' +
-      'name any plausible retailer. merchantName must match the host ' +
-      '("Brand DTC", "Sephora", "Ulta", "Amazon").\n' +
-      '• `imageUrl`: include a real product image URL when you reliably ' +
-      'know it (e.g. an Open Beauty Facts image, an official brand ' +
-      'CDN, a known retailer CDN). Otherwise null is fine — the app ' +
-      'has a quiet brand-wordmark fallback.\n' +
-      '• `imageSource` ("merchant" | "brand" | "obf" | "none") must ' +
-      'match where imageUrl came from. Use "none" when imageUrl is null.\n' +
-      '• `shortDescription`: ≤ 120 chars, plain English. What the ' +
-      'product does, not marketing fluff.\n' +
-      '• `matchReason`: ≤ 100 chars, names the specific tie to the ' +
-      'user\'s concern (or query). "Targets clustered breakouts on ' +
-      'oily skin via 2% salicylic acid" beats "great product".\n' +
-      '• `availability`: "available" only when you are confident the ' +
-      'product is currently on shelves; otherwise "unknown".\n' +
-      '• `matchScore`: integer 0..100 calibrated within YOUR result ' +
-      'set. Best fit ≈ 95, weakest fit ≈ 65. Reserve scores below 60 ' +
-      'for results that barely fit and shouldn\'t be top picks.\n' +
-      '• Return `confidence` honestly: "high" when the query was ' +
-      'clear and you found strong matches, "medium" when the picks ' +
-      'are reasonable but not perfect, "low" when the query was vague ' +
-      'or the matches are speculative.\n\n' +
-      'Editorial bias:\n' +
-      '• Prefer products from established brands a US/UK shopper would ' +
-      'recognize (CeraVe, La Roche-Posay, The Ordinary, Beauty of ' +
-      'Joseon, Paula\'s Choice, Kiehl\'s, COSRX, Supergoop, Naturium, ' +
-      'Glow Recipe, Youth To The People, etc.) over niche-only brands ' +
-      'when both fit. The user must be able to actually buy what you ' +
-      'recommend.\n' +
-      '• Avoid duplicates — never two products from the same brand in ' +
-      'the same category.\n' +
-      '• Honor sensitivities: skip fragranced or actives-heavy picks ' +
-      'when the user is flagged sensitive.\n\n' +
-      'SAFETY (v18.9 — non-negotiable):\n' +
-      '• If the query string contains "SAFETY:" followed by guidance, ' +
-      'that guidance is CANONICAL. Apply it as a hard ranking + ' +
-      'filtering bias. The user has marked themselves as sensitive, ' +
-      'reactive, on prescription, pregnant, or actively flaring.\n' +
-      '• When SAFETY says "STRONGLY restrict to gentle…" — exclude ' +
-      'any product whose primary action is exfoliation, retinoid, or ' +
-      'high-strength acid. Replace with barrier-supportive, ' +
-      'fragrance-free, sensitive-safe alternatives.\n' +
-      '• When SAFETY mentions a specific condition (rosacea, eczema, ' +
-      'dermatitis, psoriasis, melasma, acne treatment regimen) — bias ' +
-      'toward formulas with established gentleness for that condition. ' +
-      'Never claim to "treat" or "cure"; just rank gentle, supportive ' +
-      'products higher.\n' +
-      '• When SAFETY mentions pregnancy/breastfeeding caution — do NOT ' +
-      'surface retinoids, salicylic acid above 2%, or hydroquinone. ' +
-      'Bias toward azelaic acid (lower strength), niacinamide, ' +
-      'mineral SPF, ceramides, hyaluronic acid.\n' +
-      '• When SAFETY lists `avoid_ingredients`, exclude any product ' +
-      'whose key actives include those ingredients.\n' +
-      '• Use cautious, supportive language in matchReason. Never ' +
-      'diagnose, never claim treatment, never use medical absolutes.';
+      "You are Pura AI's live product retrieval engine. Return real, " +
+      'named, commercially available skincare products that fit the ' +
+      'user query, in the supplied JSON schema. Choose from your ' +
+      'knowledge of the global skincare market — no fabricated brands, ' +
+      'no fictional SKUs, no placeholders. If you cannot honestly fill ' +
+      `a slot, return fewer than ${count} candidates.\n\n` +
+      'Per candidate:\n' +
+      '• id: lowercase, hyphenated slug from brand+name ' +
+      '("the-ordinary-niacinamide-10-zinc-1"). No spaces.\n' +
+      '• category: one of cleanser, toner, serum, moisturizer, ' +
+      'spot_treatment, spf, mask, unknown.\n' +
+      '• concernTags: 1–4 from breakouts, hydration, texture, ' +
+      'dark_marks, redness, oiliness, sensitivity, pores.\n' +
+      '• ingredientsHighlights: 2–5 hero actives with strength when ' +
+      'known ("salicylic acid 2%", "niacinamide 10%", "ceramide-3").\n' +
+      '• price: best estimate of typical US retail in USD as a number ' +
+      '(e.g. 16, 32.99). Null only when you truly have no idea.\n' +
+      '• shortDescription: ≤120 chars, plain English. What it does.\n' +
+      '• matchReason: ≤100 chars, names the specific tie to the user ' +
+      'concern. "2% salicylic acid targets clustered chin breakouts" ' +
+      'beats "great product".\n' +
+      '• matchScore: integer 0..100 calibrated within YOUR set. ' +
+      'Best ≈ 95, weakest ≈ 65.\n' +
+      '\n' +
+      'Editorial:\n' +
+      '• Prefer brands a US/UK shopper recognizes (CeraVe, La ' +
+      "Roche-Posay, The Ordinary, Beauty of Joseon, Paula's Choice, " +
+      "Kiehl's, COSRX, Supergoop, Naturium, Glow Recipe).\n" +
+      '• Never two products from the same brand in the same category.\n' +
+      '• If the query contains "SAFETY:", treat the suffix as a hard ' +
+      'ranking bias toward gentle, fragrance-free, ' +
+      'barrier-supportive options. Avoid retinoids, high-strength ' +
+      'acids, and physical scrubs.\n' +
+      '\n' +
+      'confidence: "high" when query was clear and matches are strong, ' +
+      '"medium" when reasonable, "low" when speculative.\n' +
+      '\n' +
+      'Echo the user query verbatim into the `query` field.';
 
     const userContent = JSON.stringify({
       query: params.query,
@@ -996,20 +944,26 @@ export class OpenAIClient {
       requested_count: count,
     });
 
-    return this.runStrictStructured<LiveProductLookupResult>({
+    // v19.9 — call the LEAN schema. The model returns 10 fields per
+    // candidate; the validator + sanitizeAndEnrich fill the remaining
+    // 6 fields (currency/availability/skinTypeTags/merchantName/
+    // productUrl/imageUrl/imageSource) deterministically post-AI.
+    // The `as unknown as LiveProductLookupResult` cast is intentional:
+    // the AI literally produces the lean shape, and we hand off to
+    // the handler's validation which fills the rest.
+    const lean = await this.runStrictStructured<LiveProductLookupResultLean>({
       system,
       userContent,
-      schemaName: 'live_product_lookup',
-      schema: LIVE_PRODUCT_LOOKUP_SCHEMA,
-      // v19.8 — explicit 6144 cap. The default extraction cap (4096)
-      // was regularly hitting `finish_reason="length"` for 8-candidate
-      // responses with 16 structured fields each. 6144 + the
-      // runStrictStructured retry-doubled-cap envelope (12288 on
-      // retry) means the first attempt now succeeds for normal
-      // candidate counts and the second attempt only fires on
-      // genuinely large responses.
-      maxTokens: 6144,
+      schemaName: 'live_product_lookup_lean',
+      schema: LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
+      // v19.9 — 6144 → 2048. With the slimmer 10-field schema and
+      // count=4, output is ~600-800 tokens. 2048 leaves headroom for
+      // GPT-5-mini reasoning. The runStrictStructured retry envelope
+      // doubles to 4096 on a length cap (rare with this schema).
+      maxTokens: 2048,
     });
+
+    return lean as unknown as LiveProductLookupResult;
   }
 
   // --------------------------------------------------------------------------

@@ -154,16 +154,25 @@ const TIMEOUT_MS = {
   analyzeScannedProductAgainstUser: 90_000,
   buildFullScanToPlanBundle: 150_000,
   buildProgressBundle: 35_000,
-  // v19.8 — bumped 40_000 → 90_000. Same root cause as v19.6's
-  // matchProductsForUser fix: 8 candidates × 16 structured fields
-  // is a 4-5K token response. The first runStrictStructured attempt
-  // at the 4096-cap regularly hits length cap; the retry envelope
-  // pushes total wall-clock to 60-120s. The previous 40s client
-  // timeout fired the AbortController mid-flight and surfaced as
-  // `AIProxyError: lookupLiveProducts -> HTTP 0 -> client timeout
-  // after 40000ms`. 90s covers one full attempt at the bumped
-  // 6144 cap (below) plus the server-side retry envelope.
-  lookupLiveProducts: 90_000,
+  // v19.9 — bumped 90_000 → 25_000. The previous v19.8 budget masked
+  // the real bug rather than fixing it: the lookupLiveProducts call
+  // was so expensive (8 candidates × 16 structured fields, ~3000-token
+  // system prompt with a URL precedence list, GPT-5-mini reasoning
+  // overhead) that it was genuinely taking 60-90s and timing out
+  // anyway. v19.9 redesigns the pipeline:
+  //   • LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA — model emits 10 fields per
+  //     candidate instead of 16. merchantName/productUrl/imageUrl/
+  //     imageSource are filled in deterministically post-AI by
+  //     `sanitizeAndEnrich` (BRAND_DTC table + Sephora-search).
+  //   • count default 8 → 4 (matches what the result screen renders).
+  //   • System prompt ~3000 tokens → ~600 tokens (URL precedence
+  //     list + SAFETY block removed — the SAFETY: prefix in the
+  //     query is enough signal for ranking bias).
+  //   • Server maxTokens 6144 → 2048 (output is now ~600-800 tokens).
+  // Net: per-attempt wall-clock 30-60s → 5-15s. 25s budget covers
+  // one full attempt + the runStrictStructured retry envelope's
+  // doubled cap (4096) on the rare length-cap retry.
+  lookupLiveProducts: 25_000,
 } as const;
 
 type AIMethodName = keyof typeof TIMEOUT_MS;

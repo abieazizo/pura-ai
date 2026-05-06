@@ -1234,6 +1234,105 @@ export const LIVE_PRODUCT_LOOKUP_SCHEMA: JsonSchema = {
   },
 };
 
+// ----------------------------------------------------------------------------
+// v19.9 — LEAN live product schema for the AI call.
+//
+// Why a separate schema: the original LIVE_PRODUCT_CANDIDATE_SCHEMA forces
+// the model to emit 16 strict-required fields per candidate. Four of them
+// (merchantName, productUrl, imageUrl, imageSource) are 100% deterministic
+// — they're filled in by `sanitizeAndEnrich` from a small brand→DTC table
+// + a Sephora-search fallback. Asking GPT-5-mini to synthesise them adds
+// ~150 lines of system prompt explaining URL precedence and ~25% to every
+// candidate's output token count, both of which it just gets wrong often
+// enough that we have to sanitise them anyway.
+//
+// The lean schema asks the model for ONLY the fields it adds value for:
+//   id, brand, name, category, concernTags, ingredientsHighlights,
+//   price, shortDescription, matchReason, matchScore
+//
+// Everything else is filled in deterministically server-side:
+//   • currency       → "USD"
+//   • availability   → "unknown"
+//   • skinTypeTags   → []
+//   • merchantName   → BRAND_DTC table or merchantNameForHost
+//   • productUrl     → BRAND_DTC `https://...` or sephoraSearchUrl
+//   • imageUrl       → null  (handled by client placeholder)
+//   • imageSource    → 'none' / 'brand' (when DTC matched)
+//   • sourceTimestamp→ ISO now() (server stamps)
+//
+// Effect: per-candidate output tokens 280→140; first-attempt budget
+// 6144→2048; system prompt ~3000 tokens→~600 tokens. End-to-end normal
+// case 30-60s → 5-15s.
+// ----------------------------------------------------------------------------
+
+export interface LiveProductCandidateLean {
+  id: string;
+  brand: string;
+  name: string;
+  category: ProductCategory;
+  concernTags: ConcernType[];
+  ingredientsHighlights: string[];
+  price: number | null;
+  shortDescription: string;
+  matchReason: string;
+  matchScore: number;
+}
+
+export interface LiveProductLookupResultLean {
+  query: string;
+  candidates: LiveProductCandidateLean[];
+  confidence: 'high' | 'medium' | 'low';
+}
+
+const LIVE_PRODUCT_CANDIDATE_LEAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'id',
+    'brand',
+    'name',
+    'category',
+    'concernTags',
+    'ingredientsHighlights',
+    'price',
+    'shortDescription',
+    'matchReason',
+    'matchScore',
+  ],
+  properties: {
+    id: { type: 'string' },
+    brand: { type: 'string' },
+    name: { type: 'string' },
+    category: { type: 'string', enum: [...PRODUCT_CATEGORY_ENUM] },
+    concernTags: {
+      type: 'array',
+      items: { type: 'string', enum: [...CONCERN_TYPE_ENUM] },
+    },
+    ingredientsHighlights: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    price: { type: ['number', 'null'] },
+    shortDescription: { type: 'string' },
+    matchReason: { type: 'string' },
+    matchScore: { type: 'integer', minimum: 0, maximum: 100 },
+  },
+};
+
+export const LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['query', 'candidates', 'confidence'],
+  properties: {
+    query: { type: 'string' },
+    candidates: {
+      type: 'array',
+      items: LIVE_PRODUCT_CANDIDATE_LEAN_SCHEMA,
+    },
+    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+  },
+};
+
 // ============================================================================
 // Aggregate map — every named schema indexed by its variable name. Useful
 // for telemetry, debugging, and any consumer that needs to enumerate
@@ -1252,6 +1351,7 @@ export interface AIStructuredSchemas {
   PROGRESS_EXPLANATION_SCHEMA: JsonSchema;
   SEARCH_SUGGESTION_RESULT_SCHEMA: JsonSchema;
   LIVE_PRODUCT_LOOKUP_SCHEMA: JsonSchema;
+  LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA: JsonSchema;
 }
 
 export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
@@ -1266,6 +1366,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   PROGRESS_EXPLANATION_SCHEMA,
   SEARCH_SUGGESTION_RESULT_SCHEMA,
   LIVE_PRODUCT_LOOKUP_SCHEMA,
+  LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
 };
 
 // v11.1 — legacy `Claude*` schema aliases removed.
