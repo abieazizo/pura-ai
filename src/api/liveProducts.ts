@@ -73,12 +73,22 @@ function cacheKey(args: {
   query: string;
   scanId?: string | null;
   category?: string | null;
+  /**
+   * v19.12 — count is part of the key. Without this, the v19.11
+   * hero-first pattern collided silently: the hero call (count=1)
+   * wrote `[hero]` to cache, the alternatives call (count=4) read
+   * the same key, got `[hero]` back, dedup'd against the hero id
+   * → empty array → alternatives never loaded. Including count
+   * gives hero and alternatives separate cache entries.
+   */
+  count?: number;
 }): string {
   return [
     'lp',
     args.query.toLowerCase().trim().replace(/\s+/g, '_'),
     args.scanId ?? '_',
     args.category ?? '_',
+    `n${args.count ?? 0}`,
   ].join('|');
 }
 
@@ -149,7 +159,13 @@ export async function lookupLiveProducts(
 ): Promise<LiveProductCandidate[]> {
   const trimmed = query.trim();
   if (trimmed.length === 0) return [];
-  const key = cacheKey({ query: trimmed, scanId: opts.scanId ?? null });
+  const requestedCount = opts.count ?? 4;
+  const key = cacheKey({
+    query: trimmed,
+    scanId: opts.scanId ?? null,
+    count: requestedCount,
+  });
+  const t0 = Date.now();
   if (!opts.fresh) {
     const hit = readCache(key);
     if (hit) {
@@ -200,7 +216,7 @@ export async function lookupLiveProducts(
       // hero + ≤3 alternatives; halving the candidate count halves
       // output tokens directly and brings the call inside a 25s
       // budget. Free-text callers can still override.
-      count: opts.count ?? 4,
+      count: requestedCount,
     });
     const sanitized = sanitizeAndEnrich(result.candidates).sort(
       (a, b) => b.matchScore - a.matchScore
@@ -210,6 +226,8 @@ export async function lookupLiveProducts(
     aiLog.info('liveProducts', 'AI live retrieval ok', {
       query: trimmed,
       n: sanitized.length,
+      requestedCount,
+      durationMs: Date.now() - t0,
       confidence: result.confidence,
     });
     aiTelemetry.setFeatureSource(
@@ -221,6 +239,8 @@ export async function lookupLiveProducts(
   } catch (e) {
     aiLog.warn('liveProducts', 'AI live retrieval failed', {
       query: trimmed,
+      requestedCount,
+      durationMs: Date.now() - t0,
       error: e instanceof Error ? e.message : String(e),
     });
     aiTelemetry.countFallback('lookupLiveProducts');
@@ -302,17 +322,21 @@ export async function lookupForScan(
     .filter(Boolean)
     .join(' ');
 
+  const requestedCount = opts.count ?? 4;
   const key = cacheKey({
     query,
     scanId: opts.scanId ?? scan.id,
     category: primary,
+    count: requestedCount,
   });
+  const t0 = Date.now();
   if (!opts.fresh) {
     const hit = readCache(key);
     if (hit) {
       aiLog.info('liveProducts', 'scan cache hit', {
         scanId: scan.id,
         n: hit.length,
+        requestedCount,
       });
       cacheCandidates(hit);
       return hit;
@@ -329,7 +353,7 @@ export async function lookupForScan(
       // result screen needs hero + ≤3 alternatives, the fast budget
       // (25s client / 2048 tokens server) doesn't accommodate 8 with
       // the lean schema's reasoning headroom.
-      count: opts.count ?? 4,
+      count: requestedCount,
       scanContext: {
         primary_concern: ai.primary_concern,
         secondary_concerns: ai.secondary_concerns,
@@ -347,6 +371,8 @@ export async function lookupForScan(
     aiLog.info('liveProducts', 'scan live retrieval ok', {
       scanId: scan.id,
       n: sanitized.length,
+      requestedCount,
+      durationMs: Date.now() - t0,
       confidence: result.confidence,
     });
     aiTelemetry.setFeatureSource(
@@ -358,6 +384,8 @@ export async function lookupForScan(
   } catch (e) {
     aiLog.warn('liveProducts', 'scan live retrieval failed', {
       scanId: scan.id,
+      requestedCount,
+      durationMs: Date.now() - t0,
       error: e instanceof Error ? e.message : String(e),
     });
     aiTelemetry.countFallback('lookupLiveProducts');

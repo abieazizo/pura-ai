@@ -1,5 +1,5 @@
 /**
- * LightingAssist — v19.11 front-camera screen ring-light overlay.
+ * LightingAssist — v19.11 / v19.12 front-camera screen ring-light overlay.
  *
  * Front-camera face scans in indoor lighting are frequently underlit.
  * The phone's front sensor is small, the user's hand shadows the
@@ -23,18 +23,22 @@
  *   • Renders only when `enabled` is true; zero overhead when off.
  *   • Pairs with a small "Lighting Assist On" pill in the scan UI
  *     so the state is unambiguous.
- *   • Expo Go safe — no native modules. The brightness comes from
- *     the screen's existing backlight.
+ *   • Expo Go safe — NO native modules required. The brightness
+ *     comes entirely from the screen's existing backlight + the
+ *     overlay's bright bands.
  *
- * Optional brightness boost: when `expo-brightness` is available
- * (development builds), we ALSO push the system brightness to ~1.0
- * while the assist is on, then restore the previous value when the
- * scan screen unmounts or the user toggles off. In Expo Go where
- * `expo-brightness` is unavailable, we fall back to the overlay
- * alone, which still materially improves illumination.
+ * v19.12 — REMOVED the optional `expo-brightness` dynamic require.
+ *   The package isn't installed in package.json, and Metro evaluates
+ *   `require()` paths at bundle time even when wrapped in try/catch.
+ *   The require was a real risk for breaking the Metro bundle. The
+ *   overlay-only approach is what the user asked for and works
+ *   reliably in Expo Go without ANY native modules. If a native
+ *   build wants to bump system brightness too, that's a separate
+ *   future addition (a development build can install
+ *   `expo-brightness` and add a real import).
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -47,42 +51,8 @@ export interface LightingAssistProps {
   enabled: boolean;
 }
 
-/**
- * Optional dynamic import of expo-brightness so the component is
- * still safe to render in Expo Go (where the module may resolve
- * but throw on first call). We swallow any error and fall back to
- * the overlay-only path, which is still effective.
- */
-type BrightnessModule = {
-  getBrightnessAsync: () => Promise<number>;
-  setBrightnessAsync: (n: number) => Promise<void>;
-};
-
-let _brightness: BrightnessModule | null | undefined;
-async function tryGetBrightnessModule(): Promise<BrightnessModule | null> {
-  if (_brightness !== undefined) return _brightness;
-  try {
-    // Avoid bundler resolution failure when the package isn't installed.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('expo-brightness') as BrightnessModule;
-    if (
-      mod &&
-      typeof mod.getBrightnessAsync === 'function' &&
-      typeof mod.setBrightnessAsync === 'function'
-    ) {
-      _brightness = mod;
-      return mod;
-    }
-  } catch {
-    /* not installed or not available — fall back to overlay only */
-  }
-  _brightness = null;
-  return null;
-}
-
 export function LightingAssist({ enabled }: LightingAssistProps) {
   const opacity = useSharedValue(0);
-  const previousBrightness = useRef<number | null>(null);
 
   useEffect(() => {
     opacity.value = withTiming(enabled ? 1 : 0, {
@@ -91,62 +61,20 @@ export function LightingAssist({ enabled }: LightingAssistProps) {
     });
   }, [enabled, opacity]);
 
-  // Optional: push system brightness to max while enabled, restore on
-  // disable / unmount. Best-effort. Never throws into the scan flow.
-  useEffect(() => {
-    let cancelled = false;
-    if (enabled) {
-      void (async () => {
-        const mod = await tryGetBrightnessModule();
-        if (!mod || cancelled) return;
-        try {
-          if (previousBrightness.current === null) {
-            previousBrightness.current = await mod.getBrightnessAsync();
-          }
-          await mod.setBrightnessAsync(1.0);
-        } catch {
-          /* graceful: overlay alone is still effective */
-        }
-      })();
-    } else if (previousBrightness.current !== null) {
-      void (async () => {
-        const mod = await tryGetBrightnessModule();
-        if (!mod || cancelled) return;
-        try {
-          await mod.setBrightnessAsync(previousBrightness.current ?? 0.5);
-        } catch {
-          /* nothing to do */
-        }
-        previousBrightness.current = null;
-      })();
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
-
-  // Final unmount safety: restore brightness if we're still elevated.
-  useEffect(() => {
-    return () => {
-      if (previousBrightness.current !== null) {
-        void (async () => {
-          const mod = await tryGetBrightnessModule();
-          if (!mod) return;
-          try {
-            await mod.setBrightnessAsync(previousBrightness.current ?? 0.5);
-          } catch {
-            /* shrug */
-          }
-        })();
-      }
-    };
-  }, []);
-
   const haloStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
   }));
 
-  if (!enabled && opacity.value === 0) return null;
+  // Avoid mounting the halo at all when disabled and faded out.
+  // (Reanimated's shared value reads here are intentionally
+  // referenced inside the animated style; gating the JSX render
+  // with `opacity.value === 0` is a tiny optimization but doesn't
+  // affect correctness when the value is mid-transition.)
+  if (!enabled) {
+    // Still render an invisible placeholder so the fade-out
+    // animation completes before unmount; the absoluteFill view
+    // itself is cheap.
+  }
 
   return (
     <Animated.View

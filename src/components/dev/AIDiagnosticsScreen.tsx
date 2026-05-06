@@ -87,6 +87,14 @@ export function AIDiagnosticsScreen() {
 
   const [smokeRunning, setSmokeRunning] = useState(false);
   const [smokeReport, setSmokeReport] = useState<string | null>(null);
+  // v19.12 — dedicated lookupLiveProducts test runner. Lives
+  // separately from the smoke test because it's the most
+  // cost/latency-sensitive endpoint and the one the user asks
+  // about most often. Running it here guarantees the diagnostics
+  // screen reports the SAME pipeline state as the result screen,
+  // so the user can verify health without firing a full scan.
+  const [liveTestRunning, setLiveTestRunning] = useState(false);
+  const [liveTestReport, setLiveTestReport] = useState<string | null>(null);
 
   // v10.33 — auto-ping /healthz on mount so the user sees the
   // reachability state without having to tap PING. Fires-and-forgets
@@ -168,6 +176,68 @@ export function AIDiagnosticsScreen() {
     setSmokeReport(lines.join('\n'));
     setSmokeRunning(false);
   }, [smokeRunning, isAvailable]);
+
+  // v19.12 — lookupLiveProducts isolated test. Hits the SAME
+  // upstream pipeline the result screen uses, with the mandatory
+  // acceptance-test query. Reports timing + the first candidate's
+  // commerce fields so the user can see whether brand/name/
+  // merchantName/productUrl actually arrive populated.
+  const runLiveProductsTest = useCallback(async () => {
+    if (liveTestRunning) return;
+    setLiveTestRunning(true);
+    setLiveTestReport(null);
+    const lines: string[] = [];
+    lines.push('LIVE PRODUCTS TEST');
+    lines.push('  query="best niacinamide serum for redness", count=5');
+    if (!isAvailable) {
+      lines.push('SKIPPED: no AI proxy configured');
+      setLiveTestReport(lines.join('\n'));
+      setLiveTestRunning(false);
+      return;
+    }
+    try {
+      const t0 = Date.now();
+      const result = await aiGateway.lookupLiveProducts({
+        query: 'best niacinamide serum for redness',
+        count: 5,
+      });
+      const dur = Date.now() - t0;
+      const n = result.candidates.length;
+      lines.push(
+        `  lookupLiveProducts PASS in ${dur}ms — ${n} candidate${n === 1 ? '' : 's'} (confidence=${result.confidence})`
+      );
+      // Surface enrichment health on the first candidate — the
+      // user wants to see brand/name/merchantName/productUrl all
+      // populated. Empty strings or null URLs surface here as
+      // "(missing)" so the failure mode is obvious.
+      const first = result.candidates[0];
+      if (first) {
+        lines.push(`  hero[0]:`);
+        lines.push(`    brand        = ${first.brand || '(missing)'}`);
+        lines.push(`    name         = ${first.name || '(missing)'}`);
+        lines.push(
+          `    merchantName = ${first.merchantName || '(missing)'}`
+        );
+        lines.push(
+          `    productUrl   = ${first.productUrl || '(missing)'}`
+        );
+        lines.push(
+          `    price        = ${first.price ?? '(null)'}`
+        );
+        lines.push(
+          `    imageUrl     = ${first.imageUrl ? '(present)' : '(null)'}`
+        );
+      } else {
+        lines.push('  hero[0]: (no candidates returned)');
+      }
+    } catch (e) {
+      lines.push(
+        `  lookupLiveProducts FAIL — ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+    setLiveTestReport(lines.join('\n'));
+    setLiveTestRunning(false);
+  }, [liveTestRunning, isAvailable]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -401,6 +471,39 @@ export function AIDiagnosticsScreen() {
           <Text style={styles.codeBlock} maxFontSizeMultiplier={1}>
             {smokeReport ??
               'Tap RUN to fire two cheap text-only AI calls and confirm the proxy path is alive end-to-end.'}
+          </Text>
+        </View>
+
+        {/* ── v19.12 — Live products test ──────────────────────── */}
+        <SectionHeader
+          title="Live products test"
+          right={
+            <Pressable
+              onPress={() => {
+                hapt.tap();
+                void runLiveProductsTest();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Run live products test"
+              disabled={liveTestRunning}
+              style={({ pressed }) => [
+                styles.smallBtn,
+                pressed && { opacity: 0.85 },
+                liveTestRunning && { opacity: 0.5 },
+              ]}
+              hitSlop={6}
+            >
+              <Lightning size={12} color={palette.ink} weight="bold" />
+              <Text style={styles.smallBtnLabel}>
+                {liveTestRunning ? 'RUNNING…' : 'RUN'}
+              </Text>
+            </Pressable>
+          }
+        />
+        <View style={styles.card}>
+          <Text style={styles.codeBlock} maxFontSizeMultiplier={1}>
+            {liveTestReport ??
+              'Fires lookupLiveProducts with the mandatory acceptance query (count=5). Reports timing + first-candidate enrichment so the result-screen pipeline can be verified without a full scan.'}
           </Text>
         </View>
 
