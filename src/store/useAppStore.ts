@@ -127,6 +127,17 @@ export interface AppState {
 
   hasSeenProductsScrollHint: boolean;
 
+  /**
+   * v19.11 — Lighting Assist preference for the front-camera face
+   * scan flow. When true, the ScanCaptureScreen renders a soft
+   * white halo overlay around the camera preview that acts as a
+   * screen-based ring light, materially improving facial
+   * illumination for capturing redness, texture, and breakouts.
+   * Persisted so users who like it don't have to re-enable on
+   * every scan.
+   */
+  lightingAssistEnabled: boolean;
+
   // v7.7 — scan analyzing choreography state. Transient except for
   // `latestResult`, which is persisted so returning users can see their last
   // reveal if they re-enter the stack without re-scanning.
@@ -213,6 +224,8 @@ export interface AppState {
   setHasAnsweredPriceTier: (seen: boolean) => void;
   setHasAnsweredRoutineFitback: (seen: boolean) => void;
   setHasSeenProductsScrollHint: (seen: boolean) => void;
+  /** v19.11 — front-camera lighting assist toggle. */
+  setLightingAssistEnabled: (enabled: boolean) => void;
 
   // v7.7 scan analyzing
   startScan: (photoUri: string) => void;
@@ -291,6 +304,11 @@ const blankState = {
   hasAnsweredPriceTier: false,
   hasAnsweredRoutineFitback: false,
   hasSeenProductsScrollHint: false,
+
+  // v19.11 — Lighting Assist defaults to OFF. The user opts in
+  // explicitly from the scan UI; the preference persists from
+  // there.
+  lightingAssistEnabled: false,
 
   // v18.9 — safety profile defaults: every field neutral so users
   // who never opt in get the standard recommendation experience.
@@ -530,6 +548,9 @@ export const useAppStore = create<AppState>()(
       setHasAnsweredPriceTier: (hasAnsweredPriceTier) => set({ hasAnsweredPriceTier }),
       setHasAnsweredRoutineFitback: (hasAnsweredRoutineFitback) => set({ hasAnsweredRoutineFitback }),
       setHasSeenProductsScrollHint: (hasSeenProductsScrollHint) => set({ hasSeenProductsScrollHint }),
+      // v19.11 — Lighting Assist setter.
+      setLightingAssistEnabled: (lightingAssistEnabled) =>
+        set({ lightingAssistEnabled }),
 
       // ---------- v7.7 scan analyzing actions ----------
       startScan: (photoUri) =>
@@ -663,6 +684,9 @@ export const useAppStore = create<AppState>()(
         hasAnsweredPriceTier: state.hasAnsweredPriceTier,
         hasAnsweredRoutineFitback: state.hasAnsweredRoutineFitback,
         hasSeenProductsScrollHint: state.hasSeenProductsScrollHint,
+        // v19.11 — persist Lighting Assist so opting in once
+        // carries across sessions.
+        lightingAssistEnabled: state.lightingAssistEnabled,
 
         // v18.9 — persist the safety profile so flagged users keep
         // gentler recommendations across sessions.

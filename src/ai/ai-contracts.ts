@@ -355,6 +355,14 @@ export interface ProgressExplanation {
 
 export interface AssistantContext {
   user_profile: {
+    /**
+     * v19.11 — saved display name from onboarding (null when the
+     * user hasn't entered one). The assistant uses this to answer
+     * profile-aware questions like "What's my name?". When null,
+     * the assistant must say it has no saved name on file rather
+     * than inventing one.
+     */
+    display_name: string | null;
     skin_type: 'dry' | 'oily' | 'combination' | 'sensitive' | 'normal' | 'unknown';
     top_goals: string[];
     sensitivities: string[];

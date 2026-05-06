@@ -9,10 +9,11 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { X } from 'phosphor-react-native';
+import { Lightbulb, X } from 'phosphor-react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { hapt } from '@/utils/haptics';
 import { ScanOverlay } from '@/screens/scan/ScanOverlay';
+import { LightingAssist } from '@/components/scan/LightingAssist';
 import type { ReticleMode, FrameState } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
 import { palette, space, type as typography } from '@/theme';
@@ -117,6 +118,17 @@ export function ScanCaptureScreen({
       });
     }
   }, [permission, requestPermission, fade]);
+
+  // v19.11 — Lighting Assist. Persisted across sessions; only
+  // physically renders when the camera is in face mode (the use
+  // case it was designed for; product/barcode modes use the rear
+  // camera and don't benefit). The toggle is exposed top-right
+  // when in face mode.
+  const lightingAssistEnabled = useAppStore((s) => s.lightingAssistEnabled);
+  const setLightingAssistEnabled = useAppStore(
+    (s) => s.setLightingAssistEnabled
+  );
+  const lightingAssistActive = mode === 'face' && lightingAssistEnabled;
 
   // §3.2 — Trigger 1 check-in sheet. Fires only when:
   //   • the user has scanned before (not their very first scan),
@@ -335,6 +347,13 @@ export function ScanCaptureScreen({
         onBarcodeScanned={mode === 'barcode' ? handleBarcodeScanned : undefined}
       />
 
+      {/* v19.11 — front-camera ring-light overlay. Renders a soft
+          white halo around the preview to act as a screen-based
+          ring light. pointerEvents='none' so the capture row + mode
+          switcher beneath still receive taps. Only shows in face
+          mode; persisted via useAppStore.lightingAssistEnabled. */}
+      <LightingAssist enabled={lightingAssistActive} />
+
       <Animated.View
         style={[StyleSheet.absoluteFillObject, fadeStyle]}
         pointerEvents="box-none"
@@ -353,6 +372,55 @@ export function ScanCaptureScreen({
           countdown={countdownValue}
         />
       </Animated.View>
+
+      {/* v19.11 — Lighting Assist toggle. Lives top-right in face
+          mode only. Premium pill-shaped button with a Lightbulb
+          icon. Tapping toggles the persisted preference and the
+          overlay fades in/out via LightingAssist's animated
+          opacity. */}
+      {mode === 'face' && permission?.granted ? (
+        <SafeAreaView
+          edges={['top']}
+          pointerEvents="box-none"
+          style={styles.lightingToggleSafeArea}
+        >
+          <Pressable
+            onPress={() => {
+              hapt.select();
+              setLightingAssistEnabled(!lightingAssistEnabled);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              lightingAssistEnabled
+                ? 'Disable Lighting Assist'
+                : 'Enable Lighting Assist'
+            }
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.lightingToggle,
+              lightingAssistEnabled && styles.lightingToggleActive,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Lightbulb
+              size={14}
+              color={
+                lightingAssistEnabled ? palette.ink : palette.inkInverse
+              }
+              weight={lightingAssistEnabled ? 'fill' : 'regular'}
+            />
+            <Text
+              style={[
+                styles.lightingToggleLabel,
+                lightingAssistEnabled && styles.lightingToggleLabelActive,
+              ]}
+              maxFontSizeMultiplier={1.1}
+            >
+              {lightingAssistEnabled ? 'Lighting Assist On' : 'Lighting Assist'}
+            </Text>
+          </Pressable>
+        </SafeAreaView>
+      ) : null}
 
       {/* Full-screen paper flash, 30% opacity, 120ms */}
       <Animated.View
@@ -391,5 +459,42 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: 'rgba(250,247,244,0.8)',
     marginBottom: space.md,
+  },
+  // v19.11 — Lighting Assist toggle. Pill sits in the top-right of
+  // the safe area, flush with the existing scan chrome. Two states:
+  //  - off: dark translucent pill on top of the camera, white text
+  //  - on:  bright white pill, dark text — visually echoes the
+  //         halo overlay that's now active on the screen.
+  lightingToggleSafeArea: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    paddingTop: 12,
+    paddingRight: 14,
+    alignItems: 'flex-end',
+  },
+  lightingToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 30,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    backgroundColor: 'rgba(11,18,32,0.55)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(250,247,244,0.18)',
+  },
+  lightingToggleActive: {
+    backgroundColor: '#FAFAFA',
+    borderColor: 'rgba(11,18,32,0.12)',
+  },
+  lightingToggleLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.3,
+    color: palette.inkInverse,
+  },
+  lightingToggleLabelActive: {
+    color: palette.ink,
   },
 });

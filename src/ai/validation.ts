@@ -870,8 +870,18 @@ export function validateAssistantContext(
     ? v.user_profile.skin_type
     : 'unknown';
 
+  // v19.11 — accept display_name when present; coerce empty/missing
+  // to null so the assistant prompt can branch on "no saved name".
+  const rawDisplayName = (v.user_profile as { display_name?: unknown })
+    .display_name;
+  const displayName =
+    typeof rawDisplayName === 'string' && rawDisplayName.trim().length > 0
+      ? rawDisplayName.trim()
+      : null;
+
   return {
     user_profile: {
+      display_name: displayName,
       skin_type: skinType,
       top_goals: arrayOfStrings(v.user_profile.top_goals),
       sensitivities: arrayOfStrings(v.user_profile.sensitivities),

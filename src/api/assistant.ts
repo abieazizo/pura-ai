@@ -197,8 +197,23 @@ function buildAssistantContext(latestScan: Scan | undefined): AssistantContext {
     sensitivityTags.push(`safety_summary:${safety.promptSummary}`);
   }
 
+  // v19.11 — thread the saved display name into user_profile.
+  // Order of preference: User.name (set on onboarding completion via
+  // completeOnboarding) → top-level `name` (the field updated as the
+  // user types in onboarding screens) → null (no saved name).
+  // Trimmed and empty-string-collapsed so an empty field never
+  // surfaces as a fake "" name.
+  const rawName =
+    (s.user?.name && s.user.name.trim().length > 0
+      ? s.user.name
+      : s.name && s.name.trim().length > 0
+      ? s.name
+      : null) ?? null;
+  const displayName = rawName ? rawName.trim() : null;
+
   return {
     user_profile: {
+      display_name: displayName,
       skin_type: mapAppSkinTypeToAiSkinType(s.skinType),
       top_goals: mapGoalToTopGoal(s.goal),
       sensitivities: sensitivityTags,

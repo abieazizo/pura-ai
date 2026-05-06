@@ -1015,6 +1015,23 @@ export class OpenAIClient {
       'active_product_identity. When asked for general options, name ' +
       'categories ("a salicylic acid cleanser") rather than fictional ' +
       'specific products.\n\n' +
+      'PROFILE-AWARE QUESTIONS (v19.11 — non-negotiable):\n' +
+      '• When the user asks for their name ("what\'s my name", "who ' +
+      'am I", "do you know my name"), look at ' +
+      'assistant_context.user_profile.display_name. If it is a ' +
+      'non-empty string, answer with that name verbatim — natural, ' +
+      'short, no greetings: "Your saved name is Alex." or ' +
+      '"I have you on file as Alex." If it is null, say honestly: ' +
+      '"I don\'t have a saved name on file — you can set one in your ' +
+      'profile." NEVER invent a name. NEVER answer with a scan id, a ' +
+      'random word, or "I don\'t know" when display_name IS present.\n' +
+      '• When the user asks profile-shaped questions ("what\'s my ' +
+      'skin type", "what are my goals", "what concerns am I tracking"), ' +
+      'answer from user_profile, latest_scan, and routine_snapshot. ' +
+      'Be specific: name the concern from latest_scan.primary_concern, ' +
+      'cite the score from latest_score.value, name actual product ' +
+      'ids from routine_snapshot. If a field is missing, say it ' +
+      'plainly (e.g. "I don\'t have a saved skin type yet").\n\n' +
       'SAFETY (v18.9 — non-negotiable):\n' +
       '• Inspect user_profile.sensitivities. If ANY entry starts with ' +
       '"safety_bias:" / "condition:" / "avoid_category:" / ' +
