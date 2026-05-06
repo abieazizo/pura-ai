@@ -1099,8 +1099,22 @@ export class OpenAIClient {
       ],
     });
 
-    const text = response.choices[0]?.message?.content;
-    return typeof text === 'string' ? text : '';
+    const choice = response.choices[0];
+    const text = choice?.message?.content;
+    const finish = choice?.finish_reason ?? null;
+    // v19.5 — throw a typed AIError on empty content so the proxy
+    // handler translates it to HTTP 503 (transient) and the
+    // gateway's existing single-retry envelope kicks in. Returning
+    // an empty string previously caused validateAssistantAnswer
+    // to fail with the cryptic "structural validation" message.
+    if (typeof text !== 'string' || text.trim().length === 0) {
+      throw new AIError(
+        finish === 'length' ? 'length_cap' : 'empty_content',
+        'answerAssistant',
+        finish
+      );
+    }
+    return text;
   }
 
   // --------------------------------------------------------------------------

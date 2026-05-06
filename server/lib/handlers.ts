@@ -383,11 +383,18 @@ export const HANDLERS: Record<string, Handler> = {
     const ctx = validateAssistantContext(body['context']);
     if (!ctx) bad('context');
     const userQuestion = reqString(body, 'userQuestion');
-    const result = await client.answerAssistant({
-      context: ctx,
-      userQuestion,
-    });
-    if (typeof result !== 'string') aiBad('answerAssistant');
+    // v19.5 — wrap in AI-error translator so empty-content failures
+    // surface as 503 (transient, retryable) instead of bubbling as
+    // a generic 500 + structural-validation error in the gateway.
+    const result = await withAIErrorTranslation('answerAssistant', () =>
+      client.answerAssistant({
+        context: ctx,
+        userQuestion,
+      })
+    );
+    if (typeof result !== 'string' || result.trim().length === 0) {
+      aiBad('answerAssistant');
+    }
     return result;
   },
 

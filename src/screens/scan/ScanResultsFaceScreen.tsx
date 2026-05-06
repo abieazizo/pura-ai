@@ -115,6 +115,24 @@ export function ScanResultsFaceScreen({
     const slowTimer = setTimeout(() => {
       if (!cancelled) setLiveSlow(true);
     }, 5000);
+    // v19.5 — HARD CEILING. v19.4 fixed the early-return that left
+    // no-AI scans stuck on "empty", but if lookupForScan itself
+    // hangs (gateway timeout 40s × server retry = up to 80s real
+    // wall-clock), the user sees "Still finding…" forever. The
+    // 25s hard ceiling stops loading and flips to the unavailable
+    // state with Retry. The in-flight fetch keeps running but
+    // its result is ignored via the `cancelled` flag.
+    const ceilingTimer = setTimeout(() => {
+      if (cancelled) return;
+      cancelled = true;
+      clearTimeout(slowTimer);
+      setLiveLoading(false);
+      setLiveSlow(false);
+      setLiveError(true);
+      aiLog.warn('result.products', 'retrieval hard-ceiling fired (25s)', {
+        scanId: scan.id,
+      });
+    }, 25000);
 
     const run = async (): Promise<LiveProductCandidate[]> => {
       if (scan.aiAnalysis) {
@@ -173,6 +191,7 @@ export function ScanResultsFaceScreen({
       .finally(() => {
         if (cancelled) return;
         clearTimeout(slowTimer);
+        clearTimeout(ceilingTimer);
         setLiveLoading(false);
         setLiveSlow(false);
       });
@@ -180,6 +199,7 @@ export function ScanResultsFaceScreen({
     return () => {
       cancelled = true;
       clearTimeout(slowTimer);
+      clearTimeout(ceilingTimer);
     };
   }, [scan?.id, scan?.aiAnalysis, liveAttempt, concerns, scan]);
 

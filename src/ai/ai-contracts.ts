@@ -431,7 +431,14 @@ export const AI_DEFAULTS = {
   },
   assistant: {
     temperature: 0.2,
-    max_tokens: 1500,
+    // v19.5 — bumped 1500 → 4096. GPT-5's reasoning tokens count
+    // against the same budget as output content. The 1500 cap was
+    // regularly producing finish_reason="length" + empty content,
+    // which then failed validateAssistantAnswer and surfaced as
+    // "answerAssistant returned a payload that failed structural
+    // validation". 4096 leaves enough head-room for reasoning +
+    // a real assistant reply.
+    max_tokens: 4096,
   },
 } as const;
 
