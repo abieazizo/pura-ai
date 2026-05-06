@@ -132,19 +132,21 @@ export class AIValidationError extends Error {
 // text-only calls less.
 // ---------------------------------------------------------------------------
 
-// v18.8 — timeouts bumped to give the server-side runStrictStructured
-// retry room to complete. Previous values were causing AbortController
-// to fire (HTTP 0 / aborted) before the model finished; observed in
-// the wild for matchProductsForUser + generateRoutineRecommendation.
-// Each budget = realistic upper bound on a single AI attempt + the
-// server-side retry-once envelope, with a small safety margin.
+// v19.6 — `matchProductsForUser` + `generateRoutineRecommendation`
+// bumped 50_000 → 90_000. Real-world AI runs of 24-candidate ranking
+// were exceeding 50s and triggering AbortController, surfacing as
+// `AIProxyError: matchProductsForUser -> HTTP 0 -> Aborted`. The 90s
+// budget covers one full attempt at the bumped 6144-token cap (v18.10)
+// plus the server-side runStrictStructured retry-once envelope.
+// Combined with v19.6's candidate pre-filter (10 instead of 24),
+// the call now finishes well inside the budget on normal scans.
 const TIMEOUT_MS = {
   validateScanPreflight: 18_000,
   analyzeFaceScan: 75_000,
   identifyProductFromImage: 60_000,
   normalizeBarcodeResolution: 30_000,
-  matchProductsForUser: 50_000,
-  generateRoutineRecommendation: 50_000,
+  matchProductsForUser: 90_000,
+  generateRoutineRecommendation: 90_000,
   explainSkinScore: 25_000,
   explainProgress: 30_000,
   buildSearchSuggestions: 18_000,
@@ -365,7 +367,20 @@ async function proxyFetch<TRaw>(
   const url = `${_activeCandidate.url}/${method}`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // v19.6 — explicit abort observability. Before, the user saw a
+  // generic `HTTP 0 -> Aborted` with no signal whether the AbortController
+  // fired because of the timeout or because of a network error. The
+  // `timedOut` flag + the aiLog.warn make the failure mode visible
+  // in the Metro console at the exact moment it happens.
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    aiLog.warn('aiGateway.proxyFetch', `${method} timed out after ${timeoutMs}ms; aborting`, {
+      requestId,
+      timeoutMs,
+    });
+    controller.abort();
+  }, timeoutMs);
 
   let res: Response;
   try {
@@ -384,7 +399,11 @@ async function proxyFetch<TRaw>(
     });
   } catch (e) {
     clearTimeout(timer);
-    const detail = e instanceof Error ? e.message : 'network error';
+    const detail = timedOut
+      ? `client timeout after ${timeoutMs}ms`
+      : e instanceof Error
+      ? e.message
+      : 'network error';
     throw new AIProxyError(method, 0, requestId, detail);
   } finally {
     clearTimeout(timer);

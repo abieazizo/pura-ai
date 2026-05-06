@@ -283,6 +283,77 @@ function buildSkinStateSummary(): string {
   });
 }
 
+/**
+ * v19.6 — pre-filter the candidate set sent to the AI ranking
+ * call. The AI's job is much faster + the response is much
+ * smaller when it's ranking 10 well-chosen candidates instead of
+ * all 24. Selection logic:
+ *
+ *   1. Read the user's primary + secondary concerns from the
+ *      latest scan via `useAppStore`.
+ *   2. Score each seed product by how many of the user's concerns
+ *      its `inferConcerns` covers, plus a small base for products
+ *      with hand-curated `PRODUCT_CONCERN_HINTS`.
+ *   3. Return the top N by score, ties broken by seeded matchScore.
+ *
+ * If the store has no scan / no concerns, fall back to the global
+ * top N by `matchScore` so we always return something usable.
+ */
+function selectTopCandidates(all: Product[], n: number): Product[] {
+  const safeN = Math.max(1, Math.min(all.length, n));
+  let userConcerns: ConcernType[] = [];
+  try {
+    const s = useAppStore.getState();
+    const latest = s.scans[s.scans.length - 1];
+    const ai = latest?.aiAnalysis;
+    if (ai) {
+      const set = new Set<ConcernType>();
+      if (ai.primary_concern) set.add(ai.primary_concern);
+      for (const c of ai.secondary_concerns) set.add(c);
+      userConcerns = [...set];
+    } else if (latest?.concerns) {
+      const set = new Set<ConcernType>();
+      for (const c of latest.concerns) {
+        if (c.severity === 'calm') continue;
+        switch (c.category) {
+          case 'breakouts':
+            set.add('breakouts');
+            set.add('redness');
+            break;
+          case 'hydration':
+            set.add('hydration');
+            break;
+          case 'texture':
+            set.add('texture');
+            set.add('pores');
+            break;
+          case 'tone':
+            set.add('dark_marks');
+            break;
+        }
+      }
+      userConcerns = [...set];
+    }
+  } catch {
+    /* fall through to global top-N */
+  }
+  if (userConcerns.length === 0) {
+    return [...all]
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, safeN);
+  }
+  const scored = all.map((p) => {
+    const concerns = inferConcerns(p);
+    const overlap = concerns.filter((c) => userConcerns.includes(c)).length;
+    return {
+      product: p,
+      score: overlap * 100 + p.matchScore,
+    };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, safeN).map((s) => s.product);
+}
+
 function buildCandidateProductsJson(candidates: Product[]): string {
   return JSON.stringify(
     candidates.map((p) => ({
@@ -502,7 +573,15 @@ export async function getMatchedProductsForUser(args: {
   basedOnScanId?: string | null;
   candidates?: Product[];
 }): Promise<ProductMatchResult | null> {
-  const candidates = args.candidates ?? seedProducts;
+  // v19.6 — pre-filter to the top 10 candidates by relevance.
+  // Previously the call sent ALL 24 seedProducts, which made the AI
+  // emit a 4-5K-token response (rank+reason+alternatives for every
+  // candidate). That regularly exceeded the 50s client timeout and
+  // surfaced as `AIProxyError: matchProductsForUser -> HTTP 0 ->
+  // Aborted`. Trimming to 10 cuts the AI's output volume by ~60%
+  // and keeps the call inside the (now 90s) timeout window.
+  const candidates =
+    args.candidates ?? selectTopCandidates(seedProducts, 10);
   // v13.1 — when the AI gateway isn't configured, skip straight to
   // the deterministic ranking below (we used to return null and let
   // the consumer screens fall back to seed-order). The deterministic
