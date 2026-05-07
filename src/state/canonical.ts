@@ -629,6 +629,11 @@ export function buildRecommendationContext(args: {
     alternativeIds: string[];
     whyHeroFits: string | null;
   } | null;
+  /**
+   * v19.21 — explicit tag for which path produced the candidates.
+   * 'live' = AI lookup succeeded, 'fallback' = seed catalog used.
+   */
+  retrievalSource?: 'live' | 'fallback' | 'empty' | 'unknown';
 }): RecommendationContext {
   const {
     intent,
@@ -638,6 +643,7 @@ export function buildRecommendationContext(args: {
     state = 'available',
     failureReason,
     rerankResult,
+    retrievalSource = 'unknown',
   } = args;
   const id = genRecommendationId();
   const generatedAt = new Date().toISOString();
@@ -657,6 +663,7 @@ export function buildRecommendationContext(args: {
       whatToAvoid: deriveWhatToAvoid(profile),
       failureReason: failureReason ?? null,
       source: 'deterministic',
+      retrievalSource,
     };
   }
 
@@ -675,6 +682,7 @@ export function buildRecommendationContext(args: {
       whatToAvoid: deriveWhatToAvoid(profile),
       failureReason: failureReason ?? null,
       source: 'deterministic',
+      retrievalSource: 'empty',
     };
   }
 
@@ -767,8 +775,9 @@ export function buildRecommendationContext(args: {
     alternatives,
     whyHeroFits,
     whatToAvoid: deriveWhatToAvoid(profile),
-    failureReason: null,
+    failureReason: failureReason ?? null,
     source,
+    retrievalSource,
   };
 }
 

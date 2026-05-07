@@ -239,6 +239,18 @@ export interface RecommendationContext {
 
   /** Was the rerank step done by the AI, or skipped? */
   source: 'ai-rerank' | 'deterministic';
+
+  /**
+   * v19.21 — explicit retrieval-source tag separate from `source`.
+   * Tracks WHICH path produced the candidate set:
+   *   • 'live'     — AI live retrieval succeeded (real products)
+   *   • 'fallback' — AI failed/timed out → seed catalog used
+   *   • 'empty'    — neither path produced any candidates
+   *   • 'unknown'  — pre-v19.21 contexts that didn't track this
+   * Diagnostics + UI both read this so the user knows whether
+   * they're seeing live or fallback data.
+   */
+  retrievalSource: 'live' | 'fallback' | 'empty' | 'unknown';
 }
 
 // ============================================================================

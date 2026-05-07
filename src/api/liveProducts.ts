@@ -628,13 +628,38 @@ function inferConcernFromQuery(query: string): ConcernType | null {
 }
 
 /**
+ * v19.21 — bounded race between AI live retrieval and a hard
+ * timeout. Resolves to the AI candidates if the proxy returns
+ * inside the budget; rejects otherwise. Pure helper, no UI side
+ * effects.
+ */
+const LIVE_FIRST_BUDGET_MS = 8_000;
+
+async function liveFirstRetrieve(
+  fn: () => Promise<LiveProductCandidate[]>
+): Promise<LiveProductCandidate[]> {
+  return Promise.race([
+    fn(),
+    new Promise<LiveProductCandidate[]>((_, reject) => {
+      setTimeout(
+        () => reject(new Error('live-first timeout')),
+        LIVE_FIRST_BUDGET_MS
+      );
+    }),
+  ]);
+}
+
+/**
  * Free-text → RecommendationContext.
  *
- * v19.17 — deterministic-first. Pulls candidates from the seed
- * catalog by free-text + concern inference. Only consults AI when
- * `opts.allowAiAugmentation === true` AND the seed catalog returned
- * fewer than 4 candidates. The cache, dedupe, and local-rerank
- * stages from v19.13/v19.15 are preserved.
+ * v19.21 — LIVE-FIRST with bounded race. The previous v19.19/v19.20
+ * stack hard-decoupled AI from the critical path but at the cost
+ * of always serving the seed catalog as the user-visible default.
+ * v19.21 inverts: AI live retrieval is attempted first under an
+ * 8 s race; on success the candidates are real (retrievalSource:
+ * 'live'). On timeout/failure/empty, the seed catalog fills in
+ * (retrievalSource: 'fallback'). Either way, the engine returns
+ * within at most 8 s.
  */
 export async function getRecommendationContextFromQuery(
   query: string,
@@ -649,55 +674,46 @@ export async function getRecommendationContextFromQuery(
   };
   const state = useAppStore.getState();
   const profile = selectUserProfileContext(state);
-
-  // STEP A — Deterministic retrieval.
   const inferredConcern = inferConcernFromQuery(query);
-  let candidates: LiveProductCandidate[] = retrieveSeedCandidates({
-    query,
-    concern: inferredConcern,
-    limit: 12,
-  });
 
-  // STEP A.optional — AI augmentation only if explicitly requested
-  // AND the seed catalog returned fewer than 4 candidates. The
-  // augmentation is a SUPPLEMENT, never the primary source.
+  let candidates: LiveProductCandidate[] = [];
+  let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
   let augmentationFailureReason: string | null = null;
-  if (
-    opts.allowAiAugmentation === true &&
-    candidates.length < 4 &&
-    aiGateway.isAvailable()
-  ) {
+
+  // STEP A.LIVE — Try AI live retrieval first under a bounded race.
+  if (aiGateway.isAvailable()) {
     try {
-      const aiCandidates = await lookupLiveProducts(query, opts);
-      candidates = [...candidates, ...aiCandidates];
+      const aiCandidates = await liveFirstRetrieve(() =>
+        lookupLiveProducts(query, opts)
+      );
+      if (aiCandidates.length > 0) {
+        candidates = aiCandidates;
+        retrievalSource = 'live';
+      }
     } catch (e) {
       augmentationFailureReason =
         e instanceof Error ? e.message : String(e);
     }
   }
 
+  // STEP A.FALLBACK — Seed catalog fills in when live failed.
+  if (candidates.length === 0) {
+    candidates = retrieveSeedCandidates({
+      query,
+      concern: inferredConcern,
+      limit: 12,
+    });
+    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
+  }
+
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // v19.19 — AI rerank REMOVED FROM CRITICAL PATH.
-  //
-  // The previous v19.18 awaited `tryRerankProducts` here. Even with
-  // try/catch, the await blocked for the AI proxy's full timeout
-  // (~15s) when the proxy was down — meaning every product
-  // recommendation effectively required AI to render. That broke
-  // the "deterministic-first" promise.
-  //
-  // v19.19 hard-decouples: the engine assembles the canonical
-  // RecommendationContext from deterministic local-score order and
-  // returns IMMEDIATELY. AI rerank + AI explanation are a
-  // SEPARATE optional refinement that consumers may fire async
-  // after rendering — they never block the hero.
+  // STEP F (AI rerank) remains DEFERRED — non-blocking refinement.
   const rerank = null;
 
-  // STEP E + G — local score + assemble are inside
-  // buildRecommendationContext, which falls back to deterministic
-  // ordering when rerankResult is null.
+  // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
     deduped.length > 0 ? 'available' : 'empty';
 
@@ -709,16 +725,18 @@ export async function getRecommendationContextFromQuery(
     state: availability,
     failureReason: augmentationFailureReason ?? undefined,
     rerankResult: rerank,
+    retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
   });
 }
 
 /**
  * Scan-driven → RecommendationContext.
  *
- * v19.19 — fully deterministic. Pulls candidates from the seed
- * catalog by `skinState.topConcerns[0]`. AI is NOT in the critical
- * path. Opt-in AI augmentation is still gated behind
- * `allowAiAugmentation: true` but DEFAULT is false everywhere.
+ * v19.21 — LIVE-FIRST with bounded race. AI scan-driven lookup is
+ * attempted first under an 8 s race; on success the candidates are
+ * real (retrievalSource: 'live'). On timeout/failure/empty, the
+ * seed catalog scoped by primary concern fills in
+ * (retrievalSource: 'fallback'). Engine returns within at most 8 s.
  */
 export async function getRecommendationContextForScan(
   scan: Scan,
@@ -740,44 +758,47 @@ export async function getRecommendationContextForScan(
     primaryConcern,
   };
 
-  // STEP A — Deterministic retrieval scoped by primary concern.
-  let candidates: LiveProductCandidate[] = retrieveSeedCandidates({
-    concern: primaryConcern,
-    limit: 12,
-  });
-  // If primary concern is null (calm scan) or returned no matches,
-  // fall back to a broad concern-agnostic seed slice. The local
-  // scorer will still rank by skin-type / budget / safety.
-  if (candidates.length === 0) {
-    candidates = retrieveSeedCandidates({ limit: 12 });
-  }
-
-  // STEP A.optional — AI augmentation, opt-in only.
+  let candidates: LiveProductCandidate[] = [];
+  let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
   let augmentationFailureReason: string | null = null;
-  if (
-    opts.allowAiAugmentation === true &&
-    candidates.length < 4 &&
-    aiGateway.isAvailable()
-  ) {
+
+  // STEP A.LIVE — Try AI scan-driven lookup first under bounded race.
+  if (aiGateway.isAvailable() && scan.aiAnalysis) {
     try {
-      const aiCandidates = await lookupForScan(scan, opts);
-      candidates = [...candidates, ...aiCandidates];
+      const aiCandidates = await liveFirstRetrieve(() =>
+        lookupForScan(scan, opts)
+      );
+      if (aiCandidates.length > 0) {
+        candidates = aiCandidates;
+        retrievalSource = 'live';
+      }
     } catch (e) {
       augmentationFailureReason =
         e instanceof Error ? e.message : String(e);
     }
   }
 
+  // STEP A.FALLBACK — Seed catalog scoped by primary concern.
+  if (candidates.length === 0) {
+    candidates = retrieveSeedCandidates({
+      concern: primaryConcern,
+      limit: 12,
+    });
+    if (candidates.length === 0) {
+      candidates = retrieveSeedCandidates({ limit: 12 });
+    }
+    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
+  }
+
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // v19.19 — AI rerank REMOVED FROM CRITICAL PATH (see scan-driven
-  // path comment above).
+  // v19.19 — AI rerank still DEFERRED to async refinement.
   const rerank = null;
   void tryRerankProducts; // kept for future async refinement
 
-  // STEP E + G — local score + assemble.
+  // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
     deduped.length > 0 ? 'available' : 'empty';
 
@@ -789,6 +810,7 @@ export async function getRecommendationContextForScan(
     state: availability,
     failureReason: augmentationFailureReason ?? undefined,
     rerankResult: rerank,
+    retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
   });
 }
 

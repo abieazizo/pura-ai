@@ -210,18 +210,32 @@ export function AIDiagnosticsScreen() {
       lines.push(
         `  pipeline ${result.availabilityState.toUpperCase()} in ${dur}ms — ` +
           `${result.candidateProducts.length} candidate(s), ` +
-          `${result.alternatives.length} alternative(s), ` +
-          `source=${result.source}`
+          `${result.alternatives.length} alternative(s)`
       );
-      // v19.19 — explicit proof of proxy-independence:
-      //   sub-100ms + source='deterministic' = engine ran without
-      //   waiting for the proxy.
-      if (dur < 200 && result.source === 'deterministic') {
-        lines.push('  ✓ proxy-independent: engine ran without AI');
-      } else if (result.source === 'deterministic') {
-        lines.push('  ✓ deterministic source (no AI rerank applied)');
-      } else if (result.source === 'ai-rerank') {
-        lines.push('  ↪ AI rerank applied (proxy was up)');
+      // v19.21 — surface the explicit retrievalSource so the user
+      // can tell whether the candidates came from AI live retrieval
+      // (real products, freshly chosen) or the seed-catalog
+      // fallback (deterministic baseline used because AI failed
+      // or timed out). This is the single most important signal
+      // for "is the system actually live?" questions.
+      const retrievalLabel =
+        result.retrievalSource === 'live'
+          ? '✓ LIVE products from AI proxy'
+          : result.retrievalSource === 'fallback'
+          ? '↺ FALLBACK to seed catalog (AI timed out or failed)'
+          : result.retrievalSource === 'empty'
+          ? '✗ EMPTY (no candidates from any source)'
+          : '? UNKNOWN retrieval path';
+      lines.push(`  ${retrievalLabel}`);
+      if (
+        result.failureReason &&
+        result.retrievalSource === 'fallback'
+      ) {
+        const trimmed = result.failureReason.slice(0, 80);
+        lines.push(`    reason: ${trimmed}`);
+      }
+      if (result.source === 'ai-rerank') {
+        lines.push('  ↪ AI rerank applied');
       }
       const hero = result.heroProduct;
       if (hero) {
