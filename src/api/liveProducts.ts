@@ -487,19 +487,99 @@ import type {
   RecommendationContext,
   RecommendationIntent,
 } from '@/types/canonical';
+// v19.17 — deterministic seed catalog retrieval. PRIMARY source of
+// product candidates. AI live retrieval is now an OPT-IN
+// augmentation, not the default path.
+import {
+  filterUsableCandidates,
+  retrieveSeedCandidates,
+} from './seedRetrieval';
 
 export interface GetRecommendationOpts extends LookupOpts {
   intent: RecommendationIntent;
+  /**
+   * v19.17 — opt-in flag to augment the deterministic seed
+   * catalog with AI-generated live candidates. Defaults to
+   * `false` so the primary path is fully deterministic. Set
+   * to `true` only when a caller has a specific reason to
+   * widen the candidate set (e.g. a niche query that the
+   * 24-product seed catalog can't answer cleanly).
+   */
+  allowAiAugmentation?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// v19.17 — Deterministic-first pipeline.
+//
+// The previous v19.15 stack RAN every recommendation through
+// `lookupForScan` / `lookupLiveProducts` (AI retrieval) even when
+// the seed catalog could have answered. v19.17 inverts the order:
+//
+//   STEP A — Deterministic retrieval from `retrieveSeedCandidates`
+//   STEP B — Normalization (handled inside the seed adapter +
+//            sanitizeAndEnrich for any AI-augmented candidates)
+//   STEP C — Filtering: drop unusable candidates (no productUrl,
+//            no brand+name) via `filterUsableCandidates`.
+//   STEP D — Dedupe: existing `dedupCandidates` (id + brand+name).
+//   STEP E — Local score: existing `scoreCandidateLocal` inside
+//            `buildRecommendationContext` (concern alignment +
+//            skin-type fit + budget + safety penalties).
+//   STEP F — AI rerank top N: deferred. The deterministic local
+//            score + the seed product's existing description fields
+//            (used by canonical's `buildWhyHeroFits`) provides a
+//            credible hero + whyHeroFits today. A future v19.18+
+//            can plug in an explicit AI rerank gateway method
+//            without touching the consumer surfaces — the rerank
+//            result type is `AIRerankResult` (heroId, alternativeIds,
+//            whyHeroFits) and slots into `buildRecommendationContext`
+//            via the existing `rerankScores` field.
+//   STEP G — Final assembly: `buildRecommendationContext` from
+//            canonical state.
+//
+// AI is no longer in the retrieval path. AI is no longer responsible
+// for full product objects. AI is no longer responsible for ranking.
+// AI is reserved (in a future PR) for optional rerank/explanation
+// only.
+// ---------------------------------------------------------------------------
+
+const APP_CONCERN_TO_AI_CONCERN: Record<string, ConcernType> = {
+  breakouts: 'breakouts',
+  hydration: 'hydration',
+  texture: 'texture',
+  tone: 'dark_marks',
+  redness: 'redness',
+  oiliness: 'oiliness',
+  sensitivity: 'sensitivity',
+  pores: 'pores',
+};
+
+function inferConcernFromQuery(query: string): ConcernType | null {
+  const q = query.toLowerCase();
+  if (/breakout|acne|spot|pimple|clog/.test(q)) return 'breakouts';
+  if (/redness|rosacea|irritation/.test(q)) return 'redness';
+  if (/dry|hydrat|moistur/.test(q)) return 'hydration';
+  if (/texture|smooth|rough|exfoli/.test(q)) return 'texture';
+  if (/dark mark|pigment|brighten|dark spot/.test(q)) return 'dark_marks';
+  if (/oily|oil control|matt/.test(q)) return 'oiliness';
+  if (/sensitive|gentle|fragrance/.test(q)) return 'sensitivity';
+  if (/pore/.test(q)) return 'pores';
+  return null;
 }
 
 /**
- * Free-text → RecommendationContext. Wraps `lookupLiveProducts`
- * with the deterministic-first canonical pipeline.
+ * Free-text → RecommendationContext.
+ *
+ * v19.17 — deterministic-first. Pulls candidates from the seed
+ * catalog by free-text + concern inference. Only consults AI when
+ * `opts.allowAiAugmentation === true` AND the seed catalog returned
+ * fewer than 4 candidates. The cache, dedupe, and local-rerank
+ * stages from v19.13/v19.15 are preserved.
  */
 export async function getRecommendationContextFromQuery(
   query: string,
   opts: Omit<GetRecommendationOpts, 'intent'> & {
     intent?: RecommendationIntent;
+    allowAiAugmentation?: boolean;
   } = {}
 ): Promise<RecommendationContext> {
   const intent: RecommendationIntent = opts.intent ?? {
@@ -508,35 +588,64 @@ export async function getRecommendationContextFromQuery(
   };
   const state = useAppStore.getState();
   const profile = selectUserProfileContext(state);
-  let candidates: LiveProductCandidate[] = [];
-  let availability: RecommendationAvailability = 'available';
-  let failureReason: string | null = null;
-  try {
-    candidates = await lookupLiveProducts(query, opts);
-    if (candidates.length === 0) availability = 'empty';
-  } catch (e) {
-    availability = 'unavailable';
-    failureReason = e instanceof Error ? e.message : String(e);
+
+  // STEP A — Deterministic retrieval.
+  const inferredConcern = inferConcernFromQuery(query);
+  let candidates: LiveProductCandidate[] = retrieveSeedCandidates({
+    query,
+    concern: inferredConcern,
+    limit: 12,
+  });
+
+  // STEP A.optional — AI augmentation only if explicitly requested
+  // AND the seed catalog returned fewer than 4 candidates. The
+  // augmentation is a SUPPLEMENT, never the primary source.
+  let augmentationFailureReason: string | null = null;
+  if (
+    opts.allowAiAugmentation === true &&
+    candidates.length < 4 &&
+    aiGateway.isAvailable()
+  ) {
+    try {
+      const aiCandidates = await lookupLiveProducts(query, opts);
+      candidates = [...candidates, ...aiCandidates];
+    } catch (e) {
+      augmentationFailureReason =
+        e instanceof Error ? e.message : String(e);
+    }
   }
+
+  // STEP B-D — normalize, filter, dedupe.
+  const filtered = filterUsableCandidates(candidates);
+  const deduped = dedupCandidates(filtered);
+
+  // STEP E + G — local score + assemble are inside
+  // buildRecommendationContext.
+  const availability: RecommendationAvailability =
+    deduped.length > 0 ? 'available' : 'empty';
+
   return buildRecommendationContext({
     intent,
-    candidates,
+    candidates: deduped,
     profile,
     skinState: null,
     state: availability,
-    failureReason: failureReason ?? undefined,
+    failureReason: augmentationFailureReason ?? undefined,
   });
 }
 
 /**
- * Scan-driven → RecommendationContext. Wraps `lookupForScan` with
- * the deterministic-first canonical pipeline + composes
- * SkinState so the rerank weights concern alignment correctly.
+ * Scan-driven → RecommendationContext.
+ *
+ * v19.17 — deterministic-first. Pulls candidates from the seed
+ * catalog by `skinState.topConcerns[0]`. AI augmentation is opt-in
+ * and supplemental only.
  */
 export async function getRecommendationContextForScan(
   scan: Scan,
   opts: Omit<GetRecommendationOpts, 'intent'> & {
     intent?: RecommendationIntent;
+    allowAiAugmentation?: boolean;
   } = {}
 ): Promise<RecommendationContext> {
   const state = useAppStore.getState();
@@ -545,27 +654,61 @@ export async function getRecommendationContextForScan(
     .slice(-1)[0];
   const profile = selectUserProfileContext(state);
   const skinState = selectSkinState(scan, previous, state.scans);
+  const primaryConcern = skinState?.topConcerns[0]?.concern ?? null;
   const intent: RecommendationIntent = opts.intent ?? {
     kind: 'scan',
     scanId: scan.id,
-    primaryConcern: skinState?.topConcerns[0]?.concern ?? null,
+    primaryConcern,
   };
-  let candidates: LiveProductCandidate[] = [];
-  let availability: RecommendationAvailability = 'available';
-  let failureReason: string | null = null;
-  try {
-    candidates = await lookupForScan(scan, opts);
-    if (candidates.length === 0) availability = 'empty';
-  } catch (e) {
-    availability = 'unavailable';
-    failureReason = e instanceof Error ? e.message : String(e);
+
+  // STEP A — Deterministic retrieval scoped by primary concern.
+  let candidates: LiveProductCandidate[] = retrieveSeedCandidates({
+    concern: primaryConcern,
+    limit: 12,
+  });
+  // If primary concern is null (calm scan) or returned no matches,
+  // fall back to a broad concern-agnostic seed slice. The local
+  // scorer will still rank by skin-type / budget / safety.
+  if (candidates.length === 0) {
+    candidates = retrieveSeedCandidates({ limit: 12 });
   }
+
+  // STEP A.optional — AI augmentation, opt-in only.
+  let augmentationFailureReason: string | null = null;
+  if (
+    opts.allowAiAugmentation === true &&
+    candidates.length < 4 &&
+    aiGateway.isAvailable()
+  ) {
+    try {
+      const aiCandidates = await lookupForScan(scan, opts);
+      candidates = [...candidates, ...aiCandidates];
+    } catch (e) {
+      augmentationFailureReason =
+        e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  // STEP B-D — normalize, filter, dedupe.
+  const filtered = filterUsableCandidates(candidates);
+  const deduped = dedupCandidates(filtered);
+
+  // STEP E + G — local score + assemble.
+  const availability: RecommendationAvailability =
+    deduped.length > 0 ? 'available' : 'empty';
+
   return buildRecommendationContext({
     intent,
-    candidates,
+    candidates: deduped,
     profile,
     skinState,
     state: availability,
-    failureReason: failureReason ?? undefined,
+    failureReason: augmentationFailureReason ?? undefined,
   });
 }
+
+// Silence the unused-import linter for the legacy helper now that
+// the primary paths no longer call it. It remains exported for
+// the legacy ProductsScreen search path and any future
+// AI-augmentation caller.
+void APP_CONCERN_TO_AI_CONCERN;

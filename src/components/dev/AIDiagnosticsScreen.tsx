@@ -177,67 +177,71 @@ export function AIDiagnosticsScreen() {
     setSmokeRunning(false);
   }, [smokeRunning, isAvailable]);
 
-  // v19.12 — lookupLiveProducts isolated test. Hits the SAME
-  // upstream pipeline the result screen uses, with the mandatory
-  // acceptance-test query. Reports timing + the first candidate's
-  // commerce fields so the user can see whether brand/name/
-  // merchantName/productUrl actually arrive populated.
+  // v19.17 — diagnostics now exercises the SAME deterministic-first
+  // recommendation pipeline that the result screen and products
+  // screen use. The test calls `getRecommendationContextFromQuery`
+  // (seed catalog retrieval → normalize → filter → dedupe → local
+  // score → canonical RecommendationContext assembly), reports the
+  // hero candidate's commerce fields, and surfaces availability
+  // state. This guarantees diagnostics ≠ live UI cannot diverge.
   const runLiveProductsTest = useCallback(async () => {
     if (liveTestRunning) return;
     setLiveTestRunning(true);
     setLiveTestReport(null);
     const lines: string[] = [];
-    lines.push('LIVE PRODUCTS TEST');
-    lines.push('  query="best niacinamide serum for redness", count=5');
-    if (!isAvailable) {
-      lines.push('SKIPPED: no AI proxy configured');
-      setLiveTestReport(lines.join('\n'));
-      setLiveTestRunning(false);
-      return;
-    }
+    lines.push('RECOMMENDATION PIPELINE TEST (deterministic-first)');
+    lines.push('  query="best niacinamide serum for redness"');
     try {
-      const t0 = Date.now();
-      const result = await aiGateway.lookupLiveProducts({
-        query: 'best niacinamide serum for redness',
-        count: 5,
-      });
-      const dur = Date.now() - t0;
-      const n = result.candidates.length;
-      lines.push(
-        `  lookupLiveProducts PASS in ${dur}ms — ${n} candidate${n === 1 ? '' : 's'} (confidence=${result.confidence})`
+      const { getRecommendationContextFromQuery } = await import(
+        '@/api/liveProducts'
       );
-      // Surface enrichment health on the first candidate — the
-      // user wants to see brand/name/merchantName/productUrl all
-      // populated. Empty strings or null URLs surface here as
-      // "(missing)" so the failure mode is obvious.
-      const first = result.candidates[0];
-      if (first) {
-        lines.push(`  hero[0]:`);
-        lines.push(`    brand        = ${first.brand || '(missing)'}`);
-        lines.push(`    name         = ${first.name || '(missing)'}`);
+      const t0 = Date.now();
+      const result = await getRecommendationContextFromQuery(
+        'best niacinamide serum for redness',
+        { intent: { kind: 'query', text: 'best niacinamide serum for redness' } }
+      );
+      const dur = Date.now() - t0;
+      lines.push(
+        `  pipeline ${result.availabilityState.toUpperCase()} in ${dur}ms — ` +
+          `${result.candidateProducts.length} candidate(s), ` +
+          `${result.alternatives.length} alternative(s), ` +
+          `source=${result.source}`
+      );
+      const hero = result.heroProduct;
+      if (hero) {
+        lines.push('  hero:');
+        lines.push(`    brand        = ${hero.brand || '(missing)'}`);
+        lines.push(`    name         = ${hero.name || '(missing)'}`);
         lines.push(
-          `    merchantName = ${first.merchantName || '(missing)'}`
+          `    merchantName = ${hero.merchantName || '(missing)'}`
         );
         lines.push(
-          `    productUrl   = ${first.productUrl || '(missing)'}`
+          `    productUrl   = ${hero.productUrl || '(missing)'}`
         );
         lines.push(
-          `    price        = ${first.price ?? '(null)'}`
+          `    price        = ${hero.price ?? '(null)'}`
         );
         lines.push(
-          `    imageUrl     = ${first.imageUrl ? '(present)' : '(null)'}`
+          `    imageUrl     = ${hero.imageUrl ? '(present)' : '(null)'}`
+        );
+        lines.push(
+          `    whyHeroFits  = ${result.whyHeroFits ?? '(none)'}`
+        );
+      } else if (result.failureReason) {
+        lines.push(
+          `  hero: (none — ${result.failureReason.slice(0, 80)})`
         );
       } else {
-        lines.push('  hero[0]: (no candidates returned)');
+        lines.push('  hero: (none — empty candidate set)');
       }
     } catch (e) {
       lines.push(
-        `  lookupLiveProducts FAIL — ${e instanceof Error ? e.message : String(e)}`
+        `  pipeline FAIL — ${e instanceof Error ? e.message : String(e)}`
       );
     }
     setLiveTestReport(lines.join('\n'));
     setLiveTestRunning(false);
-  }, [liveTestRunning, isAvailable]);
+  }, [liveTestRunning]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -474,9 +478,9 @@ export function AIDiagnosticsScreen() {
           </Text>
         </View>
 
-        {/* ── v19.12 — Live products test ──────────────────────── */}
+        {/* ── v19.17 — Recommendation pipeline test (deterministic-first) ── */}
         <SectionHeader
-          title="Live products test"
+          title="Recommendation pipeline test"
           right={
             <Pressable
               onPress={() => {
@@ -484,7 +488,7 @@ export function AIDiagnosticsScreen() {
                 void runLiveProductsTest();
               }}
               accessibilityRole="button"
-              accessibilityLabel="Run live products test"
+              accessibilityLabel="Run recommendation pipeline test"
               disabled={liveTestRunning}
               style={({ pressed }) => [
                 styles.smallBtn,
@@ -503,7 +507,7 @@ export function AIDiagnosticsScreen() {
         <View style={styles.card}>
           <Text style={styles.codeBlock} maxFontSizeMultiplier={1}>
             {liveTestReport ??
-              'Fires lookupLiveProducts with the mandatory acceptance query (count=5). Reports timing + first-candidate enrichment so the result-screen pipeline can be verified without a full scan.'}
+              'Runs the deterministic-first recommendation pipeline (seed catalog retrieval → normalize → filter → dedupe → local score → canonical RecommendationContext) for the mandatory acceptance query. Reports availability state, hero enrichment, and pipeline source. Diagnostics and live UI use the same code path.'}
           </Text>
         </View>
 
