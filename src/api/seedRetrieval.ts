@@ -265,6 +265,15 @@ export interface SeedSearchOpts {
   category?: string | null;
   /** Hard cap on returned candidates. Default 12. */
   limit?: number;
+  /**
+   * v19.22 — opaque rotation seed. When non-zero, the tied
+   * matchScore order gets a deterministic per-product offset
+   * derived from `rotation`, so consumers passing
+   * `rotation = Date.now()/1000` on retry surface a different
+   * but still concern-scoped order. Default `0` keeps the
+   * canonical order stable across mounts.
+   */
+  rotation?: number;
 }
 
 /**
@@ -313,10 +322,26 @@ export function retrieveSeedCandidates(
     });
   }
 
-  // Sort by matchScore desc — stable starting order.
-  products = [...products].sort(
-    (a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0)
-  );
+  // Sort by matchScore desc + an optional retry-rotation offset.
+  // The rotation is a small deterministic per-product nudge (0..7)
+  // derived from `(productHash + rotation) mod 8` so two products
+  // with the same matchScore swap order on retry without breaking
+  // the concern-relevance bias. Same query + same rotation = same
+  // order (stable for cache keys); rotation change → small visible
+  // permutation so the user feels Retry / chip taps did something.
+  function rotationOffset(id: string): number {
+    if (!opts.rotation) return 0;
+    let h = 0;
+    for (let i = 0; i < id.length; i++) {
+      h = (h * 31 + id.charCodeAt(i)) | 0;
+    }
+    return Math.abs((h ^ opts.rotation) % 8);
+  }
+  products = [...products].sort((a, b) => {
+    const aScore = (a.matchScore ?? 0) + rotationOffset(a.id);
+    const bScore = (b.matchScore ?? 0) + rotationOffset(b.id);
+    return bScore - aScore;
+  });
 
   // Map → ProductCandidate, cap at limit.
   return products.slice(0, limit).map(toCandidate);

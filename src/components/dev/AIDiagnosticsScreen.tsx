@@ -212,30 +212,17 @@ export function AIDiagnosticsScreen() {
           `${result.candidateProducts.length} candidate(s), ` +
           `${result.alternatives.length} alternative(s)`
       );
-      // v19.21 — surface the explicit retrievalSource so the user
-      // can tell whether the candidates came from AI live retrieval
-      // (real products, freshly chosen) or the seed-catalog
-      // fallback (deterministic baseline used because AI failed
-      // or timed out). This is the single most important signal
-      // for "is the system actually live?" questions.
-      const retrievalLabel =
-        result.retrievalSource === 'live'
-          ? '✓ LIVE products from AI proxy'
-          : result.retrievalSource === 'fallback'
-          ? '↺ FALLBACK to seed catalog (AI timed out or failed)'
-          : result.retrievalSource === 'empty'
-          ? '✗ EMPTY (no candidates from any source)'
-          : '? UNKNOWN retrieval path';
-      lines.push(`  ${retrievalLabel}`);
-      if (
-        result.failureReason &&
-        result.retrievalSource === 'fallback'
-      ) {
-        const trimmed = result.failureReason.slice(0, 80);
-        lines.push(`    reason: ${trimmed}`);
-      }
+      // v19.22 — the engine is now PROXY-INDEPENDENT. No
+      // AI lookup is attempted from any user-visible action.
+      // retrievalSource will always be 'fallback' (deterministic
+      // seed catalog) or 'empty'. The ✓ proxy-independent line
+      // is now invariant for the product engine.
+      lines.push(
+        `  ✓ proxy-independent: no AI lookup attempted ` +
+          `(retrievalSource=${result.retrievalSource})`
+      );
       if (result.source === 'ai-rerank') {
-        lines.push('  ↪ AI rerank applied');
+        lines.push('  ↪ AI rerank applied (separate optional step)');
       }
       const hero = result.heroProduct;
       if (hero) {

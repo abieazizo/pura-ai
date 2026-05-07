@@ -628,38 +628,26 @@ function inferConcernFromQuery(query: string): ConcernType | null {
 }
 
 /**
- * v19.21 — bounded race between AI live retrieval and a hard
- * timeout. Resolves to the AI candidates if the proxy returns
- * inside the budget; rejects otherwise. Pure helper, no UI side
- * effects.
+ * v19.22 — `liveFirstRetrieve` REMOVED. The previous v19.21 race
+ * still issued `aiGateway.lookupLiveProducts` calls under the
+ * hood; even with an 8 s race wrapper, the gateway ran its own
+ * 25 s AbortController and surfaced
+ *   `AIProxyError: lookupLiveProducts -> HTTP 0 -> client timeout
+ *    after 25000ms`
+ * to the diagnostics screen and aiTelemetry every time. No user-
+ * visible action calls AI lookup anymore — the engine is pure
+ * deterministic seed retrieval.
  */
-const LIVE_FIRST_BUDGET_MS = 8_000;
-
-async function liveFirstRetrieve(
-  fn: () => Promise<LiveProductCandidate[]>
-): Promise<LiveProductCandidate[]> {
-  return Promise.race([
-    fn(),
-    new Promise<LiveProductCandidate[]>((_, reject) => {
-      setTimeout(
-        () => reject(new Error('live-first timeout')),
-        LIVE_FIRST_BUDGET_MS
-      );
-    }),
-  ]);
-}
 
 /**
  * Free-text → RecommendationContext.
  *
- * v19.21 — LIVE-FIRST with bounded race. The previous v19.19/v19.20
- * stack hard-decoupled AI from the critical path but at the cost
- * of always serving the seed catalog as the user-visible default.
- * v19.21 inverts: AI live retrieval is attempted first under an
- * 8 s race; on success the candidates are real (retrievalSource:
- * 'live'). On timeout/failure/empty, the seed catalog fills in
- * (retrievalSource: 'fallback'). Either way, the engine returns
- * within at most 8 s.
+ * v19.22 — fully deterministic. ZERO calls to the AI proxy
+ * lookup path. Candidates come exclusively from the seed catalog,
+ * filtered by query + inferred concern. To make chips/retry feel
+ * responsive, the seed retrieval cycles through different ranking
+ * offsets per `fresh` retry attempt so the same query produces
+ * a visibly different ordering on retry.
  */
 export async function getRecommendationContextFromQuery(
   query: string,
@@ -676,35 +664,15 @@ export async function getRecommendationContextFromQuery(
   const profile = selectUserProfileContext(state);
   const inferredConcern = inferConcernFromQuery(query);
 
-  let candidates: LiveProductCandidate[] = [];
-  let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
-  let augmentationFailureReason: string | null = null;
-
-  // STEP A.LIVE — Try AI live retrieval first under a bounded race.
-  if (aiGateway.isAvailable()) {
-    try {
-      const aiCandidates = await liveFirstRetrieve(() =>
-        lookupLiveProducts(query, opts)
-      );
-      if (aiCandidates.length > 0) {
-        candidates = aiCandidates;
-        retrievalSource = 'live';
-      }
-    } catch (e) {
-      augmentationFailureReason =
-        e instanceof Error ? e.message : String(e);
-    }
-  }
-
-  // STEP A.FALLBACK — Seed catalog fills in when live failed.
-  if (candidates.length === 0) {
-    candidates = retrieveSeedCandidates({
-      query,
-      concern: inferredConcern,
-      limit: 12,
-    });
-    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
-  }
+  // STEP A — Pure deterministic seed retrieval. No AI calls.
+  const candidates: LiveProductCandidate[] = retrieveSeedCandidates({
+    query,
+    concern: inferredConcern,
+    limit: 12,
+    rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
+  });
+  const retrievalSource: 'live' | 'fallback' | 'empty' =
+    candidates.length > 0 ? 'fallback' : 'empty';
 
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
@@ -723,7 +691,6 @@ export async function getRecommendationContextFromQuery(
     profile,
     skinState: null,
     state: availability,
-    failureReason: augmentationFailureReason ?? undefined,
     rerankResult: rerank,
     retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
   });
@@ -732,11 +699,11 @@ export async function getRecommendationContextFromQuery(
 /**
  * Scan-driven → RecommendationContext.
  *
- * v19.21 — LIVE-FIRST with bounded race. AI scan-driven lookup is
- * attempted first under an 8 s race; on success the candidates are
- * real (retrievalSource: 'live'). On timeout/failure/empty, the
- * seed catalog scoped by primary concern fills in
- * (retrievalSource: 'fallback'). Engine returns within at most 8 s.
+ * v19.22 — fully deterministic. ZERO calls to the AI proxy
+ * lookup path. The legacy `lookupForScan` race wrapper is gone.
+ * Candidates come exclusively from the seed catalog scoped by
+ * `skinState.topConcerns[0]`. Retry produces a visibly
+ * different ordering via the `rotation` parameter.
  */
 export async function getRecommendationContextForScan(
   scan: Scan,
@@ -758,37 +725,20 @@ export async function getRecommendationContextForScan(
     primaryConcern,
   };
 
-  let candidates: LiveProductCandidate[] = [];
-  let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
-  let augmentationFailureReason: string | null = null;
-
-  // STEP A.LIVE — Try AI scan-driven lookup first under bounded race.
-  if (aiGateway.isAvailable() && scan.aiAnalysis) {
-    try {
-      const aiCandidates = await liveFirstRetrieve(() =>
-        lookupForScan(scan, opts)
-      );
-      if (aiCandidates.length > 0) {
-        candidates = aiCandidates;
-        retrievalSource = 'live';
-      }
-    } catch (e) {
-      augmentationFailureReason =
-        e instanceof Error ? e.message : String(e);
-    }
-  }
-
-  // STEP A.FALLBACK — Seed catalog scoped by primary concern.
+  // STEP A — Pure deterministic seed retrieval. No AI calls.
+  let candidates: LiveProductCandidate[] = retrieveSeedCandidates({
+    concern: primaryConcern,
+    limit: 12,
+    rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
+  });
   if (candidates.length === 0) {
     candidates = retrieveSeedCandidates({
-      concern: primaryConcern,
       limit: 12,
+      rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
     });
-    if (candidates.length === 0) {
-      candidates = retrieveSeedCandidates({ limit: 12 });
-    }
-    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
   }
+  const retrievalSource: 'live' | 'fallback' | 'empty' =
+    candidates.length > 0 ? 'fallback' : 'empty';
 
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
@@ -808,7 +758,6 @@ export async function getRecommendationContextForScan(
     profile,
     skinState,
     state: availability,
-    failureReason: augmentationFailureReason ?? undefined,
     rerankResult: rerank,
     retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
   });
