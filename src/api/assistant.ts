@@ -13,7 +13,6 @@ import { aiGateway, tryAi } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
 import { aiTelemetry } from '@/ai/aiTelemetry';
 import { useAppStore } from '@/store/useAppStore';
-import { buildSafetyProfile } from '@/utils/safetyProfile';
 import { computeSkinScore } from '@/utils/skinScore';
 import type {
   AssistantContext,
@@ -23,6 +22,10 @@ import type {
   SkinScoreExplanation,
 } from '@/ai/ai-contracts';
 import { seedProducts } from '@/data/seed';
+// v19.15 — assistant grounding now flows through the canonical
+// UserProfileContext selector instead of inlining the same
+// composition logic. Single source of truth for user data.
+import { selectUserProfileContext } from '@/state/canonical';
 
 // ---------------------------------------------------------------------------
 // Context builder.
@@ -32,52 +35,10 @@ import { seedProducts } from '@/data/seed';
 // an AssistantContext that satisfies the contract in ai-contracts.ts.
 // ---------------------------------------------------------------------------
 
-function mapAppSkinTypeToAiSkinType(
-  s: ReturnType<typeof useAppStore.getState>['skinType']
-): AssistantContext['user_profile']['skin_type'] {
-  switch (s) {
-    case 'oily':
-      return 'oily';
-    case 'dry':
-      return 'dry';
-    case 'combination':
-      return 'combination';
-    case 'sensitive':
-      return 'sensitive';
-    default:
-      return 'unknown';
-  }
-}
-
-function mapGoalToTopGoal(
-  g: ReturnType<typeof useAppStore.getState>['goal']
-): string[] {
-  switch (g) {
-    case 'clear':
-      return ['clear breakouts'];
-    case 'calm':
-      return ['calm sensitivity'];
-    case 'bright':
-      return ['brighten dark marks'];
-    default:
-      return [];
-  }
-}
-
-function mapSensitivityToTags(
-  s: ReturnType<typeof useAppStore.getState>['sensitivity']
-): string[] {
-  switch (s) {
-    case 'very':
-      return ['fragrance', 'high-strength actives', 'physical scrubs'];
-    case 'somewhat':
-      return ['fragrance'];
-    case 'not':
-    case 'unsure':
-    default:
-      return [];
-  }
-}
+// v19.15 — local mappers (mapAppSkinTypeToAiSkinType /
+// mapGoalToTopGoal / mapSensitivityToTags) removed. Their logic
+// now lives once in `selectUserProfileContext` and the canonical
+// safety profile builder. This file no longer duplicates.
 
 /**
  * Synthesise a SkinScoreExplanation from the current scans. When an AI
@@ -164,70 +125,31 @@ function buildLightweightProgressContext(
 
 function buildAssistantContext(latestScan: Scan | undefined): AssistantContext {
   const s = useAppStore.getState();
-  const scans = s.scans;
-  const aiActive = s.aiActiveProductIdentity;
-
-  // v18.9 — derive the safety profile and fold it into the
-  // assistant's `sensitivities` tag list. The system prompt was
-  // already instructed to honor sensitivities; v18.9 reuses that
-  // hook to carry the structured safety bias without changing the
-  // AssistantContext shape.
-  const safety = buildSafetyProfile({
-    skinType: s.skinType,
-    sensitivity: s.sensitivity,
-    skinConditions: s.skinConditions,
-    prescriptionFlag: s.prescriptionFlag,
-    fragranceSensitive: s.fragranceSensitive,
-    activeIrritation: s.activeIrritation,
-    pregnancyCaution: s.pregnancyCaution,
-    avoidIngredients: s.avoidIngredients,
-  });
-  const sensitivityTags = [...mapSensitivityToTags(s.sensitivity)];
-  if (safety.hasSignal) {
-    sensitivityTags.push(`safety_bias:${safety.bias}`);
-    for (const c of safety.conditions) {
-      sensitivityTags.push(`condition:${c}`);
-    }
-    for (const a of safety.avoidCategories) {
-      sensitivityTags.push(`avoid_category:${a}`);
-    }
-    for (const ing of safety.avoidIngredients) {
-      sensitivityTags.push(`avoid_ingredient:${ing}`);
-    }
-    sensitivityTags.push(`safety_summary:${safety.promptSummary}`);
-  }
-
-  // v19.11 — thread the saved display name into user_profile.
-  // Order of preference: User.name (set on onboarding completion via
-  // completeOnboarding) → top-level `name` (the field updated as the
-  // user types in onboarding screens) → null (no saved name).
-  // Trimmed and empty-string-collapsed so an empty field never
-  // surfaces as a fake "" name.
-  const rawName =
-    (s.user?.name && s.user.name.trim().length > 0
-      ? s.user.name
-      : s.name && s.name.trim().length > 0
-      ? s.name
-      : null) ?? null;
-  const displayName = rawName ? rawName.trim() : null;
+  // v19.15 — read user grounding from the canonical selector. The
+  // selector handles displayName resolution, skinType normalization,
+  // sensitivity tag composition, and safety-bias rollup in one
+  // place. The AssistantContext shape (the wire contract to the
+  // AI prompt) is unchanged — we just project the canonical
+  // object onto it.
+  const profile = selectUserProfileContext(s);
 
   return {
     user_profile: {
-      display_name: displayName,
-      skin_type: mapAppSkinTypeToAiSkinType(s.skinType),
-      top_goals: mapGoalToTopGoal(s.goal),
-      sensitivities: sensitivityTags,
+      display_name: profile.displayName,
+      skin_type: profile.skinType,
+      top_goals: profile.goals,
+      sensitivities: profile.sensitivities,
     },
     latest_scan: latestScan?.aiAnalysis ?? scanToAnalysisLite(latestScan),
-    latest_score: buildLatestScoreContext(scans),
+    latest_score: buildLatestScoreContext(s.scans),
     routine_snapshot: {
       morning_product_ids: s.userRoutineMorning,
       evening_product_ids: s.userRoutineEvening,
       saved_product_ids: s.wishlist,
     },
-    progress_snapshot: buildLightweightProgressContext(scans),
+    progress_snapshot: buildLightweightProgressContext(s.scans),
     top_matches: s.aiTopMatches,
-    active_product_identity: aiActive,
+    active_product_identity: s.aiActiveProductIdentity,
   };
 }
 

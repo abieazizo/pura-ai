@@ -450,3 +450,122 @@ export async function lookupForConcern(
   };
   return lookupLiveProducts(phrase[concern], opts);
 }
+
+// ---------------------------------------------------------------------------
+// v19.15 — Canonical recommendation pipeline.
+//
+// `getRecommendationContext()` is the new public entry point that
+// replaces direct consumer calls to `lookupForScan` /
+// `lookupLiveProducts` for any surface that wants the FINAL
+// hero+alternatives split, the deterministic local rerank, and
+// truthful availability state in one object.
+//
+// Pipeline:
+//   1. Deterministic candidate retrieval — calls the existing
+//      cache-aware `lookupForScan` / `lookupLiveProducts` (which
+//      already hit gpt-4o-mini, dedup, and sanitize+enrich).
+//   2. Compose canonical UserProfileContext from the store.
+//   3. Compose canonical SkinState from the scan when present.
+//   4. Run the deterministic local scorer on every candidate
+//      (concern alignment, skin-type fit, budget, safety penalty).
+//   5. Pick hero by local score, alternatives = next 4 (excl hero).
+//   6. Wrap in RecommendationContext with truthful availability
+//      + deterministic whyHeroFits + whatToAvoid.
+//
+// Consumers (ScanResultsFaceScreen, ProductsScreen, AssistantScreen)
+// read RecommendationContext directly. They never re-implement
+// the rerank.
+// ---------------------------------------------------------------------------
+
+import {
+  buildRecommendationContext,
+  selectSkinState,
+  selectUserProfileContext,
+} from '@/state/canonical';
+import type {
+  RecommendationAvailability,
+  RecommendationContext,
+  RecommendationIntent,
+} from '@/types/canonical';
+
+export interface GetRecommendationOpts extends LookupOpts {
+  intent: RecommendationIntent;
+}
+
+/**
+ * Free-text → RecommendationContext. Wraps `lookupLiveProducts`
+ * with the deterministic-first canonical pipeline.
+ */
+export async function getRecommendationContextFromQuery(
+  query: string,
+  opts: Omit<GetRecommendationOpts, 'intent'> & {
+    intent?: RecommendationIntent;
+  } = {}
+): Promise<RecommendationContext> {
+  const intent: RecommendationIntent = opts.intent ?? {
+    kind: 'query',
+    text: query,
+  };
+  const state = useAppStore.getState();
+  const profile = selectUserProfileContext(state);
+  let candidates: LiveProductCandidate[] = [];
+  let availability: RecommendationAvailability = 'available';
+  let failureReason: string | null = null;
+  try {
+    candidates = await lookupLiveProducts(query, opts);
+    if (candidates.length === 0) availability = 'empty';
+  } catch (e) {
+    availability = 'unavailable';
+    failureReason = e instanceof Error ? e.message : String(e);
+  }
+  return buildRecommendationContext({
+    intent,
+    candidates,
+    profile,
+    skinState: null,
+    state: availability,
+    failureReason: failureReason ?? undefined,
+  });
+}
+
+/**
+ * Scan-driven → RecommendationContext. Wraps `lookupForScan` with
+ * the deterministic-first canonical pipeline + composes
+ * SkinState so the rerank weights concern alignment correctly.
+ */
+export async function getRecommendationContextForScan(
+  scan: Scan,
+  opts: Omit<GetRecommendationOpts, 'intent'> & {
+    intent?: RecommendationIntent;
+  } = {}
+): Promise<RecommendationContext> {
+  const state = useAppStore.getState();
+  const previous = state.scans
+    .filter((s) => s.capturedAt < scan.capturedAt)
+    .slice(-1)[0];
+  const profile = selectUserProfileContext(state);
+  const skinState = selectSkinState(scan, previous, state.scans);
+  const intent: RecommendationIntent = opts.intent ?? {
+    kind: 'scan',
+    scanId: scan.id,
+    primaryConcern: skinState?.topConcerns[0]?.concern ?? null,
+  };
+  let candidates: LiveProductCandidate[] = [];
+  let availability: RecommendationAvailability = 'available';
+  let failureReason: string | null = null;
+  try {
+    candidates = await lookupForScan(scan, opts);
+    if (candidates.length === 0) availability = 'empty';
+  } catch (e) {
+    availability = 'unavailable';
+    failureReason = e instanceof Error ? e.message : String(e);
+  }
+  return buildRecommendationContext({
+    intent,
+    candidates,
+    profile,
+    skinState,
+    state: availability,
+    failureReason: failureReason ?? undefined,
+  });
+}
