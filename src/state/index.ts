@@ -34,3 +34,15 @@ export {
   selectCanonicalBundle,
   scoreCandidateLocal,
 } from './canonical';
+
+// v19.16 — canonical result-state resolver. SINGLE source of
+// truth for scan-quality branching + result-state composition.
+export {
+  resolveScanResultState,
+  isResultBlocked,
+  QUALITY_THRESHOLD_BLOCK,
+  QUALITY_THRESHOLD_WARN,
+  type ResultViewModel,
+  type ScanQualityBranch,
+  type ResultStateMode,
+} from './resultResolver';

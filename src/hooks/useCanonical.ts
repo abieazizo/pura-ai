@@ -18,7 +18,15 @@ import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
 import { selectSkinState, selectUserProfileContext } from '@/state/canonical';
-import type { SkinState, UserProfileContext } from '@/types/canonical';
+import {
+  resolveScanResultState,
+  type ResultViewModel,
+} from '@/state/resultResolver';
+import type {
+  RecommendationContext,
+  SkinState,
+  UserProfileContext,
+} from '@/types/canonical';
 
 /**
  * Subscribe to UserProfileContext. Re-renders when any field that
@@ -73,4 +81,28 @@ export function useSkinState(scanId?: string): SkinState | null {
       .slice(-1)[0];
     return selectSkinState(scan, previous, scans);
   }, [scans, scanId]);
+}
+
+/**
+ * Single canonical resolver for the result-screen view-model.
+ * v19.16 (Phase 6C) — every result/scan/map screen should read
+ * from this hook rather than re-deriving thresholds or copy.
+ *
+ * Pass an optional RecommendationContext when the caller has a
+ * fresh recommendation in flight; the resolver composes the rich
+ * result-state mode from skin-quality branch + product state.
+ */
+export function useResultViewModel(args: {
+  scanId?: string;
+  recommendation?: RecommendationContext | null;
+}): ResultViewModel {
+  const skinState = useSkinState(args.scanId);
+  return useMemo(
+    () =>
+      resolveScanResultState({
+        skinState,
+        recommendation: args.recommendation,
+      }),
+    [skinState, args.recommendation]
+  );
 }

@@ -63,6 +63,9 @@ import type {
 } from './ai-contracts';
 import { aiLog } from './aiLog';
 import { aiTelemetry, type AIMethodKey } from './aiTelemetry';
+// v19.16 — every gateway call also writes to the persisted ring
+// buffer so failures + timings survive cold starts.
+import { recordAICall } from './persistedTelemetry';
 import {
   validateAssistantAnswer,
   validateBarcodeResolution,
@@ -528,6 +531,8 @@ async function runMethod<TRaw, T>(args: {
       durationMs: dur,
     });
     aiTelemetry.completeMethodCallOk(method as AIMethodKey, dur);
+    // v19.16 — persisted telemetry: record success.
+    recordAICall({ method, ok: true, durationMs: dur });
     return result;
   } catch (firstError) {
     const transient =
@@ -545,6 +550,13 @@ async function runMethod<TRaw, T>(args: {
         { requestId, durationMs: dur, error: errMsg }
       );
       aiTelemetry.completeMethodCallFail(method as AIMethodKey, dur, errMsg);
+      // v19.16 — persisted telemetry: non-critical degraded silently.
+      recordAICall({
+        method,
+        ok: false,
+        durationMs: dur,
+        error: firstError,
+      });
       throw firstError;
     }
 
@@ -571,6 +583,13 @@ async function runMethod<TRaw, T>(args: {
         }
       );
       aiTelemetry.completeMethodCallFail(method as AIMethodKey, dur, errMsg);
+      // v19.16 — persisted telemetry: critical no-retry failure.
+      recordAICall({
+        method,
+        ok: false,
+        durationMs: dur,
+        error: firstError,
+      });
       throw firstError;
     }
     aiLog.warn('aiGateway.call', `${method} transient failure, retrying once`, {
@@ -585,6 +604,8 @@ async function runMethod<TRaw, T>(args: {
         durationMs: dur,
       });
       aiTelemetry.completeMethodCallOk(method as AIMethodKey, dur);
+      // v19.16 — persisted telemetry: success after retry.
+      recordAICall({ method, ok: true, durationMs: dur });
       return result;
     } catch (secondError) {
       const dur = Date.now() - start;
@@ -602,6 +623,13 @@ async function runMethod<TRaw, T>(args: {
         error: errMsg,
       });
       aiTelemetry.completeMethodCallFail(method as AIMethodKey, dur, errMsg);
+      // v19.16 — persisted telemetry: failure after retry.
+      recordAICall({
+        method,
+        ok: false,
+        durationMs: dur,
+        error: secondError,
+      });
       throw secondError;
     }
   }

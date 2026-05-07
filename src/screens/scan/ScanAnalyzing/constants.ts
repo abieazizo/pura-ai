@@ -285,13 +285,25 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 // Every prior technical phrase ("Aligning features", "Reading skin
 // zones", "Checking texture and tone", "Mapping visible concerns")
 // is gone.
+//
+// v19.16 \u2014 wired to the canonical micro-copy constants in
+// `src/copy/scanMicroCopy.ts`. The rotating loading sequence
+// (LOADING_MESSAGES) maps onto the analyzing beats; the slow-state
+// fallback uses SLOW_LOADING_MESSAGE. Every other consumer of
+// scan loading copy now imports from the same canonical module
+// so wording stays consistent across screens.
+import {
+  LOADING_MESSAGES,
+  SLOW_LOADING_MESSAGE,
+} from '@/copy/scanMicroCopy';
+
 export const CAPTION_COPY = {
-  preflight: 'This takes a few seconds\u2026',
-  locate: 'Preparing your results\u2026',
-  partition: 'Preparing your results\u2026',
-  detect: 'Matching products for your skin\u2026',
-  score: 'Almost ready\u2026',
-  waiting: 'Still working \u2014 thanks for waiting\u2026',
+  preflight: LOADING_MESSAGES[0], // "Mapping your skin zones..."
+  locate: LOADING_MESSAGES[0],
+  partition: LOADING_MESSAGES[1], // "Identifying your top concerns..."
+  detect: LOADING_MESSAGES[2], // "Finding products matched to your skin..."
+  score: LOADING_MESSAGES[3], // "Building your personalized plan..."
+  waiting: SLOW_LOADING_MESSAGE,
   reveal: 'Ready.',
 } as const;
 
