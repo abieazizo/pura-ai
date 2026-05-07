@@ -178,33 +178,29 @@ export function AIDiagnosticsScreen() {
     setSmokeRunning(false);
   }, [smokeRunning, isAvailable]);
 
-  // v19.19 — diagnostics now PROVES the product engine works
-  // with the AI proxy completely down. The test calls
-  // `getRecommendationContextFromQuery` (the same shared engine
-  // ResultScreen / ProductsScreen / Assistant call) and reports:
-  //   • whether candidates were retrieved (deterministic)
-  //   • whether a hero was selected (deterministic)
-  //   • whether the source was 'deterministic' (✓ proxy-independent)
-  //     or 'ai-rerank' (only when proxy is up)
-  //   • availability state
-  //   • elapsed time — should be sub-50ms when proxy is down
-  // because nothing awaits AI.
+  // v19.23 — diagnostics now exercises the LIVE-FIRST shared
+  // engine. The engine attempts an Open Beauty Facts search
+  // first (real public, no-AI source) and falls back to the
+  // seed catalog only when OBF fails / returns empty. The
+  // report shows which path won so the user can verify "real
+  // live products" is working.
   const runLiveProductsTest = useCallback(async () => {
     if (liveTestRunning) return;
     setLiveTestRunning(true);
     setLiveTestReport(null);
     const lines: string[] = [];
-    lines.push('PRODUCT ENGINE TEST (proxy-independent)');
-    lines.push('  query="best niacinamide serum for redness"');
+    lines.push('PRODUCT ENGINE TEST (live-first via OBF)');
+    lines.push('  query="niacinamide serum"');
     lines.push('  AI proxy: ' + (isAvailable ? 'available' : 'unavailable'));
+    lines.push('  Live source: Open Beauty Facts (no AI, no auth)');
     try {
       const { getRecommendationContextFromQuery } = await import(
         '@/api/liveProducts'
       );
       const t0 = Date.now();
       const result = await getRecommendationContextFromQuery(
-        'best niacinamide serum for redness',
-        { intent: { kind: 'query', text: 'best niacinamide serum for redness' } }
+        'niacinamide serum',
+        { intent: { kind: 'query', text: 'niacinamide serum' } }
       );
       const dur = Date.now() - t0;
       lines.push(
@@ -212,15 +208,24 @@ export function AIDiagnosticsScreen() {
           `${result.candidateProducts.length} candidate(s), ` +
           `${result.alternatives.length} alternative(s)`
       );
-      // v19.22 — the engine is now PROXY-INDEPENDENT. No
-      // AI lookup is attempted from any user-visible action.
-      // retrievalSource will always be 'fallback' (deterministic
-      // seed catalog) or 'empty'. The ✓ proxy-independent line
-      // is now invariant for the product engine.
-      lines.push(
-        `  ✓ proxy-independent: no AI lookup attempted ` +
-          `(retrievalSource=${result.retrievalSource})`
-      );
+      // v19.23 — the engine attempts OBF live search first.
+      // retrievalSource explicitly tags whether candidates came
+      // from OBF (live) or the seed catalog (fallback).
+      const retrievalLabel =
+        result.retrievalSource === 'live'
+          ? '✓ LIVE: real products from Open Beauty Facts'
+          : result.retrievalSource === 'fallback'
+          ? '↺ FALLBACK: seed catalog (OBF empty/failed)'
+          : result.retrievalSource === 'empty'
+          ? '✗ EMPTY: no candidates from OBF or seed'
+          : '? UNKNOWN retrieval path';
+      lines.push(`  ${retrievalLabel}`);
+      if (
+        result.failureReason &&
+        result.retrievalSource === 'fallback'
+      ) {
+        lines.push(`    OBF reason: ${result.failureReason.slice(0, 80)}`);
+      }
       if (result.source === 'ai-rerank') {
         lines.push('  ↪ AI rerank applied (separate optional step)');
       }

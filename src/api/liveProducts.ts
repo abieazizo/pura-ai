@@ -489,13 +489,14 @@ import type {
   RecommendationIntent,
 } from '@/types/canonical';
 import type { AIRerankResult } from '@/ai/ai-contracts';
-// v19.17 — deterministic seed catalog retrieval. PRIMARY source of
-// product candidates. AI live retrieval is now an OPT-IN
-// augmentation, not the default path.
+// v19.17 — deterministic seed catalog retrieval. v19.23 — now
+// fallback only; OBF live search is the primary path.
 import {
   filterUsableCandidates,
   retrieveSeedCandidates,
 } from './seedRetrieval';
+// v19.23 — Open Beauty Facts live search. Real non-AI live source.
+import { searchOpenBeautyFacts } from './openBeautyFactsSearch';
 
 export interface GetRecommendationOpts extends LookupOpts {
   intent: RecommendationIntent;
@@ -628,26 +629,50 @@ function inferConcernFromQuery(query: string): ConcernType | null {
 }
 
 /**
- * v19.22 — `liveFirstRetrieve` REMOVED. The previous v19.21 race
- * still issued `aiGateway.lookupLiveProducts` calls under the
- * hood; even with an 8 s race wrapper, the gateway ran its own
- * 25 s AbortController and surfaced
- *   `AIProxyError: lookupLiveProducts -> HTTP 0 -> client timeout
- *    after 25000ms`
- * to the diagnostics screen and aiTelemetry every time. No user-
- * visible action calls AI lookup anymore — the engine is pure
- * deterministic seed retrieval.
+ * v19.23 — REAL live retrieval restored via Open Beauty Facts (OBF).
+ * OBF is a public, no-auth, no-AI search/database for cosmetic
+ * products. The engine now:
+ *   1. tries OBF search first (5s timeout, never blocks longer)
+ *   2. falls back to seed catalog when OBF fails / empty
+ *   3. tags retrievalSource as 'live' (OBF) or 'fallback' (seed)
+ * Crucially: the AI proxy is NOT in the path. OBF's failure does
+ * NOT surface as `AIProxyError` and does not depend on the
+ * Metro middleware proxy.
  */
+
+/**
+ * Best-effort OBF live search wrapper. Catches network/timeout
+ * failures and returns null so the caller can fall through to
+ * the seed catalog. Never throws.
+ */
+async function tryLiveSearch(
+  query: string
+): Promise<{ candidates: LiveProductCandidate[]; failure: string | null }> {
+  if (!query || query.trim().length === 0) {
+    return { candidates: [], failure: null };
+  }
+  try {
+    const cs = await searchOpenBeautyFacts({ query, pageSize: 12 });
+    return { candidates: cs, failure: null };
+  } catch (e) {
+    return {
+      candidates: [],
+      failure: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
 
 /**
  * Free-text → RecommendationContext.
  *
- * v19.22 — fully deterministic. ZERO calls to the AI proxy
- * lookup path. Candidates come exclusively from the seed catalog,
- * filtered by query + inferred concern. To make chips/retry feel
- * responsive, the seed retrieval cycles through different ranking
- * offsets per `fresh` retry attempt so the same query produces
- * a visibly different ordering on retry.
+ * v19.23 — LIVE-FIRST via Open Beauty Facts:
+ *   STEP A.LIVE     — searchOpenBeautyFacts(query)  (5s bounded)
+ *   STEP A.FALLBACK — retrieveSeedCandidates(query) (synchronous)
+ *
+ * If OBF returns ≥1 valid candidate → retrievalSource: 'live'.
+ * If OBF fails/empty → seed catalog with retrievalSource:
+ * 'fallback' and `failureReason` set so diagnostics can see
+ * exactly why we fell back.
  */
 export async function getRecommendationContextFromQuery(
   query: string,
@@ -664,15 +689,30 @@ export async function getRecommendationContextFromQuery(
   const profile = selectUserProfileContext(state);
   const inferredConcern = inferConcernFromQuery(query);
 
-  // STEP A — Pure deterministic seed retrieval. No AI calls.
-  const candidates: LiveProductCandidate[] = retrieveSeedCandidates({
-    query,
-    concern: inferredConcern,
-    limit: 12,
-    rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
-  });
-  const retrievalSource: 'live' | 'fallback' | 'empty' =
-    candidates.length > 0 ? 'fallback' : 'empty';
+  let candidates: LiveProductCandidate[] = [];
+  let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
+  let failureReason: string | null = null;
+
+  // STEP A.LIVE — Open Beauty Facts search, real public source.
+  const live = await tryLiveSearch(query);
+  if (live.candidates.length > 0) {
+    candidates = live.candidates;
+    retrievalSource = 'live';
+  } else {
+    // OBF failed or returned nothing for this query. Fall back.
+    failureReason = live.failure;
+  }
+
+  // STEP A.FALLBACK — seed catalog when OBF didn't deliver.
+  if (candidates.length === 0) {
+    candidates = retrieveSeedCandidates({
+      query,
+      concern: inferredConcern,
+      limit: 12,
+      rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
+    });
+    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
+  }
 
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
@@ -691,6 +731,7 @@ export async function getRecommendationContextFromQuery(
     profile,
     skinState: null,
     state: availability,
+    failureReason: failureReason ?? undefined,
     rerankResult: rerank,
     retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
   });
@@ -699,11 +740,12 @@ export async function getRecommendationContextFromQuery(
 /**
  * Scan-driven → RecommendationContext.
  *
- * v19.22 — fully deterministic. ZERO calls to the AI proxy
- * lookup path. The legacy `lookupForScan` race wrapper is gone.
- * Candidates come exclusively from the seed catalog scoped by
- * `skinState.topConcerns[0]`. Retry produces a visibly
- * different ordering via the `rotation` parameter.
+ * v19.23 — LIVE-FIRST via Open Beauty Facts. The scan's primary
+ * concern + a small concern-shaped query string drive an OBF
+ * search; on success we surface real cosmetic products. On
+ * failure we fall back to the seed catalog scoped to the
+ * primary concern. retrievalSource is 'live' or 'fallback'
+ * accordingly.
  */
 export async function getRecommendationContextForScan(
   scan: Scan,
@@ -725,20 +767,55 @@ export async function getRecommendationContextForScan(
     primaryConcern,
   };
 
-  // STEP A — Pure deterministic seed retrieval. No AI calls.
-  let candidates: LiveProductCandidate[] = retrieveSeedCandidates({
-    concern: primaryConcern,
-    limit: 12,
-    rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
-  });
+  let candidates: LiveProductCandidate[] = [];
+  let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
+  let failureReason: string | null = null;
+
+  // STEP A.LIVE — OBF search using a concern-shaped query.
+  // Maps the scan's primary concern to a search phrase OBF's
+  // categories index understands (e.g. 'redness' → 'redness
+  // serum', 'dark_marks' → 'brightening serum').
+  const liveQuery =
+    primaryConcern === 'breakouts'
+      ? 'salicylic acid serum'
+      : primaryConcern === 'redness'
+      ? 'redness centella serum'
+      : primaryConcern === 'hydration'
+      ? 'hyaluronic acid serum'
+      : primaryConcern === 'texture'
+      ? 'glycolic acid serum'
+      : primaryConcern === 'dark_marks'
+      ? 'vitamin c serum'
+      : primaryConcern === 'sensitivity'
+      ? 'gentle moisturizer'
+      : primaryConcern === 'oiliness'
+      ? 'niacinamide serum'
+      : primaryConcern === 'pores'
+      ? 'pore minimizing serum'
+      : 'skincare serum';
+  const live = await tryLiveSearch(liveQuery);
+  if (live.candidates.length > 0) {
+    candidates = live.candidates;
+    retrievalSource = 'live';
+  } else {
+    failureReason = live.failure;
+  }
+
+  // STEP A.FALLBACK — seed catalog scoped by primary concern.
   if (candidates.length === 0) {
     candidates = retrieveSeedCandidates({
+      concern: primaryConcern,
       limit: 12,
       rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
     });
+    if (candidates.length === 0) {
+      candidates = retrieveSeedCandidates({
+        limit: 12,
+        rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
+      });
+    }
+    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
   }
-  const retrievalSource: 'live' | 'fallback' | 'empty' =
-    candidates.length > 0 ? 'fallback' : 'empty';
 
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
@@ -758,6 +835,7 @@ export async function getRecommendationContextForScan(
     profile,
     skinState,
     state: availability,
+    failureReason: failureReason ?? undefined,
     rerankResult: rerank,
     retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
   });
