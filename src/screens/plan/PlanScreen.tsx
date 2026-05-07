@@ -49,7 +49,9 @@ import {
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { SafetyNote } from '@/components/products/SafetyNote';
-import { lookupForScan } from '@/api/liveProducts';
+// v19.20 — PlanScreen now consumes the shared deterministic
+// recommendation engine. No more direct `lookupForScan` AI call.
+import { getRecommendationContextForScan } from '@/api/liveProducts';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import type { Concern, ConcernCategory, Severity } from '@/types';
 
@@ -110,11 +112,22 @@ export function PlanScreen() {
     let cancelled = false;
     setLiveLoading(true);
     setLiveError(false);
-    lookupForScan(latest, { count: 6, fresh: liveAttempt > 0 })
-      .then((picks) => {
+    // v19.20 — shared deterministic engine. Hero + alternatives
+    // come from the seed catalog scoped by the scan's primary
+    // concern. No AI proxy required.
+    getRecommendationContextForScan(latest, { fresh: liveAttempt > 0 })
+      .then((rec) => {
         if (cancelled) return;
-        setLivePicks(picks);
-        setLiveError(picks.length === 0);
+        const hero = rec.heroProduct;
+        const list: LiveProductCandidate[] = hero
+          ? [hero, ...rec.alternatives.filter((c) => c.id !== hero.id)]
+          : rec.candidateProducts;
+        setLivePicks(list);
+        setLiveError(
+          !hero ||
+            rec.availabilityState === 'unavailable' ||
+            rec.availabilityState === 'empty'
+        );
       })
       .catch(() => {
         if (cancelled) return;

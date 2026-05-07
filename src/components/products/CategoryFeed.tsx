@@ -32,10 +32,13 @@ import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
+// v19.20 — CategoryFeed now consumes the shared deterministic
+// recommendation engine. Legacy `lookupForScan` / `lookupForConcern` /
+// `lookupLiveProducts` direct AI calls are gone from the critical
+// path. Grid renders from the seed catalog regardless of proxy state.
 import {
-  lookupForConcern,
-  lookupForScan,
-  lookupLiveProducts,
+  getRecommendationContextForScan,
+  getRecommendationContextFromQuery,
 } from '@/api/liveProducts';
 import { LiveProductCard } from './LiveProductCard';
 import { LiveProductsUnavailable } from './LiveProductsUnavailable';
@@ -74,23 +77,39 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
     }
     setLoading(true);
     setErrored(false);
-    const promise: Promise<LiveProductCandidate[]> =
+    // v19.20 — shared deterministic engine. Three branches:
+    //   • best-for-you + scan exists → scan-driven engine
+    //   • concern goal             → free-text engine
+    //                                 (concern keyword maps cleanly
+    //                                  through the seed retrieval's
+    //                                  query-token matcher)
+    //   • free-text goal           → free-text engine
+    // No AI proxy required. Grid paints from the seed catalog.
+    const goalConcern = goalToConcern(goal);
+    const promise =
       goal === 'best-for-you' && latestScan
-        ? lookupForScan(latestScan, { count: 8, fresh: attempt > 0 })
-        : goalToConcern(goal)
-        ? lookupForConcern(goalToConcern(goal)!, {
-            count: 8,
+        ? getRecommendationContextForScan(latestScan, {
             fresh: attempt > 0,
           })
-        : lookupLiveProducts(goalToFreeQuery(goal), {
-            count: 8,
-            fresh: attempt > 0,
-          });
+        : getRecommendationContextFromQuery(
+            goalConcern
+              ? `${goalConcern.replace(/_/g, ' ')} skincare`
+              : goalToFreeQuery(goal),
+            { fresh: attempt > 0 }
+          );
     promise
-      .then((next) => {
+      .then((rec) => {
         if (cancelled) return;
-        setPicks(next);
-        setErrored(next.length === 0);
+        const hero = rec.heroProduct;
+        const list: LiveProductCandidate[] = hero
+          ? [hero, ...rec.alternatives.filter((c) => c.id !== hero.id)]
+          : rec.candidateProducts;
+        setPicks(list);
+        setErrored(
+          list.length === 0 ||
+            rec.availabilityState === 'unavailable' ||
+            rec.availabilityState === 'empty'
+        );
       })
       .catch(() => {
         if (cancelled) return;

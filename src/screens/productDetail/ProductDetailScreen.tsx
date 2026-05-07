@@ -35,7 +35,12 @@ import { palette } from '@/theme';
 import { CATEGORY_LABEL, getConcerns } from '@/utils/concerns';
 import type { Concern, Product, ProductCategory, ProductTint } from '@/types';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
-import { buildSearchUrl, lookupLiveProducts } from '@/api/liveProducts';
+// v19.20 — ProductDetailScreen's "alternatives" row now flows
+// through the shared deterministic recommendation engine.
+import {
+  buildSearchUrl,
+  getRecommendationContextFromQuery,
+} from '@/api/liveProducts';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 
 type DetailRoute = RouteProp<
@@ -517,21 +522,24 @@ function liveCandidateToProduct(
 // detail page. Hidden when no alternatives are found.
 // ============================================================================
 
-// v18.2 — AlternativesList now backed by live retrieval.
-// Replaces the seed-driven `pickAlternatives()` walk with a
-// `lookupLiveProducts()` call shaped on the current product's
-// brand + category. Renders LiveProductCard alt cards in a
-// horizontal carousel.
+// v19.20 — AlternativesList now uses the shared deterministic
+// recommendation engine. The list paints from the seed catalog
+// regardless of AI proxy state. The current product is filtered
+// out so the same item never appears as its own alternative.
 function AlternativesList({ current }: { current: Product }) {
   const [picks, setPicks] = useState<LiveProductCandidate[]>([]);
   useEffect(() => {
     let cancelled = false;
-    const query = `best ${current.category} similar to ${current.brand} ${current.name}`;
-    lookupLiveProducts(query, { count: 4 })
-      .then((next) => {
+    const query = `${current.category}`;
+    getRecommendationContextFromQuery(query, {})
+      .then((rec) => {
         if (cancelled) return;
-        // Drop the current product if the AI returned it again.
-        setPicks(next.filter((c) => c.id !== current.id).slice(0, 3));
+        // Drop the current product if it surfaces; cap at 3 alts.
+        setPicks(
+          rec.candidateProducts
+            .filter((c) => c.id !== current.id)
+            .slice(0, 3)
+        );
       })
       .catch(() => {
         if (cancelled) return;

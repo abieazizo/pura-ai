@@ -30,7 +30,15 @@ import { AIStatusBanner } from '@/components/dev/AIStatusBanner';
 import { computeSkinScore, deltaPhrase } from '@/utils/skinScore';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
-import { lookupForScan, lookupLiveProducts } from '@/api/liveProducts';
+// v19.20 — HomeScreen now consumes the shared deterministic
+// recommendation engine. Legacy direct `lookupForScan` /
+// `lookupLiveProducts` calls (which awaited the AI proxy) are
+// gone. Hero card paints from the seed catalog immediately,
+// regardless of AI proxy state.
+import {
+  getRecommendationContextForScan,
+  getRecommendationContextFromQuery,
+} from '@/api/liveProducts';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import type { Concern, Scan, Severity } from '@/types';
 
@@ -112,35 +120,38 @@ export function HomeScreen() {
     setRecError(false);
     const run = async () => {
       try {
-        const picks = latestScanForRec.aiAnalysis
-          ? await lookupForScan(latestScanForRec, {
-              count: 4,
+        // v19.20 — shared deterministic engine. Hero comes from
+        // the seed catalog scoped by the scan's primary concern.
+        // No AI proxy required.
+        const rec = latestScanForRec.aiAnalysis
+          ? await getRecommendationContextForScan(latestScanForRec, {
               fresh: recAttempt > 0,
             })
-          : [];
+          : await (async () => {
+              // No AI scan analysis — derive a concern from the
+              // deterministic concerns array and run the shared
+              // free-text engine.
+              const cs = getConcerns(
+                latestScanForRec,
+                scans.length >= 2 ? scans[scans.length - 2] : undefined
+              );
+              const primaryConcern =
+                cs.find((c) => c.severity !== 'calm') ?? cs[0];
+              const query = primaryConcern
+                ? `best ${primaryConcern.category} product`
+                : 'best gentle daily skincare';
+              return getRecommendationContextFromQuery(query, {
+                fresh: recAttempt > 0,
+              });
+            })();
         if (cancelled) return;
-        if (picks.length > 0) {
-          setRecCandidate(picks[0]);
-          setRecLoading(false);
-          return;
-        }
-        // No scan-level AI context — fall back to a concern-shaped
-        // free-text live retrieval so we never leave the user
-        // looking at silence.
-        const cs = getConcerns(
-          latestScanForRec,
-          scans.length >= 2 ? scans[scans.length - 2] : undefined
+        const hero = rec.heroProduct;
+        setRecCandidate(hero);
+        setRecError(
+          !hero ||
+            rec.availabilityState === 'unavailable' ||
+            rec.availabilityState === 'empty'
         );
-        const primaryConcern = cs.find((c) => c.severity !== 'calm') ?? cs[0];
-        const fallback = primaryConcern
-          ? await lookupLiveProducts(
-              `best ${primaryConcern.category} product`,
-              { count: 3, fresh: recAttempt > 0 }
-            )
-          : [];
-        if (cancelled) return;
-        setRecCandidate(fallback[0] ?? null);
-        setRecError(fallback.length === 0);
         setRecLoading(false);
       } catch {
         if (cancelled) return;
