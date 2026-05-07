@@ -680,20 +680,24 @@ export async function getRecommendationContextFromQuery(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // STEP F — optional AI rerank top N. Best-effort. The
-  // pipeline never blocks on this; failure → deterministic order.
-  const rerank = deduped.length > 0
-    ? await tryRerankProducts({
-        candidates: deduped,
-        profile,
-        skinState: null,
-        intentLabel: query,
-      })
-    : null;
+  // v19.19 — AI rerank REMOVED FROM CRITICAL PATH.
+  //
+  // The previous v19.18 awaited `tryRerankProducts` here. Even with
+  // try/catch, the await blocked for the AI proxy's full timeout
+  // (~15s) when the proxy was down — meaning every product
+  // recommendation effectively required AI to render. That broke
+  // the "deterministic-first" promise.
+  //
+  // v19.19 hard-decouples: the engine assembles the canonical
+  // RecommendationContext from deterministic local-score order and
+  // returns IMMEDIATELY. AI rerank + AI explanation are a
+  // SEPARATE optional refinement that consumers may fire async
+  // after rendering — they never block the hero.
+  const rerank = null;
 
   // STEP E + G — local score + assemble are inside
-  // buildRecommendationContext, which honors `rerankResult` when
-  // present and falls back to deterministic ordering otherwise.
+  // buildRecommendationContext, which falls back to deterministic
+  // ordering when rerankResult is null.
   const availability: RecommendationAvailability =
     deduped.length > 0 ? 'available' : 'empty';
 
@@ -711,9 +715,10 @@ export async function getRecommendationContextFromQuery(
 /**
  * Scan-driven → RecommendationContext.
  *
- * v19.17 — deterministic-first. Pulls candidates from the seed
- * catalog by `skinState.topConcerns[0]`. AI augmentation is opt-in
- * and supplemental only.
+ * v19.19 — fully deterministic. Pulls candidates from the seed
+ * catalog by `skinState.topConcerns[0]`. AI is NOT in the critical
+ * path. Opt-in AI augmentation is still gated behind
+ * `allowAiAugmentation: true` but DEFAULT is false everywhere.
  */
 export async function getRecommendationContextForScan(
   scan: Scan,
@@ -767,17 +772,10 @@ export async function getRecommendationContextForScan(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // STEP F — optional AI rerank top N (scan-driven path).
-  const rerank = deduped.length > 0
-    ? await tryRerankProducts({
-        candidates: deduped,
-        profile,
-        skinState,
-        intentLabel: primaryConcern
-          ? primaryConcern.replace(/_/g, ' ')
-          : 'best for your skin',
-      })
-    : null;
+  // v19.19 — AI rerank REMOVED FROM CRITICAL PATH (see scan-driven
+  // path comment above).
+  const rerank = null;
+  void tryRerankProducts; // kept for future async refinement
 
   // STEP E + G — local score + assemble.
   const availability: RecommendationAvailability =

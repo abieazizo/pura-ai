@@ -814,15 +814,15 @@ function MessageLine({
       hasScanned,
     });
     if (!query) return;
-    // v19.18 — shared engine. Hero + 1-2 alternatives for the
-    // assistant's inline card row. Deterministic seed retrieval
-    // ensures the assistant ALWAYS surfaces something relevant
-    // even when AI is offline; the rerank refines order when
-    // available.
+    // v19.19 — shared deterministic engine, NO AI in the critical
+    // path. The assistant's inline product cards come from the
+    // seed catalog only. AI augmentation is OFF so the assistant
+    // never blocks waiting for the proxy when it's down.
     getRecommendationContextFromQuery(query, {
       intent: { kind: 'assistant_query' as never, text: query } as never,
       scanId: latestScan?.id ?? null,
-      allowAiAugmentation: true,
+      // v19.19 — was `true` in v19.18; flipped to `false`.
+      allowAiAugmentation: false,
     })
       .then((rec) => {
         if (cancelled) return;

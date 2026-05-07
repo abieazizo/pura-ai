@@ -161,18 +161,17 @@ export function ProductsScreen() {
     const slowTimer = setTimeout(() => {
       if (!cancelled) setSearchSlow(true);
     }, 5000);
-    // v19.18 — shared recommendation engine. We pull the canonical
-    // RecommendationContext, then surface its `candidateProducts`
-    // for the search grid (hero + alts unified). When AI rerank
-    // fails, the deterministic ordering still renders — partial-
-    // success preserved.
+    // v19.19 — shared deterministic engine. NO AI in the critical
+    // path. The screen renders search results from the seed
+    // catalog only; AI augmentation is OFF by default to keep the
+    // grid responsive when the proxy is down.
     getRecommendationContextFromQuery(q, {
       intent: { kind: 'query', text: q },
-      // Free-text queries that miss the seed catalog can opt-in
-      // to AI augmentation for niche queries (e.g. "K-beauty
-      // beta-glucan essence"). Default keeps the deterministic
-      // primary path.
-      allowAiAugmentation: true,
+      // v19.19 — was `true` in v19.18; flipped to `false` so the
+      // search NEVER waits for the AI proxy. Niche queries that
+      // miss the seed catalog now render the empty/unavailable
+      // state honestly instead of waiting 25s+ for an AI lookup.
+      allowAiAugmentation: false,
       fresh: searchAttempt > 0,
     })
       .then((rec) => {
