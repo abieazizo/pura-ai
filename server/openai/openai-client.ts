@@ -58,11 +58,13 @@ import {
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
   PRODUCT_IDENTITY_SCHEMA,
   PRODUCT_MATCH_RESULT_SCHEMA,
+  PRODUCT_RERANK_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
   ROUTINE_RECOMMENDATION_SCHEMA,
   SCAN_PREFLIGHT_RESULT_SCHEMA,
   SEARCH_SUGGESTION_RESULT_SCHEMA,
   SKIN_SCORE_EXPLANATION_SCHEMA,
+  type AIRerankResult,
   type LiveProductLookupResultLean,
 } from '../../src/ai/ai-contracts';
 
@@ -978,6 +980,86 @@ export class OpenAIClient {
     });
 
     return lean as unknown as LiveProductLookupResult;
+  }
+
+  // --------------------------------------------------------------------------
+  // 8c. v19.18 — Product rerank (Step F).
+  //
+  // Takes a SHORT list of deterministic candidates + canonical
+  // user/skin context and returns a tiny structured object:
+  //   { heroId, alternativeIds, whyHeroFits }
+  //
+  // AI does NOT generate any product fields. AI only chooses
+  // hero + reorders alternatives + writes ONE plain-English
+  // sentence (≤100 chars) explaining why the hero fits this user.
+  //
+  // This is the ONLY remaining role for AI in the product
+  // pipeline. If this call fails, the caller falls back to the
+  // deterministic local-score order — the user still sees a
+  // useful hero.
+  // --------------------------------------------------------------------------
+
+  async rerankProducts(params: {
+    /** Candidates (already filtered + deduped + locally scored). */
+    candidates: Array<{
+      id: string;
+      brand: string;
+      name: string;
+      category: string | null;
+      concernTags: string[];
+      ingredientsHighlights: string[];
+      shortDescription: string;
+      price: number | null;
+      localScore: number;
+    }>;
+    /** Canonical user grounding. */
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    /** Canonical skin state — primary concern + severity. */
+    primaryConcern: string | null;
+    severityBand: string | null;
+    /** Plain-English intent label ("hydration", "best for your skin"). */
+    intentLabel: string;
+  }): Promise<AIRerankResult> {
+    const system =
+      "You are Pura AI's product rerank engine. Given a SHORT list " +
+      'of candidate products + the user\'s skin context, you choose:\n' +
+      '  • heroId — the single best fit, MUST be one of the input ids\n' +
+      '  • alternativeIds — 0–4 next best, MUST be input ids, NEVER\n' +
+      '    duplicate the heroId\n' +
+      '  • whyHeroFits — one short plain-English sentence (≤100 chars)\n' +
+      '    explaining why the hero suits THIS user. No marketing fluff.\n' +
+      '    Reference the primary concern when relevant.\n\n' +
+      'You do NOT generate brand, name, url, image, or price — every\n' +
+      'product field is already known. You only choose ordering and\n' +
+      'write one short sentence.\n\n' +
+      'If a candidate conflicts with a sensitivity (e.g. avoid_ingredient),\n' +
+      'rank it lower or omit it. If you cannot honestly pick a hero,\n' +
+      'return heroId: null.';
+
+    const userContent = JSON.stringify({
+      candidates: params.candidates,
+      profile: params.profile,
+      primary_concern: params.primaryConcern,
+      severity_band: params.severityBand,
+      intent: params.intentLabel,
+    });
+
+    return this.runStrictStructured<AIRerankResult>({
+      system,
+      userContent,
+      schemaName: 'product_rerank',
+      schema: PRODUCT_RERANK_SCHEMA,
+      // gpt-4o-mini for the same reason as lookupLiveProducts —
+      // small, fast, deterministic for tiny structured output.
+      model: 'gpt-4o-mini',
+      // Tiny output: ~30-50 tokens. 512 cap with safe headroom.
+      maxTokens: 512,
+    });
   }
 
   // --------------------------------------------------------------------------

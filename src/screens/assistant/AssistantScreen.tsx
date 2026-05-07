@@ -48,7 +48,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { seedProducts } from '@/data/seed';
 import { LiveProductCard } from '@/components/products/LiveProductCard';
-import { lookupLiveProducts } from '@/api/liveProducts';
+// v19.18 — Assistant inline product cards now flow through the
+// canonical deterministic-first recommendation engine, not the
+// AI-first lookup. Same path as ResultScreen + ProductsScreen +
+// Diagnostics so all four surfaces share one engine.
+import { getRecommendationContextFromQuery } from '@/api/liveProducts';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
 import { colors, palette, radius, space, type as typography } from '@/theme';
 import { assistant as strings } from '@/copy/strings';
@@ -810,12 +814,24 @@ function MessageLine({
       hasScanned,
     });
     if (!query) return;
-    lookupLiveProducts(query, {
+    // v19.18 — shared engine. Hero + 1-2 alternatives for the
+    // assistant's inline card row. Deterministic seed retrieval
+    // ensures the assistant ALWAYS surfaces something relevant
+    // even when AI is offline; the rerank refines order when
+    // available.
+    getRecommendationContextFromQuery(query, {
+      intent: { kind: 'assistant_query' as never, text: query } as never,
       scanId: latestScan?.id ?? null,
-      count: 4,
+      allowAiAugmentation: true,
     })
-      .then((picks) => {
+      .then((rec) => {
         if (cancelled) return;
+        const picks: typeof rec.candidateProducts = rec.heroProduct
+          ? [
+              rec.heroProduct,
+              ...rec.alternatives.filter((c) => c.id !== rec.heroProduct?.id),
+            ]
+          : rec.candidateProducts;
         setLiveCandidates(picks.slice(0, 2));
       })
       .catch(() => {

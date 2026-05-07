@@ -51,7 +51,16 @@ import { LiveProductCard } from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { ScoreSummaryCard } from '@/components/scan/ScoreSummaryCard';
 import { ResultSecondaryActions } from '@/components/scan/ResultSecondaryActions';
-import { lookupForScan, lookupLiveProducts } from '@/api/liveProducts';
+// v19.18 — ResultScreen now consumes the canonical
+// deterministic-first recommendation engine. Hero + alternatives
+// come from RecommendationContext (seed-catalog retrieval +
+// dedupe + local score + best-effort AI rerank). No more direct
+// `lookupForScan` / `lookupLiveProducts` AI-first calls from
+// this screen.
+import {
+  getRecommendationContextForScan,
+  getRecommendationContextFromQuery,
+} from '@/api/liveProducts';
 import { aiLog } from '@/ai/aiLog';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Concern } from '@/types';
@@ -59,6 +68,7 @@ import type {
   FaceScanAnalysis,
   LiveProductCandidate,
 } from '@/ai/ai-contracts';
+import type { RecommendationContext } from '@/types/canonical';
 
 export interface ScanResultsFaceScreenProps {
   scanId: string;
@@ -128,102 +138,67 @@ export function ScanResultsFaceScreen({
     const slowTimer = setTimeout(() => {
       if (!cancelled) setLiveSlow(true);
     }, 5000);
-    // v19.10 — REMOVED the screen-level 25s hard ceiling. Gateway
-    // owns the timeout policy (45s, no retry on timeout).
-    // v19.11 — HERO-FIRST retrieval. Splits the call into two
-    // stages so the user sees a usable hero in 5-8s instead of
-    // waiting 15-30s for a full 4-pick set. Stage A asks the AI
-    // for ONE product (count=1, ~150 output tokens); when it
-    // resolves, we render the hero and exit the loading state.
-    // Stage B fires AFTER stage A returns, asking for 4 more for
-    // the alternatives carousel. Stage B latency is invisible to
-    // the user — the hero is already on screen.
+    // v19.18 — single-call shared engine. The result screen now
+    // pulls one canonical RecommendationContext that already
+    // has hero + alternatives + whyHeroFits + availability state.
+    // The deterministic seed catalog renders even when AI is
+    // offline (hero ALWAYS resolves quickly); the optional AI
+    // rerank refines order when available. Diagnostics + this
+    // screen + ProductsScreen all share the SAME engine.
 
-    const runHero = async (): Promise<LiveProductCandidate[]> => {
+    const runRecommendation = async (): Promise<RecommendationContext> => {
       if (scan.aiAnalysis) {
-        aiLog.info('result.products', 'hero lookupForScan (count=1)', {
+        aiLog.info('result.products', 'getRecommendationContextForScan', {
           scanId: scan.id,
           primary_concern: scan.aiAnalysis.primary_concern,
         });
-        const picks = await lookupForScan(scan, {
-          count: 1,
-          fresh: liveAttempt > 0,
-        });
-        if (picks.length > 0) return picks;
-        aiLog.warn(
-          'result.products',
-          'hero lookupForScan empty; trying free-text fallback (count=1)'
-        );
-        return lookupLiveProducts(buildFreeTextQuery(concerns), {
-          count: 1,
+        return getRecommendationContextForScan(scan, {
           fresh: liveAttempt > 0,
         });
       }
+      // No AI analysis on this scan — derive a free-text query
+      // from the deterministic concerns and run the shared free-
+      // text recommendation pipeline.
       const query = buildFreeTextQuery(concerns);
-      aiLog.info('result.products', 'hero free-text fallback (count=1)', {
+      aiLog.info('result.products', 'getRecommendationContextFromQuery (no AI scan)', {
         scanId: scan.id,
         query,
       });
-      return lookupLiveProducts(query, {
-        count: 1,
+      return getRecommendationContextFromQuery(query, {
         fresh: liveAttempt > 0,
       });
     };
 
-    const runAlternatives = async (): Promise<LiveProductCandidate[]> => {
-      // Best-effort, non-blocking. Empty array on any failure is
-      // fine — the hero is already on screen.
-      try {
-        if (scan.aiAnalysis) {
-          return await lookupForScan(scan, {
-            count: 4,
-            fresh: liveAttempt > 0,
-          });
-        }
-        return await lookupLiveProducts(buildFreeTextQuery(concerns), {
-          count: 4,
-          fresh: liveAttempt > 0,
-        });
-      } catch {
-        return [];
-      }
-    };
-
-    runHero()
-      .then((picks) => {
+    runRecommendation()
+      .then((rec) => {
         if (cancelled) return;
         const dur = Date.now() - t0;
-        aiLog.info('result.products', 'hero resolved', {
+        const hero = rec.heroProduct;
+        const alts = rec.alternatives;
+        aiLog.info('result.products', 'recommendation resolved', {
           scanId: scan.id,
-          n: picks.length,
+          hasHero: !!hero,
+          nAlts: alts.length,
+          source: rec.source,
+          state: rec.availabilityState,
           durationMs: dur,
         });
-        setLiveCandidates(picks);
-        setLiveError(picks.length === 0);
+        const list: LiveProductCandidate[] = hero
+          ? [hero, ...alts.filter((c) => c.id !== hero.id)]
+          : [];
+        setLiveCandidates(list);
+        setLiveError(
+          rec.availabilityState === 'unavailable' ||
+            (rec.availabilityState === 'empty' && list.length === 0) ||
+            (!hero && rec.availabilityState !== 'loading')
+        );
         clearTimeout(slowTimer);
         setLiveLoading(false);
         setLiveSlow(false);
-        // Stage B — fire alternatives in the background, merge
-        // into liveCandidates when done. Hero is preserved at
-        // index 0 from Stage A so the card never flickers.
-        if (picks.length > 0) {
-          runAlternatives().then((alts) => {
-            if (cancelled || alts.length === 0) return;
-            const heroId = picks[0].id;
-            const dedupedAlts = alts.filter((c) => c.id !== heroId);
-            if (dedupedAlts.length === 0) return;
-            aiLog.info('result.products', 'alternatives merged', {
-              scanId: scan.id,
-              nAlts: dedupedAlts.length,
-              totalDurationMs: Date.now() - t0,
-            });
-            setLiveCandidates([picks[0], ...dedupedAlts]);
-          });
-        }
       })
       .catch((e) => {
         if (cancelled) return;
-        aiLog.warn('result.products', 'hero retrieval threw', {
+        aiLog.warn('result.products', 'recommendation threw', {
           scanId: scan.id,
           durationMs: Date.now() - t0,
           error: e instanceof Error ? e.message : String(e),

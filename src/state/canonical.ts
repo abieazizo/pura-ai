@@ -603,8 +603,14 @@ function genRecommendationId(): string {
 /**
  * Compose a canonical RecommendationContext from a candidate set
  * + the current canonical user profile + (optional) canonical
- * skin state. Hero is the highest local-scored candidate;
- * alternatives are the next 4.
+ * skin state.
+ *
+ * v19.18 — when `rerankResult` is provided, the AI's choice for
+ * heroId / alternativeIds / whyHeroFits OVERRIDES the deterministic
+ * local-score order. When omitted, the deterministic order wins
+ * (hero = highest localScore; alternatives = next 4). This is the
+ * "AI-second" gate: the deterministic pipeline can ALWAYS produce
+ * a hero on its own; AI rerank is purely refinement.
  */
 export function buildRecommendationContext(args: {
   intent: RecommendationIntent;
@@ -613,6 +619,16 @@ export function buildRecommendationContext(args: {
   skinState: SkinState | null;
   state?: RecommendationAvailability;
   failureReason?: string;
+  /**
+   * v19.18 — optional AI rerank output. When present, hero +
+   * alternatives + whyHeroFits come from the AI. When absent, the
+   * deterministic local-score order is used.
+   */
+  rerankResult?: {
+    heroId: string | null;
+    alternativeIds: string[];
+    whyHeroFits: string | null;
+  } | null;
 }): RecommendationContext {
   const {
     intent,
@@ -621,6 +637,7 @@ export function buildRecommendationContext(args: {
     skinState,
     state = 'available',
     failureReason,
+    rerankResult,
   } = args;
   const id = genRecommendationId();
   const generatedAt = new Date().toISOString();
@@ -661,39 +678,97 @@ export function buildRecommendationContext(args: {
     };
   }
 
-  // Local rerank.
+  // Local rerank — always runs. This is the deterministic baseline.
   const localScores: CandidateScore[] = candidates.map((c) => ({
     candidateId: c.id,
     localScore: scoreCandidateLocal(c, profile, skinState),
     rerankScore: c.matchScore ?? null,
   }));
   const scoreMap = new Map(localScores.map((s) => [s.candidateId, s.localScore]));
-  const sorted = [...candidates].sort(
+  const localSorted = [...candidates].sort(
     (a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0)
   );
-  const hero = sorted[0] ?? null;
-  const alternatives = sorted
-    .filter((c) => c.id !== hero?.id)
-    .slice(0, 4);
 
-  // rerankScores mirrors localScores for now; when an AI rerank
-  // step is added later, it writes its own values here.
-  const rerankScores = localScores;
+  // v19.18 — apply the AI rerank when present, else use the
+  // deterministic order. The AI rerank only chooses ordering +
+  // writes whyHeroFits; it cannot inject new candidates and any
+  // unknown id is silently dropped.
+  let hero: LiveProductCandidate | null = null;
+  let alternatives: LiveProductCandidate[] = [];
+  let whyHeroFits: string | null = null;
+  let source: 'deterministic' | 'ai-rerank' = 'deterministic';
+
+  const byId = new Map(candidates.map((c) => [c.id, c]));
+  if (rerankResult && rerankResult.heroId && byId.has(rerankResult.heroId)) {
+    hero = byId.get(rerankResult.heroId) ?? null;
+    const heroId = rerankResult.heroId;
+    alternatives = rerankResult.alternativeIds
+      .filter((id) => id !== heroId && byId.has(id))
+      .slice(0, 4)
+      .map((id) => byId.get(id) as LiveProductCandidate);
+    // If rerank gave fewer alternatives than 4, top-up from local
+    // sort (preserving "deterministic value preserved when AI is
+    // imperfect" guarantee).
+    if (alternatives.length < 4) {
+      const seen = new Set<string>([heroId, ...alternatives.map((a) => a.id)]);
+      for (const c of localSorted) {
+        if (alternatives.length >= 4) break;
+        if (!seen.has(c.id)) {
+          alternatives.push(c);
+          seen.add(c.id);
+        }
+      }
+    }
+    whyHeroFits = hero
+      ? rerankResult.whyHeroFits?.trim() ||
+        buildWhyHeroFits(hero, profile, skinState)
+      : null;
+    source = 'ai-rerank';
+  } else {
+    // Deterministic fallback — no rerank or rerank returned an
+    // unknown heroId. The deterministic local-score order wins.
+    hero = localSorted[0] ?? null;
+    alternatives = localSorted
+      .filter((c) => c.id !== hero?.id)
+      .slice(0, 4);
+    whyHeroFits = hero ? buildWhyHeroFits(hero, profile, skinState) : null;
+    source = 'deterministic';
+  }
+
+  // Update rerankScores so consumers can inspect the AI's choice.
+  // When source === 'ai-rerank', positions in alternativeIds get
+  // their localScore as rerankScore plus a rank-position bonus
+  // so the AI's order is reflected without inventing numbers.
+  const rerankScores: CandidateScore[] =
+    source === 'ai-rerank' && hero
+      ? localScores.map((s) => {
+          if (s.candidateId === hero!.id) {
+            return { ...s, rerankScore: 100 };
+          }
+          const altIdx = alternatives.findIndex(
+            (a) => a.id === s.candidateId
+          );
+          if (altIdx >= 0) {
+            return { ...s, rerankScore: 90 - altIdx * 5 };
+          }
+          return { ...s, rerankScore: null };
+        })
+      : localScores;
 
   return {
     id,
     generatedAt,
     intent,
     availabilityState: 'available',
-    candidateProducts: sorted,
+    candidateProducts: localSorted,
     localScores,
     rerankScores,
     heroProduct: hero,
     alternatives,
-    whyHeroFits: hero ? buildWhyHeroFits(hero, profile, skinState) : null,
+    whyHeroFits,
     whatToAvoid: deriveWhatToAvoid(profile),
     failureReason: null,
-    source: 'deterministic',
+    source,
   };
 }
 

@@ -57,7 +57,8 @@ export type AIMethodKey =
   | 'analyzeScannedProductAgainstUser'
   | 'buildFullScanToPlanBundle'
   | 'buildProgressBundle'
-  | 'lookupLiveProducts';
+  | 'lookupLiveProducts'
+  | 'rerankProducts';
 
 export type AIMethodStatus =
   | 'idle'
@@ -181,6 +182,7 @@ const METHOD_KEYS: AIMethodKey[] = [
   'buildFullScanToPlanBundle',
   'buildProgressBundle',
   'lookupLiveProducts',
+  'rerankProducts',
 ];
 
 const FEATURE_KEYS: AIFeatureKey[] = [

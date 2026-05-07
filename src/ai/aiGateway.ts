@@ -48,6 +48,7 @@
 
 import Constants from 'expo-constants';
 import type {
+  AIRerankResult,
   AssistantContext,
   BarcodeResolution,
   FaceScanAnalysis,
@@ -73,6 +74,7 @@ import {
   validateLiveProductLookupResult,
   validateProductIdentity,
   validateProductMatchResult,
+  validateProductRerankResult,
   validateProgressBundle,
   validateProgressExplanation,
   validateRoutineRecommendation,
@@ -188,6 +190,11 @@ const TIMEOUT_MS = {
   analyzeScannedProductAgainstUser: 90_000,
   buildFullScanToPlanBundle: 150_000,
   buildProgressBundle: 35_000,
+  // v19.18 — Step F AI rerank. Tiny structured output (~50 tokens),
+  // gpt-4o-mini, fast. 15s budget covers cold-start worst case
+  // with comfortable headroom. Failure here is recoverable —
+  // pipeline falls back to deterministic local-score order.
+  rerankProducts: 15_000,
   // v19.14 — DROPPED 45_000 → 25_000. v19.10's 45s budget existed
   // to cover gpt-5-mini's variable reasoning latency. v19.14
   // swaps lookupLiveProducts to gpt-4o-mini (non-reasoning, 2-5s
@@ -742,6 +749,40 @@ export interface AIGateway {
     count?: number;
   }): Promise<LiveProductLookupResult>;
 
+  /**
+   * v19.18 — Step F. Tiny rerank call. Takes the top deterministic
+   * candidates + canonical user/skin context and returns
+   * `{ heroId, alternativeIds, whyHeroFits }`. AI does NOT
+   * generate product fields — it only chooses ordering and
+   * writes one short explanation sentence.
+   *
+   * Failure here is recoverable: callers fall back to the
+   * deterministic local-score order. The pipeline never blocks
+   * on this call.
+   */
+  rerankProducts(params: {
+    candidates: Array<{
+      id: string;
+      brand: string;
+      name: string;
+      category: string | null;
+      concernTags: string[];
+      ingredientsHighlights: string[];
+      shortDescription: string;
+      price: number | null;
+      localScore: number;
+    }>;
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    primaryConcern: string | null;
+    severityBand: string | null;
+    intentLabel: string;
+  }): Promise<AIRerankResult>;
+
   answerAssistant(params: {
     context: AssistantContext;
     userQuestion: string;
@@ -881,6 +922,15 @@ const gateway: AIGateway = {
       method: 'lookupLiveProducts',
       body: params,
       validate: validateLiveProductLookupResult,
+    });
+  },
+
+  async rerankProducts(params) {
+    ensureAvailable();
+    return runMethod({
+      method: 'rerankProducts',
+      body: params,
+      validate: validateProductRerankResult,
     });
   },
 

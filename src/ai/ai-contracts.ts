@@ -1341,6 +1341,48 @@ export const LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA: JsonSchema = {
   },
 };
 
+// ----------------------------------------------------------------------------
+// v19.18 — AI rerank Step F.
+//
+// The deterministic seed retrieval + local scorer (v19.17) handles
+// candidate generation and ranking. AI is now reserved for ONE small
+// optional step: take the top N deterministic candidates and return
+// `{ heroId, alternativeIds, whyHeroFits }`. AI does NOT generate any
+// product fields — it only chooses ordering + writes one explanation
+// sentence.
+//
+// Rules:
+//   • heroId MUST be one of the candidate ids (or null when AI
+//     declines to pick).
+//   • alternativeIds MUST all be candidate ids; no duplicates with
+//     heroId.
+//   • whyHeroFits is ≤ 100 chars, plain English, never a paragraph.
+//
+// The output is intentionally tiny (~30-50 tokens) so the rerank
+// call completes in 1-3 seconds and never blocks the deterministic
+// pipeline. If the call fails, the deterministic order wins.
+// ----------------------------------------------------------------------------
+
+export interface AIRerankResult {
+  heroId: string | null;
+  alternativeIds: string[];
+  whyHeroFits: string | null;
+}
+
+export const PRODUCT_RERANK_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['heroId', 'alternativeIds', 'whyHeroFits'],
+  properties: {
+    heroId: { type: ['string', 'null'] },
+    alternativeIds: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    whyHeroFits: { type: ['string', 'null'] },
+  },
+};
+
 // ============================================================================
 // Aggregate map — every named schema indexed by its variable name. Useful
 // for telemetry, debugging, and any consumer that needs to enumerate
@@ -1360,6 +1402,7 @@ export interface AIStructuredSchemas {
   SEARCH_SUGGESTION_RESULT_SCHEMA: JsonSchema;
   LIVE_PRODUCT_LOOKUP_SCHEMA: JsonSchema;
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA: JsonSchema;
+  PRODUCT_RERANK_SCHEMA: JsonSchema;
 }
 
 export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
@@ -1375,6 +1418,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   SEARCH_SUGGESTION_RESULT_SCHEMA,
   LIVE_PRODUCT_LOOKUP_SCHEMA,
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
+  PRODUCT_RERANK_SCHEMA,
 };
 
 // v11.1 — legacy `Claude*` schema aliases removed.

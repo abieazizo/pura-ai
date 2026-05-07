@@ -479,6 +479,7 @@ export async function lookupForConcern(
 
 import {
   buildRecommendationContext,
+  scoreCandidateLocal,
   selectSkinState,
   selectUserProfileContext,
 } from '@/state/canonical';
@@ -487,6 +488,7 @@ import type {
   RecommendationContext,
   RecommendationIntent,
 } from '@/types/canonical';
+import type { AIRerankResult } from '@/ai/ai-contracts';
 // v19.17 — deterministic seed catalog retrieval. PRIMARY source of
 // product candidates. AI live retrieval is now an OPT-IN
 // augmentation, not the default path.
@@ -552,6 +554,65 @@ const APP_CONCERN_TO_AI_CONCERN: Record<string, ConcernType> = {
   sensitivity: 'sensitivity',
   pores: 'pores',
 };
+
+/**
+ * v19.18 — Step F. Optional AI rerank wrapper. Takes the top
+ * deterministic candidates + canonical context, calls the gateway's
+ * tiny `rerankProducts` method, and returns the rerank result.
+ *
+ * Failure-resilient: any error returns null so the caller falls
+ * back to the deterministic local-score order. The AI rerank is
+ * BEST-EFFORT — never blocking.
+ */
+async function tryRerankProducts(args: {
+  candidates: LiveProductCandidate[];
+  profile: ReturnType<typeof selectUserProfileContext>;
+  skinState: ReturnType<typeof selectSkinState>;
+  intentLabel: string;
+}): Promise<AIRerankResult | null> {
+  const { candidates, profile, skinState, intentLabel } = args;
+  if (!aiGateway.isAvailable() || candidates.length === 0) return null;
+  // Trim to top 8 by deterministic localScore — rerank only the
+  // strongest candidates so the call stays cheap.
+  const scored = candidates
+    .map((c) => ({
+      c,
+      localScore: scoreCandidateLocal(c, profile, skinState),
+    }))
+    .sort((a, b) => b.localScore - a.localScore)
+    .slice(0, 8);
+  if (scored.length === 0) return null;
+  const payload = {
+    candidates: scored.map(({ c, localScore }) => ({
+      id: c.id,
+      brand: c.brand,
+      name: c.name,
+      category: c.category ?? null,
+      concernTags: c.concernTags ?? [],
+      ingredientsHighlights: c.ingredientsHighlights ?? [],
+      shortDescription: c.shortDescription ?? '',
+      price: c.price ?? null,
+      localScore,
+    })),
+    profile: {
+      displayName: profile.displayName,
+      skinType: profile.skinType,
+      sensitivities: profile.sensitivities,
+      goals: profile.goals,
+    },
+    primaryConcern: skinState?.topConcerns[0]?.concern ?? null,
+    severityBand: skinState?.scoreBand ?? null,
+    intentLabel,
+  };
+  try {
+    return await aiGateway.rerankProducts(payload);
+  } catch (e) {
+    aiLog.warn('liveProducts.rerank', 'AI rerank failed; falling back to local order', {
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+}
 
 function inferConcernFromQuery(query: string): ConcernType | null {
   const q = query.toLowerCase();
@@ -619,8 +680,20 @@ export async function getRecommendationContextFromQuery(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
+  // STEP F — optional AI rerank top N. Best-effort. The
+  // pipeline never blocks on this; failure → deterministic order.
+  const rerank = deduped.length > 0
+    ? await tryRerankProducts({
+        candidates: deduped,
+        profile,
+        skinState: null,
+        intentLabel: query,
+      })
+    : null;
+
   // STEP E + G — local score + assemble are inside
-  // buildRecommendationContext.
+  // buildRecommendationContext, which honors `rerankResult` when
+  // present and falls back to deterministic ordering otherwise.
   const availability: RecommendationAvailability =
     deduped.length > 0 ? 'available' : 'empty';
 
@@ -631,6 +704,7 @@ export async function getRecommendationContextFromQuery(
     skinState: null,
     state: availability,
     failureReason: augmentationFailureReason ?? undefined,
+    rerankResult: rerank,
   });
 }
 
@@ -693,6 +767,18 @@ export async function getRecommendationContextForScan(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
+  // STEP F — optional AI rerank top N (scan-driven path).
+  const rerank = deduped.length > 0
+    ? await tryRerankProducts({
+        candidates: deduped,
+        profile,
+        skinState,
+        intentLabel: primaryConcern
+          ? primaryConcern.replace(/_/g, ' ')
+          : 'best for your skin',
+      })
+    : null;
+
   // STEP E + G — local score + assemble.
   const availability: RecommendationAvailability =
     deduped.length > 0 ? 'available' : 'empty';
@@ -704,6 +790,7 @@ export async function getRecommendationContextForScan(
     skinState,
     state: availability,
     failureReason: augmentationFailureReason ?? undefined,
+    rerankResult: rerank,
   });
 }
 

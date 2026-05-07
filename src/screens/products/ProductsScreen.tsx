@@ -27,7 +27,12 @@ import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { searchProducts } from '@/store/productSelectors';
 import { useAppStore } from '@/store/useAppStore';
 import { getSearchSuggestions } from '@/api';
-import { lookupLiveProducts } from '@/api/liveProducts';
+// v19.18 — ProductsScreen now consumes the canonical
+// deterministic-first recommendation engine instead of calling
+// `lookupLiveProducts` directly. The engine handles seed-catalog
+// retrieval, normalization, dedupe, local scoring, and (best-effort)
+// AI rerank — all in one shared path with ResultScreen + Diagnostics.
+import { getRecommendationContextFromQuery } from '@/api/liveProducts';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
@@ -156,14 +161,34 @@ export function ProductsScreen() {
     const slowTimer = setTimeout(() => {
       if (!cancelled) setSearchSlow(true);
     }, 5000);
-    lookupLiveProducts(q, { count: 10, fresh: searchAttempt > 0 })
-      .then((picks) => {
+    // v19.18 — shared recommendation engine. We pull the canonical
+    // RecommendationContext, then surface its `candidateProducts`
+    // for the search grid (hero + alts unified). When AI rerank
+    // fails, the deterministic ordering still renders — partial-
+    // success preserved.
+    getRecommendationContextFromQuery(q, {
+      intent: { kind: 'query', text: q },
+      // Free-text queries that miss the seed catalog can opt-in
+      // to AI augmentation for niche queries (e.g. "K-beauty
+      // beta-glucan essence"). Default keeps the deterministic
+      // primary path.
+      allowAiAugmentation: true,
+      fresh: searchAttempt > 0,
+    })
+      .then((rec) => {
         if (cancelled) return;
-        setLiveResults(picks);
-        // v19.10 — empty-after-30s ⇒ likely gateway timeout (the API
-        // layer swallows AIProxyError and returns []), so flip the
-        // variant copy to "unavailable" rather than "empty".
-        if (picks.length === 0 && Date.now() - t0 > 30_000) {
+        // Use candidateProducts (already deterministic + reranked)
+        // so the grid is consistent with ResultScreen's hero+alts.
+        setLiveResults(rec.candidateProducts);
+        if (
+          rec.candidateProducts.length === 0 &&
+          rec.availabilityState === 'unavailable'
+        ) {
+          setSearchTimedOut(true);
+        } else if (
+          rec.candidateProducts.length === 0 &&
+          Date.now() - t0 > 30_000
+        ) {
           setSearchTimedOut(true);
         }
       })

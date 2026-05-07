@@ -73,6 +73,7 @@ const METHOD_LABEL: Record<AIMethodKey, string> = {
   buildFullScanToPlanBundle: 'buildFullScanToPlanBundle',
   buildProgressBundle: 'buildProgressBundle',
   lookupLiveProducts: 'lookupLiveProducts',
+  rerankProducts: 'rerankProducts',
 };
 
 export function AIDiagnosticsScreen() {

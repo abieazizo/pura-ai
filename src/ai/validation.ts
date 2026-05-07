@@ -823,6 +823,40 @@ export function validateScanToPlanBundle(v: unknown): {
   return { analysis, matches, routine, score };
 }
 
+// ============================================================================
+// v19.18 — AI rerank validator.
+// ============================================================================
+
+export function validateProductRerankResult(v: unknown): {
+  heroId: string | null;
+  alternativeIds: string[];
+  whyHeroFits: string | null;
+} | null {
+  if (!isObject(v)) {
+    aiLog.warn('validateProductRerankResult', 'not an object');
+    return null;
+  }
+  const heroIdRaw = (v as { heroId?: unknown }).heroId;
+  const heroId =
+    typeof heroIdRaw === 'string' && heroIdRaw.trim().length > 0
+      ? heroIdRaw.trim()
+      : null;
+  const altsRaw = (v as { alternativeIds?: unknown }).alternativeIds;
+  const alternativeIds = arrayOfStrings(altsRaw)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const whyRaw = (v as { whyHeroFits?: unknown }).whyHeroFits;
+  const whyHeroFits =
+    typeof whyRaw === 'string' && whyRaw.trim().length > 0
+      ? whyRaw.trim().slice(0, 140) // hard-cap to protect the UI
+      : null;
+  // Drop alternatives that duplicate the hero — defense in depth.
+  const dedupedAlts = heroId
+    ? alternativeIds.filter((id) => id !== heroId)
+    : alternativeIds;
+  return { heroId, alternativeIds: dedupedAlts, whyHeroFits };
+}
+
 export function validateProgressBundle(v: unknown): {
   progress: ProgressExplanation;
   score: SkinScoreExplanation;

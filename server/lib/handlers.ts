@@ -19,6 +19,7 @@ import {
   validateLiveProductLookupResult,
   validateProductIdentity,
   validateProductMatchResult,
+  validateProductRerankResult,
   validateProgressBundle,
   validateProgressExplanation,
   validateRoutineRecommendation,
@@ -508,6 +509,93 @@ export const HANDLERS: Record<string, Handler> = {
       ...validated,
       candidates: enriched,
     };
+  },
+
+  // v19.18 — AI rerank Step F. Tiny structured call: takes the
+  // top deterministic candidates + canonical user context and
+  // returns { heroId, alternativeIds, whyHeroFits }.
+  async rerankProducts(client, body) {
+    const candidatesRaw = body['candidates'];
+    if (!Array.isArray(candidatesRaw) || candidatesRaw.length === 0) {
+      bad('candidates', 'expected non-empty array');
+    }
+    const candidates = (candidatesRaw as unknown[])
+      .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+      .map((c) => ({
+        id: typeof c.id === 'string' ? c.id : '',
+        brand: typeof c.brand === 'string' ? c.brand : '',
+        name: typeof c.name === 'string' ? c.name : '',
+        category: typeof c.category === 'string' ? c.category : null,
+        concernTags: Array.isArray(c.concernTags)
+          ? (c.concernTags as unknown[]).filter(
+              (x): x is string => typeof x === 'string'
+            )
+          : [],
+        ingredientsHighlights: Array.isArray(c.ingredientsHighlights)
+          ? (c.ingredientsHighlights as unknown[]).filter(
+              (x): x is string => typeof x === 'string'
+            )
+          : [],
+        shortDescription:
+          typeof c.shortDescription === 'string' ? c.shortDescription : '',
+        price:
+          typeof c.price === 'number' && Number.isFinite(c.price)
+            ? c.price
+            : null,
+        localScore:
+          typeof c.localScore === 'number' && Number.isFinite(c.localScore)
+            ? c.localScore
+            : 60,
+      }))
+      .filter((c) => c.id.length > 0 && c.brand.length > 0 && c.name.length > 0);
+    if (candidates.length === 0) {
+      bad('candidates', 'no valid candidate after coerce');
+    }
+    const profileRaw = (body['profile'] ?? {}) as Record<string, unknown>;
+    const profile = {
+      displayName:
+        typeof profileRaw.displayName === 'string'
+          ? profileRaw.displayName
+          : null,
+      skinType:
+        typeof profileRaw.skinType === 'string'
+          ? profileRaw.skinType
+          : 'unknown',
+      sensitivities: Array.isArray(profileRaw.sensitivities)
+        ? (profileRaw.sensitivities as unknown[]).filter(
+            (x): x is string => typeof x === 'string'
+          )
+        : [],
+      goals: Array.isArray(profileRaw.goals)
+        ? (profileRaw.goals as unknown[]).filter(
+            (x): x is string => typeof x === 'string'
+          )
+        : [],
+    };
+    const primaryConcern =
+      typeof body['primaryConcern'] === 'string'
+        ? (body['primaryConcern'] as string)
+        : null;
+    const severityBand =
+      typeof body['severityBand'] === 'string'
+        ? (body['severityBand'] as string)
+        : null;
+    const intentLabel =
+      typeof body['intentLabel'] === 'string'
+        ? (body['intentLabel'] as string)
+        : 'best for your skin';
+    const result = await withAIErrorTranslation('rerankProducts', () =>
+      client.rerankProducts({
+        candidates,
+        profile,
+        primaryConcern,
+        severityBand,
+        intentLabel,
+      })
+    );
+    const validated = validateProductRerankResult(result);
+    if (!validated) aiBad('rerankProducts');
+    return validated;
   },
 
   async analyzeScannedProductAgainstUser(client, body) {
