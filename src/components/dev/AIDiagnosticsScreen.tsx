@@ -200,7 +200,14 @@ export function AIDiagnosticsScreen() {
       const t0 = Date.now();
       const result = await getRecommendationContextFromQuery(
         'niacinamide serum',
-        { intent: { kind: 'query', text: 'niacinamide serum' } }
+        {
+          intent: { kind: 'query', text: 'niacinamide serum' },
+          // v19.26 — explicit `search` trigger so the engine
+          // actually fires the AI rerank step. The default
+          // `'background'` trigger skips rerank to keep ambient
+          // UI updates cheap.
+          trigger: 'search',
+        }
       );
       const dur = Date.now() - t0;
       lines.push(
@@ -225,8 +232,21 @@ export function AIDiagnosticsScreen() {
       if (att.failureReason) {
         lines.push(`  reason: ${att.failureReason.slice(0, 80)}`);
       }
+      // v19.26 — AI rerank surface. If the rerank step ran, show
+      // which hero the AI picked + the why-it-fits sentence so
+      // the user can verify personalization is actually happening.
       if (result.source === 'ai-rerank') {
-        lines.push('  ↪ AI rerank applied (separate optional step)');
+        lines.push('  ↪ AI rerank APPLIED');
+        if (result.heroProduct) {
+          lines.push(
+            `    AI hero: ${result.heroProduct.brand} — ${result.heroProduct.name}`
+          );
+        }
+        if (result.whyHeroFits) {
+          lines.push(`    why: ${result.whyHeroFits.slice(0, 80)}`);
+        }
+      } else if (result.candidateProducts.length >= 2) {
+        lines.push('  ↪ AI rerank skipped or timed out (deterministic order)');
       }
       // Attempt history — show the last 5 fetches across the WHOLE
       // app. This is the chain "initial_load → seed_fallback →

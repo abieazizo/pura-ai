@@ -44,6 +44,24 @@ export interface SearchProductsRequest {
   limit?: number;
   /** Telemetry-only label of which user action drove the request. */
   trigger?: SearchProductsTrigger;
+  // ----- v19.26 — personalized-search context fields (all optional)
+  // The server uses these as soft signals to bias ordering. They are
+  // ALSO forwarded to the AI rerank step so it can pick the hero
+  // with full user context, not just the candidate set.
+  /** User-stated skincare goals ('reduce_breakouts', 'soften_texture'). */
+  goals?: string[];
+  /**
+   * Short, plain-English summary of the user's latest scan
+   * ("Mostly calm with mild forehead texture and slight redness on
+   *  the cheeks."). Bounded to ~280 chars by the client.
+   */
+  latestScanSummary?: string | null;
+  /**
+   * Canonical concern axes the user's latest scan flagged, in
+   * descending severity order. e.g. ['texture', 'dark_marks',
+   * 'hydration']. Empty when no scan exists yet.
+   */
+  topConcerns?: string[];
 }
 
 export interface BackendProductCandidate {

@@ -309,7 +309,34 @@ function coerceRequest(body: Record<string, unknown>): SearchProductsRequest {
     triggerRaw === 'background'
       ? triggerRaw
       : 'background';
-  return { query, concern, skinType, sensitivities, limit, trigger };
+  // v19.26 — personalized-search context fields.
+  const goals = Array.isArray(body['goals'])
+    ? (body['goals'] as unknown[]).filter(
+        (g): g is string => typeof g === 'string'
+      )
+    : [];
+  const latestScanSummaryRaw = body['latestScanSummary'];
+  const latestScanSummary =
+    typeof latestScanSummaryRaw === 'string' &&
+    latestScanSummaryRaw.length > 0
+      ? latestScanSummaryRaw.slice(0, 320)
+      : null;
+  const topConcerns = Array.isArray(body['topConcerns'])
+    ? (body['topConcerns'] as unknown[]).filter(
+        (c): c is string => typeof c === 'string'
+      )
+    : [];
+  return {
+    query,
+    concern,
+    skinType,
+    sensitivities,
+    limit,
+    trigger,
+    goals,
+    latestScanSummary,
+    topConcerns,
+  };
 }
 
 /**
@@ -356,17 +383,48 @@ export async function searchProductsHandler(
     if (c) candidates.push(c);
   }
 
-  // Concern post-filter: when the client provided a concern, prefer
-  // candidates with that concern in their derived tags. We don't
-  // hard-drop the rest — concern matching is a soft signal.
-  if (req.concern) {
-    const wanted = req.concern;
-    candidates.sort((a, b) => {
-      const ai = a.concernTags.includes(wanted) ? 0 : 1;
-      const bi = b.concernTags.includes(wanted) ? 0 : 1;
-      return ai - bi;
-    });
-  }
+  // v19.26 — personalized soft sort. Score every candidate against
+  // the full user context the client passed. Higher score → earlier
+  // in the array. We don't hard-drop anything; the AI rerank step
+  // (called downstream by the client) will pick the final hero.
+  //
+  // Signals (each adds to score):
+  //   • concern in concernTags                → +5
+  //   • topConcerns[i] in concernTags          → +(4 - i)  (decay)
+  //   • goals overlap with concernTags / safety→ +1 per overlap
+  //   • candidate's safetyTags ∩ user-flagged-sensitivities → +2 each
+  //   • avoid_ingredient in user sensitivities matching candidate
+  //     ingredients — penalised by the local scorer client-side; we
+  //     don't have ingredient data here
+  const personalizedScore = (c: BackendProductCandidate): number => {
+    let s = 0;
+    if (req.concern && c.concernTags.includes(req.concern)) s += 5;
+    if (req.topConcerns) {
+      for (let i = 0; i < req.topConcerns.length; i++) {
+        if (c.concernTags.includes(req.topConcerns[i])) {
+          s += Math.max(1, 4 - i);
+        }
+      }
+    }
+    if (req.goals) {
+      for (const g of req.goals) {
+        const norm = g.toLowerCase().replace(/[_-]/g, ' ');
+        if (
+          c.concernTags.some((t) => norm.includes(t.replace(/_/g, ' '))) ||
+          c.safetyTags.some((t) => norm.includes(t.replace(/_/g, ' ')))
+        ) {
+          s += 1;
+        }
+      }
+    }
+    if (req.sensitivities) {
+      for (const sens of req.sensitivities) {
+        if (c.safetyTags.includes(sens)) s += 2;
+      }
+    }
+    return s;
+  };
+  candidates.sort((a, b) => personalizedScore(b) - personalizedScore(a));
 
   return {
     query: req.query,

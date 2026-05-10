@@ -627,6 +627,29 @@ async function tryRerankProducts(args: {
   }
 }
 
+/**
+ * v19.26 — bounded-race wrapper around `tryRerankProducts`. The
+ * AI rerank gateway has its own 15s timeout; this race caps the
+ * total wait at 5s so the personalized search path never blocks
+ * the user-visible result longer than that. On race timeout the
+ * deterministic local-score order wins.
+ */
+const RERANK_RACE_MS = 5_000;
+
+async function tryRerankProductsBounded(args: {
+  candidates: LiveProductCandidate[];
+  profile: ReturnType<typeof selectUserProfileContext>;
+  skinState: ReturnType<typeof selectSkinState>;
+  intentLabel: string;
+}): Promise<AIRerankResult | null> {
+  return Promise.race([
+    tryRerankProducts(args),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), RERANK_RACE_MS);
+    }),
+  ]);
+}
+
 function inferConcernFromQuery(query: string): ConcernType | null {
   const q = query.toLowerCase();
   if (/breakout|acne|spot|pimple|clog/.test(q)) return 'breakouts';
@@ -728,13 +751,14 @@ function backendCandidateToLive(
 }
 
 /**
- * v19.25 — backend-owned live search. Calls
- * `POST /searchProducts` via `searchProductsBackend`. Catches
- * all failures and returns `{ candidates: [], failure }` so the
- * engine can fall back to the bundled seed catalog.
+ * v19.26 — backend-owned live search with full personalized
+ * context. Forwards the user's profile + latest scan to the
+ * server via the v19.26 SearchProductsRequest extension fields
+ * so the server can apply a soft personalized sort BEFORE the
+ * client gets the candidate set + AI rerank does its pass.
  *
- * Legacy `searchOpenBeautyFacts` (client-side OBF) is no longer
- * used by the engine; preserved as a deprecated module.
+ * Catches all failures and returns `{ candidates: [], failure }`
+ * so the engine can fall back to the bundled seed catalog.
  */
 async function tryLiveSearch(
   query: string,
@@ -744,14 +768,42 @@ async function tryLiveSearch(
     | 'chip_press'
     | 'search'
     | 'assistant'
-    | 'background' = 'background'
+    | 'background' = 'background',
+  context?: {
+    profile: ReturnType<typeof selectUserProfileContext>;
+    skinState: ReturnType<typeof selectSkinState>;
+    inferredConcern: ConcernType | null;
+  }
 ): Promise<{ candidates: LiveProductCandidate[]; failure: string | null }> {
   if (!query || query.trim().length === 0) {
     return { candidates: [], failure: null };
   }
   try {
+    // v19.26 — translate the canonical UserProfileContext +
+    // SkinState into the wire-shape SearchProductsRequest. Only
+    // pass values that are actually known; absent fields are
+    // omitted so the server's defaults stand.
+    // Canonical AppSkinType is a strict 5-value union without
+    // 'normal'; map the four concrete values straight through and
+    // drop 'unknown' (omit field) so server defaults to 'unknown'.
+    const skinTypeOnWire =
+      context?.profile.skinType === 'dry' ||
+      context?.profile.skinType === 'oily' ||
+      context?.profile.skinType === 'combination' ||
+      context?.profile.skinType === 'sensitive'
+        ? context.profile.skinType
+        : undefined;
+    const topConcernsOnWire = context?.skinState?.topConcerns
+      ? context.skinState.topConcerns.map((c) => c.concern)
+      : undefined;
     const res = await searchProductsBackend({
       query,
+      concern: context?.inferredConcern ?? null,
+      skinType: skinTypeOnWire,
+      sensitivities: context?.profile.sensitivities,
+      goals: context?.profile.goals,
+      latestScanSummary: context?.skinState?.summaryHeadline ?? null,
+      topConcerns: topConcernsOnWire,
       limit: 12,
       trigger,
     });
@@ -813,8 +865,24 @@ export async function getRecommendationContextFromQuery(
   let hardSource: RetrievalSource = 'empty';
   let failureReason: string | null = null;
 
-  // STEP A.LIVE — backend-owned search via `/searchProducts`.
-  const live = await tryLiveSearch(query, trigger);
+  // STEP A.LIVE — backend-owned personalized search.
+  // v19.26: also pass UserProfileContext + the user's latest
+  // SkinState so the server can apply a soft sort before the
+  // candidates reach AI rerank below.
+  const latestScan = state.scans[state.scans.length - 1];
+  const previousForCtx = latestScan
+    ? state.scans
+        .filter((s) => s.capturedAt < latestScan.capturedAt)
+        .slice(-1)[0]
+    : undefined;
+  const skinStateForCtx = latestScan
+    ? selectSkinState(latestScan, previousForCtx, state.scans)
+    : null;
+  const live = await tryLiveSearch(query, trigger, {
+    profile,
+    skinState: skinStateForCtx,
+    inferredConcern,
+  });
   if (live.candidates.length > 0) {
     candidates = live.candidates;
     retrievalSource = 'live';
@@ -846,8 +914,22 @@ export async function getRecommendationContextFromQuery(
     hardSource = failureReason && hardSource === 'empty' ? 'error' : 'empty';
   }
 
-  // STEP F (AI rerank) remains DEFERRED — non-blocking refinement.
-  const rerank = null;
+  // STEP F — v19.26 personalized AI rerank with bounded race.
+  // Sends ONLY the top deterministic candidates + the user's
+  // canonical profile + latest skin state to the AI backend, which
+  // returns `{ heroId, alternativeIds, whyHeroFits }`. Bounded at
+  // 5s; on timeout/failure we keep the deterministic order so the
+  // UI ALWAYS renders something usable. Skipped when there are
+  // fewer than 2 candidates (nothing to rerank).
+  let rerank: AIRerankResult | null = null;
+  if (deduped.length >= 2 && trigger !== 'background') {
+    rerank = await tryRerankProductsBounded({
+      candidates: deduped,
+      profile,
+      skinState: skinStateForCtx,
+      intentLabel: query,
+    });
+  }
 
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
@@ -870,7 +952,7 @@ export async function getRecommendationContextFromQuery(
     intent,
     candidates: deduped,
     profile,
-    skinState: null,
+    skinState: skinStateForCtx,
     state: availability,
     failureReason: failureReason ?? undefined,
     rerankResult: rerank,
@@ -943,7 +1025,15 @@ export async function getRecommendationContextForScan(
       : primaryConcern === 'pores'
       ? 'pore minimizing serum'
       : 'skincare serum';
-  const live = await tryLiveSearch(liveQuery, trigger);
+  // v19.26 — pass full personalized context to /searchProducts.
+  // `primaryConcern` is already a canonical `ConcernType`
+  // (SkinState.topConcerns[].concern is the AI shape), so no
+  // mapping needed.
+  const live = await tryLiveSearch(liveQuery, trigger, {
+    profile,
+    skinState,
+    inferredConcern: primaryConcern as ConcernType | null,
+  });
   if (live.candidates.length > 0) {
     candidates = live.candidates;
     retrievalSource = 'live';
@@ -980,9 +1070,22 @@ export async function getRecommendationContextForScan(
     hardSource = failureReason && hardSource === 'empty' ? 'error' : 'empty';
   }
 
-  // v19.19 — AI rerank still DEFERRED to async refinement.
-  const rerank = null;
-  void tryRerankProducts; // kept for future async refinement
+  // STEP F — v19.26 personalized AI rerank with bounded race.
+  // Same wiring as the free-text path: top deterministic
+  // candidates + canonical user context → AI returns
+  // `{ heroId, alternativeIds, whyHeroFits }`. Bounded at 5s.
+  // On timeout/failure, deterministic local-score order wins
+  // and the hero still renders.
+  let rerank: AIRerankResult | null = null;
+  if (deduped.length >= 2 && trigger !== 'background') {
+    rerank = await tryRerankProductsBounded({
+      candidates: deduped,
+      profile,
+      skinState,
+      intentLabel:
+        primaryConcern?.replace(/_/g, ' ') ?? 'best for your skin',
+    });
+  }
 
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
