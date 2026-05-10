@@ -820,6 +820,10 @@ function backendCandidateToLive(
     productUrl: bp.productUrl,
     imageUrl: bp.imageUrl,
     imageSource,
+    // v19.40 — carry the server's image quality tier + reason
+    // through to the client trust scorer + dev truth panel.
+    imageQuality: bp.imageQuality ?? null,
+    imageQualityReason: bp.imageQualityReason ?? '',
     shortDescription: bp.shortDescription ?? '',
     matchReason: '',
     availability: 'available',

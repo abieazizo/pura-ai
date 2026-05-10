@@ -174,6 +174,10 @@ export function ProductsScreen() {
   const [searchSlow, setSearchSlow] = useState(false);
   const [searchTimedOut, setSearchTimedOut] = useState(false);
   const [searchAttempt, setSearchAttempt] = useState(0);
+  // v19.40 — progressive reveal. Initial visible count is exactly
+  // 6; scrolling near the end appends +6 each time. Reset to 6 on
+  // every fresh result set (query / chip / retry).
+  const [visibleCount, setVisibleCount] = useState(6);
 
   useEffect(() => {
     const q = debouncedQuery.trim();
@@ -224,6 +228,10 @@ export function ProductsScreen() {
         // in-screen dev panel.
         setLastRec(rec);
         setLastRecAt(new Date().toISOString());
+        // v19.40 — reset progressive-reveal visible count to 6 on
+        // every fresh result set. Search / chip / retry all flow
+        // through this .then so the reset is unified.
+        setVisibleCount(6);
         // v19.32 — write the real ProductUiTrace so diagnostics
         // and the user can verify what the actual UI rendered.
         const hero = rec.heroProduct;
@@ -434,25 +442,86 @@ export function ProductsScreen() {
           contentContainerStyle={styles.searchScroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          // v19.40 — progressive reveal. When the user scrolls near
+          // the end, append the next +6 batch. Native onScroll gives
+          // contentOffset / contentSize / layoutMeasurement; we
+          // compute how close we are to the bottom and trigger when
+          // within 240pt.
+          onScroll={(e) => {
+            const { contentOffset, layoutMeasurement, contentSize } =
+              e.nativeEvent;
+            const distance =
+              contentSize.height -
+              (contentOffset.y + layoutMeasurement.height);
+            if (
+              distance < 240 &&
+              liveResults.length > visibleCount
+            ) {
+              setVisibleCount((c) =>
+                Math.min(c + 6, liveResults.length)
+              );
+            }
+          }}
+          scrollEventThrottle={120}
         >
           {liveResults.length > 0 ? (
             <View>
               {/* v19.38 — REAL PATH PROOF MARKER. Renders in dev
                   builds only, inside the same JSX branch that
-                  renders live hero+alts. If the user does NOT see
-                  this badge, the corrected v19.38 path is not
-                  active on their device (likely stale JS bundle
-                  — they need to reload). */}
+                  renders live hero+alts. */}
               {__DEV__ ? (
-                <RealPathBadge rec={lastRec} at={lastRecAt} />
+                <RealPathBadge
+                  rec={lastRec}
+                  at={lastRecAt}
+                  totalCount={liveResults.length}
+                  visibleNow={Math.min(visibleCount, liveResults.length)}
+                />
               ) : null}
               <View style={liveStyles.grid}>
-                {liveResults.map((c) => (
-                  <View key={c.id} style={liveStyles.cell}>
-                    <LiveProductCard candidate={c} variant="alt" />
-                  </View>
-                ))}
+                {/* v19.40 — slice to visibleCount. The candidate list
+                    is already ranked strongest-first by the engine
+                    (trustedFree is sorted localScore desc inside
+                    buildRecommendationContext::localSorted). Slicing
+                    the head is therefore the strongest 6. */}
+                {liveResults
+                  .slice(0, Math.min(visibleCount, liveResults.length))
+                  .map((c) => (
+                    <View key={c.id} style={liveStyles.cell}>
+                      <LiveProductCard candidate={c} variant="alt" />
+                    </View>
+                  ))}
               </View>
+              {/* v19.40 — show a "+6 more" hint when there's still
+                  more to reveal. Tapping it manually advances the
+                  reveal in case the scroll-end heuristic doesn't
+                  fire (very short result lists). */}
+              {liveResults.length > visibleCount ? (
+                <Pressable
+                  onPress={() => {
+                    hapt.select();
+                    setVisibleCount((c) =>
+                      Math.min(c + 6, liveResults.length)
+                    );
+                  }}
+                  style={({ pressed }) => [
+                    revealStyles.btn,
+                    pressed && { opacity: 0.85 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show ${Math.min(
+                    6,
+                    liveResults.length - visibleCount
+                  )} more`}
+                >
+                  <Text
+                    style={revealStyles.btnLabel}
+                    maxFontSizeMultiplier={1.1}
+                  >
+                    Show {Math.min(6, liveResults.length - visibleCount)}{' '}
+                    more  •  {liveResults.length - visibleCount} remaining
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : liveSearching ? (
             <View style={liveStyles.unavailableWrap}>
@@ -542,15 +611,34 @@ export function ProductsScreen() {
 function RealPathBadge({
   rec,
   at,
+  totalCount,
+  visibleNow,
 }: {
   rec: RecommendationContextType | null;
   at: string | null;
+  totalCount: number;
+  visibleNow: number;
 }) {
+  // v19.40 — surface the hero's image quality + reason if we can
+  // find them on the canonical context's heroProduct.
+  const hero = rec?.heroProduct ?? null;
+  const heroImageQuality =
+    hero?.imageQuality === 'high' || hero?.imageQuality === 'medium' ||
+    hero?.imageQuality === 'low'
+      ? hero.imageQuality
+      : '(unknown)';
+  const heroImageQualityReason = hero?.imageQualityReason ?? '(none)';
   return (
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v19.38
+          REAL PATH v19.40
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>rerankPromptVersion</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          v19.40-exact
         </Text>
       </View>
       <View style={realPathStyles.row}>
@@ -571,6 +659,24 @@ function RealPathBadge({
           {rec?.heroSkinFitScore !== null && rec?.heroSkinFitScore !== undefined
             ? `${rec.heroSkinFitScore}/100`
             : '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>resultCount</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {visibleNow} visible / {totalCount} total
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>imageQuality (hero)</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {heroImageQuality}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>imageQualityReason</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {heroImageQualityReason}
         </Text>
       </View>
       <View style={realPathStyles.row}>
@@ -604,6 +710,27 @@ function RealPathBadge({
     </View>
   );
 }
+
+// v19.40 — "Show 6 more" reveal button styles.
+const revealStyles = StyleSheet.create({
+  btn: {
+    marginHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 4,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    alignItems: 'center',
+  },
+  btnLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.4,
+    color: palette.ink,
+  },
+});
 
 const realPathStyles = StyleSheet.create({
   wrap: {

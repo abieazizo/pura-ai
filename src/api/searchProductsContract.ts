@@ -116,6 +116,17 @@ export interface BackendProductCandidate {
   productUrl: string | null;
   /** Real product image URL when the upstream provided one. */
   imageUrl: string | null;
+  /**
+   * v19.40 — image quality tier. Set server-side from upstream
+   * URL signals (which OBF size field, marketplace patterns, etc).
+   * `'high'` = clean packshot-quality; `'medium'` = small but
+   * usable; `'low'` = thumb-only or marketplace-noisy. The client
+   * card prefers higher-tier images and the trust scorer treats
+   * tier as part of imageCompleteness.
+   */
+  imageQuality?: 'high' | 'medium' | 'low' | null;
+  /** Short human-readable reason explaining the imageQuality tier. */
+  imageQualityReason?: string;
   /** Display string ("$24" / "£18.50") — null when unknown. */
   price: string | null;
   /** Cosmetic category inferred from upstream metadata. */

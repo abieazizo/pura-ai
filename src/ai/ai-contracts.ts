@@ -1148,6 +1148,15 @@ export interface LiveProductCandidate {
   /** Best-effort packshot URL. Null is honest. */
   imageUrl: string | null;
   imageSource: 'merchant' | 'brand' | 'obf' | 'none';
+  /**
+   * v19.40 — image quality tier carried through from the backend.
+   * `null` when no usable image was selected. The card prefers
+   * higher tiers; `imageCompleteness` in the trust scorer reads
+   * the tier so packshot-quality images outrank thumb-only.
+   */
+  imageQuality?: 'high' | 'medium' | 'low' | null;
+  /** Short reason describing the imageQuality tier. */
+  imageQualityReason?: string;
   shortDescription: string;
   /** Why this product matches the user's specific concern. */
   matchReason: string;

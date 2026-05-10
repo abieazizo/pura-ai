@@ -307,23 +307,82 @@ function deriveMerchant(brand: string, name: string): {
  * alt cards, but the contract today is one URL. Pick the largest
  * usable URL (hero-quality) and validate the shape; reject empty
  * strings, relative paths, and non-http schemes.
+ *
+ * v19.40 — also classify the chosen image into one of three tiers
+ * + a short reason. The classification is heuristic but mirrors
+ * what a human would call "clean packshot / small / thumb-only /
+ * marketplace-noisy". The client trust scorer reads the tier;
+ * the dev truth panel surfaces both fields.
  */
-function pickBestImageUrl(p: OBFProduct): string | null {
-  const candidates = [
-    p.image_url,
-    p.image_small_url,
-    p.image_thumb_url,
-  ];
-  for (const u of candidates) {
-    if (typeof u !== 'string') continue;
-    const trimmed = u.trim();
-    if (trimmed.length === 0) continue;
-    if (!/^https?:\/\//i.test(trimmed)) continue;
-    // Filter obvious junk URL patterns from OBF (rare but seen).
-    if (/\/invalid|placeholder|missing/i.test(trimmed)) continue;
-    return trimmed;
+const NOISY_IMAGE_PATTERNS: RegExp[] = [
+  // Marketplace / seller-shot indicators in URL paths.
+  /amazon\.com\/images\/I\//i,
+  /ebay/i,
+  /aliexpress|alibaba/i,
+  /walmartimages/i,
+  /etsystatic/i,
+  /shopify\.com\/s\//i, // some shopify product URLs are seller-uploaded
+  // Generic noisy patterns.
+  /collage|combo|set-of|bundle|gift-set/i,
+  /placeholder|missing|invalid/i,
+];
+
+interface ImagePick {
+  url: string | null;
+  quality: 'high' | 'medium' | 'low' | null;
+  reason: string;
+}
+
+function pickBestImageUrl(p: OBFProduct): ImagePick {
+  type Candidate = { url: string; tier: 'high' | 'medium' | 'low'; src: string };
+  const ordered: Candidate[] = [];
+  if (typeof p.image_url === 'string' && p.image_url.trim().length > 0) {
+    ordered.push({ url: p.image_url.trim(), tier: 'high', src: 'image_url' });
   }
-  return null;
+  if (
+    typeof p.image_small_url === 'string' &&
+    p.image_small_url.trim().length > 0
+  ) {
+    ordered.push({
+      url: p.image_small_url.trim(),
+      tier: 'medium',
+      src: 'image_small_url',
+    });
+  }
+  if (
+    typeof p.image_thumb_url === 'string' &&
+    p.image_thumb_url.trim().length > 0
+  ) {
+    ordered.push({
+      url: p.image_thumb_url.trim(),
+      tier: 'low',
+      src: 'image_thumb_url',
+    });
+  }
+  for (const c of ordered) {
+    if (!/^https?:\/\//i.test(c.url)) continue;
+    // Filter obvious junk URL patterns from OBF (rare but seen).
+    if (/\/invalid|placeholder|missing/i.test(c.url)) continue;
+    // v19.40 — marketplace/noisy URL detection. If the URL pattern
+    // looks marketplace-like, downgrade the tier one step rather
+    // than drop the URL entirely (a low-quality URL is still
+    // better than no image at all).
+    const noisy = NOISY_IMAGE_PATTERNS.some((re) => re.test(c.url));
+    let tier: 'high' | 'medium' | 'low' = c.tier;
+    let reason = '';
+    if (noisy) {
+      tier = c.tier === 'high' ? 'medium' : 'low';
+      reason = `${c.src} (downgraded — marketplace-noisy URL)`;
+    } else if (c.tier === 'high') {
+      reason = 'image_url (clean packshot)';
+    } else if (c.tier === 'medium') {
+      reason = 'image_small_url (medium packshot, image_url missing)';
+    } else {
+      reason = 'image_thumb_url (thumb only — low fidelity)';
+    }
+    return { url: c.url, quality: tier, reason };
+  }
+  return { url: null, quality: null, reason: 'no usable image' };
 }
 
 /**
@@ -374,7 +433,11 @@ function toCandidate(p: OBFProduct): BackendProductCandidate | null {
 
   const category = inferCategory(p.categories);
   const merchant = deriveMerchant(brand, name);
-  const imageUrl = pickBestImageUrl(p);
+  // v19.40 — pickBestImageUrl now returns a tier + reason. The
+  // contract field `imageUrl` carries the URL; `imageQuality`
+  // carries the tier; `imageQualityReason` carries the human
+  // reason for the dev truth panel.
+  const imagePick = pickBestImageUrl(p);
   // v19.31 — populate highlights + description so client trust
   // scoring + AI rerank get the metadata they need.
   const ingredientsHighlights = extractIngredientHighlights(p);
@@ -390,7 +453,9 @@ function toCandidate(p: OBFProduct): BackendProductCandidate | null {
     name,
     merchantName: merchant.merchantName,
     productUrl: merchant.productUrl,
-    imageUrl,
+    imageUrl: imagePick.url,
+    imageQuality: imagePick.quality,
+    imageQualityReason: imagePick.reason,
     price: null, // OBF doesn't carry price data
     category,
     concernTags: deriveConcernTags(p),

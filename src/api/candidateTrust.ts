@@ -390,16 +390,27 @@ function scoreMetadataCompleteness(c: LiveProductCandidate): number {
 /**
  * Image completeness. 0..15. Big boost for candidates with a
  * usable image; real product cards SHOULD show a packshot.
+ *
+ * v19.40 — also scales by `imageQuality` tier when the backend
+ * supplied one. High-tier (clean packshot) gets the full source-
+ * specific score; medium drops by 3; low drops by 6. This makes
+ * scoreImageCompleteness reflect VISUAL quality, not just URL
+ * presence.
  */
 function scoreImageCompleteness(c: LiveProductCandidate): number {
   if (!c.imageUrl || c.imageUrl.trim().length === 0) return 0;
   // Filter out obvious junk URL shapes.
   if (!/^https?:\/\//i.test(c.imageUrl)) return 0;
   // Trust higher when imageSource is 'merchant' or 'brand'.
-  if (c.imageSource === 'merchant') return 15;
-  if (c.imageSource === 'brand') return 13;
-  if (c.imageSource === 'obf') return 11;
-  return 9; // present but unknown source
+  let base: number;
+  if (c.imageSource === 'merchant') base = 15;
+  else if (c.imageSource === 'brand') base = 13;
+  else if (c.imageSource === 'obf') base = 11;
+  else base = 9; // present but unknown source
+  // v19.40 — quality tier adjustment.
+  if (c.imageQuality === 'medium') base -= 3;
+  else if (c.imageQuality === 'low') base -= 6;
+  return Math.max(0, base);
 }
 
 /**
@@ -433,6 +444,28 @@ const MOIST_FRAGRANCED_PATTERNS: RegExp[] =
 const MOIST_HARSH_ACTIVE_PATTERNS: RegExp[] =
   [/retinol moisturizer/i, /exfoliating moisturizer/i, /aha moisturizer/i, /bha moisturizer/i];
 
+// v19.40 — concrete-ingredient signals. A "filler" candidate is
+// one that names no concrete active ingredient AND has weak metadata.
+// Strong candidates name something specific the user can recognize:
+// "ceramide", "niacinamide", "salicylic", "hyaluronic", etc.
+const CONCRETE_INGREDIENT_PATTERNS: RegExp[] = [
+  /ceramide/i,
+  /niacinamide/i,
+  /salicylic|glycolic|lactic|mandelic|azelaic/i,
+  /hyaluronic|sodium hyaluronate/i,
+  /retinol|retinal|tretinoin|bakuchiol/i,
+  /vitamin c|ascorbic/i,
+  /panthenol/i,
+  /squalane/i,
+  /centella|cica/i,
+  /peptide/i,
+  /tranexamic/i,
+  /alpha arbutin/i,
+  /benzoyl peroxide/i,
+  /sulfur/i,
+  /\bspf\b|sunscreen|tinosorb|avobenzone|zinc oxide|titanium dioxide/i,
+];
+
 function scoreNoisePenalty(
   c: LiveProductCandidate,
   intent: InterpretedIntent,
@@ -441,6 +474,7 @@ function scoreNoisePenalty(
   let p = 0;
   const corpus = `${c.name} ${c.shortDescription} ${c.category}`;
   const corpusLower = corpus.toLowerCase();
+  const ingredientsCorpus = (c.ingredientsHighlights ?? []).join(' ').toLowerCase();
   for (const re of NON_SKINCARE_PATTERNS) {
     if (re.test(corpus)) {
       p += 30; // hard penalty — non-skincare leak
@@ -448,6 +482,27 @@ function scoreNoisePenalty(
   }
   if ((c.name ?? '').length < 4) p += 10;
   if ((c.brand ?? '').length < 2) p += 10;
+
+  // v19.40 — FILLER PENALTY. A candidate that names no concrete
+  // active ingredient AND has no concrete short description AND
+  // would only "loosely match the category" is filler. The exact
+  // GPT prompt v19.40-exact is instructed to lose to non-filler.
+  // The deterministic side enforces the same rule via this penalty
+  // so the deterministic-fallback hero (when AI is unavailable)
+  // also rejects filler.
+  const namesIngredient =
+    CONCRETE_INGREDIENT_PATTERNS.some((re) => re.test(corpus)) ||
+    CONCRETE_INGREDIENT_PATTERNS.some((re) => re.test(ingredientsCorpus));
+  const hasShortDescription =
+    !!c.shortDescription && c.shortDescription.trim().length >= 20;
+  const hasIngredientsList =
+    Array.isArray(c.ingredientsHighlights) &&
+    c.ingredientsHighlights.length >= 1;
+  if (!namesIngredient && !hasShortDescription && !hasIngredientsList) {
+    p += 15; // filler penalty — generic, no concrete differentiator
+  } else if (!namesIngredient && !hasIngredientsList) {
+    p += 8; // soft filler — has shortDescription but no real ingredient signal
+  }
 
   // v19.36 — moisturizer-family skin-profile-conflict penalties.
   // Skip when no skin profile is supplied (legacy callers) or when
