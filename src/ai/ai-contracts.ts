@@ -1367,12 +1367,19 @@ export interface AIRerankResult {
   heroId: string | null;
   alternativeIds: string[];
   whyHeroFits: string | null;
+  /**
+   * v19.27 — short list of what-to-avoid strings the AI
+   * generates when the user's profile flags ingredients /
+   * categories that conflict with the candidates. Always
+   * present (may be empty array). Each string ≤ 60 chars.
+   */
+  whatToAvoid: string[];
 }
 
 export const PRODUCT_RERANK_SCHEMA: JsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['heroId', 'alternativeIds', 'whyHeroFits'],
+  required: ['heroId', 'alternativeIds', 'whyHeroFits', 'whatToAvoid'],
   properties: {
     heroId: { type: ['string', 'null'] },
     alternativeIds: {
@@ -1380,6 +1387,10 @@ export const PRODUCT_RERANK_SCHEMA: JsonSchema = {
       items: { type: 'string' },
     },
     whyHeroFits: { type: ['string', 'null'] },
+    whatToAvoid: {
+      type: 'array',
+      items: { type: 'string' },
+    },
   },
 };
 

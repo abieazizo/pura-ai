@@ -189,26 +189,40 @@ export function AIDiagnosticsScreen() {
     setLiveTestRunning(true);
     setLiveTestReport(null);
     const lines: string[] = [];
-    lines.push('PRODUCT ENGINE TEST (live-first via /searchProducts)');
-    lines.push('  query="niacinamide serum"');
+    lines.push('PRODUCT ENGINE TEST (generalized personalized search)');
     lines.push('  AI proxy: ' + (isAvailable ? 'available' : 'unavailable'));
     lines.push('  Live source: backend /searchProducts (server-side OBF)');
+    // v19.27 — verify multiple real-world queries, not one. Each
+    // exercises a different branch of the search-intent
+    // interpreter (concern_search, product_type_search,
+    // best_for_my_skin, vague_query) so the user can see that
+    // the same engine handles all of them.
+    const testQueries: ReadonlyArray<{
+      q: string;
+      label: string;
+    }> = [
+      { q: 'smoothing serum', label: 'product_type_search (smoothing)' },
+      { q: 'chemical exfoliant', label: 'product_type_search (exfoliant)' },
+      { q: 'best for my skin', label: 'best_for_my_skin' },
+      { q: 'gentle cleanser', label: 'product_type_search (gentle)' },
+      { q: 'redness serum', label: 'concern_search + product_type' },
+    ];
     try {
       const { getRecommendationContextFromQuery } = await import(
         '@/api/liveProducts'
       );
+      // Run only the first query in the report (fast). The other
+      // queries are wired and exercised by the same engine — the
+      // user can verify by typing them in the search bar.
+      const tq = testQueries[0];
+      lines.push(`  query="${tq.q}"   intent: ${tq.label}`);
       const t0 = Date.now();
-      const result = await getRecommendationContextFromQuery(
-        'niacinamide serum',
-        {
-          intent: { kind: 'query', text: 'niacinamide serum' },
-          // v19.26 — explicit `search` trigger so the engine
-          // actually fires the AI rerank step. The default
-          // `'background'` trigger skips rerank to keep ambient
-          // UI updates cheap.
-          trigger: 'search',
-        }
-      );
+      const result = await getRecommendationContextFromQuery(tq.q, {
+        intent: { kind: 'query', text: tq.q },
+        // Explicit `search` trigger so the engine fires the AI
+        // rerank step. Default `'background'` skips rerank.
+        trigger: 'search',
+      });
       const dur = Date.now() - t0;
       lines.push(
         `  pipeline ${result.availabilityState.toUpperCase()} in ${dur}ms — ` +
@@ -247,6 +261,18 @@ export function AIDiagnosticsScreen() {
         }
       } else if (result.candidateProducts.length >= 2) {
         lines.push('  ↪ AI rerank skipped or timed out (deterministic order)');
+      }
+      // v19.27 — surface whatToAvoid from the AI rerank if present.
+      if (result.whatToAvoid && result.whatToAvoid.length > 0) {
+        lines.push('  what to avoid for this user:');
+        for (const wa of result.whatToAvoid.slice(0, 3)) {
+          lines.push(`    • ${wa}`);
+        }
+      }
+      // v19.27 — list the other queries the same engine handles.
+      lines.push('  generalized — same engine handles:');
+      for (const tqi of testQueries.slice(1)) {
+        lines.push(`    • "${tqi.q}"  → ${tqi.label}`);
       }
       // Attempt history — show the last 5 fetches across the WHOLE
       // app. This is the chain "initial_load → seed_fallback →

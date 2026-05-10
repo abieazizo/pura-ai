@@ -1024,22 +1024,54 @@ export class OpenAIClient {
     severityBand: string | null;
     /** Plain-English intent label ("hydration", "best for your skin"). */
     intentLabel: string;
+    // v19.27 — generalized personalized search context.
+    /** Free-text query the user typed, or null if chip-driven. */
+    rawQuery?: string | null;
+    /** Chip the user tapped, or null if free-text. */
+    chipIntent?: string | null;
+    /** Interpreted intent from the client-side query interpreter. */
+    interpretedIntent?: {
+      mode: string;
+      interpretedConcern: string | null;
+      interpretedProductType: string | null;
+      avoidanceConstraints: string[];
+    };
+    /** Short scan summary headline for grounding. */
+    latestScanSummary?: string | null;
+    /** Top-N concern axes from the latest scan, severity desc. */
+    topConcerns?: string[];
   }): Promise<AIRerankResult> {
     const system =
       "You are Pura AI's product rerank engine. Given a SHORT list " +
-      'of candidate products + the user\'s skin context, you choose:\n' +
+      'of candidate products + the user\'s skin context + their search ' +
+      'intent, you choose:\n' +
       '  • heroId — the single best fit, MUST be one of the input ids\n' +
       '  • alternativeIds — 0–4 next best, MUST be input ids, NEVER\n' +
       '    duplicate the heroId\n' +
       '  • whyHeroFits — one short plain-English sentence (≤100 chars)\n' +
-      '    explaining why the hero suits THIS user. No marketing fluff.\n' +
-      '    Reference the primary concern when relevant.\n\n' +
+      '    explaining why the hero suits THIS user. Reference the\n' +
+      '    user\'s actual top concern, skin type, or goal where\n' +
+      '    relevant. Never marketing fluff.\n' +
+      '  • whatToAvoid — array of 0–3 short strings (≤60 chars each)\n' +
+      '    explicitly noting what THIS user should avoid given their\n' +
+      "    sensitivities or scan signals. Empty array when there's\n" +
+      '    nothing relevant to avoid.\n\n' +
       'You do NOT generate brand, name, url, image, or price — every\n' +
       'product field is already known. You only choose ordering and\n' +
-      'write one short sentence.\n\n' +
-      'If a candidate conflicts with a sensitivity (e.g. avoid_ingredient),\n' +
-      'rank it lower or omit it. If you cannot honestly pick a hero,\n' +
-      'return heroId: null.';
+      'write the two short text fields.\n\n' +
+      'Personalization rules:\n' +
+      '  • If interpreted_intent.mode === "best_for_my_skin", lean\n' +
+      '    HEAVILY on top_concerns + skin_type + scan_summary. The\n' +
+      '    user did not specify a concern; you infer one.\n' +
+      '  • If interpreted_intent.avoidance_constraints includes\n' +
+      '    a token, deprioritize candidates whose ingredients or\n' +
+      '    safety tags conflict with that token.\n' +
+      '  • If raw_query was specific (e.g. "smoothing serum"),\n' +
+      '    honor the literal product type while filtering by user\n' +
+      '    safety constraints.\n' +
+      '  • If a candidate clashes with a sensitivity, rank it lower\n' +
+      '    or omit it from alternatives.\n' +
+      '  • If you cannot honestly pick a hero, return heroId: null.';
 
     const userContent = JSON.stringify({
       candidates: params.candidates,
@@ -1047,6 +1079,11 @@ export class OpenAIClient {
       primary_concern: params.primaryConcern,
       severity_band: params.severityBand,
       intent: params.intentLabel,
+      raw_query: params.rawQuery ?? null,
+      chip_intent: params.chipIntent ?? null,
+      interpreted_intent: params.interpretedIntent ?? null,
+      latest_scan_summary: params.latestScanSummary ?? null,
+      top_concerns: params.topConcerns ?? [],
     });
 
     return this.runStrictStructured<AIRerankResult>({

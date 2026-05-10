@@ -326,6 +326,38 @@ function coerceRequest(body: Record<string, unknown>): SearchProductsRequest {
         (c): c is string => typeof c === 'string'
       )
     : [];
+  // v19.27 — interpreted intent + chip intent.
+  const chipIntentRaw = body['chipIntent'];
+  const chipIntent =
+    typeof chipIntentRaw === 'string' && chipIntentRaw.length > 0
+      ? chipIntentRaw
+      : null;
+  const intentRaw = body['interpretedIntent'];
+  let interpretedIntent: SearchProductsRequest['interpretedIntent'];
+  if (intentRaw && typeof intentRaw === 'object' && !Array.isArray(intentRaw)) {
+    const r = intentRaw as Record<string, unknown>;
+    const modeRaw = r['mode'];
+    const mode =
+      modeRaw === 'concern_search' ||
+      modeRaw === 'product_type_search' ||
+      modeRaw === 'best_for_my_skin' ||
+      modeRaw === 'vague_query'
+        ? modeRaw
+        : 'vague_query';
+    const ic = r['interpretedConcern'];
+    const ipt = r['interpretedProductType'];
+    const avs = r['avoidanceConstraints'];
+    interpretedIntent = {
+      mode,
+      interpretedConcern: typeof ic === 'string' ? ic : null,
+      interpretedProductType: typeof ipt === 'string' ? ipt : null,
+      avoidanceConstraints: Array.isArray(avs)
+        ? (avs as unknown[]).filter(
+            (x): x is string => typeof x === 'string'
+          )
+        : [],
+    };
+  }
   return {
     query,
     concern,
@@ -336,6 +368,8 @@ function coerceRequest(body: Record<string, unknown>): SearchProductsRequest {
     goals,
     latestScanSummary,
     topConcerns,
+    chipIntent,
+    interpretedIntent,
   };
 }
 
@@ -399,6 +433,15 @@ export async function searchProductsHandler(
   const personalizedScore = (c: BackendProductCandidate): number => {
     let s = 0;
     if (req.concern && c.concernTags.includes(req.concern)) s += 5;
+    // v19.27 — interpretedIntent.interpretedConcern boosts even
+    // higher than the raw `concern` field (it's the ENGINE's
+    // best understanding of intent, post-interpretation).
+    if (
+      req.interpretedIntent?.interpretedConcern &&
+      c.concernTags.includes(req.interpretedIntent.interpretedConcern)
+    ) {
+      s += 6;
+    }
     if (req.topConcerns) {
       for (let i = 0; i < req.topConcerns.length; i++) {
         if (c.concernTags.includes(req.topConcerns[i])) {
@@ -421,6 +464,29 @@ export async function searchProductsHandler(
       for (const sens of req.sensitivities) {
         if (c.safetyTags.includes(sens)) s += 2;
       }
+    }
+    // v19.27 — avoidanceConstraints PENALIZE candidates with
+    // the avoided tag in safetyTags (e.g. NOT fragrance_free
+    // when 'fragrance' is avoided). Soft signal — the AI rerank
+    // step gets the final say.
+    if (req.interpretedIntent?.avoidanceConstraints) {
+      for (const av of req.interpretedIntent.avoidanceConstraints) {
+        // Inverted match: candidate is GOOD if it has the
+        // safety tag (e.g. 'fragrance_free' for avoid 'fragrance').
+        const goodTag = `${av}_free`;
+        if (c.safetyTags.includes(goodTag)) {
+          s += 3;
+        }
+      }
+    }
+    // v19.27 — product-type tie-break. When the user explicitly
+    // asked for a product type (e.g. 'serum'), promote candidates
+    // whose category matches.
+    if (
+      req.interpretedIntent?.interpretedProductType &&
+      c.category === req.interpretedIntent.interpretedProductType
+    ) {
+      s += 4;
     }
     return s;
   };

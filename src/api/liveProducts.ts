@@ -503,6 +503,12 @@ import { searchOpenBeautyFacts } from './openBeautyFactsSearch';
 // calls THIS endpoint instead of the client-side OBF wrapper.
 import { searchProductsBackend } from './searchProductsBackend';
 import type { BackendProductCandidate } from './searchProductsContract';
+// v19.27 — generalized search-intent interpreter.
+import {
+  buildBackendQueryFromIntent,
+  interpretSearchIntent,
+  type InterpretedIntent,
+} from './queryIntent';
 
 export interface GetRecommendationOpts extends LookupOpts {
   intent: RecommendationIntent;
@@ -582,8 +588,20 @@ async function tryRerankProducts(args: {
   profile: ReturnType<typeof selectUserProfileContext>;
   skinState: ReturnType<typeof selectSkinState>;
   intentLabel: string;
+  // v19.27 — generalized personalized rerank context.
+  rawQuery?: string | null;
+  chipIntent?: string | null;
+  interpretedIntent?: InterpretedIntent;
 }): Promise<AIRerankResult | null> {
-  const { candidates, profile, skinState, intentLabel } = args;
+  const {
+    candidates,
+    profile,
+    skinState,
+    intentLabel,
+    rawQuery,
+    chipIntent,
+    interpretedIntent,
+  } = args;
   if (!aiGateway.isAvailable() || candidates.length === 0) return null;
   // Trim to top 8 by deterministic localScore — rerank only the
   // strongest candidates so the call stays cheap.
@@ -616,6 +634,20 @@ async function tryRerankProducts(args: {
     primaryConcern: skinState?.topConcerns[0]?.concern ?? null,
     severityBand: skinState?.scoreBand ?? null,
     intentLabel,
+    // v19.27 — generalized personalized search context.
+    rawQuery: rawQuery ?? null,
+    chipIntent: chipIntent ?? null,
+    interpretedIntent: interpretedIntent
+      ? {
+          mode: interpretedIntent.mode,
+          interpretedConcern: interpretedIntent.interpretedConcern,
+          interpretedProductType:
+            interpretedIntent.interpretedProductType,
+          avoidanceConstraints: interpretedIntent.avoidanceConstraints,
+        }
+      : undefined,
+    latestScanSummary: skinState?.summaryHeadline ?? null,
+    topConcerns: skinState?.topConcerns?.map((c) => c.concern) ?? [],
   };
   try {
     return await aiGateway.rerankProducts(payload);
@@ -641,6 +673,10 @@ async function tryRerankProductsBounded(args: {
   profile: ReturnType<typeof selectUserProfileContext>;
   skinState: ReturnType<typeof selectSkinState>;
   intentLabel: string;
+  // v19.27 — optional rich context for generalized personalized rerank.
+  rawQuery?: string | null;
+  chipIntent?: string | null;
+  interpretedIntent?: InterpretedIntent;
 }): Promise<AIRerankResult | null> {
   return Promise.race([
     tryRerankProducts(args),
@@ -773,6 +809,9 @@ async function tryLiveSearch(
     profile: ReturnType<typeof selectUserProfileContext>;
     skinState: ReturnType<typeof selectSkinState>;
     inferredConcern: ConcernType | null;
+    // v19.27 — generalized intent + optional chip intent.
+    intent?: InterpretedIntent;
+    chipIntent?: string | null;
   }
 ): Promise<{ candidates: LiveProductCandidate[]; failure: string | null }> {
   if (!query || query.trim().length === 0) {
@@ -783,9 +822,6 @@ async function tryLiveSearch(
     // SkinState into the wire-shape SearchProductsRequest. Only
     // pass values that are actually known; absent fields are
     // omitted so the server's defaults stand.
-    // Canonical AppSkinType is a strict 5-value union without
-    // 'normal'; map the four concrete values straight through and
-    // drop 'unknown' (omit field) so server defaults to 'unknown'.
     const skinTypeOnWire =
       context?.profile.skinType === 'dry' ||
       context?.profile.skinType === 'oily' ||
@@ -796,9 +832,19 @@ async function tryLiveSearch(
     const topConcernsOnWire = context?.skinState?.topConcerns
       ? context.skinState.topConcerns.map((c) => c.concern)
       : undefined;
+    // v19.27 — use the interpreter to construct a richer OBF
+    // query string. "best for my skin" with topConcerns=['texture']
+    // becomes "texture skincare"; "smoothing serum" stays
+    // "texture serum"; "redness serum" stays "redness serum".
+    const wireQuery = context?.intent
+      ? buildBackendQueryFromIntent(query, context.intent)
+      : query;
     const res = await searchProductsBackend({
-      query,
-      concern: context?.inferredConcern ?? null,
+      query: wireQuery,
+      concern:
+        context?.intent?.interpretedConcern ??
+        context?.inferredConcern ??
+        null,
       skinType: skinTypeOnWire,
       sensitivities: context?.profile.sensitivities,
       goals: context?.profile.goals,
@@ -806,6 +852,16 @@ async function tryLiveSearch(
       topConcerns: topConcernsOnWire,
       limit: 12,
       trigger,
+      chipIntent: context?.chipIntent ?? null,
+      interpretedIntent: context?.intent
+        ? {
+            mode: context.intent.mode,
+            interpretedConcern: context.intent.interpretedConcern,
+            interpretedProductType:
+              context.intent.interpretedProductType,
+            avoidanceConstraints: context.intent.avoidanceConstraints,
+          }
+        : undefined,
     });
     if (res.source === 'error') {
       return { candidates: [], failure: res.failureReason ?? 'unknown' };
@@ -844,6 +900,13 @@ export async function getRecommendationContextFromQuery(
     intent?: RecommendationIntent;
     allowAiAugmentation?: boolean;
     trigger?: RetrievalTrigger;
+    /**
+     * v19.27 — when the user tapped a Suggested-for-you chip,
+     * the chip's text is forwarded here. The intent layer uses
+     * it as the interpretation source so the AI rerank prompt
+     * sees both the canonical query and the chip context.
+     */
+    chipIntent?: string | null;
   } = {}
 ): Promise<RecommendationContext> {
   const intent: RecommendationIntent = opts.intent ?? {
@@ -866,9 +929,6 @@ export async function getRecommendationContextFromQuery(
   let failureReason: string | null = null;
 
   // STEP A.LIVE — backend-owned personalized search.
-  // v19.26: also pass UserProfileContext + the user's latest
-  // SkinState so the server can apply a soft sort before the
-  // candidates reach AI rerank below.
   const latestScan = state.scans[state.scans.length - 1];
   const previousForCtx = latestScan
     ? state.scans
@@ -878,10 +938,24 @@ export async function getRecommendationContextFromQuery(
   const skinStateForCtx = latestScan
     ? selectSkinState(latestScan, previousForCtx, state.scans)
     : null;
+
+  // v19.27 — interpret the query (or chip) into structured
+  // intent BEFORE hitting live retrieval. The interpreter is
+  // user-aware: same query text resolves to different intent
+  // for different users (different topConcerns, sensitivities).
+  const interpretedIntent = interpretSearchIntent(
+    query,
+    profile,
+    skinStateForCtx,
+    { chipIntent: opts.chipIntent }
+  );
+
   const live = await tryLiveSearch(query, trigger, {
     profile,
     skinState: skinStateForCtx,
     inferredConcern,
+    intent: interpretedIntent,
+    chipIntent: opts.chipIntent,
   });
   if (live.candidates.length > 0) {
     candidates = live.candidates;
@@ -927,7 +1001,13 @@ export async function getRecommendationContextFromQuery(
       candidates: deduped,
       profile,
       skinState: skinStateForCtx,
-      intentLabel: query,
+      // v19.27 — use the interpreter's intentLabel for the AI
+      // prompt. "Best for your skin" reads sensibly to the AI;
+      // raw "best for my skin" is also forwarded as rawQuery.
+      intentLabel: interpretedIntent.intentLabel,
+      rawQuery: query,
+      chipIntent: opts.chipIntent ?? null,
+      interpretedIntent,
     });
   }
 
@@ -1026,13 +1106,19 @@ export async function getRecommendationContextForScan(
       ? 'pore minimizing serum'
       : 'skincare serum';
   // v19.26 — pass full personalized context to /searchProducts.
-  // `primaryConcern` is already a canonical `ConcernType`
-  // (SkinState.topConcerns[].concern is the AI shape), so no
-  // mapping needed.
+  // v19.27 — interpret the scan-shaped query the same way the
+  // free-text path does so the server gets structured intent.
+  const scanIntentForLive = interpretSearchIntent(
+    liveQuery,
+    profile,
+    skinState
+  );
   const live = await tryLiveSearch(liveQuery, trigger, {
     profile,
     skinState,
     inferredConcern: primaryConcern as ConcernType | null,
+    intent: scanIntentForLive,
+    chipIntent: null,
   });
   if (live.candidates.length > 0) {
     candidates = live.candidates;
@@ -1078,12 +1164,24 @@ export async function getRecommendationContextForScan(
   // and the hero still renders.
   let rerank: AIRerankResult | null = null;
   if (deduped.length >= 2 && trigger !== 'background') {
+    // v19.27 — interpret the scan-driven query so the AI rerank
+    // prompt sees the same structured intent as free-text path.
+    // The query for a scan is concern-shaped ('redness centella
+    // serum', 'salicylic acid serum', etc.); it interprets cleanly.
+    const scanIntent = interpretSearchIntent(
+      liveQuery,
+      profile,
+      skinState
+    );
     rerank = await tryRerankProductsBounded({
       candidates: deduped,
       profile,
       skinState,
       intentLabel:
         primaryConcern?.replace(/_/g, ' ') ?? 'best for your skin',
+      rawQuery: liveQuery,
+      chipIntent: null,
+      interpretedIntent: scanIntent,
     });
   }
 

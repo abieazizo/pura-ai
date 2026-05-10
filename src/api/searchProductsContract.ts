@@ -62,6 +62,31 @@ export interface SearchProductsRequest {
    * 'hydration']. Empty when no scan exists yet.
    */
   topConcerns?: string[];
+
+  // ----- v19.27 — generalized search-intent layer.
+  /**
+   * Optional explicit chip the user tapped from the
+   * "Suggested-for-you" row. Distinct from `query` so the
+   * pipeline can tell typed-text from chip-tap intent and
+   * route them differently in telemetry / personalization.
+   */
+  chipIntent?: string | null;
+  /**
+   * Structured interpretation of the query produced by
+   * `interpretSearchIntent` on the client. The server uses
+   * this for soft-sort signals; the AI rerank step uses it
+   * to construct a smarter prompt.
+   */
+  interpretedIntent?: {
+    mode:
+      | 'concern_search'
+      | 'product_type_search'
+      | 'best_for_my_skin'
+      | 'vague_query';
+    interpretedConcern: string | null;
+    interpretedProductType: string | null;
+    avoidanceConstraints: string[];
+  };
 }
 
 export interface BackendProductCandidate {

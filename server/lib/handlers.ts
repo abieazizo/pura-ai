@@ -596,6 +596,56 @@ export const HANDLERS: Record<string, Handler> = {
       typeof body['intentLabel'] === 'string'
         ? (body['intentLabel'] as string)
         : 'best for your skin';
+    // v19.27 — generalized personalized search context.
+    const rawQuery =
+      typeof body['rawQuery'] === 'string'
+        ? (body['rawQuery'] as string)
+        : null;
+    const chipIntent =
+      typeof body['chipIntent'] === 'string'
+        ? (body['chipIntent'] as string)
+        : null;
+    const latestScanSummary =
+      typeof body['latestScanSummary'] === 'string'
+        ? (body['latestScanSummary'] as string).slice(0, 320)
+        : null;
+    const topConcerns = Array.isArray(body['topConcerns'])
+      ? (body['topConcerns'] as unknown[]).filter(
+          (x): x is string => typeof x === 'string'
+        )
+      : [];
+    const intentRaw = body['interpretedIntent'];
+    let interpretedIntent:
+      | {
+          mode: string;
+          interpretedConcern: string | null;
+          interpretedProductType: string | null;
+          avoidanceConstraints: string[];
+        }
+      | undefined;
+    if (
+      intentRaw &&
+      typeof intentRaw === 'object' &&
+      !Array.isArray(intentRaw)
+    ) {
+      const r = intentRaw as Record<string, unknown>;
+      interpretedIntent = {
+        mode: typeof r['mode'] === 'string' ? (r['mode'] as string) : 'vague_query',
+        interpretedConcern:
+          typeof r['interpretedConcern'] === 'string'
+            ? (r['interpretedConcern'] as string)
+            : null,
+        interpretedProductType:
+          typeof r['interpretedProductType'] === 'string'
+            ? (r['interpretedProductType'] as string)
+            : null,
+        avoidanceConstraints: Array.isArray(r['avoidanceConstraints'])
+          ? (r['avoidanceConstraints'] as unknown[]).filter(
+              (x): x is string => typeof x === 'string'
+            )
+          : [],
+      };
+    }
     const result = await withAIErrorTranslation('rerankProducts', () =>
       client.rerankProducts({
         candidates,
@@ -603,6 +653,11 @@ export const HANDLERS: Record<string, Handler> = {
         primaryConcern,
         severityBand,
         intentLabel,
+        rawQuery,
+        chipIntent,
+        interpretedIntent,
+        latestScanSummary,
+        topConcerns,
       })
     );
     const validated = validateProductRerankResult(result);

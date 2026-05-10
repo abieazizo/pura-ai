@@ -629,6 +629,13 @@ export function buildRecommendationContext(args: {
     heroId: string | null;
     alternativeIds: string[];
     whyHeroFits: string | null;
+    /**
+     * v19.27 — optional `whatToAvoid` from the AI rerank. When
+     * present, overrides the deterministic
+     * `deriveWhatToAvoid(profile)` so the user sees AI-curated
+     * avoidance guidance for the current context.
+     */
+    whatToAvoid?: string[];
   } | null;
   /**
    * v19.21 — legacy retrieval-source tag.
@@ -694,7 +701,10 @@ export function buildRecommendationContext(args: {
       heroProduct: null,
       alternatives: [],
       whyHeroFits: null,
-      whatToAvoid: deriveWhatToAvoid(profile),
+      whatToAvoid:
+        rerankResult?.whatToAvoid && rerankResult.whatToAvoid.length > 0
+          ? rerankResult.whatToAvoid
+          : deriveWhatToAvoid(profile),
       failureReason: failureReason ?? null,
       source: 'deterministic',
       retrievalSource,
@@ -715,7 +725,10 @@ export function buildRecommendationContext(args: {
       heroProduct: null,
       alternatives: [],
       whyHeroFits: null,
-      whatToAvoid: deriveWhatToAvoid(profile),
+      whatToAvoid:
+        rerankResult?.whatToAvoid && rerankResult.whatToAvoid.length > 0
+          ? rerankResult.whatToAvoid
+          : deriveWhatToAvoid(profile),
       failureReason: failureReason ?? null,
       source: 'deterministic',
       retrievalSource: 'empty',

@@ -130,6 +130,11 @@ export function ProductsScreen() {
     []
   );
   const [liveSearching, setLiveSearching] = useState(false);
+  // v19.27 — track which Suggested-for-you chip (if any) drove
+  // the current query. Used to pass `chipIntent` to the
+  // recommendation engine so the AI rerank prompt differentiates
+  // chip-tap intent from typed-text intent.
+  const [lastChipIntent, setLastChipIntent] = useState<string | null>(null);
   // v18.9 — tiered loading copy. After 5 s show "Still working —
   // thanks for waiting…".
   // v19.10 — REMOVED the redundant screen-level 25 s hard-ceiling.
@@ -165,15 +170,26 @@ export function ProductsScreen() {
     // path. The screen renders search results from the seed
     // catalog only; AI augmentation is OFF by default to keep the
     // grid responsive when the proxy is down.
+    // v19.27 — chip-tap distinguished from typed search.
+    // `lastChipIntent === q` means the current query came
+    // from a chip tap (chip text === query text). Otherwise
+    // it's typed text.
+    const isChipQuery = lastChipIntent === q && q.length > 0;
+    const chipIntentForCall = isChipQuery ? lastChipIntent : null;
     getRecommendationContextFromQuery(q, {
       intent: { kind: 'query', text: q },
       allowAiAugmentation: false,
       fresh: searchAttempt > 0,
       // v19.24 — explicit trigger so diagnostics can prove
-      // "search vs retry" on this surface. searchAttempt > 0
-      // means the user tapped Retry; otherwise it's the
-      // debounced query effect from typing or chip-tap.
-      trigger: searchAttempt > 0 ? 'retry' : 'search',
+      // "search vs retry vs chip_press" on this surface.
+      // v19.27 — chip taps now produce 'chip_press' explicitly.
+      trigger:
+        searchAttempt > 0
+          ? 'retry'
+          : isChipQuery
+          ? 'chip_press'
+          : 'search',
+      chipIntent: chipIntentForCall,
     })
       .then((rec) => {
         if (cancelled) return;
@@ -279,6 +295,11 @@ export function ProductsScreen() {
           onPick={(chip) => {
             hapt.select();
             setQuery(chip);
+            // v19.27 — record the chip text so the engine call
+            // can pass `chipIntent` and the trigger flips to
+            // 'chip_press'. Cleared by the typed-text branch
+            // below when the user types a different query.
+            setLastChipIntent(chip);
           }}
         />
       ) : null}

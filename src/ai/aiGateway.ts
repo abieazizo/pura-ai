@@ -781,6 +781,17 @@ export interface AIGateway {
     primaryConcern: string | null;
     severityBand: string | null;
     intentLabel: string;
+    // v19.27 — generalized personalized search context (all optional).
+    rawQuery?: string | null;
+    chipIntent?: string | null;
+    interpretedIntent?: {
+      mode: string;
+      interpretedConcern: string | null;
+      interpretedProductType: string | null;
+      avoidanceConstraints: string[];
+    };
+    latestScanSummary?: string | null;
+    topConcerns?: string[];
   }): Promise<AIRerankResult>;
 
   answerAssistant(params: {

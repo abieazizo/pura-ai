@@ -831,6 +831,7 @@ export function validateProductRerankResult(v: unknown): {
   heroId: string | null;
   alternativeIds: string[];
   whyHeroFits: string | null;
+  whatToAvoid: string[];
 } | null {
   if (!isObject(v)) {
     aiLog.warn('validateProductRerankResult', 'not an object');
@@ -850,11 +851,25 @@ export function validateProductRerankResult(v: unknown): {
     typeof whyRaw === 'string' && whyRaw.trim().length > 0
       ? whyRaw.trim().slice(0, 140) // hard-cap to protect the UI
       : null;
+  // v19.27 — whatToAvoid array. Empty when AI omits it (which is
+  // valid per the schema since it's a required field with array
+  // type — empty array is the canonical "nothing to avoid"
+  // signal). Each entry hard-capped at 80 chars for UI safety.
+  const avoidRaw = (v as { whatToAvoid?: unknown }).whatToAvoid;
+  const whatToAvoid = arrayOfStrings(avoidRaw)
+    .map((s) => s.trim().slice(0, 80))
+    .filter((s) => s.length > 0)
+    .slice(0, 5);
   // Drop alternatives that duplicate the hero — defense in depth.
   const dedupedAlts = heroId
     ? alternativeIds.filter((id) => id !== heroId)
     : alternativeIds;
-  return { heroId, alternativeIds: dedupedAlts, whyHeroFits };
+  return {
+    heroId,
+    alternativeIds: dedupedAlts,
+    whyHeroFits,
+    whatToAvoid,
+  };
 }
 
 export function validateProgressBundle(v: unknown): {
