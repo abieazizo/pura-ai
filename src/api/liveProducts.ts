@@ -998,15 +998,30 @@ const HERO_ULTRALIGHT = /oil[- ]?free gel|\bgel only\b|ultra[- ]?light|matte gel
 const HERO_FRAGRANCED = /perfum|fragranced|\bscented\b|essential oil|parfum/i;
 const HERO_HARSH_ACTIVE = /retinol moisturizer|exfoliating moisturizer|aha moisturizer|bha moisturizer/i;
 
+// v19.38 — query-family relevance patterns. For "smoothing serum"
+// the hero MUST literally be a serum with a smoothing/texture/
+// resurfacing/peptide/lactic/PHA signal — a random hydrating
+// hyaluronic-acid serum is not a smoothing serum. For "chemical
+// exfoliant" the hero MUST contain an acid/exfoliant signal — a
+// generic cleanser/toner/cream is not an exfoliant.
+const SMOOTHING_SERUM_RELEVANT =
+  /\b(serum|essence|ampoule)\b.*\b(smooth|texture|resurfac|peptide|lactic|pha|retinol|glycolic|salicylic|niacinamide)\b|\b(smooth|texture|resurfac|peptide|lactic|pha|retinol|glycolic|salicylic)\b.*\b(serum|essence|ampoule)\b/i;
+const EXFOLIANT_RELEVANT =
+  /\b(salicylic|glycolic|lactic|mandelic|pha|aha|bha|exfoli|peel|acid)\b/i;
+const NON_EXFOLIANT_PRODUCT =
+  /\b(cleanser|wash|foam|micellar|moisturi[sz]er|cream|lotion|emulsion|sunscreen|spf|sunblock|spot treatment|patch)\b/i;
+
 function applyHeroSkinFitFilter(
   heroPool: ScoredCandidate[],
   intent: InterpretedIntent,
   skinFit: InferredSkinProfile
 ): HeroSkinFitFilterResult {
-  // Only filter for moisturizer-family queries today. Other product
-  // types (serum, cleanser, exfoliant) don't have the same heavy/
-  // light conflict axis.
-  if (intent.interpretedProductType !== 'moisturizer') {
+  const pt = intent.interpretedProductType;
+  // v19.38 — filter is now active for moisturizer / serum / exfoliant.
+  // For other product types (cleanser, toner, mask, spf, eye_cream,
+  // spot_treatment) the conflict axes are weaker and we leave the
+  // hero pool alone.
+  if (pt !== 'moisturizer' && pt !== 'serum' && pt !== 'exfoliant') {
     return { kept: heroPool, dropped: [] };
   }
   const kept: ScoredCandidate[] = [];
@@ -1015,21 +1030,50 @@ function applyHeroSkinFitFilter(
     const corpus =
       `${s.candidate.name} ${s.candidate.shortDescription}`.toLowerCase();
     let exclusion: string | null = null;
-    if (
-      (skinFit.isOily || skinFit.isAcneProne) &&
-      HERO_HEAVY.test(corpus)
-    ) {
-      exclusion = `excluded: heavy/occlusive cream conflicts with ${skinFit.label}`;
-    } else if (
-      (skinFit.isDry || skinFit.isBarrier) &&
-      HERO_ULTRALIGHT.test(corpus)
-    ) {
-      exclusion = `excluded: ultra-light gel-only conflicts with ${skinFit.label}`;
-    } else if (skinFit.isSensitive && HERO_FRAGRANCED.test(corpus)) {
-      exclusion = `excluded: fragranced product conflicts with ${skinFit.label}`;
-    } else if (skinFit.isSensitive && HERO_HARSH_ACTIVE.test(corpus)) {
-      exclusion = `excluded: harsh-active moisturizer conflicts with ${skinFit.label}`;
+
+    if (pt === 'moisturizer') {
+      if (
+        (skinFit.isOily || skinFit.isAcneProne) &&
+        HERO_HEAVY.test(corpus)
+      ) {
+        exclusion = `excluded: heavy/occlusive cream conflicts with ${skinFit.label}`;
+      } else if (
+        (skinFit.isDry || skinFit.isBarrier) &&
+        HERO_ULTRALIGHT.test(corpus)
+      ) {
+        exclusion = `excluded: ultra-light gel-only conflicts with ${skinFit.label}`;
+      } else if (skinFit.isSensitive && HERO_FRAGRANCED.test(corpus)) {
+        exclusion = `excluded: fragranced product conflicts with ${skinFit.label}`;
+      } else if (skinFit.isSensitive && HERO_HARSH_ACTIVE.test(corpus)) {
+        exclusion = `excluded: harsh-active moisturizer conflicts with ${skinFit.label}`;
+      }
+    } else if (pt === 'serum') {
+      // v19.38 — smoothing-serum / texture-serum query: drop
+      // candidates that are not literally smoothing/texture serums.
+      // Only enforce when the user's query mentions smoothing /
+      // texture / resurfacing — otherwise this would prune valid
+      // hydrating serums for "hyaluronic serum" queries.
+      const labelLooksTexture =
+        /(smooth|texture|resurfac|peptide|exfoli)/i.test(
+          intent.intentLabel
+        );
+      if (labelLooksTexture && !SMOOTHING_SERUM_RELEVANT.test(corpus)) {
+        exclusion = `excluded: not a smoothing/texture serum (no smooth/peptide/lactic/PHA signal)`;
+      }
+    } else if (pt === 'exfoliant') {
+      // v19.38 — chemical-exfoliant query: drop candidates that don't
+      // mention an acid / PHA / exfoliant ingredient AND look like a
+      // non-exfoliant product type. Empty corpus survives so sparse-
+      // metadata candidates are not punished.
+      if (
+        corpus.length > 0 &&
+        !EXFOLIANT_RELEVANT.test(corpus) &&
+        NON_EXFOLIANT_PRODUCT.test(corpus)
+      ) {
+        exclusion = `excluded: not a chemical exfoliant (no acid/PHA signal, looks like another product type)`;
+      }
     }
+
     if (exclusion) {
       dropped.push({
         id: s.candidate.id,
@@ -1257,16 +1301,40 @@ export async function getRecommendationContextFromQuery(
     });
   }
 
+  // v19.38 — DETERMINISTIC SKIN-FIT FALLBACK.
+  // When AI rerank failed (proxy unreachable / race timeout / null
+  // result), buildRecommendationContext picks `localSorted[0]` from
+  // the candidate set as hero. That candidate is the top-localScore
+  // entry from the FULL alternativePool — which can be a skin-fit-
+  // CONFLICTING candidate (e.g. a heavy cream for an oily user)
+  // because the alternativePool is broader than heroFitFree.kept.
+  // Synthesize a deterministic rerank from heroFitFree.kept[0] so
+  // the fallback hero is always skin-fit-aligned.
+  if (rerank === null && heroFitFree.kept.length > 0) {
+    const detHero = heroFitFree.kept[0].candidate;
+    rerank = {
+      heroId: detHero.id,
+      alternativeIds: trustedFree
+        .filter((c) => c.id !== detHero.id)
+        .slice(0, 4)
+        .map((c) => c.id),
+      whyHeroFits: null,
+      whatToAvoid: [],
+    };
+  }
   // v19.29 — clamp AI's hero choice to the hero pool. If AI
   // picked an alt-only candidate, repair to the top hero
   // candidate. AI personalizes; it does NOT override the hero
   // threshold.
+  // v19.38 — repair target now `heroFitFree.kept[0]` (skin-fit
+  // aligned) instead of `partitionedFree.heroPool[0]` (which
+  // could be skin-fit-conflicting).
   if (rerank?.heroId && !heroIdsFree.has(rerank.heroId)) {
     const altMatch = rerank.alternativeIds.find((id) =>
       heroIdsFree.has(id)
     );
     const repaired =
-      altMatch ?? partitionedFree.heroPool[0]?.candidate.id ?? null;
+      altMatch ?? heroFitFree.kept[0]?.candidate.id ?? null;
     rerank = {
       ...rerank,
       heroId: repaired,
@@ -1553,13 +1621,27 @@ export async function getRecommendationContextForScan(
     });
   }
 
+  // v19.38 — same deterministic skin-fit fallback for the scan path.
+  if (rerank === null && heroFitScan.kept.length > 0) {
+    const detHero = heroFitScan.kept[0].candidate;
+    rerank = {
+      heroId: detHero.id,
+      alternativeIds: trustedScan
+        .filter((c) => c.id !== detHero.id)
+        .slice(0, 4)
+        .map((c) => c.id),
+      whyHeroFits: null,
+      whatToAvoid: [],
+    };
+  }
   // v19.29 — clamp AI's hero choice to the hero pool.
+  // v19.38 — repair target = heroFitScan.kept[0] (skin-fit aligned).
   if (rerank?.heroId && !heroIdsScan.has(rerank.heroId)) {
     const altMatch = rerank.alternativeIds.find((id) =>
       heroIdsScan.has(id)
     );
     const repaired =
-      altMatch ?? partitionedScan.heroPool[0]?.candidate.id ?? null;
+      altMatch ?? heroFitScan.kept[0]?.candidate.id ?? null;
     rerank = {
       ...rerank,
       heroId: repaired,

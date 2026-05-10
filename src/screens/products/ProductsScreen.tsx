@@ -52,6 +52,7 @@ import {
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
+import type { RecommendationContext as RecommendationContextType } from '@/types/canonical';
 
 /**
  * ProductsScreen — v10.16.
@@ -145,6 +146,15 @@ export function ProductsScreen() {
   const [liveResults, setLiveResults] = useState<LiveProductCandidate[]>(
     []
   );
+  // v19.38 — keep the latest RecommendationContext on the screen so
+  // the in-screen dev panel can render queryFamily / skinFitReason /
+  // heroSkinFitScore / resultSource directly under the hero. This is
+  // the proof surface the user demanded: if the values appear in the
+  // real UI, the corrected path is actually running.
+  const [lastRec, setLastRec] = useState<RecommendationContextType | null>(
+    null
+  );
+  const [lastRecAt, setLastRecAt] = useState<string | null>(null);
   const [liveSearching, setLiveSearching] = useState(false);
   // v19.27 — track which Suggested-for-you chip (if any) drove
   // the current query. Used to pass `chipIntent` to the
@@ -210,6 +220,10 @@ export function ProductsScreen() {
       .then((rec) => {
         if (cancelled) return;
         setLiveResults(rec.candidateProducts);
+        // v19.38 — capture the latest canonical context for the
+        // in-screen dev panel.
+        setLastRec(rec);
+        setLastRecAt(new Date().toISOString());
         // v19.32 — write the real ProductUiTrace so diagnostics
         // and the user can verify what the actual UI rendered.
         const hero = rec.heroProduct;
@@ -422,12 +436,23 @@ export function ProductsScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {liveResults.length > 0 ? (
-            <View style={liveStyles.grid}>
-              {liveResults.map((c) => (
-                <View key={c.id} style={liveStyles.cell}>
-                  <LiveProductCard candidate={c} variant="alt" />
-                </View>
-              ))}
+            <View>
+              {/* v19.38 — REAL PATH PROOF MARKER. Renders in dev
+                  builds only, inside the same JSX branch that
+                  renders live hero+alts. If the user does NOT see
+                  this badge, the corrected v19.38 path is not
+                  active on their device (likely stale JS bundle
+                  — they need to reload). */}
+              {__DEV__ ? (
+                <RealPathBadge rec={lastRec} at={lastRecAt} />
+              ) : null}
+              <View style={liveStyles.grid}>
+                {liveResults.map((c) => (
+                  <View key={c.id} style={liveStyles.cell}>
+                    <LiveProductCard candidate={c} variant="alt" />
+                  </View>
+                ))}
+              </View>
             </View>
           ) : liveSearching ? (
             <View style={liveStyles.unavailableWrap}>
@@ -493,6 +518,149 @@ export function ProductsScreen() {
 // renders when AI suggestions exist — so its presence on screen is
 // itself a strong signal that AI is alive for this user.
 // ---------------------------------------------------------------------------
+
+/**
+ * v19.38 — REAL PATH PROOF MARKER + dev panel.
+ *
+ * Visible only when __DEV__ is true. Rendered DIRECTLY inside the
+ * live-results JSX branch on the real Products screen. Shows the
+ * minimum dev fields the user needs to verify on-device that the
+ * corrected path is running:
+ *
+ *   • REAL PATH v19.38 (badge — proves the new code is active)
+ *   • queryFamily        (e.g. "family:moisturizer")
+ *   • skinFitReason      (e.g. "oily" / "sensitive" / "dry")
+ *   • heroSkinFitScore   (0..100 — higher = better skin match)
+ *   • resultSource       (live | fallback | empty | unknown)
+ *   • lastUpdatedAt      (ISO timestamp of latest fetch)
+ *
+ * If the user opens the Products tab in dev/Expo Go and does NOT
+ * see the "REAL PATH v19.38" pill, the v19.38 bundle is not
+ * actually running on their device — they should reload Metro and
+ * re-launch.
+ */
+function RealPathBadge({
+  rec,
+  at,
+}: {
+  rec: RecommendationContextType | null;
+  at: string | null;
+}) {
+  return (
+    <View style={realPathStyles.wrap}>
+      <View style={realPathStyles.pill}>
+        <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
+          REAL PATH v19.38
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>queryFamily</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.queryFamily ?? '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>skinFitReason</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.skinFitReason ?? '(unknown)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>heroSkinFitScore</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.heroSkinFitScore !== null && rec?.heroSkinFitScore !== undefined
+            ? `${rec.heroSkinFitScore}/100`
+            : '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>resultSource</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.retrievalSource ?? '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>lastUpdatedAt</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {at ?? '(none)'}
+        </Text>
+      </View>
+      {rec?.excludedFromHero && rec.excludedFromHero.length > 0 ? (
+        <View style={{ marginTop: 6 }}>
+          <Text style={realPathStyles.label}>
+            excludedFromHero ({rec.excludedFromHero.length}):
+          </Text>
+          {rec.excludedFromHero.slice(0, 3).map((x) => (
+            <Text
+              key={x.id}
+              style={realPathStyles.excludedRow}
+              numberOfLines={2}
+            >
+              × {x.name} — {x.reason}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const realPathStyles = StyleSheet.create({
+  wrap: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#FEF7E5',
+    borderWidth: 1,
+    borderColor: '#E0B341',
+    gap: 4,
+  },
+  pill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: '#0B1220',
+    marginBottom: 6,
+  },
+  pillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: '#FEF7E5',
+    textTransform: 'uppercase',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  label: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 0.4,
+    color: '#7C5C00',
+    textTransform: 'uppercase',
+  },
+  value: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: '#0B1220',
+    flex: 1,
+    textAlign: 'right',
+  },
+  excludedRow: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10,
+    lineHeight: 13,
+    color: '#7C5C00',
+    marginTop: 2,
+  },
+});
 
 /**
  * v18.9 — premium search loading copy.

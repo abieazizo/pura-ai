@@ -172,10 +172,43 @@ export function ProductDetailScreen() {
     }
   };
 
+  // v19.38 — visible proof marker. If the user does NOT see this
+  // pill on the real ProductDetail screen in dev/Expo Go, the
+  // v19.38 bundle is not actually running on their device.
+  const detailResolvedFromLabel: string = navCandidate
+    ? 'navigation_payload'
+    : storeCandidate
+    ? 'store_lookup'
+    : seedProducts.find((p) => p.id === productId)
+    ? 'fallback_lookup'
+    : 'not_found';
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
       <DetailHeader productId={product.id} />
+
+      {__DEV__ ? (
+        <View style={detailMarkerStyles.wrap}>
+          <View style={detailMarkerStyles.pill}>
+            <Text style={detailMarkerStyles.pillText} maxFontSizeMultiplier={1}>
+              DETAIL PAYLOAD OK v19.38
+            </Text>
+          </View>
+          <Text style={detailMarkerStyles.row} numberOfLines={1}>
+            detailResolvedFrom: {detailResolvedFromLabel}
+          </Text>
+          <Text style={detailMarkerStyles.row} numberOfLines={1}>
+            detailPayloadId: {productId}
+          </Text>
+          <Text style={detailMarkerStyles.row} numberOfLines={1}>
+            detailLookupFallbackUsed:{' '}
+            {!navCandidate && (storeCandidate || seedProducts.find((p) => p.id === productId))
+              ? 'YES'
+              : 'NO'}
+          </Text>
+        </View>
+      ) : null}
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -800,5 +833,43 @@ const altStyles = StyleSheet.create({
   scrollRow: {
     gap: 10,
     paddingRight: 4,
+  },
+});
+
+// v19.38 — DETAIL PAYLOAD OK marker styles. Dev-only. Renders just
+// under the DetailHeader so the user can confirm the corrected
+// path is loaded on their device.
+const detailMarkerStyles = StyleSheet.create({
+  wrap: {
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#FEF7E5',
+    borderWidth: 1,
+    borderColor: '#E0B341',
+    gap: 2,
+  },
+  pill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: '#0B1220',
+    marginBottom: 4,
+  },
+  pillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: '#FEF7E5',
+    textTransform: 'uppercase',
+  },
+  row: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    color: '#7C5C00',
   },
 });
