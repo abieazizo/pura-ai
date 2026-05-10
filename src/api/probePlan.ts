@@ -26,6 +26,11 @@ import type {
 } from '@/ai/ai-contracts';
 import type { SkinState, UserProfileContext } from '@/types/canonical';
 import type { InterpretedIntent, ProductTypeIntent } from './queryIntent';
+// v19.36 — shared skin-profile inference. The same function is used
+// by candidateTrust (skin-fit scoring), liveProducts (hero-pool
+// skin-fit filter), and openai-client (AI rerank prompt) so every
+// surface reads the user's skin axes the same way.
+import { inferSkinProfile } from './candidateTrust';
 
 // ---------------------------------------------------------------------------
 // Public types.
@@ -240,51 +245,149 @@ interface TargetFamily {
 
 const TARGET_QUERY_FAMILIES: TargetFamily[] = [
   // ─── Family 1: moisturizer ─────────────────────────────────────────
+  // v19.36 — skin-profile-aware. The probe set is rebuilt entirely
+  // from the user's skin axes (oily/acne, dry/barrier, sensitive/
+  // redness, combo). A "moisturizer" search no longer means "any
+  // moisturizer" — it means "the right moisturizer for THIS user".
   {
     label: 'family:moisturizer',
     match: [/^moisturi[sz]er\s*$/i, /^moisturi[sz]ers?\s*$/i],
-    build: (raw, profile) => {
-      const sensitive = isSensitiveUser(profile);
-      const oily =
-        profile.skinType === 'oily' ||
-        (profile.sensitivities ?? []).some((s) =>
-          /oily|acne|breakout/i.test(s)
-        );
-      const dry =
-        profile.skinType === 'dry' ||
-        (profile.sensitivities ?? []).some((s) => /dry|barrier/i.test(s));
+    build: (raw, profile, skinState) => {
+      const skin = inferSkinProfile(profile, skinState);
       const probes: RetrievalProbe[] = [
         { query: raw.trim(), weight: 1, reason: 'verbatim' },
-        { query: 'face moisturizer', weight: 0.95, reason: 'family:moisturizer' },
-        {
-          query: 'hydrating moisturizer',
-          weight: 0.9,
-          reason: 'family:moisturizer',
-        },
-        {
-          query: 'non comedogenic moisturizer',
-          weight: 0.8,
-          reason: 'family:moisturizer',
-        },
-        {
-          query: 'ceramide moisturizer',
-          weight: 0.78,
-          reason: 'family:moisturizer',
-        },
       ];
-      if (oily) {
-        probes.push({
-          query: 'gel moisturizer',
-          weight: 0.92,
-          reason: 'family:moisturizer (oily-skin priority)',
-        });
-      }
-      if (dry || sensitive) {
-        probes.push({
-          query: 'barrier cream',
-          weight: 0.92,
-          reason: 'family:moisturizer (barrier priority)',
-        });
+      if (skin.isOily || skin.isAcneProne) {
+        probes.push(
+          {
+            query: 'gel moisturizer',
+            weight: 0.98,
+            reason: 'family:moisturizer (oily/acne priority)',
+          },
+          {
+            query: 'oil free moisturizer',
+            weight: 0.95,
+            reason: 'family:moisturizer (oily/acne priority)',
+          },
+          {
+            query: 'non comedogenic moisturizer',
+            weight: 0.92,
+            reason: 'family:moisturizer (oily/acne priority)',
+          },
+          {
+            query: 'lightweight moisturizer',
+            weight: 0.88,
+            reason: 'family:moisturizer (oily/acne priority)',
+          },
+          {
+            query: 'gel cream',
+            weight: 0.82,
+            reason: 'family:moisturizer (oily/acne priority)',
+          }
+        );
+      } else if (skin.isDry || skin.isBarrier) {
+        probes.push(
+          {
+            query: 'barrier repair cream',
+            weight: 0.98,
+            reason: 'family:moisturizer (dry/barrier priority)',
+          },
+          {
+            query: 'ceramide moisturizer',
+            weight: 0.95,
+            reason: 'family:moisturizer (dry/barrier priority)',
+          },
+          {
+            query: 'rich moisturizer',
+            weight: 0.9,
+            reason: 'family:moisturizer (dry/barrier priority)',
+          },
+          {
+            query: 'repairing cream',
+            weight: 0.85,
+            reason: 'family:moisturizer (dry/barrier priority)',
+          },
+          {
+            query: 'fragrance free cream',
+            weight: 0.8,
+            reason: 'family:moisturizer (dry/barrier priority)',
+          }
+        );
+      } else if (skin.isSensitive) {
+        probes.push(
+          {
+            query: 'fragrance free moisturizer',
+            weight: 0.98,
+            reason: 'family:moisturizer (sensitive priority)',
+          },
+          {
+            query: 'calming moisturizer',
+            weight: 0.93,
+            reason: 'family:moisturizer (sensitive priority)',
+          },
+          {
+            query: 'cica moisturizer',
+            weight: 0.88,
+            reason: 'family:moisturizer (sensitive priority)',
+          },
+          {
+            query: 'centella moisturizer',
+            weight: 0.85,
+            reason: 'family:moisturizer (sensitive priority)',
+          },
+          {
+            query: 'soothing cream',
+            weight: 0.8,
+            reason: 'family:moisturizer (sensitive priority)',
+          }
+        );
+      } else if (skin.isCombo) {
+        probes.push(
+          {
+            query: 'lightweight moisturizer',
+            weight: 0.95,
+            reason: 'family:moisturizer (combo priority)',
+          },
+          {
+            query: 'balancing moisturizer',
+            weight: 0.9,
+            reason: 'family:moisturizer (combo priority)',
+          },
+          {
+            query: 'gel cream',
+            weight: 0.85,
+            reason: 'family:moisturizer (combo priority)',
+          },
+          {
+            query: 'daily moisturizer',
+            weight: 0.78,
+            reason: 'family:moisturizer (combo priority)',
+          }
+        );
+      } else {
+        // Unknown skin type — broad but safe.
+        probes.push(
+          {
+            query: 'face moisturizer',
+            weight: 0.92,
+            reason: 'family:moisturizer (unknown skin)',
+          },
+          {
+            query: 'hydrating moisturizer',
+            weight: 0.88,
+            reason: 'family:moisturizer (unknown skin)',
+          },
+          {
+            query: 'ceramide moisturizer',
+            weight: 0.82,
+            reason: 'family:moisturizer (unknown skin)',
+          },
+          {
+            query: 'non comedogenic moisturizer',
+            weight: 0.75,
+            reason: 'family:moisturizer (unknown skin)',
+          }
+        );
       }
       return probes;
     },

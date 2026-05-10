@@ -804,6 +804,25 @@ export interface AIGateway {
       trust: number;
       hasImage: boolean;
     }>;
+    /**
+     * v19.36 — derived skin-profile axes. The AI prompt uses these
+     * to anchor personalization to concrete user signals: oily/
+     * acne-prone users must not get heavy creams, dry/barrier
+     * users must not get ultra-light gel-only, sensitive users
+     * must not get fragranced or harsh-active products. Single
+     * `label` is the short tag the AI references when writing
+     * `whyHeroFits` ("Picked because your skin reads oily +
+     * breakout-prone, ...").
+     */
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
   }): Promise<AIRerankResult>;
 
   answerAssistant(params: {

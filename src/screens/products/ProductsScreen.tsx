@@ -236,11 +236,6 @@ export function ProductsScreen() {
         setTrace('products', {
           query: q,
           trigger,
-          // v19.33 — read the structured intent label + probe queries
-          // off the canonical RecommendationContext (engine threads
-          // them on). `lastAttempt.query` was the wire query, NOT
-          // the intent label, so the previous wiring mislabeled this
-          // field on the trace.
           interpretedIntentLabel: rec.interpretedIntentLabel,
           probeQueries: [...rec.probeQueries],
           rawCandidateCount: rec.candidateProducts.length,
@@ -258,6 +253,16 @@ export function ProductsScreen() {
           diagnosticsCandidateCount: null,
           diagnosticsHeroId: null,
           uiMatchesDiagnostics: null,
+          // v19.36 — minimum personalization fields. These come
+          // from the canonical context the engine threaded on, so
+          // the trace shows: which family the engine resolved,
+          // what skin axis it anchored personalization to, the
+          // hero's composite skin-fit score, and any candidates
+          // the hero filter dropped (with reasons the user can read).
+          queryFamily: rec.queryFamily,
+          skinFitReason: rec.skinFitReason,
+          heroSkinFitScore: rec.heroSkinFitScore,
+          excludedFromHero: [...rec.excludedFromHero],
           timestamp: new Date().toISOString(),
         });
         // v19.32 — set trace context BEFORE the cards render, so
@@ -309,6 +314,13 @@ export function ProductsScreen() {
           diagnosticsCandidateCount: null,
           diagnosticsHeroId: null,
           uiMatchesDiagnostics: null,
+          // v19.36 — personalization fields are unknown on engine
+          // failure. Trace surfaces these as null/empty so the
+          // truth panel renders consistently across success/error.
+          queryFamily: null,
+          skinFitReason: null,
+          heroSkinFitScore: null,
+          excludedFromHero: [],
           timestamp: new Date().toISOString(),
         });
         void e;

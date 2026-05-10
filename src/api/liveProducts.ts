@@ -520,6 +520,8 @@ import {
   HERO_TRUST_THRESHOLD,
   partitionByTrust,
   scoreTrustForCandidate,
+  inferSkinProfile,
+  type InferredSkinProfile,
   type CandidateTrustScore,
   type ScoredCandidate,
 } from './candidateTrust';
@@ -608,6 +610,8 @@ async function tryRerankProducts(args: {
   interpretedIntent?: InterpretedIntent;
   // v19.29 — trust signals.
   trustScores?: Array<{ id: string; trust: number; hasImage: boolean }>;
+  // v19.36 — derived skin-profile axes.
+  skinProfile?: InferredSkinProfile;
 }): Promise<AIRerankResult | null> {
   const {
     candidates,
@@ -618,6 +622,7 @@ async function tryRerankProducts(args: {
     chipIntent,
     interpretedIntent,
     trustScores,
+    skinProfile,
   } = args;
   if (!aiGateway.isAvailable() || candidates.length === 0) return null;
   // Trim to top 8 by deterministic localScore — rerank only the
@@ -667,6 +672,8 @@ async function tryRerankProducts(args: {
     topConcerns: skinState?.topConcerns?.map((c) => c.concern) ?? [],
     // v19.29 — trust signals for the rerank prompt.
     trustScores: trustScores ?? undefined,
+    // v19.36 — skin-profile axes (derived once upstream).
+    skinProfile: skinProfile ?? undefined,
   };
   try {
     return await aiGateway.rerankProducts(payload);
@@ -698,6 +705,8 @@ async function tryRerankProductsBounded(args: {
   interpretedIntent?: InterpretedIntent;
   // v19.29 — trust signals.
   trustScores?: Array<{ id: string; trust: number; hasImage: boolean }>;
+  // v19.36 — derived skin-profile axes.
+  skinProfile?: InferredSkinProfile;
 }): Promise<AIRerankResult | null> {
   return Promise.race([
     tryRerankProducts(args),
@@ -960,6 +969,90 @@ async function tryLiveSearch(
 // Engine no longer uses it.
 void searchOpenBeautyFacts;
 
+// ---------------------------------------------------------------------------
+// v19.36 — hero-pool skin-fit filter.
+//
+// Runs AFTER trust partition, BEFORE AI rerank. Drops heroes whose
+// name / description conflict with the user's inferred skin profile
+// for moisturizer-family queries. Returns kept + dropped (with a
+// short reason) so the trace can surface "excludedFromHero" and the
+// user can see WHY a random heavy cream didn't become hero for an
+// oily/acne user.
+//
+// The alternative pool is intentionally NOT filtered — the user can
+// still see a broader set in the alts carousel; only the SINGLE
+// HERO is restricted to a skin-fit-aligned candidate.
+// ---------------------------------------------------------------------------
+
+export interface HeroSkinFitFilterResult {
+  kept: ScoredCandidate[];
+  dropped: Array<{
+    id: string;
+    name: string;
+    reason: string;
+  }>;
+}
+
+const HERO_HEAVY = /rich cream|heavy cream|\bbalm\b|ointment|occlusive|body lotion/i;
+const HERO_ULTRALIGHT = /oil[- ]?free gel|\bgel only\b|ultra[- ]?light|matte gel/i;
+const HERO_FRAGRANCED = /perfum|fragranced|\bscented\b|essential oil|parfum/i;
+const HERO_HARSH_ACTIVE = /retinol moisturizer|exfoliating moisturizer|aha moisturizer|bha moisturizer/i;
+
+function applyHeroSkinFitFilter(
+  heroPool: ScoredCandidate[],
+  intent: InterpretedIntent,
+  skinFit: InferredSkinProfile
+): HeroSkinFitFilterResult {
+  // Only filter for moisturizer-family queries today. Other product
+  // types (serum, cleanser, exfoliant) don't have the same heavy/
+  // light conflict axis.
+  if (intent.interpretedProductType !== 'moisturizer') {
+    return { kept: heroPool, dropped: [] };
+  }
+  const kept: ScoredCandidate[] = [];
+  const dropped: HeroSkinFitFilterResult['dropped'] = [];
+  for (const s of heroPool) {
+    const corpus =
+      `${s.candidate.name} ${s.candidate.shortDescription}`.toLowerCase();
+    let exclusion: string | null = null;
+    if (
+      (skinFit.isOily || skinFit.isAcneProne) &&
+      HERO_HEAVY.test(corpus)
+    ) {
+      exclusion = `excluded: heavy/occlusive cream conflicts with ${skinFit.label}`;
+    } else if (
+      (skinFit.isDry || skinFit.isBarrier) &&
+      HERO_ULTRALIGHT.test(corpus)
+    ) {
+      exclusion = `excluded: ultra-light gel-only conflicts with ${skinFit.label}`;
+    } else if (skinFit.isSensitive && HERO_FRAGRANCED.test(corpus)) {
+      exclusion = `excluded: fragranced product conflicts with ${skinFit.label}`;
+    } else if (skinFit.isSensitive && HERO_HARSH_ACTIVE.test(corpus)) {
+      exclusion = `excluded: harsh-active moisturizer conflicts with ${skinFit.label}`;
+    }
+    if (exclusion) {
+      dropped.push({
+        id: s.candidate.id,
+        name: `${s.candidate.brand} — ${s.candidate.name}`,
+        reason: exclusion,
+      });
+    } else {
+      kept.push(s);
+    }
+  }
+  // Safety net: if every hero was filtered out, keep the highest-
+  // trust hero candidate so we still surface SOMETHING. This
+  // shouldn't fire often — by the time the trust pool exists, the
+  // probes have been skin-shaped and conflicts should be rare. But
+  // when it does, an imperfect hero beats no hero (the trust pool
+  // is already pre-filtered, so even a "conflicting" candidate is
+  // at least skincare).
+  if (kept.length === 0 && heroPool.length > 0) {
+    kept.push(heroPool[0]);
+  }
+  return { kept, dropped };
+}
+
 /**
  * Free-text → RecommendationContext.
  *
@@ -1113,11 +1206,23 @@ export async function getRecommendationContextFromQuery(
     })
   );
   const partitionedFree = partitionByTrust(scoredFree);
+  // v19.36 — apply skin-fit filter to the hero pool BEFORE rerank.
+  // Drops heroes whose name/description conflicts with the user's
+  // inferred skin profile (heavy creams for oily/acne, ultra-light
+  // gels for dry/barrier, fragranced products for sensitive). The
+  // alternative pool is left untouched so the user still sees a
+  // broader set; only the HERO is restricted to skin-fit-aligned.
+  const skinFitFree = inferSkinProfile(profile, skinStateForCtx);
+  const heroFitFree = applyHeroSkinFitFilter(
+    partitionedFree.heroPool,
+    interpretedIntent,
+    skinFitFree
+  );
   const trustedFree = partitionedFree.alternativePool.map(
     (s) => s.candidate
   );
   const heroIdsFree = new Set(
-    partitionedFree.heroPool.map((s) => s.candidate.id)
+    heroFitFree.kept.map((s) => s.candidate.id)
   );
 
   // Final hard source: empty when (a) filter+dedupe killed all
@@ -1144,6 +1249,11 @@ export async function getRecommendationContextFromQuery(
         trust: s.score.total,
         hasImage: s.hasImage,
       })),
+      // v19.36 — pass derived skin-profile axes so the AI prompt
+      // can anchor the hero pick + whyHeroFits to the user's
+      // actual skin signals (no random heavy creams for oily
+      // users, no fragranced products for sensitive users).
+      skinProfile: skinFitFree,
     });
   }
 
@@ -1218,6 +1328,30 @@ export async function getRecommendationContextFromQuery(
   };
   const attempts = recordAttempt(attempt);
 
+  // v19.36 — compute the hero's skin-fit score for the trace. The
+  // safetyFit + (max - noisePenalty) component already encodes
+  // skin-fit; we derive a normalized 0..100 number directly off
+  // the hero's score breakdown so the trace shows ONE number the
+  // user can look at.
+  const heroIdResolved = rerank?.heroId ?? heroFitFree.kept[0]?.candidate.id ?? null;
+  const heroScored = heroIdResolved
+    ? partitionedFree.alternativePool.find(
+        (s) => s.candidate.id === heroIdResolved
+      )
+    : null;
+  const heroSkinFitScore = heroScored
+    ? Math.round(
+        Math.max(
+          0,
+          Math.min(
+            100,
+            heroScored.score.safetyFit * (100 / 15) -
+              heroScored.score.noisePenalty
+          )
+        )
+      )
+    : null;
+
   return buildRecommendationContext({
     intent,
     // v19.29 — only trust-pool candidates reach the canonical
@@ -1238,6 +1372,11 @@ export async function getRecommendationContextFromQuery(
     interpretedIntentLabel: interpretedIntent.intentLabel,
     probeQueries:
       effectiveProbePlan?.probes.map((p) => p.query) ?? [],
+    // v19.36 — personalization fields the truth panel renders.
+    queryFamily: effectiveProbePlan?.primaryIntentLabel ?? null,
+    skinFitReason: skinFitFree.label,
+    heroSkinFitScore,
+    excludedFromHero: heroFitFree.dropped,
   });
 }
 
@@ -1363,11 +1502,18 @@ export async function getRecommendationContextForScan(
     })
   );
   const partitionedScan = partitionByTrust(scoredScan);
+  // v19.36 — same skin-fit filter as the free-text path.
+  const skinFitScan = inferSkinProfile(profile, skinState);
+  const heroFitScan = applyHeroSkinFitFilter(
+    partitionedScan.heroPool,
+    scanIntent,
+    skinFitScan
+  );
   const trustedScan = partitionedScan.alternativePool.map(
     (s) => s.candidate
   );
   const heroIdsScan = new Set(
-    partitionedScan.heroPool.map((s) => s.candidate.id)
+    heroFitScan.kept.map((s) => s.candidate.id)
   );
 
   // Final hard source: empty when filter+dedupe killed all OR
@@ -1394,6 +1540,8 @@ export async function getRecommendationContextForScan(
         trust: s.score.total,
         hasImage: s.hasImage,
       })),
+      // v19.36 — derived skin-profile axes (scan path).
+      skinProfile: skinFitScan,
     });
   }
 
@@ -1458,6 +1606,27 @@ export async function getRecommendationContextForScan(
   };
   const attempts = recordAttempt(attempt);
 
+  // v19.36 — same hero-skin-fit score computation for the scan path.
+  const heroIdResolvedScan =
+    rerank?.heroId ?? heroFitScan.kept[0]?.candidate.id ?? null;
+  const heroScoredScan = heroIdResolvedScan
+    ? partitionedScan.alternativePool.find(
+        (s) => s.candidate.id === heroIdResolvedScan
+      )
+    : null;
+  const heroSkinFitScoreScan = heroScoredScan
+    ? Math.round(
+        Math.max(
+          0,
+          Math.min(
+            100,
+            heroScoredScan.score.safetyFit * (100 / 15) -
+              heroScoredScan.score.noisePenalty
+          )
+        )
+      )
+    : null;
+
   return buildRecommendationContext({
     intent,
     candidates: trustedScan,
@@ -1474,6 +1643,11 @@ export async function getRecommendationContextForScan(
     // by tryLiveSearch from the concern-shaped query above.
     interpretedIntentLabel: scanIntent.intentLabel,
     probeQueries: live.probePlan?.probes.map((p) => p.query) ?? [],
+    // v19.36 — personalization fields (scan path).
+    queryFamily: live.probePlan?.primaryIntentLabel ?? null,
+    skinFitReason: skinFitScan.label,
+    heroSkinFitScore: heroSkinFitScoreScan,
+    excludedFromHero: heroFitScan.dropped,
   });
 }
 

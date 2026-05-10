@@ -84,6 +84,20 @@ export interface ProductUiTrace {
   diagnosticsHeroId: string | null;
   uiMatchesDiagnostics: boolean | null;
 
+  /**
+   * v19.36 — minimum personalization fields. Surfaced in the
+   * truth panel so the user can see WHY this hero was chosen and
+   * which random candidates were excluded from the hero pool.
+   */
+  /** Resolved query family (e.g. `family:moisturizer`). */
+  queryFamily: string | null;
+  /** One short tag for the user's skin axis (`oily`, `sensitive`, `dry`, …). */
+  skinFitReason: string | null;
+  /** Composite skin-fit score for the hero (0..100, integer-rounded). */
+  heroSkinFitScore: number | null;
+  /** Hero candidates dropped by the skin-fit filter, with reasons. */
+  excludedFromHero: Array<{ id: string; name: string; reason: string }>;
+
   /** ISO timestamp when the trace was last updated. */
   timestamp: string;
 }

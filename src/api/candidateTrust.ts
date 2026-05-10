@@ -59,6 +59,100 @@ export const HERO_TRUST_THRESHOLD = 60;
 export const ALTERNATIVE_TRUST_THRESHOLD = 45;
 
 // ---------------------------------------------------------------------------
+// v19.36 — inferred skin-profile axes.
+//
+// One small helper used by probePlan (moisturizer probe shape),
+// candidateTrust (skin-fit boosts/penalties), liveProducts (hero-pool
+// filter), and openai-client (AI rerank payload). Pure function over
+// (profile, skinState) — no new type system, no async, no plumbing.
+//
+// Each axis is a DERIVED boolean. A user can register on multiple
+// axes (e.g. dry AND sensitive). The downstream filter applies them
+// in priority order (acne > sensitive > dry > combo) so we don't
+// give an oily/acne-prone user a heavy barrier cream.
+// ---------------------------------------------------------------------------
+
+export interface InferredSkinProfile {
+  isOily: boolean;
+  isAcneProne: boolean;
+  isDry: boolean;
+  isBarrier: boolean;
+  isSensitive: boolean;
+  isCombo: boolean;
+  /** Single short label for the trace + AI prompt. */
+  label: string;
+}
+
+const ACNE_HINTS =
+  /breakout|acne|pimple|congest|clog|blemish|spots?\b/i;
+const BARRIER_HINTS =
+  /barrier|reactive|rosacea|eczema|dermatitis|psoriasis/i;
+
+export function inferSkinProfile(
+  profile: UserProfileContext,
+  skinState: SkinState | null
+): InferredSkinProfile {
+  const sensitivities = profile.sensitivities ?? [];
+  const goals = profile.goals ?? [];
+  const concernSet = new Set<string>(
+    (skinState?.topConcerns ?? []).map((c) => c.concern as string)
+  );
+
+  const isOily =
+    profile.skinType === 'oily' ||
+    sensitivities.some((s) => /\boily|sebum|shine|greasy/i.test(s)) ||
+    concernSet.has('oiliness');
+
+  const isAcneProne =
+    concernSet.has('breakouts') ||
+    sensitivities.some((s) => ACNE_HINTS.test(s)) ||
+    goals.some((g) => ACNE_HINTS.test(g));
+
+  const isDry =
+    profile.skinType === 'dry' ||
+    sensitivities.some((s) => /\bdry|dehydrat|flak|parch/i.test(s)) ||
+    concernSet.has('hydration');
+
+  const isBarrier =
+    sensitivities.some((s) => BARRIER_HINTS.test(s)) ||
+    goals.some((g) => BARRIER_HINTS.test(g));
+
+  const isSensitive =
+    profile.skinType === 'sensitive' ||
+    sensitivities.some((s) =>
+      /sensitiv|fragrance|reactive|rosacea|redness|safety_bias:moderate|safety_bias:high/i.test(
+        s
+      )
+    ) ||
+    concernSet.has('sensitivity') ||
+    concernSet.has('redness');
+
+  const isCombo =
+    profile.skinType === 'combination' ||
+    (isOily && isDry);
+
+  // Single label for the trace + AI prompt. Priority order:
+  // acne > sensitive > dry/barrier > oily > combo > unknown.
+  let label = 'unknown';
+  if (isAcneProne) label = 'acne-prone';
+  else if (isSensitive) label = 'sensitive';
+  else if (isBarrier) label = 'barrier-compromised';
+  else if (isDry) label = 'dry';
+  else if (isOily) label = 'oily';
+  else if (isCombo) label = 'combination';
+
+  return {
+    isOily,
+    isAcneProne,
+    isDry,
+    isBarrier,
+    isSensitive,
+    isCombo,
+    label,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Component scorers.
 // ---------------------------------------------------------------------------
 
@@ -198,21 +292,22 @@ function scoreConcernFit(
  * concernTags signal a category the user has flagged as
  * avoidance.
  */
+// v19.36 — moisturizer-family fit patterns for safety boost.
+const MOIST_GEL_PATTERNS: RegExp[] =
+  [/gel moisturizer/i, /oil[- ]?free/i, /lightweight/i, /non[- ]?comedogenic/i, /gel cream/i];
+const MOIST_BARRIER_PATTERNS: RegExp[] =
+  [/barrier/i, /ceramide/i, /repair/i, /rich moistur/i, /shea butter/i];
+const MOIST_CALMING_PATTERNS: RegExp[] =
+  [/fragrance[- ]?free/i, /\bcica\b/i, /centella/i, /soothing/i, /calming/i, /panthenol/i];
+
 function scoreSafetyFit(
   c: LiveProductCandidate,
   intent: InterpretedIntent,
-  profile: UserProfileContext
+  profile: UserProfileContext,
+  skinFit: InferredSkinProfile | null
 ): number {
   let s = 5; // baseline (no signal in either direction)
-  // Pull safetyTags from the wire shape if present (v19.28
-  // BackendProductCandidate has `safetyTags`; the canonical
-  // LiveProductCandidate doesn't carry it directly, but the
-  // adapter places equivalent info under `skinTypeTags` /
-  // `concernTags`. Treat the candidate's `concernTags` as a
-  // proxy when explicit safety tags aren't surfaced).
-  // We use a corpus check on the description as a fallback
-  // safety signal.
-  const corpus = `${c.shortDescription} ${c.ingredientsHighlights?.join(' ') ?? ''}`.toLowerCase();
+  const corpus = `${c.name} ${c.shortDescription} ${c.ingredientsHighlights?.join(' ') ?? ''}`.toLowerCase();
   for (const av of intent.avoidanceConstraints) {
     const tag = `${av}_free`;
     if (corpus.includes(tag.replace('_', '-')) || corpus.includes(tag)) s += 2;
@@ -226,6 +321,31 @@ function scoreSafetyFit(
       /gentle|cica|centella|panthenol|fragrance[- ]?free/i.test(corpus)
     ) {
       s += 3;
+    }
+  }
+  // v19.36 — moisturizer-family skin-profile-aligned boost. Mirror
+  // image of the conflict penalties in scoreNoisePenalty: a
+  // candidate that visibly aligns with the user's skin axes earns
+  // up to +6 here on top of the base safety signal.
+  const wantsMoisturizer = intent.interpretedProductType === 'moisturizer';
+  if (wantsMoisturizer && skinFit) {
+    if (
+      (skinFit.isOily || skinFit.isAcneProne) &&
+      MOIST_GEL_PATTERNS.some((re) => re.test(corpus))
+    ) {
+      s += 6;
+    }
+    if (
+      (skinFit.isDry || skinFit.isBarrier) &&
+      MOIST_BARRIER_PATTERNS.some((re) => re.test(corpus))
+    ) {
+      s += 6;
+    }
+    if (
+      skinFit.isSensitive &&
+      MOIST_CALMING_PATTERNS.some((re) => re.test(corpus))
+    ) {
+      s += 6;
     }
   }
   return Math.max(0, Math.min(15, s));
@@ -287,6 +407,15 @@ function scoreImageCompleteness(c: LiveProductCandidate): number {
  * Catches candidates that look like food/non-skincare leaking
  * through the loosened cosmetic filter, or extremely short
  * names that read as parsing errors.
+ *
+ * v19.36 — adds skin-profile-conflict penalties for moisturizer-
+ * family queries. A moisturizer that conflicts with the user's
+ * skin axes (heavy occlusive cream for an oily/acne user; ultra-
+ * light gel-only for a dry/barrier user; fragranced for a
+ * sensitive user) takes a HARD noise penalty so it can't sneak
+ * into the hero pool just because OBF returned it. The penalties
+ * are scoped to moisturizer-family queries — for serums and
+ * exfoliants, these adjectives don't conflict the same way.
  */
 const NON_SKINCARE_PATTERNS: RegExp[] = [
   /candy|chocolate|gum|drink|juice|cocoa|coffee|tea|cookie|cake/i,
@@ -294,9 +423,24 @@ const NON_SKINCARE_PATTERNS: RegExp[] = [
   /pet|dog|cat food/i,
 ];
 
-function scoreNoisePenalty(c: LiveProductCandidate): number {
+// v19.36 — skin-profile-conflict patterns for moisturizer queries.
+const MOIST_HEAVY_PATTERNS: RegExp[] =
+  [/rich cream/i, /heavy cream/i, /\bbalm\b/i, /ointment/i, /occlusive/i, /body lotion/i];
+const MOIST_ULTRALIGHT_PATTERNS: RegExp[] =
+  [/oil[- ]?free gel/i, /\bgel only\b/i, /ultra[- ]?light/i, /matte gel/i];
+const MOIST_FRAGRANCED_PATTERNS: RegExp[] =
+  [/perfum/i, /fragranced/i, /\bscented\b/i, /\bessential oil/i, /parfum/i];
+const MOIST_HARSH_ACTIVE_PATTERNS: RegExp[] =
+  [/retinol moisturizer/i, /exfoliating moisturizer/i, /aha moisturizer/i, /bha moisturizer/i];
+
+function scoreNoisePenalty(
+  c: LiveProductCandidate,
+  intent: InterpretedIntent,
+  skinFit: InferredSkinProfile | null
+): number {
   let p = 0;
   const corpus = `${c.name} ${c.shortDescription} ${c.category}`;
+  const corpusLower = corpus.toLowerCase();
   for (const re of NON_SKINCARE_PATTERNS) {
     if (re.test(corpus)) {
       p += 30; // hard penalty — non-skincare leak
@@ -304,6 +448,37 @@ function scoreNoisePenalty(c: LiveProductCandidate): number {
   }
   if ((c.name ?? '').length < 4) p += 10;
   if ((c.brand ?? '').length < 2) p += 10;
+
+  // v19.36 — moisturizer-family skin-profile-conflict penalties.
+  // Skip when no skin profile is supplied (legacy callers) or when
+  // the query isn't moisturizer-family.
+  const wantsMoisturizer = intent.interpretedProductType === 'moisturizer';
+  if (wantsMoisturizer && skinFit) {
+    if (
+      (skinFit.isOily || skinFit.isAcneProne) &&
+      MOIST_HEAVY_PATTERNS.some((re) => re.test(corpusLower))
+    ) {
+      p += 35; // heavy/occlusive cream conflicts with oily/acne — hard drop
+    }
+    if (
+      (skinFit.isDry || skinFit.isBarrier) &&
+      MOIST_ULTRALIGHT_PATTERNS.some((re) => re.test(corpusLower))
+    ) {
+      p += 30;
+    }
+    if (
+      skinFit.isSensitive &&
+      MOIST_FRAGRANCED_PATTERNS.some((re) => re.test(corpusLower))
+    ) {
+      p += 30;
+    }
+    if (
+      skinFit.isSensitive &&
+      MOIST_HARSH_ACTIVE_PATTERNS.some((re) => re.test(corpusLower))
+    ) {
+      p += 25;
+    }
+  }
   return p;
 }
 
@@ -320,14 +495,18 @@ export function scoreTrustForCandidate(args: {
 }): ScoredCandidate {
   const { candidate, intent, profile, skinState } = args;
   const matchedProbes = args.matchedProbes ?? [];
+  // v19.36 — derive skin-profile axes once. Threaded into safety
+  // and noise-penalty scorers so moisturizer-family conflicts get
+  // a hard penalty and aligned candidates get a boost.
+  const skinFit = inferSkinProfile(profile, skinState);
 
   const productTypeFit = scoreProductTypeFit(candidate, intent);
   const concernFit = scoreConcernFit(candidate, intent, skinState);
-  const safetyFit = scoreSafetyFit(candidate, intent, profile);
+  const safetyFit = scoreSafetyFit(candidate, intent, profile, skinFit);
   const probeSupport = scoreProbeSupport(matchedProbes);
   const metadataCompleteness = scoreMetadataCompleteness(candidate);
   const imageCompleteness = scoreImageCompleteness(candidate);
-  const noisePenalty = scoreNoisePenalty(candidate);
+  const noisePenalty = scoreNoisePenalty(candidate, intent, skinFit);
 
   const total = Math.max(
     0,

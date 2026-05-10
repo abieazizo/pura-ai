@@ -1051,6 +1051,21 @@ export class OpenAIClient {
       trust: number;
       hasImage: boolean;
     }>;
+    /**
+     * v19.36 — derived skin-profile axes. Anchors the rerank to
+     * the user's actual skin signals; the prompt uses these to
+     * pick a hero that matches the user's skin needs and to write
+     * `whyHeroFits` in terms of those needs.
+     */
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
   }): Promise<AIRerankResult> {
     const system =
       "You are Pura AI's product rerank engine. Given a SHORT list " +
@@ -1060,29 +1075,52 @@ export class OpenAIClient {
       '  • alternativeIds — 0–4 next best, MUST be input ids, NEVER\n' +
       '    duplicate the heroId\n' +
       '  • whyHeroFits — one short plain-English sentence (≤100 chars)\n' +
-      '    explaining why the hero suits THIS user. Reference the\n' +
-      '    user\'s actual top concern, skin type, or goal where\n' +
-      '    relevant. Never marketing fluff.\n' +
+      '    that names the user\'s skin axis (oily/acne, dry/barrier,\n' +
+      '    sensitive, combo) and ties the hero to that need. Examples:\n' +
+      "    \"Picked because your skin reads oily + breakout-prone, so\n" +
+      '    this favors lightweight non-comedogenic hydration.\"\n' +
+      "    \"Picked because your profile and scan suggest barrier\n" +
+      '    dryness, so this favors ceramide-rich repair.\"\n' +
+      "    \"Picked because sensitivity/redness signals are high,\n" +
+      '    so this avoids fragrance-heavy moisturizers.\"\n' +
+      '    Never marketing fluff. Never generic.\n' +
       '  • whatToAvoid — array of 0–3 short strings (≤60 chars each)\n' +
       '    explicitly noting what THIS user should avoid given their\n' +
       "    sensitivities or scan signals. Empty array when there's\n" +
       '    nothing relevant to avoid.\n\n' +
       'You do NOT generate brand, name, url, image, or price — every\n' +
       'product field is already known. You only choose ordering and\n' +
-      'write the two short text fields.\n\n' +
-      'Personalization rules:\n' +
-      '  • If interpreted_intent.mode === "best_for_my_skin", lean\n' +
-      '    HEAVILY on top_concerns + skin_type + scan_summary. The\n' +
-      '    user did not specify a concern; you infer one.\n' +
-      '  • If interpreted_intent.avoidance_constraints includes\n' +
-      '    a token, deprioritize candidates whose ingredients or\n' +
-      '    safety tags conflict with that token.\n' +
-      '  • If raw_query was specific (e.g. "smoothing serum"),\n' +
-      '    honor the literal product type while filtering by user\n' +
-      '    safety constraints.\n' +
-      '  • If a candidate clashes with a sensitivity, rank it lower\n' +
-      '    or omit it from alternatives.\n' +
-      '  • If you cannot honestly pick a hero, return heroId: null.\n\n' +
+      'write the two short text fields. You also do NOT invent products:\n' +
+      'every heroId / alternativeId MUST be one of the input candidate ids.\n\n' +
+      'SKIN-FIT rules (v19.36 — non-negotiable):\n' +
+      '  • The payload includes `skin_profile` with derived boolean\n' +
+      '    axes (isOily, isAcneProne, isDry, isBarrier, isSensitive,\n' +
+      '    isCombo) + a single `label` ("oily", "acne-prone", "dry",\n' +
+      '    "sensitive", etc). Anchor every decision to these axes.\n' +
+      '  • For moisturizer-family queries (interpreted_product_type\n' +
+      '    === "moisturizer"):\n' +
+      '      ‐ If isOily OR isAcneProne, the hero MUST be lightweight,\n' +
+      '        gel, oil-free, or non-comedogenic. NEVER pick a heavy/\n' +
+      '        rich/balm/occlusive cream as hero for these users.\n' +
+      '      ‐ If isDry OR isBarrier, the hero MUST be ceramide,\n' +
+      '        barrier-repair, rich, or repairing. NEVER pick an\n' +
+      '        ultra-light gel-only moisturizer as hero for these users.\n' +
+      '      ‐ If isSensitive, the hero MUST be fragrance-free,\n' +
+      '        calming, cica/centella, or soothing. NEVER pick a\n' +
+      '        fragranced or harsh-active moisturizer as hero.\n' +
+      '      ‐ If isCombo, prefer lightweight or balancing texture.\n' +
+      '  • For "smoothing serum" / "chemical exfoliant" queries: prefer\n' +
+      '    PHA / lactic / gentle resurfacing for sensitive users; allow\n' +
+      '    salicylic / glycolic for non-sensitive. Never pick a random\n' +
+      '    hydrating serum with no smoothing/texture signal.\n' +
+      '  • For "best for my skin" / "best for my pimple": derive the\n' +
+      '    product class from top_concerns + scan_summary, then apply\n' +
+      '    the same skin-fit rules above.\n' +
+      '  • If a candidate clearly conflicts with the user\'s skin axis\n' +
+      '    (e.g. "rich balm" for an oily user), exclude it from hero\n' +
+      '    AND from alternatives.\n' +
+      '  • If you cannot honestly pick a skin-fit-aligned hero, return\n' +
+      '    heroId: null. Better empty than wrong.\n\n' +
       'TRUST + IMAGE rules (v19.29):\n' +
       '  • Each candidate carries a `trust` score [0..100] and a\n' +
       '    `has_image` boolean. The pool is already pre-filtered\n' +
@@ -1128,6 +1166,8 @@ export class OpenAIClient {
       interpreted_intent: params.interpretedIntent ?? null,
       latest_scan_summary: params.latestScanSummary ?? null,
       top_concerns: params.topConcerns ?? [],
+      // v19.36 — skin-profile axes the prompt must honor.
+      skin_profile: params.skinProfile ?? null,
     });
 
     return this.runStrictStructured<AIRerankResult>({

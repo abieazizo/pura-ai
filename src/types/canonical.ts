@@ -287,6 +287,38 @@ export interface RecommendationContext {
    * can verify on-device exactly which probes the engine sent.
    */
   probeQueries: readonly string[];
+
+  /**
+   * v19.36 — resolved query family. Set to the
+   * `TARGET_QUERY_FAMILIES` label (e.g. `family:moisturizer`)
+   * when the engine matched a hard-coded family; null otherwise.
+   * Surfaces on the trace so the user can see "this is being
+   * treated as moisturizer-family" vs generic.
+   */
+  queryFamily: string | null;
+  /**
+   * v19.36 — single skin-axis label the engine resolved for this
+   * fetch (e.g. `oily`, `sensitive`, `dry`, `unknown`). Anchors
+   * the personalization the AI rerank applied.
+   */
+  skinFitReason: string | null;
+  /**
+   * v19.36 — composite skin-fit score for the hero candidate
+   * (0..100). Higher = better match for the user's skin axes.
+   * `null` when no hero was selected.
+   */
+  heroSkinFitScore: number | null;
+  /**
+   * v19.36 — candidates dropped from the hero pool by the
+   * skin-fit filter, with a short human-readable reason. The
+   * truth panel renders these so the user can see WHY a random
+   * heavy cream didn't become hero for an oily/acne user.
+   */
+  excludedFromHero: ReadonlyArray<{
+    id: string;
+    name: string;
+    reason: string;
+  }>;
 }
 
 // ============================================================================

@@ -667,6 +667,18 @@ export function buildRecommendationContext(args: {
    * bypassed (cached/empty input).
    */
   probeQueries?: readonly string[];
+  /** v19.36 — resolved query family (`family:moisturizer` etc). */
+  queryFamily?: string | null;
+  /** v19.36 — single skin-axis label (`oily` / `sensitive` / …). */
+  skinFitReason?: string | null;
+  /** v19.36 — composite skin-fit score for the hero (0..100). */
+  heroSkinFitScore?: number | null;
+  /** v19.36 — candidates dropped by the hero-pool skin-fit filter. */
+  excludedFromHero?: ReadonlyArray<{
+    id: string;
+    name: string;
+    reason: string;
+  }>;
 }): RecommendationContext {
   const {
     intent,
@@ -681,6 +693,10 @@ export function buildRecommendationContext(args: {
     attemptHistory,
     interpretedIntentLabel = null,
     probeQueries = [],
+    queryFamily = null,
+    skinFitReason = null,
+    heroSkinFitScore = null,
+    excludedFromHero = [],
   } = args;
   const lastAttempt: RetrievalAttempt = attempt ?? {
     id: genRecommendationId(),
@@ -727,6 +743,10 @@ export function buildRecommendationContext(args: {
       attempts,
       interpretedIntentLabel,
       probeQueries,
+      queryFamily,
+      skinFitReason,
+      heroSkinFitScore,
+      excludedFromHero,
     };
   }
 
@@ -753,6 +773,10 @@ export function buildRecommendationContext(args: {
       attempts,
       interpretedIntentLabel,
       probeQueries,
+      queryFamily,
+      skinFitReason,
+      heroSkinFitScore,
+      excludedFromHero,
     };
   }
 
@@ -855,6 +879,10 @@ export function buildRecommendationContext(args: {
     attempts,
     interpretedIntentLabel,
     probeQueries,
+    queryFamily,
+    skinFitReason,
+    heroSkinFitScore,
+    excludedFromHero,
   };
 }
 

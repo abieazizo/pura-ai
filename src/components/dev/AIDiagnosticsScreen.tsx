@@ -738,6 +738,27 @@ export function AIDiagnosticsScreen() {
               for (const t of traces) {
                 lines.push(`────  ${t.trigger.toUpperCase()}: "${t.query}"  ────`);
                 lines.push(`  visibleState  = ${t.visibleState}`);
+                // v19.36 — show the resolved query family + skin
+                // axis the engine anchored personalization to.
+                lines.push(
+                  `  queryFamily   = ${t.queryFamily ?? '(generic)'}`
+                );
+                lines.push(
+                  `  skinFitReason = ${t.skinFitReason ?? '(unknown)'}`
+                );
+                if (t.heroSkinFitScore !== null) {
+                  lines.push(
+                    `  heroSkinFit   = ${t.heroSkinFitScore}/100`
+                  );
+                }
+                if (t.excludedFromHero.length > 0) {
+                  lines.push(
+                    `  excludedFromHero (${t.excludedFromHero.length}):`
+                  );
+                  for (const x of t.excludedFromHero.slice(0, 4)) {
+                    lines.push(`    × ${x.name} — ${x.reason}`);
+                  }
+                }
                 // v19.33 — show the structured intent label + probe
                 // queries the engine actually fired. Lets the user
                 // verify on-device that "moisturizer" expanded to
@@ -959,7 +980,57 @@ const DEVICE_TEST_KIT_TEXT = [
   '      same query)',
   '',
   '──────────────────────────────────────────────────',
-  'OVERALL PASS:  every TEST 1-9 PASSes on device.',
+  'TEST 10 — moisturizer hero matches user skin (v19.36)',
+  '──────────────────────────────────────────────────',
+  '  1. Set your profile skin type to oily OR mark acne-prone',
+  '     in onboarding.',
+  '  2. Products tab → search "moisturizer".',
+  '  3. Open the trace.',
+  '  PASS:',
+  '    • queryFamily = "family:moisturizer"',
+  '    • skinFitReason = "oily" or "acne-prone"',
+  '    • The hero card visibly is gel / lightweight / oil-free /',
+  '      non-comedogenic (NOT a heavy/rich balm/ointment cream).',
+  '    • heroSkinFit ≥ 50/100',
+  '    • If excludedFromHero is non-empty, every excluded entry',
+  '      reads "excluded: heavy/occlusive cream conflicts with',
+  '      oily/acne-prone" (or similar) — the random heavy creams',
+  '      are visibly being kept OUT of the hero pool.',
+  '  FAIL:',
+  '    • Hero is a rich/heavy/balm cream',
+  '    • skinFitReason is "(unknown)"',
+  '    • queryFamily is "(generic)" — engine missed the family',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 11 — best for my skin uses scan + profile (v19.36)',
+  '──────────────────────────────────────────────────',
+  '  1. After a scan, search "best for my skin".',
+  '  PASS:',
+  '    • queryFamily = "family:best_for_my_skin"',
+  '    • skinFitReason matches what your scan + profile suggest',
+  '    • whyHeroFits explains the pick in terms of YOUR skin',
+  '      (concern + skin type), not generic',
+  '  FAIL:',
+  '    • Hero unrelated to your top concern + skin type',
+  '    • whyHeroFits is generic marketing fluff',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 12 — best for my pimple, sensitive user (v19.36)',
+  '──────────────────────────────────────────────────',
+  '  1. Set sensitivities to include "sensitive" or "rosacea".',
+  '  2. Search "best for my pimple".',
+  '  PASS:',
+  '    • queryFamily = "family:best_for_my_pimple"',
+  '    • skinFitReason = "sensitive"',
+  '    • Hero is gentle / niacinamide / soothing — NOT benzoyl',
+  '      peroxide / harsh acid',
+  '    • whyHeroFits names sensitivity/redness reasoning',
+  '  FAIL:',
+  '    • Hero is benzoyl peroxide or aggressive salicylic',
+  '    • whyHeroFits ignores sensitivity',
+  '',
+  '──────────────────────────────────────────────────',
+  'OVERALL PASS:  every TEST 1-12 PASSes on device.',
   'OVERALL FAIL:  any test FAILs.',
   '──────────────────────────────────────────────────',
 ].join('\n');
