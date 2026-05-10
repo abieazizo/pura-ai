@@ -1,0 +1,391 @@
+/**
+ * Pura AI — retrieval probe-plan builder (v19.28).
+ *
+ * Generalized product queries (e.g. "smoothing serum",
+ * "chemical exfoliant", "best for my skin") fail OBF lookups
+ * because OBF's category index reacts to specific ingredient /
+ * product-type tokens, not vague consumer phrasing. v19.27's
+ * single-query-via-intent helper improved this slightly but
+ * still issued ONE literal probe per search.
+ *
+ * v19.28 expands a single InterpretedIntent into a small list
+ * of richer retrieval probes. Each probe is a different keyword
+ * combination that hits OBF with a known-good token set. The
+ * server fans out across the probes, merges + dedupes, and
+ * returns the union — substantially fattening the candidate
+ * pool that reaches AI rerank.
+ *
+ * Pure deterministic. No AI calls. User-aware: probes shift
+ * with the user's profile + scan (e.g. sensitive-skin user
+ * asking for "chemical exfoliant" gets PHA / lactic probes
+ * BEFORE glycolic / salicylic).
+ */
+
+import type {
+  ConcernType,
+} from '@/ai/ai-contracts';
+import type { SkinState, UserProfileContext } from '@/types/canonical';
+import type { InterpretedIntent, ProductTypeIntent } from './queryIntent';
+
+// ---------------------------------------------------------------------------
+// Public types.
+// ---------------------------------------------------------------------------
+
+export interface RetrievalProbe {
+  query: string;
+  /** Higher = more important. The first probe is always weight 1.0. */
+  weight: number;
+  /** Short reason for diagnostics — "redness-safe smoothing serum". */
+  reason: string;
+}
+
+export interface RetrievalProbePlan {
+  /** Pretty intent label for diagnostics + AI prompt. */
+  primaryIntentLabel: string;
+  /** Bounded list of retrieval probes, capped at 5. */
+  probes: RetrievalProbe[];
+  /** Avoidance constraints carried through from the intent. */
+  avoidanceConstraints: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Probe vocabulary per concern axis. Each list orders from "most
+// canonical / safe" to "most aggressive". Sensitive-skin users get
+// the head of the list; non-sensitive users get the tail too.
+// ---------------------------------------------------------------------------
+
+const CONCERN_PROBE_VOCAB: Record<ConcernType, readonly string[]> = {
+  texture: [
+    'texture serum',
+    'resurfacing serum',
+    'peptide serum',
+    'lactic acid serum',
+    'PHA serum',
+    'gentle exfoliating serum',
+    'glycolic acid serum',
+    'retinol serum',
+  ],
+  breakouts: [
+    'acne serum',
+    'spot treatment',
+    'salicylic acid serum',
+    'niacinamide blemish serum',
+    'azelaic acid serum',
+    'BHA exfoliant',
+    'gentle acne treatment',
+  ],
+  redness: [
+    'redness serum',
+    'centella serum',
+    'cica serum',
+    'panthenol serum',
+    'azelaic acid serum',
+    'soothing serum',
+    'barrier repair serum',
+  ],
+  hydration: [
+    'hyaluronic acid serum',
+    'glycerin serum',
+    'ceramide moisturizer',
+    'hydrating serum',
+    'snail mucin serum',
+    'panthenol serum',
+    'squalane serum',
+  ],
+  dark_marks: [
+    'vitamin c serum',
+    'ascorbic acid serum',
+    'tranexamic acid serum',
+    'azelaic acid serum',
+    'niacinamide brightening serum',
+    'alpha arbutin serum',
+  ],
+  oiliness: [
+    'niacinamide serum',
+    'BHA exfoliant',
+    'salicylic acid serum',
+    'mattifying serum',
+    'oil control toner',
+  ],
+  sensitivity: [
+    'gentle moisturizer',
+    'centella serum',
+    'cica cream',
+    'panthenol serum',
+    'barrier repair serum',
+    'fragrance-free moisturizer',
+  ],
+  pores: [
+    'niacinamide serum',
+    'BHA exfoliant',
+    'salicylic acid serum',
+    'pore minimizing serum',
+  ],
+};
+
+const PRODUCT_TYPE_LABEL: Record<NonNullable<ProductTypeIntent>, string> = {
+  cleanser: 'cleanser',
+  toner: 'toner',
+  serum: 'serum',
+  moisturizer: 'moisturizer',
+  spf: 'sunscreen',
+  mask: 'mask',
+  spot_treatment: 'spot treatment',
+  exfoliant: 'exfoliant',
+  eye_cream: 'eye cream',
+};
+
+// ---------------------------------------------------------------------------
+// Helpers.
+// ---------------------------------------------------------------------------
+
+function isSensitiveUser(profile: UserProfileContext): boolean {
+  if (profile.skinType === 'sensitive') return true;
+  return (profile.sensitivities ?? []).some((s) =>
+    /sensitiv|barrier|reactive|rosacea/i.test(s)
+  );
+}
+
+function pruneByAvoidance(
+  probe: string,
+  avoidance: string[]
+): boolean {
+  const lower = probe.toLowerCase();
+  for (const a of avoidance) {
+    const norm = a.toLowerCase();
+    if (norm === 'high_strength_acid') {
+      // Drop aggressive acid probes for sensitive users.
+      if (
+        /glycolic|salicylic( acid)?(?! serum$)/.test(lower) ||
+        /retinol|tretinoin/.test(lower)
+      ) {
+        return false;
+      }
+    }
+    if (norm === 'fragrance' && /(^|\s)fragrance(\s|$)/.test(lower)) return false;
+    if (norm === 'retinoid' && /retinol|retinal|tretinoin/.test(lower)) return false;
+  }
+  return true;
+}
+
+function uniqueProbes(probes: RetrievalProbe[]): RetrievalProbe[] {
+  const seen = new Set<string>();
+  const out: RetrievalProbe[] = [];
+  for (const p of probes) {
+    const k = p.query.toLowerCase().trim();
+    if (k.length === 0 || seen.has(k)) continue;
+    seen.add(k);
+    out.push(p);
+  }
+  return out;
+}
+
+function expandConcern(
+  concern: ConcernType,
+  profile: UserProfileContext,
+  productType: ProductTypeIntent
+): RetrievalProbe[] {
+  const vocab = CONCERN_PROBE_VOCAB[concern];
+  if (!vocab) return [];
+  const sensitive = isSensitiveUser(profile);
+  // Sensitive users → first 4 probes (gentler). Others → first 6.
+  const slice = vocab.slice(0, sensitive ? 4 : 6);
+
+  const probes: RetrievalProbe[] = slice.map((q, i) => ({
+    query: q,
+    weight: Math.max(0.4, 1 - i * 0.12),
+    reason: `${concern} probe (${i + 1}/${slice.length}${
+      sensitive ? ', sensitive-safe' : ''
+    })`,
+  }));
+
+  // If the user explicitly asked for a product type but the vocab
+  // entry is generic, stitch the product type onto the front for
+  // type-specific recall.
+  if (productType && productType !== 'serum') {
+    const ptLabel = PRODUCT_TYPE_LABEL[productType];
+    probes.push({
+      query: `${concern.replace(/_/g, ' ')} ${ptLabel}`,
+      weight: 0.85,
+      reason: `${concern} ${ptLabel}`,
+    });
+  }
+
+  return probes;
+}
+
+function expandBestForMySkin(
+  profile: UserProfileContext,
+  skinState: SkinState | null,
+  productType: ProductTypeIntent
+): RetrievalProbe[] {
+  // Heart of "best for my skin": derive from topConcerns + skinType
+  // + goals + sensitivities + scan summary. We construct probes
+  // that reflect what THIS user actually needs.
+  const probes: RetrievalProbe[] = [];
+
+  const top = skinState?.topConcerns ?? [];
+  for (let i = 0; i < Math.min(top.length, 3); i++) {
+    const c = top[i].concern;
+    const vocab = CONCERN_PROBE_VOCAB[c];
+    if (vocab && vocab.length > 0) {
+      probes.push({
+        query: vocab[0],
+        weight: 1 - i * 0.15,
+        reason: `top concern #${i + 1}: ${c}`,
+      });
+    }
+    // Also push a `{concern} {productType}` probe if a type was
+    // hinted (e.g. "best moisturizer for my skin").
+    if (productType) {
+      probes.push({
+        query: `${c.replace(/_/g, ' ')} ${PRODUCT_TYPE_LABEL[productType]}`,
+        weight: 0.8 - i * 0.1,
+        reason: `top concern #${i + 1} + ${PRODUCT_TYPE_LABEL[productType]}`,
+      });
+    }
+  }
+
+  // Skin-type fallback when there are no scan concerns.
+  if (probes.length === 0) {
+    if (profile.skinType === 'dry') {
+      probes.push(
+        {
+          query: 'hyaluronic acid serum',
+          weight: 1,
+          reason: 'dry skin baseline',
+        },
+        {
+          query: 'ceramide moisturizer',
+          weight: 0.9,
+          reason: 'dry skin baseline',
+        }
+      );
+    } else if (profile.skinType === 'oily') {
+      probes.push(
+        {
+          query: 'niacinamide serum',
+          weight: 1,
+          reason: 'oily skin baseline',
+        },
+        {
+          query: 'BHA exfoliant',
+          weight: 0.85,
+          reason: 'oily skin baseline',
+        }
+      );
+    } else if (profile.skinType === 'sensitive') {
+      probes.push(
+        {
+          query: 'centella serum',
+          weight: 1,
+          reason: 'sensitive skin baseline',
+        },
+        {
+          query: 'gentle moisturizer',
+          weight: 0.9,
+          reason: 'sensitive skin baseline',
+        }
+      );
+    } else {
+      probes.push(
+        {
+          query: 'gentle daily serum',
+          weight: 1,
+          reason: 'general baseline',
+        },
+        {
+          query: 'hydrating moisturizer',
+          weight: 0.85,
+          reason: 'general baseline',
+        }
+      );
+    }
+  }
+
+  // Goals (free-form text from onboarding, e.g. "even out tone")
+  // contribute one extra probe each, capped at 2.
+  for (const goal of (profile.goals ?? []).slice(0, 2)) {
+    const norm = goal.toLowerCase().replace(/[_-]/g, ' ');
+    probes.push({
+      query: `${norm} skincare`,
+      weight: 0.5,
+      reason: `goal: ${goal}`,
+    });
+  }
+
+  return probes;
+}
+
+// ---------------------------------------------------------------------------
+// Public API.
+// ---------------------------------------------------------------------------
+
+export function buildProbePlan(
+  rawQuery: string,
+  intent: InterpretedIntent,
+  profile: UserProfileContext,
+  skinState: SkinState | null
+): RetrievalProbePlan {
+  const probes: RetrievalProbe[] = [];
+
+  // ALWAYS keep the user's literal query as the first probe so we
+  // don't surprise them — it still gets the highest weight unless
+  // the interpreter decided the query was vague.
+  if (rawQuery.trim().length > 0 && intent.mode !== 'best_for_my_skin') {
+    probes.push({
+      query: rawQuery.trim(),
+      weight: intent.isVague ? 0.6 : 1,
+      reason: 'verbatim query',
+    });
+  }
+
+  if (intent.mode === 'best_for_my_skin') {
+    probes.push(
+      ...expandBestForMySkin(profile, skinState, intent.interpretedProductType)
+    );
+  } else if (intent.interpretedConcern) {
+    probes.push(
+      ...expandConcern(
+        intent.interpretedConcern,
+        profile,
+        intent.interpretedProductType
+      )
+    );
+  } else if (intent.interpretedProductType) {
+    // Pure product-type query without a concern: probe the
+    // product type itself + a few "good" variants.
+    const pt = intent.interpretedProductType;
+    const ptLabel = PRODUCT_TYPE_LABEL[pt];
+    probes.push(
+      { query: ptLabel, weight: 0.95, reason: `product type: ${ptLabel}` },
+      {
+        query: `gentle ${ptLabel}`,
+        weight: 0.7,
+        reason: `gentle ${ptLabel}`,
+      }
+    );
+  }
+
+  // Apply avoidance pruning + dedup + cap at 5.
+  const filtered = probes
+    .filter((p) => pruneByAvoidance(p.query, intent.avoidanceConstraints))
+    .filter((p) => p.query.length > 0);
+  const uniq = uniqueProbes(filtered).slice(0, 5);
+
+  // Safety net: if pruning emptied the plan, fall back to the
+  // verbatim query (or an extremely safe baseline).
+  if (uniq.length === 0) {
+    uniq.push({
+      query: rawQuery.trim().length > 0 ? rawQuery.trim() : 'gentle skincare',
+      weight: 1,
+      reason: 'fallback (all probes pruned)',
+    });
+  }
+
+  return {
+    primaryIntentLabel: intent.intentLabel,
+    probes: uniq,
+    avoidanceConstraints: intent.avoidanceConstraints,
+  };
+}

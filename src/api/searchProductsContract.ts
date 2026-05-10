@@ -87,6 +87,22 @@ export interface SearchProductsRequest {
     interpretedProductType: string | null;
     avoidanceConstraints: string[];
   };
+
+  // ----- v19.28 — multi-probe retrieval fan-out.
+  /**
+   * Bounded list of expanded retrieval probes built by
+   * `buildProbePlan` on the client. The server runs each probe
+   * against OBF in parallel (capped, with per-probe timeouts),
+   * merges the candidates, dedupes by id, and returns the union.
+   *
+   * Empty/missing → server falls back to the v19.25 behavior
+   * (single-query OBF call).
+   */
+  probes?: Array<{
+    query: string;
+    weight: number;
+    reason: string;
+  }>;
 }
 
 export interface BackendProductCandidate {
@@ -112,6 +128,13 @@ export interface BackendProductCandidate {
   safetyTags: string[];
   /** Always 'live_backend' on a non-empty response. */
   source: 'live_backend';
+  /**
+   * v19.28 — which retrieval probe(s) surfaced this candidate.
+   * Empty when the request used the legacy single-query path
+   * (no `probes` field). Used by diagnostics + AI rerank prompt
+   * to give the model insight into why a candidate is here.
+   */
+  matchedProbes?: string[];
 }
 
 export interface SearchProductsResponse {

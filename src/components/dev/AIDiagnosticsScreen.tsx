@@ -211,16 +211,46 @@ export function AIDiagnosticsScreen() {
       const { getRecommendationContextFromQuery } = await import(
         '@/api/liveProducts'
       );
-      // Run only the first query in the report (fast). The other
-      // queries are wired and exercised by the same engine — the
-      // user can verify by typing them in the search bar.
+      // v19.28 — run all 4 target queries end-to-end and emit a
+      // compact one-line summary per query, then a deeper report
+      // for the first. Proves the engine handles them ALL, not
+      // just one example.
+      const realTargets: ReadonlyArray<string> = [
+        'smoothing serum',
+        'chemical exfoliant',
+        'best for my skin',
+        'best for my pimple',
+      ];
+      lines.push('');
+      lines.push('  4-query verification (v19.28 multi-probe):');
+      for (const target of realTargets) {
+        const tInner = Date.now();
+        try {
+          const r = await getRecommendationContextFromQuery(target, {
+            intent: { kind: 'query', text: target },
+            trigger: 'search',
+          });
+          const ms = Date.now() - tInner;
+          const heroLabel = r.heroProduct
+            ? `${r.heroProduct.brand} — ${r.heroProduct.name.slice(0, 28)}`
+            : '(no hero)';
+          lines.push(
+            `    "${target}".padEnd(20) → ${r.candidateProducts.length} cand · ` +
+              `${r.lastAttempt.source} · ${ms}ms · ${heroLabel}`
+          );
+        } catch (e) {
+          lines.push(
+            `    "${target}" → ERROR: ${e instanceof Error ? e.message : String(e)}`
+          );
+        }
+      }
+      lines.push('');
+      // Deep report on the first target (smoothing serum).
       const tq = testQueries[0];
-      lines.push(`  query="${tq.q}"   intent: ${tq.label}`);
+      lines.push(`  deep report: query="${tq.q}"   intent: ${tq.label}`);
       const t0 = Date.now();
       const result = await getRecommendationContextFromQuery(tq.q, {
         intent: { kind: 'query', text: tq.q },
-        // Explicit `search` trigger so the engine fires the AI
-        // rerank step. Default `'background'` skips rerank.
         trigger: 'search',
       });
       const dur = Date.now() - t0;
@@ -269,11 +299,9 @@ export function AIDiagnosticsScreen() {
           lines.push(`    • ${wa}`);
         }
       }
-      // v19.27 — list the other queries the same engine handles.
-      lines.push('  generalized — same engine handles:');
-      for (const tqi of testQueries.slice(1)) {
-        lines.push(`    • "${tqi.q}"  → ${tqi.label}`);
-      }
+      // v19.28 — the 4-query verification block at the top of
+      // the report already proves the engine handles all the
+      // target queries. No need for a separate "reference" list.
       // Attempt history — show the last 5 fetches across the WHOLE
       // app. This is the chain "initial_load → seed_fallback →
       // retry → obf_live" the user wants visible.

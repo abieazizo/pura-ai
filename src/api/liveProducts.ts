@@ -509,6 +509,11 @@ import {
   interpretSearchIntent,
   type InterpretedIntent,
 } from './queryIntent';
+// v19.28 — multi-probe retrieval plan builder.
+import {
+  buildProbePlan,
+  type RetrievalProbePlan,
+} from './probePlan';
 
 export interface GetRecommendationOpts extends LookupOpts {
   intent: RecommendationIntent;
@@ -832,13 +837,22 @@ async function tryLiveSearch(
     const topConcernsOnWire = context?.skinState?.topConcerns
       ? context.skinState.topConcerns.map((c) => c.concern)
       : undefined;
-    // v19.27 — use the interpreter to construct a richer OBF
-    // query string. "best for my skin" with topConcerns=['texture']
-    // becomes "texture skincare"; "smoothing serum" stays
-    // "texture serum"; "redness serum" stays "redness serum".
+    // v19.27 — interpreter produces a richer single OBF query
+    //   string for `query`. v19.28 adds a multi-probe plan that
+    //   the server fans out across so we don't bet everything on
+    //   one literal query string.
     const wireQuery = context?.intent
       ? buildBackendQueryFromIntent(query, context.intent)
       : query;
+    let probePlan: RetrievalProbePlan | null = null;
+    if (context?.intent) {
+      probePlan = buildProbePlan(
+        query,
+        context.intent,
+        context.profile,
+        context.skinState
+      );
+    }
     const res = await searchProductsBackend({
       query: wireQuery,
       concern:
@@ -850,7 +864,7 @@ async function tryLiveSearch(
       goals: context?.profile.goals,
       latestScanSummary: context?.skinState?.summaryHeadline ?? null,
       topConcerns: topConcernsOnWire,
-      limit: 12,
+      limit: 16,
       trigger,
       chipIntent: context?.chipIntent ?? null,
       interpretedIntent: context?.intent
@@ -862,6 +876,7 @@ async function tryLiveSearch(
             avoidanceConstraints: context.intent.avoidanceConstraints,
           }
         : undefined,
+      probes: probePlan?.probes,
     });
     if (res.source === 'error') {
       return { candidates: [], failure: res.failureReason ?? 'unknown' };
@@ -966,13 +981,41 @@ export async function getRecommendationContextFromQuery(
   }
 
   // STEP A.FALLBACK — seed catalog when OBF didn't deliver.
+  // v19.28: also probe the seed catalog using the same probe plan
+  // so vague queries that overshot OBF can still find catalog
+  // matches. The seed catalog is small (24 products) but well-
+  // tagged; richer probes hit more of it than a literal query.
   if (candidates.length === 0) {
-    candidates = retrieveSeedCandidates({
+    const merged = new Map<string, LiveProductCandidate>();
+    const rotation = opts.fresh ? Math.floor(Date.now() / 1000) : 0;
+    // Primary literal query first.
+    for (const c of retrieveSeedCandidates({
       query,
-      concern: inferredConcern,
-      limit: 12,
-      rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
-    });
+      concern: interpretedIntent.interpretedConcern ?? inferredConcern,
+      limit: 8,
+      rotation,
+    })) {
+      merged.set(c.id, c);
+    }
+    // Then fan out across the probe plan so "best for my skin"
+    // / vague queries get coverage.
+    const seedProbePlan = buildProbePlan(
+      query,
+      interpretedIntent,
+      profile,
+      skinStateForCtx
+    );
+    for (const probe of seedProbePlan.probes.slice(0, 3)) {
+      for (const c of retrieveSeedCandidates({
+        query: probe.query,
+        concern: interpretedIntent.interpretedConcern ?? null,
+        limit: 6,
+        rotation,
+      })) {
+        if (!merged.has(c.id)) merged.set(c.id, c);
+      }
+    }
+    candidates = Array.from(merged.values()).slice(0, 12);
     if (candidates.length > 0) {
       retrievalSource = 'fallback';
       hardSource = 'seed_fallback';

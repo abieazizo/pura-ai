@@ -119,10 +119,48 @@ function inferCategory(categories: string | undefined): string | null {
   return null;
 }
 
+/**
+ * v19.28 — looser cosmetic check. Pre-v19.28 required non-empty
+ * `categories` from OBF, dropping many real skincare entries
+ * whose categories field is blank. Now we also accept items
+ * whose product_name / generic_name matches a skincare pattern,
+ * provided they have a brand. False-positive risk: low — OBF's
+ * search API already biases toward beauty when the search term
+ * is a beauty term.
+ */
+const SKINCARE_NAME_PATTERNS: RegExp[] = [
+  /serum/i,
+  /cleanser/i,
+  /toner/i,
+  /moisturi[sz]er/i,
+  /cream/i,
+  /lotion/i,
+  /sunscreen|spf/i,
+  /mask|masque/i,
+  /essence/i,
+  /ampoule/i,
+  /eye cream|eye serum/i,
+  /exfoli/i,
+  /retinol|retinal|tretinoin/i,
+  /niacinamide/i,
+  /hyaluronic/i,
+  /vitamin c|ascorbic/i,
+  /salicylic|glycolic|lactic|mandelic/i,
+];
+
 function looksLikeCosmetic(p: OBFProduct): boolean {
   const cats = p.categories ?? '';
-  if (cats.length === 0) return false;
-  return COSMETIC_CATEGORY_PATTERNS.some((re) => re.test(cats));
+  if (cats.length > 0) {
+    if (COSMETIC_CATEGORY_PATTERNS.some((re) => re.test(cats))) {
+      return true;
+    }
+  }
+  // Loosened path: name signals skincare AND brand is present.
+  const name = (p.product_name_en || p.product_name || p.generic_name || '')
+    .trim();
+  if (name.length === 0) return false;
+  if (!p.brands || p.brands.trim().length === 0) return false;
+  return SKINCARE_NAME_PATTERNS.some((re) => re.test(name));
 }
 
 function pickPrimaryBrand(brands: string | undefined): string {
@@ -358,6 +396,26 @@ function coerceRequest(body: Record<string, unknown>): SearchProductsRequest {
         : [],
     };
   }
+  // v19.28 — multi-probe retrieval. Each probe carries its own
+  // query string + weight + reason. Empty/missing → server falls
+  // back to single-query OBF call (legacy v19.25 behavior).
+  let probes: SearchProductsRequest['probes'];
+  const probesRaw = body['probes'];
+  if (Array.isArray(probesRaw)) {
+    probes = (probesRaw as unknown[])
+      .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+      .map((p) => ({
+        query: typeof p.query === 'string' ? p.query.trim() : '',
+        weight:
+          typeof p.weight === 'number' && Number.isFinite(p.weight)
+            ? p.weight
+            : 1,
+        reason: typeof p.reason === 'string' ? p.reason : '',
+      }))
+      .filter((p) => p.query.length > 0)
+      .slice(0, 5);
+    if (probes.length === 0) probes = undefined;
+  }
   return {
     query,
     concern,
@@ -370,6 +428,7 @@ function coerceRequest(body: Record<string, unknown>): SearchProductsRequest {
     topConcerns,
     chipIntent,
     interpretedIntent,
+    probes,
   };
 }
 
@@ -393,29 +452,81 @@ export async function searchProductsHandler(
     };
   }
 
-  let raw: OBFProduct[] = [];
-  let failureReason: string | null = null;
-  try {
-    raw = await fetchOBFSearch(req.query, req.limit ?? DEFAULT_PAGE_SIZE);
-  } catch (e) {
-    failureReason = e instanceof Error ? e.message : String(e);
+  // v19.28 — fan out across probes when the client sent them;
+  // otherwise fall back to the legacy single-query path.
+  type ProbeExec = { query: string; weight: number; reason: string };
+  const probeList: ProbeExec[] = req.probes && req.probes.length > 0
+    ? req.probes
+    : [{ query: req.query, weight: 1, reason: 'verbatim' }];
+
+  // Per-probe page size: when multiple probes fan out, keep each
+  // probe's page small so the total OBF load stays bounded. The
+  // overall response is still capped by req.limit after merge.
+  const perProbeSize = Math.max(
+    4,
+    Math.floor((req.limit ?? DEFAULT_PAGE_SIZE) / Math.max(1, probeList.length))
+  );
+
+  // Run all probes in parallel. Use Promise.allSettled so one
+  // failed probe (rare OBF 5xx) doesn't fail the whole search.
+  const probeResults = await Promise.allSettled(
+    probeList.map(async (probe) => ({
+      probe,
+      raw: await fetchOBFSearch(probe.query, perProbeSize),
+    }))
+  );
+
+  // Aggregate failures + raw products. We only short-circuit when
+  // ALL probes failed; partial success is fine.
+  const allFailures: string[] = [];
+  const probeMatches = new Map<string, Set<string>>(); // candidate.id → probe queries
+  const candidatesByCode = new Map<string, BackendProductCandidate>();
+
+  for (const r of probeResults) {
+    if (r.status === 'rejected') {
+      allFailures.push(
+        r.reason instanceof Error ? r.reason.message : String(r.reason)
+      );
+      continue;
+    }
+    const { probe, raw } = r.value;
+    for (const p of raw) {
+      if (!looksLikeCosmetic(p)) continue;
+      const c = toCandidate(p);
+      if (!c) continue;
+      // Dedup by id; first occurrence wins, but still append the
+      // probe to matchedProbes so we know all routes that found it.
+      const existing = candidatesByCode.get(c.id);
+      const target = existing ?? c;
+      if (!existing) {
+        candidatesByCode.set(c.id, target);
+      }
+      const set = probeMatches.get(c.id) ?? new Set<string>();
+      set.add(probe.query);
+      probeMatches.set(c.id, set);
+    }
   }
 
-  if (failureReason) {
+  // If every probe failed, surface the first error. Single-probe
+  // case preserves the legacy "source: error" behavior.
+  if (
+    allFailures.length === probeList.length &&
+    candidatesByCode.size === 0
+  ) {
     return {
       query: req.query,
       source: 'error',
       candidates: [],
-      failureReason,
+      failureReason: allFailures[0] ?? 'all probes failed',
     };
   }
 
-  const candidates: BackendProductCandidate[] = [];
-  for (const p of raw) {
-    if (!looksLikeCosmetic(p)) continue;
-    const c = toCandidate(p);
-    if (c) candidates.push(c);
-  }
+  const candidates: BackendProductCandidate[] = Array.from(
+    candidatesByCode.values()
+  ).map((c) => ({
+    ...c,
+    matchedProbes: Array.from(probeMatches.get(c.id) ?? []),
+  }));
 
   // v19.26 — personalized soft sort. Score every candidate against
   // the full user context the client passed. Higher score → earlier
