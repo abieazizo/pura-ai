@@ -287,6 +287,108 @@ function expandConcern(
   return probes;
 }
 
+/**
+ * v19.34 — product-type expansion. Used when the user explicitly
+ * named a product type (e.g. "moisturizer", "smoothing serum",
+ * "chemical exfoliant"). The probe set MUST stay product-type
+ * shaped — a "moisturizer" query should not be answered with a
+ * grid of serums just because OBF's category-keyword index reacts
+ * to "moistur".
+ *
+ * Strategy:
+ *   1. Bare productType label as a low-weight catch-all probe.
+ *   2. When the query also carries a concern, push a `concern + ptLabel`
+ *      probe (e.g. "redness moisturizer") for type+concern recall.
+ *   3. Pull concern-vocab entries that ARE shaped with the productType
+ *      label (e.g. for hydration concern + moisturizer pt, the
+ *      concern vocab includes "ceramide moisturizer" — keep it).
+ *      Drops the concern-vocab serums when the user asked for a
+ *      moisturizer.
+ *   4. Fill remaining slots with PRODUCT_TYPE_VARIANTS for
+ *      ingredient/format diversity.
+ *
+ * For "moisturizer" (concern=hydration): probes become
+ * ["moisturizer", "hydration moisturizer", "ceramide moisturizer",
+ *  "hyaluronic acid moisturizer", "niacinamide moisturizer"] — all
+ * moisturizers, none of them serums.
+ *
+ * For "smoothing serum" (concern=texture): probes become
+ * ["smoothing serum", "texture serum", "resurfacing serum",
+ *  "peptide serum", "lactic acid serum"] — all texture-shaped serums.
+ *
+ * For "chemical exfoliant" (concern=null): probes become
+ * ["chemical exfoliant", "exfoliant", "gentle exfoliant",
+ *  "lactic acid exfoliant", "salicylic acid exfoliant"].
+ */
+function expandProductType(
+  productType: NonNullable<ProductTypeIntent>,
+  concernHint: ConcernType | null,
+  profile: UserProfileContext
+): RetrievalProbe[] {
+  const ptLabel = PRODUCT_TYPE_LABEL[productType];
+  const variants = PRODUCT_TYPE_VARIANTS[productType] ?? [];
+  const sensitive = isSensitiveUser(profile);
+  const probes: RetrievalProbe[] = [];
+
+  if (concernHint) {
+    // Concern-aware path. Skip the bare productType label — it's
+    // strictly less informative than `concern + ptLabel` and we
+    // want to preserve probe slots (cap is 5) for type-shaped,
+    // concern-relevant probes.
+    probes.push({
+      query: `${concernHint.replace(/_/g, ' ')} ${ptLabel}`,
+      weight: 0.95,
+      reason: `${concernHint} + ${ptLabel}`,
+    });
+
+    // Concern-vocab entries that LITERALLY mention the productType
+    // label. This drops "hyaluronic acid serum" when the user asked
+    // for "moisturizer", but keeps "ceramide moisturizer". For
+    // "smoothing serum", every entry of the texture concern vocab
+    // is shaped /serum/ so all 6 probes survive (and the slice cap
+    // at 5 in buildProbePlan picks the strongest).
+    const concernVocab = (CONCERN_PROBE_VOCAB[concernHint] ?? []).slice(
+      0,
+      sensitive ? 4 : 6
+    );
+    const ptShape = new RegExp(`\\b${ptLabel}s?\\b`, 'i');
+    for (let i = 0; i < concernVocab.length; i++) {
+      if (ptShape.test(concernVocab[i])) {
+        probes.push({
+          query: concernVocab[i],
+          weight: Math.max(0.55, 0.9 - i * 0.08),
+          reason: `${concernHint} ${ptLabel} probe`,
+        });
+      }
+    }
+  } else {
+    // No concern hint — push the bare productType label + "gentle"
+    // sibling so OBF gets a couple of strong product-type queries.
+    probes.push({
+      query: ptLabel,
+      weight: 0.95,
+      reason: `product type: ${ptLabel}`,
+    });
+    probes.push({
+      query: `gentle ${ptLabel}`,
+      weight: 0.7,
+      reason: `gentle ${ptLabel}`,
+    });
+  }
+
+  // PRODUCT_TYPE_VARIANTS — ingredient/format diversity. Always
+  // appended; cap-at-5 in buildProbePlan trims if needed.
+  for (let i = 0; i < variants.length; i++) {
+    probes.push({
+      query: variants[i],
+      weight: Math.max(0.35, 0.78 - i * 0.08),
+      reason: `${ptLabel} variant`,
+    });
+  }
+
+  return probes;
+}
+
 function expandBestForMySkin(
   profile: UserProfileContext,
   skinState: SkinState | null,
@@ -417,6 +519,22 @@ export function buildProbePlan(
     probes.push(
       ...expandBestForMySkin(profile, skinState, intent.interpretedProductType)
     );
+  } else if (intent.interpretedProductType) {
+    // v19.34 — productType wins when set, even if concern is also
+    // extracted. Without this swap, "moisturizer" got routed to
+    // expandConcern('hydration') (because "moistur" matches the
+    // hydration concern vocab AND the moisturizer product-type
+    // vocab), which fanned out to mostly *serums* — the user typed
+    // "moisturizer" and got serum probes. Now expandProductType
+    // takes the concern as a hint instead, keeping every probe
+    // shaped as the requested productType.
+    probes.push(
+      ...expandProductType(
+        intent.interpretedProductType,
+        intent.interpretedConcern,
+        profile
+      )
+    );
   } else if (intent.interpretedConcern) {
     probes.push(
       ...expandConcern(
@@ -425,33 +543,6 @@ export function buildProbePlan(
         intent.interpretedProductType
       )
     );
-  } else if (intent.interpretedProductType) {
-    // v19.32 — pure product-type query (e.g. "moisturizer",
-    // "cleanser", "toner"). Pre-v19.32 only generated 2 probes;
-    // OBF's keyword index needs more variants to surface
-    // diverse, image-backed cosmetic entries. We now expand
-    // each product type into its canonical ingredient/format
-    // variants — same vocab style as the concern probe lists.
-    const pt = intent.interpretedProductType;
-    const ptLabel = PRODUCT_TYPE_LABEL[pt];
-    const variants = PRODUCT_TYPE_VARIANTS[pt] ?? [];
-    probes.push({
-      query: ptLabel,
-      weight: 0.95,
-      reason: `product type: ${ptLabel}`,
-    });
-    probes.push({
-      query: `gentle ${ptLabel}`,
-      weight: 0.7,
-      reason: `gentle ${ptLabel}`,
-    });
-    for (let i = 0; i < Math.min(variants.length, 3); i++) {
-      probes.push({
-        query: variants[i],
-        weight: Math.max(0.4, 0.85 - i * 0.15),
-        reason: `${ptLabel} variant: ${variants[i]}`,
-      });
-    }
   }
 
   // Apply avoidance pruning + dedup + cap at 5.

@@ -174,16 +174,27 @@ export function updateImageRender(args: {
  * Patch the diagnostics-side fields. Called by AIDiagnosticsScreen
  * after it runs its own engine call so the equality flag is
  * populated for human inspection.
+ *
+ * v19.34 — `query` is required and must match the existing trace's
+ * query for the patch to apply. Without this, a diagnostics loop
+ * that fans out across multiple queries (all using
+ * `trigger: 'search'`) would overwrite each other's counterparts in
+ * the same `(scope, trigger)` slot, leaving the final
+ * `uiMatchesDiagnostics` flag meaningless. With the query gate, the
+ * loop only patches the trace whose query the user actually
+ * searched on the real Products screen.
  */
 export function setDiagnosticsCounterpart(args: {
   scope: string;
   trigger: ProductUiTrigger;
+  query: string;
   candidateCount: number;
   heroId: string | null;
 }): void {
   const k = keyOf(args.scope, args.trigger);
   const t = traces.get(k);
   if (!t) return;
+  if (t.query !== args.query) return;
   const matches =
     args.candidateCount === t.filteredCandidateCount && args.heroId === t.heroId;
   traces.set(k, {

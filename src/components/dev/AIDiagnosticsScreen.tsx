@@ -218,18 +218,20 @@ export function AIDiagnosticsScreen() {
       const { getRecommendationContextFromQuery } = await import(
         '@/api/liveProducts'
       );
-      // v19.28 — run all 4 target queries end-to-end and emit a
-      // compact one-line summary per query, then a deeper report
-      // for the first. Proves the engine handles them ALL, not
-      // just one example.
+      // v19.34 — run ALL 5 user-named target queries end-to-end and
+      // emit a compact one-line summary per query, then a deeper
+      // report for the first. "moisturizer" was missing from the
+      // pre-v19.34 list; without it the most embarrassing failure
+      // case wasn't being verified at all.
       const realTargets: ReadonlyArray<string> = [
+        'moisturizer',
         'smoothing serum',
         'chemical exfoliant',
         'best for my skin',
         'best for my pimple',
       ];
       lines.push('');
-      lines.push('  4-query verification (v19.30 trust + image):');
+      lines.push('  5-query verification (v19.34 trust + image + probe-shape):');
       // v19.30 — pull verifyTrustPipeline so we can surface the
       // ACTUAL per-candidate trust scores + pool placement, not
       // only the post-AI-rerank hero. Proof beats summary.
@@ -249,9 +251,16 @@ export function AIDiagnosticsScreen() {
           // `uiMatchesDiagnostics` flag becomes meaningful when
           // the user later runs the same query on the real
           // Products screen.
+          // v19.34 — pass the iteration's query so the patch only
+          // applies when the user has actually searched THIS
+          // query on the real screen. Without the query gate, the
+          // loop's later iterations would overwrite the user's
+          // matched trace with a non-matching counterpart and the
+          // equality flag would always read FALSE.
           setDiagnosticsCounterpart({
             scope: 'products',
             trigger: 'search',
+            query: target,
             candidateCount: r.candidateProducts.length,
             heroId: r.heroProduct?.id ?? null,
           });
@@ -697,6 +706,14 @@ export function AIDiagnosticsScreen() {
           </Text>
         </View>
 
+        {/* ── v19.34 — Device verification kit ───────────────────── */}
+        <SectionHeader title="Device verification kit (v19.34)" />
+        <View style={styles.card}>
+          <Text style={styles.codeBlock} maxFontSizeMultiplier={1}>
+            {DEVICE_TEST_KIT_TEXT}
+          </Text>
+        </View>
+
         {/* ── v19.32 — Real UI trace ───────────────────────────── */}
         <SectionHeader title="Real Products screen UI trace" />
         <View style={styles.card}>
@@ -737,10 +754,13 @@ export function AIDiagnosticsScreen() {
                   lines.push('  probes        = (none recorded)');
                 }
                 lines.push(
-                  `  candidates    = ${t.filteredCandidateCount} (trust pool: ${t.trustPoolCount})`
+                  `  candidates    = raw:${t.rawCandidateCount} · ` +
+                    `filtered:${t.filteredCandidateCount} · ` +
+                    `trust:${t.trustPoolCount}`
                 );
                 if (t.heroId) {
                   lines.push(`  hero          = ${t.heroName}`);
+                  lines.push(`  hero id       = ${t.heroId}`);
                   lines.push(
                     `  hero image    = payload:${
                       t.heroImageInPayload ? 'YES' : 'NO'
@@ -813,6 +833,136 @@ export function AIDiagnosticsScreen() {
     </SafeAreaView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// v19.34 — device verification kit. The content below is the canonical
+// step-by-step the user runs ON DEVICE to prove the Products screen
+// works. Mechanical, unambiguous, and self-contained: every test
+// names what to type, what visible UI to expect, and what to read out
+// of the "Real Products screen UI trace" section above.
+//
+// PASS / FAIL criteria are stated explicitly for each test; the
+// strongest allowed conclusion in this environment is "code +
+// instrumentation ready for device verification" — only the user
+// running these tests can produce a true PASS.
+// ---------------------------------------------------------------------------
+
+const DEVICE_TEST_KIT_TEXT = [
+  'DEVICE VERIFICATION KIT — v19.34',
+  '',
+  'Run each test on the actual app. After each step, scroll down to',
+  '"Real Products screen UI trace" in THIS screen and read the trace',
+  'whose `trigger` matches the action you took. Compare to PASS/FAIL.',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 1 — query: moisturizer',
+  '──────────────────────────────────────────────────',
+  '  1. Products tab → tap search bar → type "moisturizer".',
+  '  2. Wait for results.',
+  '  PASS:',
+  '    • visibleState = live_results OR fallback_results',
+  '    • intent label contains "moisturizer"',
+  '    • probes contains ≥3 entries that end in "moisturizer"',
+  '      or "cream" (NOT all serums)',
+  '    • candidates ≥ 2',
+  '  FAIL:',
+  '    • probes is all serums (every entry ends in "serum")',
+  '    • visibleState = empty AND probes ≥ 1',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 2 — query: smoothing serum',
+  '──────────────────────────────────────────────────',
+  '  1. Clear search → type "smoothing serum".',
+  '  PASS:',
+  '    • intent label contains "texture" or "smoothing"',
+  '    • probes are texture-shaped serums',
+  '      (texture serum, resurfacing serum, peptide serum, …)',
+  '    • candidates ≥ 2',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 3 — query: chemical exfoliant',
+  '──────────────────────────────────────────────────',
+  '  1. Clear search → type "chemical exfoliant".',
+  '  PASS:',
+  '    • intent label contains "exfoliant"',
+  '    • probes contains "exfoliant", "gentle exfoliant",',
+  '      and acid-shaped variants',
+  '    • candidates ≥ 2',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 4 — query: best for my skin',
+  '──────────────────────────────────────────────────',
+  '  1. Clear search → type "best for my skin".',
+  '  PASS:',
+  '    • intent label = "Best for your skin"',
+  '    • probes derive from your scan or skin type baseline',
+  '    • candidates ≥ 1',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 5 — query: best for my pimple',
+  '──────────────────────────────────────────────────',
+  '  1. Clear search → type "best for my pimple".',
+  '  PASS:',
+  '    • intent label contains "breakouts"',
+  '    • probes contain "acne serum", "spot treatment",',
+  '      "salicylic acid serum" or similar',
+  '    • candidates ≥ 1',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 6 — retry visibly changes the result',
+  '──────────────────────────────────────────────────',
+  '  1. After any test above, tap the Retry button on the',
+  '     unavailable / empty card (or re-run the search).',
+  '  PASS:',
+  '    • A new trace appears with trigger=RETRY',
+  '    • The retry trace exists alongside (not replacing) the',
+  '      original SEARCH trace',
+  '  FAIL:',
+  '    • No RETRY trace appears',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 7 — Suggested-for-you chip visibly changes the result',
+  '──────────────────────────────────────────────────',
+  '  1. With the search bar EMPTY, tap any "Suggested for you"',
+  '     chip beneath the search bar.',
+  '  PASS:',
+  '    • A trace appears with trigger=CHIP_PRESS',
+  '    • Its query matches the chip text',
+  '  FAIL:',
+  '    • No CHIP_PRESS trace appears',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 8 — product photos actually render',
+  '──────────────────────────────────────────────────',
+  '  1. Run TEST 1 (moisturizer). Wait 2-3 seconds for images.',
+  '  PASS:',
+  '    • If "hero image" line shows payload:YES then',
+  '      it must also show rendered:YES',
+  '    • If "alternatives" line shows payload imgs > 0',
+  '      then rendered > 0',
+  '  FAIL:',
+  '    • payload:YES but rendered:NO  (the URL was sent but',
+  '      expo-image could not decode the bitmap)',
+  '',
+  '──────────────────────────────────────────────────',
+  'TEST 9 — diagnostics-vs-UI equality',
+  '──────────────────────────────────────────────────',
+  '  1. After running TEST 1 above, tap "Run product engine test"',
+  '     here in Diagnostics.',
+  '  PASS:',
+  '    • The moisturizer trace shows uiMatchesDiagnostics = ✓',
+  '    • Diagnostics candidates count == UI filtered candidates',
+  '    • Diagnostics hero id == UI hero id',
+  '  FAIL:',
+  '    • uiMatchesDiagnostics = ✗ (mismatch indicates UI and',
+  '      engine diverged — the engine ran differently for the',
+  '      same query)',
+  '',
+  '──────────────────────────────────────────────────',
+  'OVERALL PASS:  every TEST 1-9 PASSes on device.',
+  'OVERALL FAIL:  any test FAILs.',
+  '──────────────────────────────────────────────────',
+].join('\n');
 
 // ---------------------------------------------------------------------------
 // Sub-components.
