@@ -495,8 +495,14 @@ import {
   filterUsableCandidates,
   retrieveSeedCandidates,
 } from './seedRetrieval';
-// v19.23 — Open Beauty Facts live search. Real non-AI live source.
+// v19.23 — Open Beauty Facts live search (client-side). Preserved
+// as a deprecated module for any direct caller; the engine no
+// longer uses it as of v19.25.
 import { searchOpenBeautyFacts } from './openBeautyFactsSearch';
+// v19.25 — backend-owned live product search. The engine now
+// calls THIS endpoint instead of the client-side OBF wrapper.
+import { searchProductsBackend } from './searchProductsBackend';
+import type { BackendProductCandidate } from './searchProductsContract';
 
 export interface GetRecommendationOpts extends LookupOpts {
   intent: RecommendationIntent;
@@ -689,15 +695,73 @@ export function getRecommendationAttemptHistory(): readonly RetrievalAttempt[] {
   return _attemptHistory.slice();
 }
 
+/**
+ * v19.25 — translate `BackendProductCandidate` (wire shape) to
+ * `LiveProductCandidate` (canonical) so the existing pipeline
+ * (filter → dedupe → score → assemble) consumes the result
+ * without downstream changes.
+ */
+function backendCandidateToLive(
+  bp: BackendProductCandidate
+): LiveProductCandidate {
+  return {
+    id: bp.id,
+    brand: bp.brand,
+    name: bp.name,
+    category: (bp.category as LiveProductCandidate['category']) ?? 'unknown',
+    concernTags:
+      bp.concernTags as unknown as LiveProductCandidate['concernTags'],
+    skinTypeTags: bp.skinTypeTags ?? [],
+    ingredientsHighlights: [],
+    price: null,
+    currency: 'USD',
+    merchantName: bp.merchantName,
+    productUrl: bp.productUrl,
+    imageUrl: bp.imageUrl,
+    imageSource: bp.imageUrl ? 'merchant' : 'none',
+    shortDescription: '',
+    matchReason: '',
+    availability: 'available',
+    sourceTimestamp: new Date().toISOString(),
+    matchScore: 75,
+  };
+}
+
+/**
+ * v19.25 — backend-owned live search. Calls
+ * `POST /searchProducts` via `searchProductsBackend`. Catches
+ * all failures and returns `{ candidates: [], failure }` so the
+ * engine can fall back to the bundled seed catalog.
+ *
+ * Legacy `searchOpenBeautyFacts` (client-side OBF) is no longer
+ * used by the engine; preserved as a deprecated module.
+ */
 async function tryLiveSearch(
-  query: string
+  query: string,
+  trigger:
+    | 'initial_load'
+    | 'retry'
+    | 'chip_press'
+    | 'search'
+    | 'assistant'
+    | 'background' = 'background'
 ): Promise<{ candidates: LiveProductCandidate[]; failure: string | null }> {
   if (!query || query.trim().length === 0) {
     return { candidates: [], failure: null };
   }
   try {
-    const cs = await searchOpenBeautyFacts({ query, pageSize: 12 });
-    return { candidates: cs, failure: null };
+    const res = await searchProductsBackend({
+      query,
+      limit: 12,
+      trigger,
+    });
+    if (res.source === 'error') {
+      return { candidates: [], failure: res.failureReason ?? 'unknown' };
+    }
+    return {
+      candidates: res.candidates.map(backendCandidateToLive),
+      failure: null,
+    };
   } catch (e) {
     return {
       candidates: [],
@@ -705,6 +769,10 @@ async function tryLiveSearch(
     };
   }
 }
+
+// Legacy client-side OBF kept around for any direct caller.
+// Engine no longer uses it.
+void searchOpenBeautyFacts;
 
 /**
  * Free-text → RecommendationContext.
@@ -745,8 +813,8 @@ export async function getRecommendationContextFromQuery(
   let hardSource: RetrievalSource = 'empty';
   let failureReason: string | null = null;
 
-  // STEP A.LIVE — Open Beauty Facts search, real public source.
-  const live = await tryLiveSearch(query);
+  // STEP A.LIVE — backend-owned search via `/searchProducts`.
+  const live = await tryLiveSearch(query, trigger);
   if (live.candidates.length > 0) {
     candidates = live.candidates;
     retrievalSource = 'live';
@@ -875,7 +943,7 @@ export async function getRecommendationContextForScan(
       : primaryConcern === 'pores'
       ? 'pore minimizing serum'
       : 'skincare serum';
-  const live = await tryLiveSearch(liveQuery);
+  const live = await tryLiveSearch(liveQuery, trigger);
   if (live.candidates.length > 0) {
     candidates = live.candidates;
     retrievalSource = 'live';

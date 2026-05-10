@@ -189,10 +189,10 @@ export function AIDiagnosticsScreen() {
     setLiveTestRunning(true);
     setLiveTestReport(null);
     const lines: string[] = [];
-    lines.push('PRODUCT ENGINE TEST (live-first via OBF)');
+    lines.push('PRODUCT ENGINE TEST (live-first via /searchProducts)');
     lines.push('  query="niacinamide serum"');
     lines.push('  AI proxy: ' + (isAvailable ? 'available' : 'unavailable'));
-    lines.push('  Live source: Open Beauty Facts (no AI, no auth)');
+    lines.push('  Live source: backend /searchProducts (server-side OBF)');
     try {
       const { getRecommendationContextFromQuery } = await import(
         '@/api/liveProducts'
@@ -213,8 +213,8 @@ export function AIDiagnosticsScreen() {
       const att = result.lastAttempt;
       const sourceLabel: Record<typeof att.source, string> = {
         ai_proxy: '⚠ AI_PROXY (legacy — should never fire)',
-        obf_live: '✓ OBF_LIVE: real products from Open Beauty Facts',
-        seed_fallback: '↺ SEED_FALLBACK: bundled seed catalog',
+        obf_live: '✓ OBF_LIVE (via backend /searchProducts)',
+        seed_fallback: '↺ SEED_FALLBACK (backend unreachable; bundled seed)',
         empty: '✗ EMPTY: no candidates anywhere',
         error: '✗ ERROR: catastrophic failure',
       };

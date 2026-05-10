@@ -12,6 +12,10 @@
  */
 
 import { OpenAIClient, AIError } from '../openai/openai-client';
+// v19.25 — non-AI live product search handler. Hits Open Beauty
+// Facts server-side. Does NOT use OpenAIClient. Registered below
+// under the method name `searchProducts`.
+import { searchProductsHandler } from './searchProducts';
 import {
   validateAssistantContext,
   validateBarcodeResolution,
@@ -199,6 +203,14 @@ export type Handler = (
 ) => Promise<unknown>;
 
 export const HANDLERS: Record<string, Handler> = {
+  // v19.25 — backend-owned live product search. Non-AI path.
+  // Hits Open Beauty Facts server-side and returns the canonical
+  // SearchProductsResponse. The first arg (OpenAI client) is
+  // ignored by this handler; we route through HANDLERS so the
+  // request hits the same proxy/middleware infrastructure as
+  // every other method without inventing a parallel router.
+  searchProducts: searchProductsHandler as unknown as Handler,
+
   async validateScanPreflight(client, body) {
     const params = {
       imageBase64: reqString(body, 'imageBase64'),
