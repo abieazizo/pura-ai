@@ -127,6 +127,14 @@ function inferCategory(categories: string | undefined): string | null {
  * provided they have a brand. False-positive risk: low — OBF's
  * search API already biases toward beauty when the search term
  * is a beauty term.
+ *
+ * v19.35 — moisturizer-family acceptance. Adds explicit barrier-
+ * cream / gel-cream / face-cream / body-cream patterns + accepts
+ * items whose ingredients_text contains canonical moisturizer
+ * ingredients when the name signals a cream/lotion/emulsion. Real
+ * OBF moisturizer entries frequently have blank categories AND a
+ * generic name like "Hydra Cream" — the older pattern list missed
+ * them.
  */
 const SKINCARE_NAME_PATTERNS: RegExp[] = [
   /serum/i,
@@ -134,7 +142,13 @@ const SKINCARE_NAME_PATTERNS: RegExp[] = [
   /toner/i,
   /moisturi[sz]er/i,
   /cream/i,
+  /barrier cream/i,
+  /gel cream/i,
+  /face cream/i,
+  /body cream/i,
   /lotion/i,
+  /emulsion/i,
+  /balm/i,
   /sunscreen|spf/i,
   /mask|masque/i,
   /essence/i,
@@ -146,6 +160,21 @@ const SKINCARE_NAME_PATTERNS: RegExp[] = [
   /hyaluronic/i,
   /vitamin c|ascorbic/i,
   /salicylic|glycolic|lactic|mandelic/i,
+  /ceramide|squalane|panthenol|centella|cica/i,
+];
+
+// v19.35 — canonical moisturizer-family ingredient hints. When the
+// product name only says "Hydra Cream" / "Daily Cream" with no
+// other signal, the ingredients_text still tells us it's a real
+// moisturizer if it contains any of these.
+const MOISTURIZER_INGREDIENT_HINTS: RegExp[] = [
+  /glycerin/i,
+  /hyaluronic acid|sodium hyaluronate/i,
+  /ceramide/i,
+  /panthenol/i,
+  /squalane/i,
+  /shea butter/i,
+  /niacinamide/i,
 ];
 
 function looksLikeCosmetic(p: OBFProduct): boolean {
@@ -155,12 +184,33 @@ function looksLikeCosmetic(p: OBFProduct): boolean {
       return true;
     }
   }
-  // Loosened path: name signals skincare AND brand is present.
   const name = (p.product_name_en || p.product_name || p.generic_name || '')
     .trim();
   if (name.length === 0) return false;
   if (!p.brands || p.brands.trim().length === 0) return false;
-  return SKINCARE_NAME_PATTERNS.some((re) => re.test(name));
+  // Loosened path: name signals skincare AND brand is present.
+  if (SKINCARE_NAME_PATTERNS.some((re) => re.test(name))) return true;
+  // v19.35 — moisturizer-family rescue: if the name contains any
+  // cream/lotion/emulsion token AND the ingredients_text mentions
+  // a canonical moisturizer ingredient, accept it. This rescues
+  // real moisturizers whose category is blank and whose name is
+  // generic ("Hydra Cream", "Day Lotion").
+  const looksLikeCreamFamily = /\b(cream|lotion|emulsion|balm|gel)\b/i.test(name);
+  if (looksLikeCreamFamily) {
+    const ingredients =
+      (p.ingredients_text_en || p.ingredients_text || '').toLowerCase();
+    if (
+      ingredients.length > 0 &&
+      MOISTURIZER_INGREDIENT_HINTS.some((re) => re.test(ingredients))
+    ) {
+      return true;
+    }
+    // Image presence + brand also enough to accept a cream-family
+    // entry — OBF wouldn't carry a packshot for a non-skincare item
+    // that calls itself a face cream.
+    if (p.image_url || p.image_small_url) return true;
+  }
+  return false;
 }
 
 function pickPrimaryBrand(brands: string | undefined): string {

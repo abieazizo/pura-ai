@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -16,7 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { SlidersHorizontal } from 'phosphor-react-native';
 import { AISearchBar } from '@/components/products/AISearchBar';
-import { SearchResults } from '@/components/products/SearchResults';
+// v19.35 — `SearchResults` (offline-catalog grid) removed from
+// ProductsScreen. The screen no longer maintains its own private
+// fallback result universe; it renders ONLY from the canonical
+// shared RecommendationContext returned by the engine.
 import { FiltersStubSheet } from '@/components/products/FiltersStubSheet';
 import { CategoryRail, type GoalKey } from '@/components/products/CategoryRail';
 import { CategoryFeed } from '@/components/products/CategoryFeed';
@@ -27,7 +30,9 @@ import {
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { PuraMark } from '@/components/PuraMark';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
-import { searchProducts } from '@/store/productSelectors';
+// v19.35 — local `searchProducts` selector removed from screen
+// imports. The screen no longer has a parallel "offline catalog
+// match" rendering path; the canonical engine is the only source.
 import { useAppStore } from '@/store/useAppStore';
 import { getSearchSuggestions } from '@/api';
 // v19.18 — ProductsScreen now consumes the canonical
@@ -322,14 +327,12 @@ export function ProductsScreen() {
 
   const retrySearch = () => setSearchAttempt((n) => n + 1);
 
-  // Emergency fallback: only consulted when AI returns nothing.
-  const seedFallbackResults = useMemo(
-    () =>
-      debouncedQuery.trim().length > 0
-        ? searchProducts(debouncedQuery)
-        : [],
-    [debouncedQuery]
-  );
+  // v19.35 — `seedFallbackResults` removed. The screen no longer
+  // computes a private offline-catalog grid that competes with the
+  // canonical RecommendationContext. When the engine returns zero
+  // candidates, the screen shows ONLY the unavailable / empty card
+  // (which carries an actionable Retry). Any seed-catalog fallback
+  // happens INSIDE the engine, not in the screen render path.
 
   const isSearching = query.trim().length > 0;
   const placeholder =
@@ -428,26 +431,17 @@ export function ProductsScreen() {
               )}
             </View>
           ) : (
+            // v19.35 — single empty/unavailable state, no parallel
+            // offline-catalog grid. Retry re-runs the canonical
+            // engine, which can itself produce seed-fallback
+            // results if live retrieval failed; the screen does
+            // NOT decide that branch.
             <View style={liveStyles.unavailableWrap}>
               <LiveProductsUnavailable
                 variant={searchTimedOut ? 'unavailable' : 'empty'}
                 scope={`for "${debouncedQuery}"`}
                 onRetry={retrySearch}
               />
-              {seedFallbackResults.length > 0 ? (
-                <View style={liveStyles.fallbackWrap}>
-                  <Text
-                    style={liveStyles.fallbackKicker}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    OFFLINE CATALOG MATCH
-                  </Text>
-                  <SearchResults
-                    query={debouncedQuery}
-                    results={seedFallbackResults}
-                  />
-                </View>
-              ) : null}
             </View>
           )}
         </ScrollView>
@@ -651,18 +645,8 @@ const liveStyles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
   },
-  fallbackWrap: {
-    marginTop: 20,
-  },
-  fallbackKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    paddingHorizontal: 4,
-  },
+  // v19.35 — `fallbackWrap` / `fallbackKicker` styles removed
+  // alongside the offline-catalog render path.
 });
 
 const styles = StyleSheet.create({

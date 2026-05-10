@@ -86,6 +86,25 @@ function scoreProductTypeFit(
   // unknown / blank.
   const corpus = `${c.name} ${c.shortDescription}`.toLowerCase();
   if (corpus.includes(wantedNorm)) return 18;
+  // v19.35 — synonym-soft-match for product-type families. OBF
+  // metadata frequently labels a moisturizer as "cream"/"lotion"
+  // and an exfoliant as "peeling"/"toner with acid"; the literal
+  // wantedNorm token isn't in the name but the candidate is still
+  // strongly product-type-shaped. Each family lists the synonyms
+  // we trust for soft-match credit.
+  const FAMILY_SYNONYMS: Record<string, RegExp> = {
+    moisturizer: /\b(moisturi[sz]er|cream|lotion|emulsion|barrier)\b/i,
+    cleanser: /\b(cleanser|wash|foam|gel cleanser|micellar)\b/i,
+    serum: /\b(serum|essence|ampoule|booster|concentrate)\b/i,
+    toner: /\b(toner|tonique|astringent|essence)\b/i,
+    spf: /\b(sunscreen|spf|sunblock|sun cream|uv)\b/i,
+    mask: /\b(mask|masque|sheet mask)\b/i,
+    spot_treatment: /\b(spot treatment|patch|pimple patch)\b/i,
+    exfoliant: /\b(exfoli|aha|bha|pha|peel|glycolic|lactic|salicylic|mandelic)\b/i,
+    eye_cream: /\b(eye cream|eye serum|under ?eye)\b/i,
+  };
+  const syn = FAMILY_SYNONYMS[wantedNorm];
+  if (syn && syn.test(corpus)) return 16;
   // Hard mismatch (different known category) → low.
   if (c.category && c.category !== 'unknown') return 4;
   return 8;
@@ -94,19 +113,34 @@ function scoreProductTypeFit(
 /**
  * Concern fit. 0..20. How well the candidate's concernTags line
  * up with the interpreted concern + the user's top concerns.
+ *
+ * Regression guard: do not zero generic moisturizer candidates
+ * just because concernTags is empty (v19.31 fix preserved).
+ *
+ * History:
+ *   • Pre-v19.31 the function returned 0 when concernTags was empty,
+ *     which killed every valid moisturizer / cleanser / cream candidate
+ *     whose OBF metadata didn't carry our concern taxonomy. v19.31
+ *     replaced that with a tiered baseline. v19.32 / v19.33 added
+ *     instrumentation infrastructure WITHOUT touching this function;
+ *     v19.34 swapped probe-plan branch order WITHOUT touching this
+ *     function. v19.35 explicitly guards the fix with this comment +
+ *     a moisturizer-family-aware allowance below.
  */
 function scoreConcernFit(
   c: LiveProductCandidate,
   intent: InterpretedIntent,
   skinState: SkinState | null
 ): number {
-  // v19.31 — when NO concern is in play (intent didn't extract
-  // one AND user has no scan-driven topConcerns), the query is
-  // a pure product-type query like "moisturizer" or "cleanser".
-  // We must NOT punish candidates for lacking concern tags —
-  // the user didn't ask about a concern. Return a neutral
-  // baseline (12 of 20 max ≈ 60% credit) so the trust total
-  // doesn't drop just because OBF metadata is sparse.
+  // Regression guard: do not zero generic moisturizer candidates
+  // just because concernTags is empty (v19.31 fix preserved).
+  // When NO concern is in play (intent didn't extract one AND user
+  // has no scan-driven topConcerns), the query is a pure product-type
+  // query like "moisturizer" or "cleanser". We must NOT punish
+  // candidates for lacking concern tags — the user didn't ask
+  // about a concern. Return a neutral baseline (12 of 20 max ≈ 60%
+  // credit) so the trust total doesn't drop just because OBF
+  // metadata is sparse.
   const noConcernInPlay =
     !intent.interpretedConcern &&
     (!skinState?.topConcerns || skinState.topConcerns.length === 0);
@@ -114,6 +148,22 @@ function scoreConcernFit(
 
   const concernTags = c.concernTags ?? [];
   if (concernTags.length === 0) {
+    // v19.35 — moisturizer-family allowance. When the user asked
+    // for a moisturizer (productType set OR query contains
+    // moisturizer/cream/lotion in name) AND the candidate's name
+    // strongly matches a moisturizer-family product type, give a
+    // baseline 8/20 credit even though concernTags is empty. This
+    // preserves the v19.31 spirit (don't kill obvious moisturizers
+    // for sparse metadata) more aggressively when the intent is
+    // explicitly product-type-shaped.
+    const wantsMoisturizerFamily =
+      intent.interpretedProductType === 'moisturizer';
+    const candidateLooksMoisturizer = /moisturi[sz]er|cream|lotion|emulsion|barrier/i.test(
+      `${c.name ?? ''} ${c.shortDescription ?? ''} ${c.category ?? ''}`
+    );
+    if (wantsMoisturizerFamily && candidateLooksMoisturizer) {
+      return 8;
+    }
     // Concern IS in play but candidate has no tags — small partial
     // credit (4) instead of zero. Tag-less candidates with weak OBF
     // metadata can still be valid skincare; the AI rerank step

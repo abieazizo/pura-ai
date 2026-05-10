@@ -209,6 +209,293 @@ const PRODUCT_TYPE_VARIANTS: Record<
 };
 
 // ---------------------------------------------------------------------------
+// v19.35 — explicit target-query family handling.
+//
+// The five canonical user-named queries do NOT route through generic
+// concern/product-type expansion alone. Each one has a hard-coded
+// probe family the engine ALWAYS uses, with user-context-aware
+// pruning. This guarantees a strong, query-specific probe set even
+// when the upstream interpreter returns weak signals.
+//
+// User-context awareness:
+//   • sensitive users  → drop aggressive acid + high-strength acne
+//                        probes; prefer cica/centella/PHA/lactic
+//   • oily/acne users  → boost gel/light/non-comedogenic moisturizers
+//                        + salicylic-acid acne treatments
+//   • dry/sensitive    → boost barrier-cream / panthenol probes
+// ---------------------------------------------------------------------------
+
+interface TargetFamily {
+  /** Patterns that match the raw query (lowercased). */
+  match: RegExp[];
+  /** Build the probe set for this family with user context. */
+  build: (
+    rawQuery: string,
+    profile: UserProfileContext,
+    skinState: SkinState | null
+  ) => RetrievalProbe[];
+  /** Stable label written onto RecommendationContext + ProductUiTrace. */
+  label: string;
+}
+
+const TARGET_QUERY_FAMILIES: TargetFamily[] = [
+  // ─── Family 1: moisturizer ─────────────────────────────────────────
+  {
+    label: 'family:moisturizer',
+    match: [/^moisturi[sz]er\s*$/i, /^moisturi[sz]ers?\s*$/i],
+    build: (raw, profile) => {
+      const sensitive = isSensitiveUser(profile);
+      const oily =
+        profile.skinType === 'oily' ||
+        (profile.sensitivities ?? []).some((s) =>
+          /oily|acne|breakout/i.test(s)
+        );
+      const dry =
+        profile.skinType === 'dry' ||
+        (profile.sensitivities ?? []).some((s) => /dry|barrier/i.test(s));
+      const probes: RetrievalProbe[] = [
+        { query: raw.trim(), weight: 1, reason: 'verbatim' },
+        { query: 'face moisturizer', weight: 0.95, reason: 'family:moisturizer' },
+        {
+          query: 'hydrating moisturizer',
+          weight: 0.9,
+          reason: 'family:moisturizer',
+        },
+        {
+          query: 'non comedogenic moisturizer',
+          weight: 0.8,
+          reason: 'family:moisturizer',
+        },
+        {
+          query: 'ceramide moisturizer',
+          weight: 0.78,
+          reason: 'family:moisturizer',
+        },
+      ];
+      if (oily) {
+        probes.push({
+          query: 'gel moisturizer',
+          weight: 0.92,
+          reason: 'family:moisturizer (oily-skin priority)',
+        });
+      }
+      if (dry || sensitive) {
+        probes.push({
+          query: 'barrier cream',
+          weight: 0.92,
+          reason: 'family:moisturizer (barrier priority)',
+        });
+      }
+      return probes;
+    },
+  },
+  // ─── Family 2: smoothing serum ──────────────────────────────────────
+  {
+    label: 'family:smoothing_serum',
+    match: [/^smoothing\s+serum\s*$/i, /\bsmoothing serum\b/i],
+    build: (raw, profile) => {
+      const sensitive = isSensitiveUser(profile);
+      const probes: RetrievalProbe[] = [
+        { query: raw.trim(), weight: 1, reason: 'verbatim' },
+        { query: 'texture serum', weight: 0.95, reason: 'family:smoothing_serum' },
+        {
+          query: 'smoothing serum',
+          weight: 0.92,
+          reason: 'family:smoothing_serum',
+        },
+        {
+          query: 'peptide serum',
+          weight: 0.88,
+          reason: 'family:smoothing_serum',
+        },
+      ];
+      if (sensitive) {
+        probes.push(
+          {
+            query: 'pha serum',
+            weight: 0.85,
+            reason: 'family:smoothing_serum (sensitive-safe)',
+          },
+          {
+            query: 'gentle resurfacing serum',
+            weight: 0.78,
+            reason: 'family:smoothing_serum (sensitive-safe)',
+          }
+        );
+      } else {
+        probes.push(
+          {
+            query: 'lactic acid serum',
+            weight: 0.82,
+            reason: 'family:smoothing_serum',
+          },
+          {
+            query: 'pha serum',
+            weight: 0.7,
+            reason: 'family:smoothing_serum',
+          }
+        );
+      }
+      return probes;
+    },
+  },
+  // ─── Family 3: chemical exfoliant ───────────────────────────────────
+  {
+    label: 'family:chemical_exfoliant',
+    match: [/^chemical\s+exfoli/i, /\bchemical exfoli/i],
+    build: (raw, profile) => {
+      const sensitive = isSensitiveUser(profile);
+      const probes: RetrievalProbe[] = [
+        { query: raw.trim(), weight: 1, reason: 'verbatim' },
+        {
+          query: 'exfoliating serum',
+          weight: 0.92,
+          reason: 'family:chemical_exfoliant',
+        },
+      ];
+      if (sensitive) {
+        probes.push(
+          {
+            query: 'pha exfoliant',
+            weight: 0.95,
+            reason: 'family:chemical_exfoliant (sensitive-safe)',
+          },
+          {
+            query: 'lactic acid serum',
+            weight: 0.88,
+            reason: 'family:chemical_exfoliant (sensitive-safe)',
+          },
+          {
+            query: 'gentle exfoliant sensitive skin',
+            weight: 0.8,
+            reason: 'family:chemical_exfoliant (sensitive-safe)',
+          }
+        );
+      } else {
+        probes.push(
+          {
+            query: 'salicylic acid serum',
+            weight: 0.9,
+            reason: 'family:chemical_exfoliant',
+          },
+          {
+            query: 'lactic acid serum',
+            weight: 0.85,
+            reason: 'family:chemical_exfoliant',
+          },
+          {
+            query: 'glycolic acid serum',
+            weight: 0.78,
+            reason: 'family:chemical_exfoliant',
+          },
+          {
+            query: 'pha exfoliant',
+            weight: 0.65,
+            reason: 'family:chemical_exfoliant',
+          }
+        );
+      }
+      return probes;
+    },
+  },
+  // ─── Family 4: best for my skin ─────────────────────────────────────
+  // NOT generic — derived from topConcerns / goals / skinType /
+  // sensitivities / latestScanSummary. Reuses expandBestForMySkin
+  // below so the family path and the BEST_FOR_ME interpreter path
+  // produce identical probes.
+  {
+    label: 'family:best_for_my_skin',
+    match: [/^best\s+for\s+my\s+skin\s*$/i, /\bbest for my skin\b/i],
+    build: (raw, profile, skinState) => {
+      const probes: RetrievalProbe[] = [];
+      // Verbatim is intentionally NOT pushed — OBF returns nothing
+      // for "best for my skin" literally; profile-derived probes
+      // alone carry this query.
+      probes.push(...expandBestForMySkin(profile, skinState, null));
+      return probes;
+    },
+  },
+  // ─── Family 5: best for my pimple ───────────────────────────────────
+  {
+    label: 'family:best_for_my_pimple',
+    match: [
+      /^best\s+for\s+my\s+pimple/i,
+      /\bbest for my pimple\b/i,
+      /\bfor my pimples?\b/i,
+    ],
+    build: (raw, profile) => {
+      const sensitive = isSensitiveUser(profile);
+      const probes: RetrievalProbe[] = [
+        // Verbatim is too conversational for OBF; skip it.
+        { query: 'acne treatment', weight: 1, reason: 'family:best_for_my_pimple' },
+        {
+          query: 'spot treatment',
+          weight: 0.95,
+          reason: 'family:best_for_my_pimple',
+        },
+        {
+          query: 'salicylic acid treatment',
+          weight: 0.9,
+          reason: 'family:best_for_my_pimple',
+        },
+      ];
+      if (sensitive) {
+        probes.push(
+          {
+            query: 'niacinamide blemish serum',
+            weight: 0.85,
+            reason: 'family:best_for_my_pimple (sensitive-safe)',
+          },
+          {
+            query: 'gentle acne treatment sensitive skin',
+            weight: 0.8,
+            reason: 'family:best_for_my_pimple (sensitive-safe)',
+          }
+        );
+      } else {
+        probes.push(
+          {
+            query: 'benzoyl peroxide spot treatment',
+            weight: 0.82,
+            reason: 'family:best_for_my_pimple',
+          },
+          {
+            query: 'niacinamide blemish serum',
+            weight: 0.78,
+            reason: 'family:best_for_my_pimple',
+          }
+        );
+      }
+      return probes;
+    },
+  },
+];
+
+/**
+ * v19.35 — match a raw query against the canonical target families.
+ * Returns the family + probes when the query matches one; null
+ * otherwise. Called as the FIRST branch of buildProbePlan, so a
+ * matched family overrides the generic intent-driven expansion.
+ */
+function matchTargetFamily(
+  rawQuery: string,
+  profile: UserProfileContext,
+  skinState: SkinState | null
+): { label: string; probes: RetrievalProbe[] } | null {
+  const norm = rawQuery.trim().toLowerCase();
+  if (norm.length === 0) return null;
+  for (const family of TARGET_QUERY_FAMILIES) {
+    if (family.match.some((re) => re.test(norm))) {
+      return {
+        label: family.label,
+        probes: family.build(rawQuery, profile, skinState),
+      };
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers.
 // ---------------------------------------------------------------------------
 
@@ -502,6 +789,33 @@ export function buildProbePlan(
   profile: UserProfileContext,
   skinState: SkinState | null
 ): RetrievalProbePlan {
+  // v19.35 — Target-query family path. The 5 user-named target
+  // queries (moisturizer / smoothing serum / chemical exfoliant /
+  // best for my skin / best for my pimple) match a hard-coded family
+  // and return immediately. The generic intent-driven expansion below
+  // is bypassed for these queries so a misclassified concern (e.g.
+  // "moistur" matching the hydration concern vocab) cannot pull the
+  // probe set off-shape. Pruning + cap-at-5 still apply.
+  const family = matchTargetFamily(rawQuery, profile, skinState);
+  if (family) {
+    const filtered = family.probes
+      .filter((p) => pruneByAvoidance(p.query, intent.avoidanceConstraints))
+      .filter((p) => p.query.length > 0);
+    const uniq = uniqueProbes(filtered).slice(0, 5);
+    if (uniq.length === 0) {
+      uniq.push({
+        query: rawQuery.trim().length > 0 ? rawQuery.trim() : 'gentle skincare',
+        weight: 1,
+        reason: 'family fallback (all probes pruned)',
+      });
+    }
+    return {
+      primaryIntentLabel: family.label,
+      probes: uniq,
+      avoidanceConstraints: intent.avoidanceConstraints,
+    };
+  }
+
   const probes: RetrievalProbe[] = [];
 
   // ALWAYS keep the user's literal query as the first probe so we
