@@ -46,6 +46,13 @@ import {
   rePingProxyHealthz,
   getMiddlewareLoadedState,
 } from '@/ai/aiHealthProbe';
+// v19.32 — read the real Products UI trace so diagnostics can
+// prove "diagnostics === UI" or surface the divergence.
+import {
+  getAllTraces,
+  setDiagnosticsCounterpart,
+  type ProductUiTrace,
+} from '@/state/productUiTrace';
 
 const FEATURE_LABEL: Record<AIFeatureKey, string> = {
   scan: 'Face scan',
@@ -236,6 +243,17 @@ export function AIDiagnosticsScreen() {
           const r = await getRecommendationContextFromQuery(target, {
             intent: { kind: 'query', text: target },
             trigger: 'search',
+          });
+          // v19.32 — patch the matching ProductUiTrace with the
+          // diagnostics-side counts so the trace's
+          // `uiMatchesDiagnostics` flag becomes meaningful when
+          // the user later runs the same query on the real
+          // Products screen.
+          setDiagnosticsCounterpart({
+            scope: 'products',
+            trigger: 'search',
+            candidateCount: r.candidateProducts.length,
+            heroId: r.heroProduct?.id ?? null,
           });
           const ms = Date.now() - tInner;
           const heroLabel = r.heroProduct
@@ -676,6 +694,63 @@ export function AIDiagnosticsScreen() {
           <Text style={styles.codeBlock} maxFontSizeMultiplier={1}>
             {liveTestReport ??
               'Runs the deterministic-first recommendation pipeline (seed catalog retrieval → normalize → filter → dedupe → local score → canonical RecommendationContext) for the mandatory acceptance query. Reports availability state, hero enrichment, and pipeline source. Diagnostics and live UI use the same code path.'}
+          </Text>
+        </View>
+
+        {/* ── v19.32 — Real UI trace ───────────────────────────── */}
+        <SectionHeader title="Real Products screen UI trace" />
+        <View style={styles.card}>
+          <Text style={styles.codeBlock} maxFontSizeMultiplier={1}>
+            {(() => {
+              const traces = getAllTraces();
+              if (traces.length === 0) {
+                return (
+                  'No UI trace captured yet. ' +
+                  '\n\n' +
+                  'To capture: open the Products tab, type a query, ' +
+                  'tap Retry, and tap a Suggested-for-you chip. Each ' +
+                  'action writes a trace here. Then return to this ' +
+                  'screen — the trace shows what the REAL UI rendered.'
+                );
+              }
+              const lines: string[] = [];
+              lines.push(
+                `Captured ${traces.length} real-UI trace(s) from the Products screen:`
+              );
+              lines.push('');
+              for (const t of traces) {
+                lines.push(`────  ${t.trigger.toUpperCase()}: "${t.query}"  ────`);
+                lines.push(`  visibleState  = ${t.visibleState}`);
+                lines.push(
+                  `  candidates    = ${t.filteredCandidateCount} (trust pool: ${t.trustPoolCount})`
+                );
+                if (t.heroId) {
+                  lines.push(`  hero          = ${t.heroName}`);
+                  lines.push(
+                    `  hero image    = payload:${
+                      t.heroImageInPayload ? 'YES' : 'NO'
+                    } · rendered:${t.heroImageRendered ? 'YES' : 'NO'}`
+                  );
+                } else {
+                  lines.push('  hero          = (none)');
+                }
+                lines.push(
+                  `  alternatives  = ${t.alternativeCount} ` +
+                    `(payload imgs: ${t.alternativesWithImagesInPayload}, ` +
+                    `rendered: ${t.alternativesWithImagesRendered})`
+                );
+                if (t.uiMatchesDiagnostics !== null) {
+                  lines.push(
+                    `  diagnostics   = candidates:${t.diagnosticsCandidateCount} ` +
+                      `hero:${t.diagnosticsHeroId ?? '(none)'} ` +
+                      `→ match:${t.uiMatchesDiagnostics ? '✓' : '✗'}`
+                  );
+                }
+                lines.push(`  at            = ${t.timestamp}`);
+                lines.push('');
+              }
+              return lines.join('\n').trim();
+            })()}
           </Text>
         </View>
 

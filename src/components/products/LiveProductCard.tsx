@@ -33,6 +33,49 @@ import { useNavigation } from '@react-navigation/native';
 import { palette } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
+// v19.32 — report image render success/failure to the UI trace
+// store so diagnostics can prove the bitmap actually decoded,
+// not just that imageUrl was present in the payload.
+import {
+  updateImageRender,
+  type ProductUiTrigger,
+} from '@/state/productUiTrace';
+
+// Module-level shim. The card calls `_traceImageRender(id, ok)`
+// inside expo-image's onLoad/onError. The active hero+trigger
+// is set by the screen rendering the card via
+// `setActiveTraceContext`. When no context is set, the call is
+// a no-op (e.g. card rendered outside the Products grid).
+let _activeScope: string | null = null;
+let _activeTrigger: ProductUiTrigger | null = null;
+let _activeHeroId: string | null = null;
+
+export function setActiveTraceContext(args: {
+  scope: string;
+  trigger: ProductUiTrigger;
+  heroId: string | null;
+}): void {
+  _activeScope = args.scope;
+  _activeTrigger = args.trigger;
+  _activeHeroId = args.heroId;
+}
+
+export function clearActiveTraceContext(): void {
+  _activeScope = null;
+  _activeTrigger = null;
+  _activeHeroId = null;
+}
+
+function _traceImageRender(candidateId: string, loaded: boolean): void {
+  if (!_activeScope || !_activeTrigger) return;
+  updateImageRender({
+    scope: _activeScope,
+    trigger: _activeTrigger,
+    candidateId,
+    isHero: _activeHeroId === candidateId,
+    loaded,
+  });
+}
 import { buildSearchUrl } from '@/api/liveProducts';
 
 export type LiveProductCardVariant = 'hero' | 'alt';
@@ -280,7 +323,19 @@ function PackshotOrPlaceholder({
         style={[StyleSheet.absoluteFillObject, { borderRadius: radius }]}
         contentFit="cover"
         transition={180}
-        // Fall back silently to placeholder if image fetch fails.
+        // v19.32 — report decode success/failure to the trace
+        // store so diagnostics + the user can verify whether
+        // the bitmap actually rendered (vs payload had URL but
+        // expo-image errored). The card receives `onLoad` /
+        // `onError` props from the parent below.
+        onLoad={() => {
+          // forwarded by the wrapping card via globalLoad shim
+          // (see `_traceImageRender` below).
+          _traceImageRender(candidate.id, true);
+        }}
+        onError={() => {
+          _traceImageRender(candidate.id, false);
+        }}
       />
     );
   }

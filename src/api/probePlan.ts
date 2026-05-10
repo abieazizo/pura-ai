@@ -135,6 +135,79 @@ const PRODUCT_TYPE_LABEL: Record<NonNullable<ProductTypeIntent>, string> = {
   eye_cream: 'eye cream',
 };
 
+// v19.32 — canonical ingredient/format variants per product type.
+// Used to expand pure product-type queries (e.g. "moisturizer")
+// into a richer multi-probe set so OBF's keyword index returns
+// a diverse, image-backed candidate pool.
+const PRODUCT_TYPE_VARIANTS: Record<
+  NonNullable<ProductTypeIntent>,
+  readonly string[]
+> = {
+  moisturizer: [
+    'hyaluronic acid moisturizer',
+    'ceramide moisturizer',
+    'niacinamide moisturizer',
+    'face cream',
+    'hydrating cream',
+  ],
+  cleanser: [
+    'gel cleanser',
+    'foaming cleanser',
+    'cream cleanser',
+    'gentle face wash',
+    'salicylic acid cleanser',
+  ],
+  toner: [
+    'hydrating toner',
+    'BHA toner',
+    'AHA toner',
+    'essence',
+    'centella toner',
+  ],
+  serum: [
+    'hyaluronic acid serum',
+    'niacinamide serum',
+    'vitamin c serum',
+    'peptide serum',
+    'retinol serum',
+  ],
+  spf: [
+    'sunscreen SPF 50',
+    'mineral sunscreen',
+    'tinted sunscreen',
+    'broad spectrum sunscreen',
+    'face sunscreen',
+  ],
+  mask: [
+    'sheet mask',
+    'overnight mask',
+    'clay mask',
+    'hydrating mask',
+    'exfoliating mask',
+  ],
+  spot_treatment: [
+    'salicylic acid spot treatment',
+    'pimple patch',
+    'benzoyl peroxide spot treatment',
+    'sulfur spot treatment',
+    'tea tree spot treatment',
+  ],
+  exfoliant: [
+    'lactic acid exfoliant',
+    'salicylic acid exfoliant',
+    'glycolic acid toner',
+    'PHA exfoliant',
+    'mandelic acid serum',
+  ],
+  eye_cream: [
+    'caffeine eye cream',
+    'peptide eye cream',
+    'retinol eye cream',
+    'hydrating eye cream',
+    'brightening eye cream',
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Helpers.
 // ---------------------------------------------------------------------------
@@ -353,18 +426,32 @@ export function buildProbePlan(
       )
     );
   } else if (intent.interpretedProductType) {
-    // Pure product-type query without a concern: probe the
-    // product type itself + a few "good" variants.
+    // v19.32 — pure product-type query (e.g. "moisturizer",
+    // "cleanser", "toner"). Pre-v19.32 only generated 2 probes;
+    // OBF's keyword index needs more variants to surface
+    // diverse, image-backed cosmetic entries. We now expand
+    // each product type into its canonical ingredient/format
+    // variants — same vocab style as the concern probe lists.
     const pt = intent.interpretedProductType;
     const ptLabel = PRODUCT_TYPE_LABEL[pt];
-    probes.push(
-      { query: ptLabel, weight: 0.95, reason: `product type: ${ptLabel}` },
-      {
-        query: `gentle ${ptLabel}`,
-        weight: 0.7,
-        reason: `gentle ${ptLabel}`,
-      }
-    );
+    const variants = PRODUCT_TYPE_VARIANTS[pt] ?? [];
+    probes.push({
+      query: ptLabel,
+      weight: 0.95,
+      reason: `product type: ${ptLabel}`,
+    });
+    probes.push({
+      query: `gentle ${ptLabel}`,
+      weight: 0.7,
+      reason: `gentle ${ptLabel}`,
+    });
+    for (let i = 0; i < Math.min(variants.length, 3); i++) {
+      probes.push({
+        query: variants[i],
+        weight: Math.max(0.4, 0.85 - i * 0.15),
+        reason: `${ptLabel} variant: ${variants[i]}`,
+      });
+    }
   }
 
   // Apply avoidance pruning + dedup + cap at 5.

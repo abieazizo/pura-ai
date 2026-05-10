@@ -20,7 +20,10 @@ import { SearchResults } from '@/components/products/SearchResults';
 import { FiltersStubSheet } from '@/components/products/FiltersStubSheet';
 import { CategoryRail, type GoalKey } from '@/components/products/CategoryRail';
 import { CategoryFeed } from '@/components/products/CategoryFeed';
-import { LiveProductCard } from '@/components/products/LiveProductCard';
+import {
+  LiveProductCard,
+  setActiveTraceContext,
+} from '@/components/products/LiveProductCard';
 import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
 import { PuraMark } from '@/components/PuraMark';
 import { AISourceBadge } from '@/components/dev/AISourceBadge';
@@ -33,6 +36,14 @@ import { getSearchSuggestions } from '@/api';
 // retrieval, normalization, dedupe, local scoring, and (best-effort)
 // AI rerank — all in one shared path with ResultScreen + Diagnostics.
 import { getRecommendationContextFromQuery } from '@/api/liveProducts';
+// v19.32 — real UI trace store. ProductsScreen writes this AFTER
+// every fetch resolve so diagnostics + the user can verify what
+// the actual UI rendered.
+import {
+  setTrace,
+  type ProductUiTrigger,
+  type ProductUiVisibleState,
+} from '@/state/productUiTrace';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
@@ -193,9 +204,61 @@ export function ProductsScreen() {
     })
       .then((rec) => {
         if (cancelled) return;
-        // Use candidateProducts (already deterministic + reranked)
-        // so the grid is consistent with ResultScreen's hero+alts.
         setLiveResults(rec.candidateProducts);
+        // v19.32 — write the real ProductUiTrace so diagnostics
+        // and the user can verify what the actual UI rendered.
+        const hero = rec.heroProduct;
+        const alternatives = rec.alternatives ?? [];
+        const altsWithImages = alternatives.filter(
+          (c) => !!c.imageUrl && /^https?:\/\//i.test(c.imageUrl)
+        ).length;
+        let visibleState: ProductUiVisibleState = 'live_results';
+        if (rec.availabilityState === 'unavailable') {
+          visibleState = 'unavailable';
+        } else if (rec.availabilityState === 'empty') {
+          visibleState = 'empty';
+        } else if (rec.retrievalSource === 'fallback') {
+          visibleState = 'fallback_results';
+        } else if (rec.retrievalSource === 'live') {
+          visibleState = 'live_results';
+        }
+        const trigger: ProductUiTrigger =
+          searchAttempt > 0
+            ? 'retry'
+            : isChipQuery
+            ? 'chip_press'
+            : 'search';
+        setTrace('products', {
+          query: q,
+          trigger,
+          interpretedIntentLabel:
+            rec.lastAttempt?.query ?? null,
+          probeQueries: [],
+          rawCandidateCount: rec.candidateProducts.length,
+          filteredCandidateCount: rec.candidateProducts.length,
+          trustPoolCount: rec.candidateProducts.length,
+          heroId: hero?.id ?? null,
+          heroName: hero ? `${hero.brand} — ${hero.name}` : null,
+          heroImageInPayload:
+            !!hero?.imageUrl && /^https?:\/\//i.test(hero.imageUrl),
+          heroImageRendered: false, // updated by LiveProductCard onLoad
+          alternativeCount: alternatives.length,
+          alternativesWithImagesInPayload: altsWithImages,
+          alternativesWithImagesRendered: 0, // updated by alts onLoad
+          visibleState,
+          diagnosticsCandidateCount: null,
+          diagnosticsHeroId: null,
+          uiMatchesDiagnostics: null,
+          timestamp: new Date().toISOString(),
+        });
+        // v19.32 — set trace context BEFORE the cards render, so
+        // expo-image's onLoad/onError callbacks can route to the
+        // right trace bucket. Cleared on unmount/cancel below.
+        setActiveTraceContext({
+          scope: 'products',
+          trigger,
+          heroId: hero?.id ?? null,
+        });
         if (
           rec.candidateProducts.length === 0 &&
           rec.availabilityState === 'unavailable'
@@ -208,10 +271,38 @@ export function ProductsScreen() {
           setSearchTimedOut(true);
         }
       })
-      .catch(() => {
+      .catch((e) => {
         if (cancelled) return;
         setLiveResults([]);
         setSearchTimedOut(Date.now() - t0 > 30_000);
+        // v19.32 — record the failure trace too.
+        setTrace('products', {
+          query: q,
+          trigger:
+            searchAttempt > 0
+              ? 'retry'
+              : isChipQuery
+              ? 'chip_press'
+              : 'search',
+          interpretedIntentLabel: null,
+          probeQueries: [],
+          rawCandidateCount: 0,
+          filteredCandidateCount: 0,
+          trustPoolCount: 0,
+          heroId: null,
+          heroName: null,
+          heroImageInPayload: false,
+          heroImageRendered: false,
+          alternativeCount: 0,
+          alternativesWithImagesInPayload: 0,
+          alternativesWithImagesRendered: 0,
+          visibleState: 'error',
+          diagnosticsCandidateCount: null,
+          diagnosticsHeroId: null,
+          uiMatchesDiagnostics: null,
+          timestamp: new Date().toISOString(),
+        });
+        void e;
       })
       .finally(() => {
         if (cancelled) return;
