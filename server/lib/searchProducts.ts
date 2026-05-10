@@ -248,6 +248,34 @@ function deriveMerchant(brand: string, name: string): {
   };
 }
 
+/**
+ * v19.29 — deterministic best-image selection. Pre-v19.29 just
+ * fell through `image_url || image_small_url || image_thumb_url`.
+ * Several OBF entries have empty `image_url` but a populated
+ * `image_small_url`, and even more have only the thumb — we want
+ * the BIGGEST usable image for hero rendering, the SMALLEST for
+ * alt cards, but the contract today is one URL. Pick the largest
+ * usable URL (hero-quality) and validate the shape; reject empty
+ * strings, relative paths, and non-http schemes.
+ */
+function pickBestImageUrl(p: OBFProduct): string | null {
+  const candidates = [
+    p.image_url,
+    p.image_small_url,
+    p.image_thumb_url,
+  ];
+  for (const u of candidates) {
+    if (typeof u !== 'string') continue;
+    const trimmed = u.trim();
+    if (trimmed.length === 0) continue;
+    if (!/^https?:\/\//i.test(trimmed)) continue;
+    // Filter obvious junk URL patterns from OBF (rare but seen).
+    if (/\/invalid|placeholder|missing/i.test(trimmed)) continue;
+    return trimmed;
+  }
+  return null;
+}
+
 function toCandidate(p: OBFProduct): BackendProductCandidate | null {
   const code = p.code ?? p._id ?? '';
   const name = (p.product_name_en || p.product_name || p.generic_name || '')
@@ -258,8 +286,7 @@ function toCandidate(p: OBFProduct): BackendProductCandidate | null {
 
   const category = inferCategory(p.categories);
   const merchant = deriveMerchant(brand, name);
-  const imageUrl =
-    p.image_url || p.image_small_url || p.image_thumb_url || null;
+  const imageUrl = pickBestImageUrl(p);
 
   return {
     id: `be-${code}`,

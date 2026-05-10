@@ -792,6 +792,18 @@ export interface AIGateway {
     };
     latestScanSummary?: string | null;
     topConcerns?: string[];
+    /**
+     * v19.29 — per-candidate deterministic trust scores. The AI
+     * rerank prompt uses these as guard rails: candidates with
+     * higher trust + image presence are preferred. AI cannot
+     * promote a low-trust candidate above a high-trust one
+     * without strong personalization justification.
+     */
+    trustScores?: Array<{
+      id: string;
+      trust: number;
+      hasImage: boolean;
+    }>;
   }): Promise<AIRerankResult>;
 
   answerAssistant(params: {

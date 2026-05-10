@@ -222,7 +222,7 @@ export function AIDiagnosticsScreen() {
         'best for my pimple',
       ];
       lines.push('');
-      lines.push('  4-query verification (v19.28 multi-probe):');
+      lines.push('  4-query verification (v19.29 trust + image):');
       for (const target of realTargets) {
         const tInner = Date.now();
         try {
@@ -234,9 +234,17 @@ export function AIDiagnosticsScreen() {
           const heroLabel = r.heroProduct
             ? `${r.heroProduct.brand} — ${r.heroProduct.name.slice(0, 28)}`
             : '(no hero)';
+          // v19.29 — count image-backed candidates so the user can
+          // verify image completeness across the result set.
+          const withImage = r.candidateProducts.filter(
+            (c) => !!c.imageUrl
+          ).length;
+          const heroHasImg =
+            r.heroProduct && !!r.heroProduct.imageUrl ? '✓img' : '✗img';
           lines.push(
-            `    "${target}".padEnd(20) → ${r.candidateProducts.length} cand · ` +
-              `${r.lastAttempt.source} · ${ms}ms · ${heroLabel}`
+            `    "${target}" → ${r.candidateProducts.length} cand ` +
+              `(${withImage} w/img) · ${r.lastAttempt.source} · ${ms}ms · ` +
+              `${heroHasImg} · ${heroLabel}`
           );
         } catch (e) {
           lines.push(

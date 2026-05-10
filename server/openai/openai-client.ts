@@ -1040,6 +1040,17 @@ export class OpenAIClient {
     latestScanSummary?: string | null;
     /** Top-N concern axes from the latest scan, severity desc. */
     topConcerns?: string[];
+    /**
+     * v19.29 — per-candidate deterministic trust scores. Used by
+     * the AI rerank prompt as guard rails. Higher trust =
+     * preferred. Image-backed candidates outrank no-image when
+     * trust is otherwise similar.
+     */
+    trustScores?: Array<{
+      id: string;
+      trust: number;
+      hasImage: boolean;
+    }>;
   }): Promise<AIRerankResult> {
     const system =
       "You are Pura AI's product rerank engine. Given a SHORT list " +
@@ -1071,10 +1082,43 @@ export class OpenAIClient {
       '    safety constraints.\n' +
       '  • If a candidate clashes with a sensitivity, rank it lower\n' +
       '    or omit it from alternatives.\n' +
-      '  • If you cannot honestly pick a hero, return heroId: null.';
+      '  • If you cannot honestly pick a hero, return heroId: null.\n\n' +
+      'TRUST + IMAGE rules (v19.29):\n' +
+      '  • Each candidate carries a `trust` score [0..100] and a\n' +
+      '    `has_image` boolean. The pool is already pre-filtered\n' +
+      '    to TRUSTWORTHY candidates only.\n' +
+      '  • Prefer candidates with HIGHER `trust`. Do not promote a\n' +
+      '    candidate with materially lower trust over a higher-\n' +
+      '    trust one without strong personalization justification\n' +
+      '    (e.g. concern alignment is significantly better).\n' +
+      '  • When two candidates have similar trust, prefer the one\n' +
+      '    where has_image === true. The hero card NEEDS a real\n' +
+      '    product photo to feel credible.\n' +
+      '  • You cannot rescue weak candidates — they were dropped\n' +
+      '    upstream. You only choose among trustworthy ones.';
 
+    // v19.29 — splice per-candidate trust score + hasImage onto
+    // each candidate entry the AI sees. Indexed by id for O(1)
+    // lookup; missing entries default to neutral. Trust pool is
+    // already pre-filtered by the engine, so we don't expect
+    // missing IDs in practice.
+    const trustById = new Map<
+      string,
+      { trust: number; hasImage: boolean }
+    >();
+    for (const t of params.trustScores ?? []) {
+      trustById.set(t.id, { trust: t.trust, hasImage: t.hasImage });
+    }
+    const candidatesWithTrust = params.candidates.map((c) => {
+      const t = trustById.get(c.id) ?? { trust: 50, hasImage: false };
+      return {
+        ...c,
+        trust: t.trust,
+        has_image: t.hasImage,
+      };
+    });
     const userContent = JSON.stringify({
-      candidates: params.candidates,
+      candidates: candidatesWithTrust,
       profile: params.profile,
       primary_concern: params.primaryConcern,
       severity_band: params.severityBand,

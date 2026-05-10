@@ -514,6 +514,14 @@ import {
   buildProbePlan,
   type RetrievalProbePlan,
 } from './probePlan';
+// v19.29 — deterministic candidate trust scoring + thresholds.
+import {
+  ALTERNATIVE_TRUST_THRESHOLD,
+  HERO_TRUST_THRESHOLD,
+  partitionByTrust,
+  scoreTrustForCandidate,
+  type ScoredCandidate,
+} from './candidateTrust';
 
 export interface GetRecommendationOpts extends LookupOpts {
   intent: RecommendationIntent;
@@ -597,6 +605,8 @@ async function tryRerankProducts(args: {
   rawQuery?: string | null;
   chipIntent?: string | null;
   interpretedIntent?: InterpretedIntent;
+  // v19.29 — trust signals.
+  trustScores?: Array<{ id: string; trust: number; hasImage: boolean }>;
 }): Promise<AIRerankResult | null> {
   const {
     candidates,
@@ -606,6 +616,7 @@ async function tryRerankProducts(args: {
     rawQuery,
     chipIntent,
     interpretedIntent,
+    trustScores,
   } = args;
   if (!aiGateway.isAvailable() || candidates.length === 0) return null;
   // Trim to top 8 by deterministic localScore — rerank only the
@@ -653,6 +664,8 @@ async function tryRerankProducts(args: {
       : undefined,
     latestScanSummary: skinState?.summaryHeadline ?? null,
     topConcerns: skinState?.topConcerns?.map((c) => c.concern) ?? [],
+    // v19.29 — trust signals for the rerank prompt.
+    trustScores: trustScores ?? undefined,
   };
   try {
     return await aiGateway.rerankProducts(payload);
@@ -682,6 +695,8 @@ async function tryRerankProductsBounded(args: {
   rawQuery?: string | null;
   chipIntent?: string | null;
   interpretedIntent?: InterpretedIntent;
+  // v19.29 — trust signals.
+  trustScores?: Array<{ id: string; trust: number; hasImage: boolean }>;
 }): Promise<AIRerankResult | null> {
   return Promise.race([
     tryRerankProducts(args),
@@ -768,6 +783,19 @@ export function getRecommendationAttemptHistory(): readonly RetrievalAttempt[] {
 function backendCandidateToLive(
   bp: BackendProductCandidate
 ): LiveProductCandidate {
+  // v19.29 — derive imageSource from the URL shape so trust
+  // scoring + UI fallback can distinguish OBF-served images
+  // from merchant-served. OBF images live at
+  // `images.openbeautyfacts.org/...`. Anything else is treated
+  // as merchant-supplied.
+  let imageSource: LiveProductCandidate['imageSource'] = 'none';
+  if (bp.imageUrl && bp.imageUrl.length > 0) {
+    if (/openbeautyfacts/i.test(bp.imageUrl)) {
+      imageSource = 'obf';
+    } else {
+      imageSource = 'merchant';
+    }
+  }
   return {
     id: bp.id,
     brand: bp.brand,
@@ -782,7 +810,7 @@ function backendCandidateToLive(
     merchantName: bp.merchantName,
     productUrl: bp.productUrl,
     imageUrl: bp.imageUrl,
-    imageSource: bp.imageUrl ? 'merchant' : 'none',
+    imageSource,
     shortDescription: '',
     matchReason: '',
     availability: 'available',
@@ -1026,37 +1054,76 @@ export async function getRecommendationContextFromQuery(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // Final hard source: respect filter+dedupe outcome.
-  if (deduped.length === 0) {
+  // STEP D.5 — v19.29 trust scoring + partition. Each candidate
+  // gets a [0..100] score; only candidates above the alternative
+  // threshold survive to AI rerank. Above the hero threshold are
+  // eligible as hero. Image-backed candidates win ties.
+  const scoredFree: ScoredCandidate[] = deduped.map((c) =>
+    scoreTrustForCandidate({
+      candidate: c,
+      intent: interpretedIntent,
+      profile,
+      skinState: skinStateForCtx,
+      matchedProbes: [],
+    })
+  );
+  const partitionedFree = partitionByTrust(scoredFree);
+  const trustedFree = partitionedFree.alternativePool.map(
+    (s) => s.candidate
+  );
+  const heroIdsFree = new Set(
+    partitionedFree.heroPool.map((s) => s.candidate.id)
+  );
+
+  // Final hard source: empty when (a) filter+dedupe killed all
+  // candidates OR (b) trust pass dropped them all to junk.
+  if (deduped.length === 0 || trustedFree.length === 0) {
     hardSource = failureReason && hardSource === 'empty' ? 'error' : 'empty';
   }
 
-  // STEP F — v19.26 personalized AI rerank with bounded race.
-  // Sends ONLY the top deterministic candidates + the user's
-  // canonical profile + latest skin state to the AI backend, which
-  // returns `{ heroId, alternativeIds, whyHeroFits }`. Bounded at
-  // 5s; on timeout/failure we keep the deterministic order so the
-  // UI ALWAYS renders something usable. Skipped when there are
-  // fewer than 2 candidates (nothing to rerank).
+  // STEP F — personalized AI rerank with bounded race.
+  // v19.29 — receives ONLY the trust pool. AI cannot rescue
+  // dropped junk; AI personalizes WITHIN the trustworthy set.
   let rerank: AIRerankResult | null = null;
-  if (deduped.length >= 2 && trigger !== 'background') {
+  if (trustedFree.length >= 2 && trigger !== 'background') {
     rerank = await tryRerankProductsBounded({
-      candidates: deduped,
+      candidates: trustedFree,
       profile,
       skinState: skinStateForCtx,
-      // v19.27 — use the interpreter's intentLabel for the AI
-      // prompt. "Best for your skin" reads sensibly to the AI;
-      // raw "best for my skin" is also forwarded as rawQuery.
       intentLabel: interpretedIntent.intentLabel,
       rawQuery: query,
       chipIntent: opts.chipIntent ?? null,
       interpretedIntent,
+      trustScores: partitionedFree.alternativePool.map((s) => ({
+        id: s.candidate.id,
+        trust: s.score.total,
+        hasImage: s.hasImage,
+      })),
     });
+  }
+
+  // v19.29 — clamp AI's hero choice to the hero pool. If AI
+  // picked an alt-only candidate, repair to the top hero
+  // candidate. AI personalizes; it does NOT override the hero
+  // threshold.
+  if (rerank?.heroId && !heroIdsFree.has(rerank.heroId)) {
+    const altMatch = rerank.alternativeIds.find((id) =>
+      heroIdsFree.has(id)
+    );
+    const repaired =
+      altMatch ?? partitionedFree.heroPool[0]?.candidate.id ?? null;
+    rerank = {
+      ...rerank,
+      heroId: repaired,
+      alternativeIds: rerank.alternativeIds.filter(
+        (id) => id !== repaired
+      ),
+    };
   }
 
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
-    deduped.length > 0 ? 'available' : 'empty';
+    trustedFree.length > 0 ? 'available' : 'empty';
 
   // Close the attempt record + push to bounded history.
   const attempt: RetrievalAttempt = {
@@ -1066,20 +1133,23 @@ export async function getRecommendationContextFromQuery(
     trigger,
     query,
     source: hardSource,
-    success: deduped.length > 0,
+    success: trustedFree.length > 0,
     failureReason,
   };
   const attempts = recordAttempt(attempt);
 
   return buildRecommendationContext({
     intent,
-    candidates: deduped,
+    // v19.29 — only trust-pool candidates reach the canonical
+    // context. The engine no longer surfaces below-threshold
+    // junk to the UI.
+    candidates: trustedFree,
     profile,
     skinState: skinStateForCtx,
     state: availability,
     failureReason: failureReason ?? undefined,
     rerankResult: rerank,
-    retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
+    retrievalSource: trustedFree.length > 0 ? retrievalSource : 'empty',
     attempt,
     attemptHistory: attempts,
   });
@@ -1194,30 +1264,37 @@ export async function getRecommendationContextForScan(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // Final hard source: respect filter+dedupe outcome.
-  if (deduped.length === 0) {
+  // STEP D.5 — v19.29 trust scoring + partition.
+  const scanIntent = interpretSearchIntent(liveQuery, profile, skinState);
+  const scoredScan: ScoredCandidate[] = deduped.map((c) =>
+    scoreTrustForCandidate({
+      candidate: c,
+      intent: scanIntent,
+      profile,
+      skinState,
+      matchedProbes: [],
+    })
+  );
+  const partitionedScan = partitionByTrust(scoredScan);
+  const trustedScan = partitionedScan.alternativePool.map(
+    (s) => s.candidate
+  );
+  const heroIdsScan = new Set(
+    partitionedScan.heroPool.map((s) => s.candidate.id)
+  );
+
+  // Final hard source: empty when filter+dedupe killed all OR
+  // when trust pass dropped them all to junk.
+  if (deduped.length === 0 || trustedScan.length === 0) {
     hardSource = failureReason && hardSource === 'empty' ? 'error' : 'empty';
   }
 
-  // STEP F — v19.26 personalized AI rerank with bounded race.
-  // Same wiring as the free-text path: top deterministic
-  // candidates + canonical user context → AI returns
-  // `{ heroId, alternativeIds, whyHeroFits }`. Bounded at 5s.
-  // On timeout/failure, deterministic local-score order wins
-  // and the hero still renders.
+  // STEP F — personalized AI rerank with bounded race.
+  // v19.29 — receives ONLY trust-pool candidates.
   let rerank: AIRerankResult | null = null;
-  if (deduped.length >= 2 && trigger !== 'background') {
-    // v19.27 — interpret the scan-driven query so the AI rerank
-    // prompt sees the same structured intent as free-text path.
-    // The query for a scan is concern-shaped ('redness centella
-    // serum', 'salicylic acid serum', etc.); it interprets cleanly.
-    const scanIntent = interpretSearchIntent(
-      liveQuery,
-      profile,
-      skinState
-    );
+  if (trustedScan.length >= 2 && trigger !== 'background') {
     rerank = await tryRerankProductsBounded({
-      candidates: deduped,
+      candidates: trustedScan,
       profile,
       skinState,
       intentLabel:
@@ -1225,12 +1302,33 @@ export async function getRecommendationContextForScan(
       rawQuery: liveQuery,
       chipIntent: null,
       interpretedIntent: scanIntent,
+      trustScores: partitionedScan.alternativePool.map((s) => ({
+        id: s.candidate.id,
+        trust: s.score.total,
+        hasImage: s.hasImage,
+      })),
     });
+  }
+
+  // v19.29 — clamp AI's hero choice to the hero pool.
+  if (rerank?.heroId && !heroIdsScan.has(rerank.heroId)) {
+    const altMatch = rerank.alternativeIds.find((id) =>
+      heroIdsScan.has(id)
+    );
+    const repaired =
+      altMatch ?? partitionedScan.heroPool[0]?.candidate.id ?? null;
+    rerank = {
+      ...rerank,
+      heroId: repaired,
+      alternativeIds: rerank.alternativeIds.filter(
+        (id) => id !== repaired
+      ),
+    };
   }
 
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
-    deduped.length > 0 ? 'available' : 'empty';
+    trustedScan.length > 0 ? 'available' : 'empty';
 
   // v19.24 — close the attempt + push history.
   const attempt: RetrievalAttempt = {
@@ -1240,20 +1338,20 @@ export async function getRecommendationContextForScan(
     trigger,
     query: liveQuery,
     source: hardSource,
-    success: deduped.length > 0,
+    success: trustedScan.length > 0,
     failureReason,
   };
   const attempts = recordAttempt(attempt);
 
   return buildRecommendationContext({
     intent,
-    candidates: deduped,
+    candidates: trustedScan,
     profile,
     skinState,
     state: availability,
     failureReason: failureReason ?? undefined,
     rerankResult: rerank,
-    retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
+    retrievalSource: trustedScan.length > 0 ? retrievalSource : 'empty',
     attempt,
     attemptHistory: attempts,
   });

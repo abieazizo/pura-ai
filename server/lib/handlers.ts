@@ -646,6 +646,28 @@ export const HANDLERS: Record<string, Handler> = {
           : [],
       };
     }
+    // v19.29 — trust-aware AI rerank.
+    const trustRaw = body['trustScores'];
+    const trustScores: Array<{
+      id: string;
+      trust: number;
+      hasImage: boolean;
+    }> = Array.isArray(trustRaw)
+      ? (trustRaw as unknown[])
+          .filter(
+            (x): x is Record<string, unknown> => !!x && typeof x === 'object'
+          )
+          .map((x) => ({
+            id: typeof x.id === 'string' ? x.id : '',
+            trust:
+              typeof x.trust === 'number' && Number.isFinite(x.trust)
+                ? Math.max(0, Math.min(100, x.trust))
+                : 0,
+            hasImage:
+              typeof x.hasImage === 'boolean' ? x.hasImage : false,
+          }))
+          .filter((x) => x.id.length > 0)
+      : [];
     const result = await withAIErrorTranslation('rerankProducts', () =>
       client.rerankProducts({
         candidates,
@@ -658,6 +680,7 @@ export const HANDLERS: Record<string, Handler> = {
         interpretedIntent,
         latestScanSummary,
         topConcerns,
+        trustScores,
       })
     );
     const validated = validateProductRerankResult(result);
