@@ -852,12 +852,18 @@ async function tryLiveSearch(
   // server's multi-probe fan-out. Keyed by candidate id; empty
   // when the legacy single-query path was used.
   matchedProbesById: Map<string, string[]>;
+  // v19.33 — the probe plan actually built and sent to the server.
+  // `null` when no intent was supplied (legacy direct callers).
+  // The engine threads this onto `RecommendationContext.probeQueries`
+  // so the on-device ProductUiTrace shows what fired.
+  probePlan: RetrievalProbePlan | null;
 }> {
   if (!query || query.trim().length === 0) {
     return {
       candidates: [],
       failure: null,
       matchedProbesById: new Map(),
+      probePlan: null,
     };
   }
   try {
@@ -921,6 +927,7 @@ async function tryLiveSearch(
         candidates: [],
         failure: res.failureReason ?? 'unknown',
         matchedProbesById: new Map(),
+        probePlan,
       };
     }
     // v19.31 — capture matchedProbes from the wire shape into a
@@ -937,12 +944,14 @@ async function tryLiveSearch(
       candidates: res.candidates.map(backendCandidateToLive),
       failure: null,
       matchedProbesById,
+      probePlan,
     };
   } catch (e) {
     return {
       candidates: [],
       failure: e instanceof Error ? e.message : String(e),
       matchedProbesById: new Map(),
+      probePlan: null,
     };
   }
 }
@@ -1034,6 +1043,12 @@ export async function getRecommendationContextFromQuery(
     failureReason = live.failure;
   }
 
+  // v19.33 — track which probe plan was actually consumed
+  // (live first, seed-fallback second). Threaded onto the canonical
+  // RecommendationContext so the on-device ProductUiTrace can
+  // surface the exact probes that fired.
+  let effectiveProbePlan: RetrievalProbePlan | null = live.probePlan;
+
   // STEP A.FALLBACK — seed catalog when OBF didn't deliver.
   // v19.28: also probe the seed catalog using the same probe plan
   // so vague queries that overshot OBF can still find catalog
@@ -1059,6 +1074,11 @@ export async function getRecommendationContextFromQuery(
       profile,
       skinStateForCtx
     );
+    // v19.33 — when the live path produced no probe plan (early-exit
+    // or empty query), the seed plan is the truth.
+    if (!effectiveProbePlan) {
+      effectiveProbePlan = seedProbePlan;
+    }
     for (const probe of seedProbePlan.probes.slice(0, 3)) {
       for (const c of retrieveSeedCandidates({
         query: probe.query,
@@ -1212,6 +1232,12 @@ export async function getRecommendationContextFromQuery(
     retrievalSource: trustedFree.length > 0 ? retrievalSource : 'empty',
     attempt,
     attemptHistory: attempts,
+    // v19.33 — surface the structured intent + actual probes onto
+    // the canonical context so the on-device ProductUiTrace can
+    // show exactly which decisions drove this fetch.
+    interpretedIntentLabel: interpretedIntent.intentLabel,
+    probeQueries:
+      effectiveProbePlan?.probes.map((p) => p.query) ?? [],
   });
 }
 
@@ -1443,6 +1469,11 @@ export async function getRecommendationContextForScan(
     retrievalSource: trustedScan.length > 0 ? retrievalSource : 'empty',
     attempt,
     attemptHistory: attempts,
+    // v19.33 — surface the structured intent + actual probes onto
+    // the canonical context. The scan path's probe plan was built
+    // by tryLiveSearch from the concern-shaped query above.
+    interpretedIntentLabel: scanIntent.intentLabel,
+    probeQueries: live.probePlan?.probes.map((p) => p.query) ?? [],
   });
 }
 

@@ -231,9 +231,13 @@ export function ProductsScreen() {
         setTrace('products', {
           query: q,
           trigger,
-          interpretedIntentLabel:
-            rec.lastAttempt?.query ?? null,
-          probeQueries: [],
+          // v19.33 — read the structured intent label + probe queries
+          // off the canonical RecommendationContext (engine threads
+          // them on). `lastAttempt.query` was the wire query, NOT
+          // the intent label, so the previous wiring mislabeled this
+          // field on the trace.
+          interpretedIntentLabel: rec.interpretedIntentLabel,
+          probeQueries: [...rec.probeQueries],
           rawCandidateCount: rec.candidateProducts.length,
           filteredCandidateCount: rec.candidateProducts.length,
           trustPoolCount: rec.candidateProducts.length,

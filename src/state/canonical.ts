@@ -654,6 +654,19 @@ export function buildRecommendationContext(args: {
    * actions and which path served them."
    */
   attemptHistory?: readonly RetrievalAttempt[];
+  /**
+   * v19.33 — interpreted intent label from the query interpreter
+   * (e.g. "product_type:moisturizer"). Threaded onto the canonical
+   * RecommendationContext so the ProductUiTrace can show *why* the
+   * engine fired the probes it did.
+   */
+  interpretedIntentLabel?: string | null;
+  /**
+   * v19.33 — ordered list of probe queries actually fired against
+   * retrieval (live + seed-fallback). Empty when retrieval was
+   * bypassed (cached/empty input).
+   */
+  probeQueries?: readonly string[];
 }): RecommendationContext {
   const {
     intent,
@@ -666,6 +679,8 @@ export function buildRecommendationContext(args: {
     retrievalSource = 'unknown',
     attempt,
     attemptHistory,
+    interpretedIntentLabel = null,
+    probeQueries = [],
   } = args;
   const lastAttempt: RetrievalAttempt = attempt ?? {
     id: genRecommendationId(),
@@ -710,6 +725,8 @@ export function buildRecommendationContext(args: {
       retrievalSource,
       lastAttempt,
       attempts,
+      interpretedIntentLabel,
+      probeQueries,
     };
   }
 
@@ -734,6 +751,8 @@ export function buildRecommendationContext(args: {
       retrievalSource: 'empty',
       lastAttempt,
       attempts,
+      interpretedIntentLabel,
+      probeQueries,
     };
   }
 
@@ -825,12 +844,17 @@ export function buildRecommendationContext(args: {
     heroProduct: hero,
     alternatives,
     whyHeroFits,
-    whatToAvoid: deriveWhatToAvoid(profile),
+    whatToAvoid:
+      rerankResult?.whatToAvoid && rerankResult.whatToAvoid.length > 0
+        ? rerankResult.whatToAvoid
+        : deriveWhatToAvoid(profile),
     failureReason: failureReason ?? null,
     source,
     retrievalSource,
     lastAttempt,
     attempts,
+    interpretedIntentLabel,
+    probeQueries,
   };
 }
 

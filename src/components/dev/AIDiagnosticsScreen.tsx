@@ -721,6 +721,21 @@ export function AIDiagnosticsScreen() {
               for (const t of traces) {
                 lines.push(`────  ${t.trigger.toUpperCase()}: "${t.query}"  ────`);
                 lines.push(`  visibleState  = ${t.visibleState}`);
+                // v19.33 — show the structured intent label + probe
+                // queries the engine actually fired. Lets the user
+                // verify on-device that "moisturizer" expanded to
+                // 5 product-type variants, etc.
+                lines.push(
+                  `  intent        = ${t.interpretedIntentLabel ?? '(none)'}`
+                );
+                if (t.probeQueries.length > 0) {
+                  lines.push(`  probes (${t.probeQueries.length}):`);
+                  for (const p of t.probeQueries) {
+                    lines.push(`    • ${p}`);
+                  }
+                } else {
+                  lines.push('  probes        = (none recorded)');
+                }
                 lines.push(
                   `  candidates    = ${t.filteredCandidateCount} (trust pool: ${t.trustPoolCount})`
                 );

@@ -270,6 +270,23 @@ export interface RecommendationContext {
    * can see exactly what the last few user actions did.
    */
   attempts: readonly RetrievalAttempt[];
+
+  /**
+   * v19.33 — interpreted intent label (e.g. "product_type:moisturizer",
+   * "concern:hydration", "best_for_my_skin"). Surfaces the structured
+   * decision that drove probe expansion so the diagnostics + ProductUiTrace
+   * can show *why* the engine fired the probes it did. `null` when no
+   * intent interpretation ran.
+   */
+  interpretedIntentLabel: string | null;
+
+  /**
+   * v19.33 — the probe queries actually fired against retrieval, in
+   * weight order. Empty when retrieval was bypassed (e.g. cached
+   * result, no query). The ProductUiTrace replays this so the user
+   * can verify on-device exactly which probes the engine sent.
+   */
+  probeQueries: readonly string[];
 }
 
 // ============================================================================
