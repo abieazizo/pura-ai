@@ -35,6 +35,7 @@ import type {
   RecommendationAvailability,
   RecommendationContext,
   RecommendationIntent,
+  RetrievalAttempt,
   SkinConcernSummary,
   SkinScoreBand,
   SkinState,
@@ -630,10 +631,22 @@ export function buildRecommendationContext(args: {
     whyHeroFits: string | null;
   } | null;
   /**
-   * v19.21 — explicit tag for which path produced the candidates.
-   * 'live' = AI lookup succeeded, 'fallback' = seed catalog used.
+   * v19.21 — legacy retrieval-source tag.
    */
   retrievalSource?: 'live' | 'fallback' | 'empty' | 'unknown';
+  /**
+   * v19.24 — hard retrieval attempt contract. Required for every
+   * call from the engine entry points; defaults are provided here
+   * only so legacy callers don't fail to typecheck during the
+   * migration window.
+   */
+  attempt?: RetrievalAttempt;
+  /**
+   * v19.24 — recent attempts (newest first), cap 5. The engine
+   * threads this through so diagnostics can show "last few user
+   * actions and which path served them."
+   */
+  attemptHistory?: readonly RetrievalAttempt[];
 }): RecommendationContext {
   const {
     intent,
@@ -644,7 +657,28 @@ export function buildRecommendationContext(args: {
     failureReason,
     rerankResult,
     retrievalSource = 'unknown',
+    attempt,
+    attemptHistory,
   } = args;
+  const lastAttempt: RetrievalAttempt = attempt ?? {
+    id: genRecommendationId(),
+    startedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    trigger: 'background',
+    query: null,
+    source:
+      retrievalSource === 'live'
+        ? 'obf_live'
+        : retrievalSource === 'fallback'
+        ? 'seed_fallback'
+        : retrievalSource === 'empty'
+        ? 'empty'
+        : 'error',
+    success: candidates.length > 0,
+    failureReason: failureReason ?? null,
+  };
+  const attempts: readonly RetrievalAttempt[] =
+    attemptHistory ?? [lastAttempt];
   const id = genRecommendationId();
   const generatedAt = new Date().toISOString();
 
@@ -664,6 +698,8 @@ export function buildRecommendationContext(args: {
       failureReason: failureReason ?? null,
       source: 'deterministic',
       retrievalSource,
+      lastAttempt,
+      attempts,
     };
   }
 
@@ -683,6 +719,8 @@ export function buildRecommendationContext(args: {
       failureReason: failureReason ?? null,
       source: 'deterministic',
       retrievalSource: 'empty',
+      lastAttempt,
+      attempts,
     };
   }
 
@@ -778,6 +816,8 @@ export function buildRecommendationContext(args: {
     failureReason: failureReason ?? null,
     source,
     retrievalSource,
+    lastAttempt,
+    attempts,
   };
 }
 

@@ -86,16 +86,21 @@ export function CategoryFeed({ goal }: CategoryFeedProps) {
     //   • free-text goal           → free-text engine
     // No AI proxy required. Grid paints from the seed catalog.
     const goalConcern = goalToConcern(goal);
+    // v19.24 — chip_press when goal change drives the effect,
+    // retry when the user explicitly bumped attempt, initial_load
+    // on first mount.
+    const trigger = attempt > 0 ? 'retry' : 'chip_press';
     const promise =
       goal === 'best-for-you' && latestScan
         ? getRecommendationContextForScan(latestScan, {
             fresh: attempt > 0,
+            trigger,
           })
         : getRecommendationContextFromQuery(
             goalConcern
               ? `${goalConcern.replace(/_/g, ' ')} skincare`
               : goalToFreeQuery(goal),
-            { fresh: attempt > 0 }
+            { fresh: attempt > 0, trigger }
           );
     promise
       .then((rec) => {

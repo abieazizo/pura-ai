@@ -167,12 +167,13 @@ export function ProductsScreen() {
     // grid responsive when the proxy is down.
     getRecommendationContextFromQuery(q, {
       intent: { kind: 'query', text: q },
-      // v19.19 — was `true` in v19.18; flipped to `false` so the
-      // search NEVER waits for the AI proxy. Niche queries that
-      // miss the seed catalog now render the empty/unavailable
-      // state honestly instead of waiting 25s+ for an AI lookup.
       allowAiAugmentation: false,
       fresh: searchAttempt > 0,
+      // v19.24 — explicit trigger so diagnostics can prove
+      // "search vs retry" on this surface. searchAttempt > 0
+      // means the user tapped Retry; otherwise it's the
+      // debounced query effect from typing or chip-tap.
+      trigger: searchAttempt > 0 ? 'retry' : 'search',
     })
       .then((rec) => {
         if (cancelled) return;

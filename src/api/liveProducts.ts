@@ -503,12 +503,18 @@ export interface GetRecommendationOpts extends LookupOpts {
   /**
    * v19.17 — opt-in flag to augment the deterministic seed
    * catalog with AI-generated live candidates. Defaults to
-   * `false` so the primary path is fully deterministic. Set
-   * to `true` only when a caller has a specific reason to
-   * widen the candidate set (e.g. a niche query that the
-   * 24-product seed catalog can't answer cleanly).
+   * `false` so the primary path is fully deterministic.
    */
   allowAiAugmentation?: boolean;
+  /**
+   * v19.24 — explicit user-action label that triggered this
+   * fetch. Stamped onto the resulting `RetrievalAttempt`
+   * record so diagnostics + UI can prove the chain
+   * "initial_load → seed_fallback → retry → obf_live". Default
+   * is `'background'` for callers that don't supply one — but
+   * every user-visible surface SHOULD pass an accurate value.
+   */
+  trigger?: import('@/types/canonical').RetrievalTrigger;
 }
 
 // ---------------------------------------------------------------------------
@@ -645,6 +651,44 @@ function inferConcernFromQuery(query: string): ConcernType | null {
  * failures and returns null so the caller can fall through to
  * the seed catalog. Never throws.
  */
+// v19.24 — engine-layer attempt history. Bounded ring buffer so
+// the latest 5 attempts are surfaceable to diagnostics + the UI
+// without unbounded memory growth. Newest first.
+import type {
+  RetrievalAttempt,
+  RetrievalSource,
+  RetrievalTrigger,
+} from '@/types/canonical';
+
+const ATTEMPT_HISTORY_CAP = 5;
+const _attemptHistory: RetrievalAttempt[] = [];
+
+function genAttemptId(): string {
+  const t = Date.now().toString(36);
+  const r = Math.floor(Math.random() * 0xffff)
+    .toString(16)
+    .padStart(4, '0');
+  return `att-${t}-${r}`;
+}
+
+function recordAttempt(att: RetrievalAttempt): readonly RetrievalAttempt[] {
+  _attemptHistory.unshift(att);
+  if (_attemptHistory.length > ATTEMPT_HISTORY_CAP) {
+    _attemptHistory.length = ATTEMPT_HISTORY_CAP;
+  }
+  return _attemptHistory.slice();
+}
+
+/**
+ * v19.24 — public read-only accessor for diagnostics. Returns the
+ * engine's bounded attempt history (newest first). Diagnostics now
+ * displays this DIRECTLY, so the user sees the same chain the UI
+ * just used — not a separate diagnostics-only call.
+ */
+export function getRecommendationAttemptHistory(): readonly RetrievalAttempt[] {
+  return _attemptHistory.slice();
+}
+
 async function tryLiveSearch(
   query: string
 ): Promise<{ candidates: LiveProductCandidate[]; failure: string | null }> {
@@ -679,6 +723,7 @@ export async function getRecommendationContextFromQuery(
   opts: Omit<GetRecommendationOpts, 'intent'> & {
     intent?: RecommendationIntent;
     allowAiAugmentation?: boolean;
+    trigger?: RetrievalTrigger;
   } = {}
 ): Promise<RecommendationContext> {
   const intent: RecommendationIntent = opts.intent ?? {
@@ -689,8 +734,15 @@ export async function getRecommendationContextFromQuery(
   const profile = selectUserProfileContext(state);
   const inferredConcern = inferConcernFromQuery(query);
 
+  // v19.24 — open the attempt record up front. We always close it,
+  // success or failure, before returning.
+  const attemptId = genAttemptId();
+  const startedAt = new Date().toISOString();
+  const trigger: RetrievalTrigger = opts.trigger ?? 'background';
+
   let candidates: LiveProductCandidate[] = [];
   let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
+  let hardSource: RetrievalSource = 'empty';
   let failureReason: string | null = null;
 
   // STEP A.LIVE — Open Beauty Facts search, real public source.
@@ -698,8 +750,8 @@ export async function getRecommendationContextFromQuery(
   if (live.candidates.length > 0) {
     candidates = live.candidates;
     retrievalSource = 'live';
+    hardSource = 'obf_live';
   } else {
-    // OBF failed or returned nothing for this query. Fall back.
     failureReason = live.failure;
   }
 
@@ -711,12 +763,20 @@ export async function getRecommendationContextFromQuery(
       limit: 12,
       rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
     });
-    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
+    if (candidates.length > 0) {
+      retrievalSource = 'fallback';
+      hardSource = 'seed_fallback';
+    }
   }
 
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
+
+  // Final hard source: respect filter+dedupe outcome.
+  if (deduped.length === 0) {
+    hardSource = failureReason && hardSource === 'empty' ? 'error' : 'empty';
+  }
 
   // STEP F (AI rerank) remains DEFERRED — non-blocking refinement.
   const rerank = null;
@@ -724,6 +784,19 @@ export async function getRecommendationContextFromQuery(
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
     deduped.length > 0 ? 'available' : 'empty';
+
+  // Close the attempt record + push to bounded history.
+  const attempt: RetrievalAttempt = {
+    id: attemptId,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    trigger,
+    query,
+    source: hardSource,
+    success: deduped.length > 0,
+    failureReason,
+  };
+  const attempts = recordAttempt(attempt);
 
   return buildRecommendationContext({
     intent,
@@ -734,6 +807,8 @@ export async function getRecommendationContextFromQuery(
     failureReason: failureReason ?? undefined,
     rerankResult: rerank,
     retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
+    attempt,
+    attemptHistory: attempts,
   });
 }
 
@@ -752,6 +827,7 @@ export async function getRecommendationContextForScan(
   opts: Omit<GetRecommendationOpts, 'intent'> & {
     intent?: RecommendationIntent;
     allowAiAugmentation?: boolean;
+    trigger?: RetrievalTrigger;
   } = {}
 ): Promise<RecommendationContext> {
   const state = useAppStore.getState();
@@ -767,8 +843,14 @@ export async function getRecommendationContextForScan(
     primaryConcern,
   };
 
+  // v19.24 — open the attempt record.
+  const attemptId = genAttemptId();
+  const startedAt = new Date().toISOString();
+  const trigger: RetrievalTrigger = opts.trigger ?? 'initial_load';
+
   let candidates: LiveProductCandidate[] = [];
   let retrievalSource: 'live' | 'fallback' | 'empty' = 'empty';
+  let hardSource: RetrievalSource = 'empty';
   let failureReason: string | null = null;
 
   // STEP A.LIVE — OBF search using a concern-shaped query.
@@ -797,6 +879,7 @@ export async function getRecommendationContextForScan(
   if (live.candidates.length > 0) {
     candidates = live.candidates;
     retrievalSource = 'live';
+    hardSource = 'obf_live';
   } else {
     failureReason = live.failure;
   }
@@ -814,12 +897,20 @@ export async function getRecommendationContextForScan(
         rotation: opts.fresh ? Math.floor(Date.now() / 1000) : 0,
       });
     }
-    retrievalSource = candidates.length > 0 ? 'fallback' : 'empty';
+    if (candidates.length > 0) {
+      retrievalSource = 'fallback';
+      hardSource = 'seed_fallback';
+    }
   }
 
   // STEP B-D — normalize, filter, dedupe.
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
+
+  // Final hard source: respect filter+dedupe outcome.
+  if (deduped.length === 0) {
+    hardSource = failureReason && hardSource === 'empty' ? 'error' : 'empty';
+  }
 
   // v19.19 — AI rerank still DEFERRED to async refinement.
   const rerank = null;
@@ -828,6 +919,19 @@ export async function getRecommendationContextForScan(
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
     deduped.length > 0 ? 'available' : 'empty';
+
+  // v19.24 — close the attempt + push history.
+  const attempt: RetrievalAttempt = {
+    id: attemptId,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    trigger,
+    query: liveQuery,
+    source: hardSource,
+    success: deduped.length > 0,
+    failureReason,
+  };
+  const attempts = recordAttempt(attempt);
 
   return buildRecommendationContext({
     intent,
@@ -838,6 +942,8 @@ export async function getRecommendationContextForScan(
     failureReason: failureReason ?? undefined,
     rerankResult: rerank,
     retrievalSource: deduped.length > 0 ? retrievalSource : 'empty',
+    attempt,
+    attemptHistory: attempts,
   });
 }
 

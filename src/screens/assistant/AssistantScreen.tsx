@@ -821,8 +821,11 @@ function MessageLine({
     getRecommendationContextFromQuery(query, {
       intent: { kind: 'assistant_query' as never, text: query } as never,
       scanId: latestScan?.id ?? null,
-      // v19.19 — was `true` in v19.18; flipped to `false`.
       allowAiAugmentation: false,
+      // v19.24 — assistant inline product cards are an
+      // assistant-driven retrieval; tag them so diagnostics can
+      // tell a chip-press in Products from an assistant answer.
+      trigger: 'assistant',
     })
       .then((rec) => {
         if (cancelled) return;

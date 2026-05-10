@@ -147,13 +147,18 @@ export function ScanResultsFaceScreen({
     // screen + ProductsScreen all share the SAME engine.
 
     const runRecommendation = async (): Promise<RecommendationContext> => {
+      // v19.24 — explicit trigger label. The same effect runs on
+      // initial mount and on retry; liveAttempt distinguishes.
+      const trigger = liveAttempt > 0 ? 'retry' : 'initial_load';
       if (scan.aiAnalysis) {
         aiLog.info('result.products', 'getRecommendationContextForScan', {
           scanId: scan.id,
           primary_concern: scan.aiAnalysis.primary_concern,
+          trigger,
         });
         return getRecommendationContextForScan(scan, {
           fresh: liveAttempt > 0,
+          trigger,
         });
       }
       // No AI analysis on this scan — derive a free-text query
@@ -163,9 +168,11 @@ export function ScanResultsFaceScreen({
       aiLog.info('result.products', 'getRecommendationContextFromQuery (no AI scan)', {
         scanId: scan.id,
         query,
+        trigger,
       });
       return getRecommendationContextFromQuery(query, {
         fresh: liveAttempt > 0,
+        trigger,
       });
     };
 

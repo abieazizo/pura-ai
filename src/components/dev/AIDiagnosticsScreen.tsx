@@ -208,26 +208,43 @@ export function AIDiagnosticsScreen() {
           `${result.candidateProducts.length} candidate(s), ` +
           `${result.alternatives.length} alternative(s)`
       );
-      // v19.23 — the engine attempts OBF live search first.
-      // retrievalSource explicitly tags whether candidates came
-      // from OBF (live) or the seed catalog (fallback).
-      const retrievalLabel =
-        result.retrievalSource === 'live'
-          ? '✓ LIVE: real products from Open Beauty Facts'
-          : result.retrievalSource === 'fallback'
-          ? '↺ FALLBACK: seed catalog (OBF empty/failed)'
-          : result.retrievalSource === 'empty'
-          ? '✗ EMPTY: no candidates from OBF or seed'
-          : '? UNKNOWN retrieval path';
-      lines.push(`  ${retrievalLabel}`);
-      if (
-        result.failureReason &&
-        result.retrievalSource === 'fallback'
-      ) {
-        lines.push(`    OBF reason: ${result.failureReason.slice(0, 80)}`);
+      // v19.24 — read the HARD attempt contract. No 'unknown'
+      // values, no fuzzy inference. The attempt is the truth.
+      const att = result.lastAttempt;
+      const sourceLabel: Record<typeof att.source, string> = {
+        ai_proxy: '⚠ AI_PROXY (legacy — should never fire)',
+        obf_live: '✓ OBF_LIVE: real products from Open Beauty Facts',
+        seed_fallback: '↺ SEED_FALLBACK: bundled seed catalog',
+        empty: '✗ EMPTY: no candidates anywhere',
+        error: '✗ ERROR: catastrophic failure',
+      };
+      lines.push(`  source = ${att.source}`);
+      lines.push(`  ${sourceLabel[att.source]}`);
+      lines.push(`  trigger = ${att.trigger}`);
+      lines.push(`  success = ${att.success}`);
+      if (att.failureReason) {
+        lines.push(`  reason: ${att.failureReason.slice(0, 80)}`);
       }
       if (result.source === 'ai-rerank') {
         lines.push('  ↪ AI rerank applied (separate optional step)');
+      }
+      // Attempt history — show the last 5 fetches across the WHOLE
+      // app. This is the chain "initial_load → seed_fallback →
+      // retry → obf_live" the user wants visible.
+      if (result.attempts.length > 1) {
+        lines.push('  recent attempts (newest first):');
+        for (const a of result.attempts.slice(0, 5)) {
+          const dur =
+            a.completedAt && a.startedAt
+              ? Date.parse(a.completedAt) - Date.parse(a.startedAt)
+              : null;
+          lines.push(
+            `    ${a.trigger.padEnd(13)} ${a.source.padEnd(13)} ` +
+              `${a.success ? 'ok ' : 'fail'} ${
+                dur !== null ? `${dur}ms` : ''
+              } ${a.query?.slice(0, 30) ?? ''}`
+          );
+        }
       }
       const hero = result.heroProduct;
       if (hero) {

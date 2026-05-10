@@ -241,16 +241,83 @@ export interface RecommendationContext {
   source: 'ai-rerank' | 'deterministic';
 
   /**
-   * v19.21 — explicit retrieval-source tag separate from `source`.
-   * Tracks WHICH path produced the candidate set:
-   *   • 'live'     — AI live retrieval succeeded (real products)
-   *   • 'fallback' — AI failed/timed out → seed catalog used
-   *   • 'empty'    — neither path produced any candidates
-   *   • 'unknown'  — pre-v19.21 contexts that didn't track this
-   * Diagnostics + UI both read this so the user knows whether
-   * they're seeing live or fallback data.
+   * v19.21 — explicit retrieval-source tag (legacy four-way enum).
+   * Kept for backward-compat with v19.21–v19.23 callers that read
+   * this. New consumers should read `lastAttempt.source` (the hard
+   * v19.24 contract below) which has stricter values and richer
+   * trigger metadata.
    */
   retrievalSource: 'live' | 'fallback' | 'empty' | 'unknown';
+
+  /**
+   * v19.24 — hard retrieval attempt contract. EVERY call to
+   * `getRecommendationContext*` records exactly one attempt and
+   * stamps it here. Diagnostics, the UI, and telemetry all read
+   * this. There is no `'unknown'` value: every successful or
+   * failed retrieval has an explicit `RetrievalSource`.
+   *
+   * Combined with `RecommendationContext.attempts` (the bounded
+   * history below), this lets diagnostics prove which path the
+   * actual user-visible action used, not just what diagnostics
+   * itself ran.
+   */
+  lastAttempt: RetrievalAttempt;
+
+  /**
+   * v19.24 — bounded history of recent attempts (newest first,
+   * cap 5). Lets diagnostics show the chain
+   * "initial_load → seed_fallback → retry → obf_live" so the user
+   * can see exactly what the last few user actions did.
+   */
+  attempts: readonly RetrievalAttempt[];
+}
+
+// ============================================================================
+// v19.24 — Hard retrieval contract.
+//
+// Every fetch attempt against the recommendation engine produces
+// exactly one `RetrievalAttempt`. The contract makes the truth
+// unambiguous: there is no fuzzy 'unknown' value, every attempt
+// carries a strict source, a trigger label, timing, and explicit
+// success/failure shape.
+// ============================================================================
+
+export type RetrievalSource =
+  | 'ai_proxy'      // legacy AI gateway lookup (must not be used in v19.x+)
+  | 'obf_live'      // Open Beauty Facts live search (the v19.23 path)
+  | 'seed_fallback' // bundled deterministic seed catalog
+  | 'empty'         // both live and fallback returned zero candidates
+  | 'error';        // catastrophic failure before any path resolved
+
+export type RetrievalTrigger =
+  | 'initial_load'
+  | 'retry'
+  | 'chip_press'
+  | 'search'
+  | 'assistant'
+  | 'background';
+
+export interface RetrievalAttempt {
+  /** Stable id, generated at attempt start. */
+  id: string;
+  /** ISO timestamp when the engine entry point was invoked. */
+  startedAt: string;
+  /** ISO timestamp when the engine returned. `null` while in flight. */
+  completedAt: string | null;
+  /** What action triggered this attempt. */
+  trigger: RetrievalTrigger;
+  /** The query text or scan id that drove the attempt. */
+  query: string | null;
+  /** The path that ultimately served the candidates. */
+  source: RetrievalSource;
+  /**
+   * `true` when `source !== 'empty' && source !== 'error'` AND
+   * candidates were returned. The engine sets this explicitly so
+   * UI consumers don't have to derive it from string comparisons.
+   */
+  success: boolean;
+  /** Human-readable reason on failure, or `null` on success. */
+  failureReason: string | null;
 }
 
 // ============================================================================

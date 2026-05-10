@@ -531,7 +531,7 @@ function AlternativesList({ current }: { current: Product }) {
   useEffect(() => {
     let cancelled = false;
     const query = `${current.category}`;
-    getRecommendationContextFromQuery(query, {})
+    getRecommendationContextFromQuery(query, { trigger: 'background' })
       .then((rec) => {
         if (cancelled) return;
         // Drop the current product if it surfaces; cap at 3 alts.

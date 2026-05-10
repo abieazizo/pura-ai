@@ -115,7 +115,10 @@ export function PlanScreen() {
     // v19.20 — shared deterministic engine. Hero + alternatives
     // come from the seed catalog scoped by the scan's primary
     // concern. No AI proxy required.
-    getRecommendationContextForScan(latest, { fresh: liveAttempt > 0 })
+    getRecommendationContextForScan(latest, {
+      fresh: liveAttempt > 0,
+      trigger: liveAttempt > 0 ? 'retry' : 'initial_load',
+    })
       .then((rec) => {
         if (cancelled) return;
         const hero = rec.heroProduct;

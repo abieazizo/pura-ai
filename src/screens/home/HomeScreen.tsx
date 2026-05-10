@@ -123,14 +123,14 @@ export function HomeScreen() {
         // v19.20 — shared deterministic engine. Hero comes from
         // the seed catalog scoped by the scan's primary concern.
         // No AI proxy required.
+        // v19.24 — trigger label so diagnostics can read the chain.
+        const trigger = recAttempt > 0 ? 'retry' : 'initial_load';
         const rec = latestScanForRec.aiAnalysis
           ? await getRecommendationContextForScan(latestScanForRec, {
               fresh: recAttempt > 0,
+              trigger,
             })
           : await (async () => {
-              // No AI scan analysis — derive a concern from the
-              // deterministic concerns array and run the shared
-              // free-text engine.
               const cs = getConcerns(
                 latestScanForRec,
                 scans.length >= 2 ? scans[scans.length - 2] : undefined
@@ -142,6 +142,7 @@ export function HomeScreen() {
                 : 'best gentle daily skincare';
               return getRecommendationContextFromQuery(query, {
                 fresh: recAttempt > 0,
+                trigger,
               });
             })();
         if (cancelled) return;
