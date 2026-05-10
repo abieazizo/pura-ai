@@ -1,5 +1,5 @@
 import type { Product, ProductTint } from '@/types';
-import type { BarcodeResolution } from '@/ai/ai-contracts';
+import type { BarcodeResolution, LiveProductCandidate } from '@/ai/ai-contracts';
 
 export type ProductsRowKind =
   | 'best-for-you'
@@ -61,7 +61,19 @@ export type HomeStackParamList = {
   // its own primary tab — recommendations from Home should deep-link into
   // specific products without making the user detour to the Products tab.
   Products: undefined;
-  ProductDetail: { productId: string; tint?: ProductTint };
+  /**
+   * v19.37 — `liveCandidate` is the optional full payload the
+   * tapped card carries with it. ProductDetail uses it as the
+   * primary render source; `productId` + the store cache become
+   * fallbacks. Without this, a tapped candidate that the engine
+   * generated but the cache hasn't yet persisted (rare race) would
+   * land on "Product not found".
+   */
+  ProductDetail: {
+    productId: string;
+    tint?: ProductTint;
+    liveCandidate?: LiveProductCandidate;
+  };
   CategoryView: { kind: ProductsRowKind };
 };
 

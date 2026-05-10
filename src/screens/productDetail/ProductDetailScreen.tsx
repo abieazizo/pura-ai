@@ -35,6 +35,9 @@ import { palette } from '@/theme';
 import { CATEGORY_LABEL, getConcerns } from '@/utils/concerns';
 import type { Concern, Product, ProductCategory, ProductTint } from '@/types';
 import type { LiveProductCandidate } from '@/ai/ai-contracts';
+// v19.37 — record which source resolved the tapped product so the
+// dev truth panel can prove there's no "Product not found" loop.
+import { setDetailResolution } from '@/state/productUiTrace';
 // v19.20 — ProductDetailScreen's "alternatives" row now flows
 // through the shared deterministic recommendation engine.
 import {
@@ -44,7 +47,16 @@ import {
 import { LiveProductCard } from '@/components/products/LiveProductCard';
 
 type DetailRoute = RouteProp<
-  { ProductDetail: { productId: string; tint?: ProductTint } },
+  {
+    ProductDetail: {
+      productId: string;
+      tint?: ProductTint;
+      // v19.37 — full candidate carried by the navigation payload
+      // so the screen never lands on "Product not found" for a
+      // candidate that was just visible on the Products screen.
+      liveCandidate?: LiveProductCandidate;
+    };
+  },
   'ProductDetail'
 >;
 
@@ -60,21 +72,46 @@ export function ProductDetailScreen() {
   const route = useRoute<DetailRoute>();
   const { productId } = route.params;
   const tint: ProductTint = route.params.tint ?? 'sand';
+  // v19.37 — full candidate carried by the navigation payload, when
+  // the caller (LiveProductCard) supplied one. Primary render source.
+  const navCandidate = route.params.liveCandidate ?? null;
 
-  // v18.1 — resolve from the live cache first, fall back to seed.
-  // Live products surfaced anywhere in the app (Home, scan results,
-  // assistant, search) are written into `liveProductsById` by
-  // `src/api/liveProducts.ts`. ProductDetail can render either type
-  // because we adapt LiveProductCandidate → Product shape on read.
-  const liveCandidate = useAppStore(
+  // v18.1 — resolve from the live cache as a SECONDARY source. The
+  // canonical engine writes every trust-pool candidate into
+  // `liveProductsById`, but the navigation payload above is the
+  // primary truth so a tap never depends on cache freshness.
+  const storeCandidate = useAppStore(
     (s) => s.liveProductsById[productId] ?? null
   );
+  // v19.37 — choose the candidate by priority: nav payload > store
+  // cache > seed. Whichever wins, record the resolution source so
+  // the dev truth panel can prove no "not found" path is firing.
+  const liveCandidate: LiveProductCandidate | null =
+    navCandidate ?? storeCandidate;
   const product: Product | undefined = useMemo(() => {
     if (liveCandidate) {
       return liveCandidateToProduct(liveCandidate, tint);
     }
     return seedProducts.find((p) => p.id === productId);
   }, [liveCandidate, productId, tint]);
+
+  // v19.37 — record resolution source for the dev truth panel.
+  useEffect(() => {
+    let resolvedFrom:
+      | 'navigation_payload'
+      | 'store_lookup'
+      | 'fallback_lookup'
+      | 'not_found';
+    if (navCandidate) resolvedFrom = 'navigation_payload';
+    else if (storeCandidate) resolvedFrom = 'store_lookup';
+    else if (seedProducts.find((p) => p.id === productId))
+      resolvedFrom = 'fallback_lookup';
+    else resolvedFrom = 'not_found';
+    setDetailResolution({
+      receivedId: productId,
+      resolvedFrom,
+    });
+  }, [productId, navCandidate, storeCandidate]);
   const user = useAppStore(
     useShallow((s) => ({
       skinType: s.skinType,

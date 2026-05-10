@@ -48,8 +48,11 @@ import {
 } from '@/ai/aiHealthProbe';
 // v19.32 — read the real Products UI trace so diagnostics can
 // prove "diagnostics === UI" or surface the divergence.
+// v19.37 — also read lastTapped trace so we can prove the product
+// detail path is no longer landing on "Product not found".
 import {
   getAllTraces,
+  getLastTappedTrace,
   setDiagnosticsCounterpart,
   type ProductUiTrace,
 } from '@/state/productUiTrace';
@@ -706,6 +709,40 @@ export function AIDiagnosticsScreen() {
           </Text>
         </View>
 
+        {/* ── v19.37 — Last-tapped product trace ─────────────────── */}
+        <SectionHeader title="Last tapped product (v19.37)" />
+        <View style={styles.card}>
+          <Text style={styles.codeBlock} maxFontSizeMultiplier={1}>
+            {(() => {
+              const t = getLastTappedTrace();
+              if (!t.lastTappedProductId) {
+                return (
+                  'No card tapped yet.\n\n' +
+                  'Tap any product card on the Products screen — the' +
+                  ' tap is recorded here, the ProductDetail screen' +
+                  " then writes how it resolved the id (navigation_payload" +
+                  ' / store_lookup / fallback_lookup / not_found).' +
+                  '\n\n' +
+                  'PASS = detailScreenResolvedFrom is one of\n' +
+                  '       navigation_payload | store_lookup | fallback_lookup\n' +
+                  'FAIL = not_found  (the bug)'
+                );
+              }
+              return [
+                `lastTappedProductId   = ${t.lastTappedProductId}`,
+                `lastTappedProductName = ${t.lastTappedProductName ?? '(none)'}`,
+                `detailScreenReceivedId = ${
+                  t.detailScreenReceivedId ?? '(detail not yet mounted)'
+                }`,
+                `detailScreenResolvedFrom = ${
+                  t.detailScreenResolvedFrom ?? '(detail not yet mounted)'
+                }`,
+                `at                    = ${t.timestamp}`,
+              ].join('\n');
+            })()}
+          </Text>
+        </View>
+
         {/* ── v19.34 — Device verification kit ───────────────────── */}
         <SectionHeader title="Device verification kit (v19.34)" />
         <View style={styles.card}>
@@ -1030,7 +1067,27 @@ const DEVICE_TEST_KIT_TEXT = [
   '    • whyHeroFits ignores sensitivity',
   '',
   '──────────────────────────────────────────────────',
-  'OVERALL PASS:  every TEST 1-12 PASSes on device.',
+  'TEST 13 — product card tap opens detail (v19.37)',
+  '──────────────────────────────────────────────────',
+  '  1. Run TEST 1 (search "moisturizer").',
+  '  2. Tap any product card.',
+  '  3. The detail screen opens. Return to Diagnostics.',
+  '  4. Open the "Last tapped product" section.',
+  '  PASS:',
+  '    • lastTappedProductId equals the id you tapped',
+  '    • detailScreenReceivedId equals the same id',
+  '    • detailScreenResolvedFrom is one of:',
+  '         navigation_payload (preferred)',
+  '         store_lookup',
+  '         fallback_lookup',
+  '    • The detail screen actually rendered the product',
+  '      (NOT "Product not found")',
+  '  FAIL:',
+  '    • detailScreenResolvedFrom = "not_found"',
+  '    • OR the screen visibly showed "Product not found"',
+  '',
+  '──────────────────────────────────────────────────',
+  'OVERALL PASS:  every TEST 1-13 PASSes on device.',
   'OVERALL FAIL:  any test FAILs.',
   '──────────────────────────────────────────────────',
 ].join('\n');

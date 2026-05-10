@@ -1352,6 +1352,14 @@ export async function getRecommendationContextFromQuery(
       )
     : null;
 
+  // v19.37 — cache the trust-pool candidates into the shared
+  // liveProductsById store. Without this, ProductDetail (which
+  // resolves productId -> liveProductsById[productId]) never
+  // finds a candidate written by the v19.x engine and renders
+  // the "Product not found" empty state. This was the root
+  // cause of the user's tap-card "Product not found" bug.
+  cacheCandidates(trustedFree);
+
   return buildRecommendationContext({
     intent,
     // v19.29 — only trust-pool candidates reach the canonical
@@ -1626,6 +1634,11 @@ export async function getRecommendationContextForScan(
         )
       )
     : null;
+
+  // v19.37 — cache scan-path candidates into liveProductsById too,
+  // so ProductDetail can resolve any candidate the user taps from
+  // the scan results carousel without falling to "Product not found".
+  cacheCandidates(trustedScan);
 
   return buildRecommendationContext({
     intent,

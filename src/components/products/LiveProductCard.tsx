@@ -36,8 +36,11 @@ import type { LiveProductCandidate } from '@/ai/ai-contracts';
 // v19.32 — report image render success/failure to the UI trace
 // store so diagnostics can prove the bitmap actually decoded,
 // not just that imageUrl was present in the payload.
+// v19.37 — also write lastTapped trace so the dev truth panel can
+// prove which id the user tapped vs what ProductDetail received.
 import {
   updateImageRender,
+  setLastTappedProduct,
   type ProductUiTrigger,
 } from '@/state/productUiTrace';
 
@@ -149,9 +152,24 @@ export function LiveProductCard({
     }
     hapt.select();
     try {
+      // v19.37 — pass the full candidate alongside `productId` so
+      // ProductDetail can render directly from the navigation
+      // payload without depending on a fragile second lookup. The
+      // store cache (`liveProductsById`) is still written by the
+      // engine but the nav payload is the primary truth — a tap
+      // never lands on "Product not found" for a candidate that
+      // was just visible on the Products screen.
+      // v19.37 — write lastTapped trace fields so the dev truth
+      // panel can prove which id the user tapped vs which id
+      // ProductDetail received.
+      setLastTappedProduct({
+        id: candidate.id,
+        name: `${candidate.brand} — ${candidate.name}`,
+      });
       nav.navigate('ProductDetail', {
         productId: candidate.id,
         tint: 'sand',
+        liveCandidate: candidate,
       });
     } catch {
       // No nav context (rare) — fall back to merchant URL.

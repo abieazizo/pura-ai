@@ -103,6 +103,73 @@ export interface ProductUiTrace {
 }
 
 // ---------------------------------------------------------------------------
+// v19.37 — last-tapped product trace.
+//
+// Separate from ProductUiTrace because it spans Products screen ->
+// ProductDetail screen, not just one fetch. Lets the dev truth panel
+// show: "user tapped X on Products; ProductDetail received Y; resolved
+// from Z (navigation_payload / store_lookup / fallback_lookup / not_found)".
+// One single global slot — last-tapped wins.
+// ---------------------------------------------------------------------------
+
+export type DetailResolutionSource =
+  | 'navigation_payload'
+  | 'store_lookup'
+  | 'fallback_lookup'
+  | 'not_found';
+
+export interface LastTappedProductTrace {
+  lastTappedProductId: string | null;
+  lastTappedProductName: string | null;
+  detailScreenReceivedId: string | null;
+  detailScreenResolvedFrom: DetailResolutionSource | null;
+  /** ISO timestamp of the latest update. */
+  timestamp: string;
+}
+
+let lastTapped: LastTappedProductTrace = {
+  lastTappedProductId: null,
+  lastTappedProductName: null,
+  detailScreenReceivedId: null,
+  detailScreenResolvedFrom: null,
+  timestamp: new Date(0).toISOString(),
+};
+
+export function setLastTappedProduct(args: {
+  id: string;
+  name: string;
+}): void {
+  lastTapped = {
+    ...lastTapped,
+    lastTappedProductId: args.id,
+    lastTappedProductName: args.name,
+    // Reset detail-side fields when a new tap fires — the next mount
+    // of ProductDetail will fill them.
+    detailScreenReceivedId: null,
+    detailScreenResolvedFrom: null,
+    timestamp: new Date().toISOString(),
+  };
+  notify();
+}
+
+export function setDetailResolution(args: {
+  receivedId: string;
+  resolvedFrom: DetailResolutionSource;
+}): void {
+  lastTapped = {
+    ...lastTapped,
+    detailScreenReceivedId: args.receivedId,
+    detailScreenResolvedFrom: args.resolvedFrom,
+    timestamp: new Date().toISOString(),
+  };
+  notify();
+}
+
+export function getLastTappedTrace(): LastTappedProductTrace {
+  return { ...lastTapped };
+}
+
+// ---------------------------------------------------------------------------
 // In-memory store. Lightweight pub/sub so diagnostics can refresh
 // without a full state subscription. Key is `${scope}:${trigger}`,
 // scope='products' for the Products tab today; future surfaces can
