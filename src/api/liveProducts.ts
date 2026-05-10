@@ -520,6 +520,7 @@ import {
   HERO_TRUST_THRESHOLD,
   partitionByTrust,
   scoreTrustForCandidate,
+  type CandidateTrustScore,
   type ScoredCandidate,
 } from './candidateTrust';
 
@@ -1120,6 +1121,41 @@ export async function getRecommendationContextFromQuery(
       ),
     };
   }
+  // v19.30 — prefer image-backed hero. If AI picked a hero
+  // without an image AND there's an image-backed peer in the
+  // hero pool with a similar trust score (within 8 points),
+  // swap them. The hero card NEEDS a real packshot; trust
+  // scoring already weights image presence, but this catches
+  // the rare case where two hero-pool candidates have similar
+  // total scores and AI picked the image-less one for
+  // personalization reasons that don't matter visually.
+  if (rerank?.heroId) {
+    const heroEntry = partitionedFree.heroPool.find(
+      (s) => s.candidate.id === rerank!.heroId
+    );
+    if (heroEntry && !heroEntry.hasImage) {
+      const imageBackedAlternative = partitionedFree.heroPool.find(
+        (s) =>
+          s.candidate.id !== rerank!.heroId &&
+          s.hasImage &&
+          heroEntry.score.total - s.score.total <= 8
+      );
+      if (imageBackedAlternative) {
+        const oldHero = rerank.heroId;
+        const newHero = imageBackedAlternative.candidate.id;
+        rerank = {
+          ...rerank,
+          heroId: newHero,
+          alternativeIds: [
+            oldHero,
+            ...rerank.alternativeIds.filter(
+              (id) => id !== oldHero && id !== newHero
+            ),
+          ],
+        };
+      }
+    }
+  }
 
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
@@ -1325,6 +1361,34 @@ export async function getRecommendationContextForScan(
       ),
     };
   }
+  // v19.30 — prefer image-backed hero (same rule as free-text path).
+  if (rerank?.heroId) {
+    const heroEntry = partitionedScan.heroPool.find(
+      (s) => s.candidate.id === rerank!.heroId
+    );
+    if (heroEntry && !heroEntry.hasImage) {
+      const imageBackedAlternative = partitionedScan.heroPool.find(
+        (s) =>
+          s.candidate.id !== rerank!.heroId &&
+          s.hasImage &&
+          heroEntry.score.total - s.score.total <= 8
+      );
+      if (imageBackedAlternative) {
+        const oldHero = rerank.heroId;
+        const newHero = imageBackedAlternative.candidate.id;
+        rerank = {
+          ...rerank,
+          heroId: newHero,
+          alternativeIds: [
+            oldHero,
+            ...rerank.alternativeIds.filter(
+              (id) => id !== oldHero && id !== newHero
+            ),
+          ],
+        };
+      }
+    }
+  }
 
   // STEP E + G — local score + canonical assembly.
   const availability: RecommendationAvailability =
@@ -1362,3 +1426,152 @@ export async function getRecommendationContextForScan(
 // the legacy ProductsScreen search path and any future
 // AI-augmentation caller.
 void APP_CONCERN_TO_AI_CONCERN;
+
+// ---------------------------------------------------------------------------
+// v19.30 — verifyTrustPipeline. Public diagnostic helper that runs
+// a query through the full deterministic pre-AI pipeline (live
+// retrieval → filter → dedupe → trust scoring → partition) and
+// returns the structured trace WITHOUT firing AI rerank. Lets
+// diagnostics show "for query X, here are the top N candidates,
+// their scores, and which pool they fell into".
+//
+// Same engine path consumers use, just stops short of AI rerank
+// so the diagnostics view is fast and identical to what the UI
+// would see deterministically.
+// ---------------------------------------------------------------------------
+
+export interface TrustVerificationEntry {
+  candidateId: string;
+  brand: string;
+  name: string;
+  hasImage: boolean;
+  imageSource: LiveProductCandidate['imageSource'];
+  trust: CandidateTrustScore;
+  pool: 'hero' | 'alternative' | 'dropped';
+}
+
+export interface TrustVerificationResult {
+  query: string;
+  intent: {
+    mode: string;
+    interpretedConcern: string | null;
+    interpretedProductType: string | null;
+    avoidanceConstraints: string[];
+  };
+  retrievalSource: 'live' | 'fallback' | 'empty';
+  rawCandidateCount: number;
+  trustPoolCount: number;
+  heroPoolCount: number;
+  imageBackedCount: number;
+  topEntries: TrustVerificationEntry[];
+  failureReason: string | null;
+}
+
+export async function verifyTrustPipeline(
+  query: string
+): Promise<TrustVerificationResult> {
+  const state = useAppStore.getState();
+  const profile = selectUserProfileContext(state);
+  const latestScan = state.scans[state.scans.length - 1];
+  const previousForCtx = latestScan
+    ? state.scans
+        .filter((s) => s.capturedAt < latestScan.capturedAt)
+        .slice(-1)[0]
+    : undefined;
+  const skinStateForCtx = latestScan
+    ? selectSkinState(latestScan, previousForCtx, state.scans)
+    : null;
+
+  const interpretedIntent = interpretSearchIntent(
+    query,
+    profile,
+    skinStateForCtx
+  );
+
+  // Live retrieval (multi-probe).
+  const live = await tryLiveSearch(query, 'background', {
+    profile,
+    skinState: skinStateForCtx,
+    inferredConcern: interpretedIntent.interpretedConcern as
+      | ConcernType
+      | null,
+    intent: interpretedIntent,
+    chipIntent: null,
+  });
+
+  let candidates: LiveProductCandidate[] = live.candidates;
+  let retrievalSource: 'live' | 'fallback' | 'empty' =
+    live.candidates.length > 0 ? 'live' : 'empty';
+  let failureReason: string | null = live.failure;
+
+  if (candidates.length === 0) {
+    // Seed fallback so verification mirrors the real engine path.
+    const seed = retrieveSeedCandidates({
+      query,
+      concern: interpretedIntent.interpretedConcern,
+      limit: 12,
+      rotation: 0,
+    });
+    candidates = seed;
+    if (seed.length > 0) retrievalSource = 'fallback';
+  }
+
+  const filtered = filterUsableCandidates(candidates);
+  const deduped = dedupCandidates(filtered);
+
+  // Score every survivor.
+  const scored: ScoredCandidate[] = deduped.map((c) =>
+    scoreTrustForCandidate({
+      candidate: c,
+      intent: interpretedIntent,
+      profile,
+      skinState: skinStateForCtx,
+      matchedProbes: [],
+    })
+  );
+  const partitioned = partitionByTrust(scored);
+  const heroIds = new Set(partitioned.heroPool.map((s) => s.candidate.id));
+  const altIds = new Set(
+    partitioned.alternativePool.map((s) => s.candidate.id)
+  );
+
+  // Build per-entry trace, sorted by score desc. Cap at 8 to keep
+  // diagnostics compact.
+  const allScored = [...scored].sort(
+    (a, b) => b.score.total - a.score.total
+  );
+  const topEntries: TrustVerificationEntry[] = allScored
+    .slice(0, 8)
+    .map((s) => ({
+      candidateId: s.candidate.id,
+      brand: s.candidate.brand,
+      name: s.candidate.name,
+      hasImage: s.hasImage,
+      imageSource: s.candidate.imageSource,
+      trust: s.score,
+      pool: heroIds.has(s.candidate.id)
+        ? ('hero' as const)
+        : altIds.has(s.candidate.id)
+        ? ('alternative' as const)
+        : ('dropped' as const),
+    }));
+
+  const imageBackedCount = scored.filter((s) => s.hasImage).length;
+
+  return {
+    query,
+    intent: {
+      mode: interpretedIntent.mode,
+      interpretedConcern: interpretedIntent.interpretedConcern,
+      interpretedProductType: interpretedIntent.interpretedProductType,
+      avoidanceConstraints: interpretedIntent.avoidanceConstraints,
+    },
+    retrievalSource,
+    rawCandidateCount: deduped.length,
+    trustPoolCount: partitioned.alternativePool.length,
+    heroPoolCount: partitioned.heroPool.length,
+    imageBackedCount,
+    topEntries,
+    failureReason,
+  };
+}

@@ -222,10 +222,17 @@ export function AIDiagnosticsScreen() {
         'best for my pimple',
       ];
       lines.push('');
-      lines.push('  4-query verification (v19.29 trust + image):');
+      lines.push('  4-query verification (v19.30 trust + image):');
+      // v19.30 — pull verifyTrustPipeline so we can surface the
+      // ACTUAL per-candidate trust scores + pool placement, not
+      // only the post-AI-rerank hero. Proof beats summary.
+      const { verifyTrustPipeline } = await import(
+        '@/api/liveProducts'
+      );
       for (const target of realTargets) {
         const tInner = Date.now();
         try {
+          // 1. Run the full pipeline (with AI rerank if available).
           const r = await getRecommendationContextFromQuery(target, {
             intent: { kind: 'query', text: target },
             trigger: 'search',
@@ -234,8 +241,6 @@ export function AIDiagnosticsScreen() {
           const heroLabel = r.heroProduct
             ? `${r.heroProduct.brand} — ${r.heroProduct.name.slice(0, 28)}`
             : '(no hero)';
-          // v19.29 — count image-backed candidates so the user can
-          // verify image completeness across the result set.
           const withImage = r.candidateProducts.filter(
             (c) => !!c.imageUrl
           ).length;
@@ -246,6 +251,48 @@ export function AIDiagnosticsScreen() {
               `(${withImage} w/img) · ${r.lastAttempt.source} · ${ms}ms · ` +
               `${heroHasImg} · ${heroLabel}`
           );
+          // 2. Run the deterministic-only verification trace and
+          // surface the top 3 candidates' trust breakdowns. This
+          // is the "real verification" — every score component
+          // is visible, the user can see why each survived.
+          const trace = await verifyTrustPipeline(target);
+          lines.push(
+            `      intent: ${trace.intent.mode}` +
+              (trace.intent.interpretedConcern
+                ? ` · ${trace.intent.interpretedConcern}`
+                : '') +
+              (trace.intent.interpretedProductType
+                ? ` · ${trace.intent.interpretedProductType}`
+                : '') +
+              (trace.intent.avoidanceConstraints.length > 0
+                ? ` · avoid:[${trace.intent.avoidanceConstraints.join(',')}]`
+                : '')
+          );
+          lines.push(
+            `      pools: hero=${trace.heroPoolCount} ` +
+              `alt=${trace.trustPoolCount} ` +
+              `dropped=${trace.rawCandidateCount - trace.trustPoolCount} ` +
+              `image-backed=${trace.imageBackedCount}`
+          );
+          for (const e of trace.topEntries.slice(0, 3)) {
+            const tag =
+              e.pool === 'hero' ? '[H]' : e.pool === 'alternative' ? '[A]' : '[X]';
+            const img = e.hasImage ? `img:${e.imageSource}` : 'img:none';
+            const briefName = `${e.brand}/${e.name}`.slice(0, 36);
+            lines.push(
+              `        ${tag} ${e.trust.total.toString().padStart(2, ' ')} ` +
+                `pt=${e.trust.productTypeFit} ` +
+                `cn=${e.trust.concernFit} ` +
+                `sf=${e.trust.safetyFit} ` +
+                `pr=${e.trust.probeSupport} ` +
+                `mt=${e.trust.metadataCompleteness} ` +
+                `im=${e.trust.imageCompleteness}` +
+                (e.trust.noisePenalty > 0
+                  ? ` -np=${e.trust.noisePenalty}`
+                  : '') +
+                ` · ${img} · ${briefName}`
+            );
+          }
         } catch (e) {
           lines.push(
             `    "${target}" → ERROR: ${e instanceof Error ? e.message : String(e)}`
