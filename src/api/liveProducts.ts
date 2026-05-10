@@ -784,11 +784,6 @@ export function getRecommendationAttemptHistory(): readonly RetrievalAttempt[] {
 function backendCandidateToLive(
   bp: BackendProductCandidate
 ): LiveProductCandidate {
-  // v19.29 — derive imageSource from the URL shape so trust
-  // scoring + UI fallback can distinguish OBF-served images
-  // from merchant-served. OBF images live at
-  // `images.openbeautyfacts.org/...`. Anything else is treated
-  // as merchant-supplied.
   let imageSource: LiveProductCandidate['imageSource'] = 'none';
   if (bp.imageUrl && bp.imageUrl.length > 0) {
     if (/openbeautyfacts/i.test(bp.imageUrl)) {
@@ -805,14 +800,18 @@ function backendCandidateToLive(
     concernTags:
       bp.concernTags as unknown as LiveProductCandidate['concernTags'],
     skinTypeTags: bp.skinTypeTags ?? [],
-    ingredientsHighlights: [],
+    // v19.31 — preserve ingredients + description from the wire
+    // shape so the client trust scorer's metadataCompleteness
+    // signal actually fires. Pre-v19.31 these were always blank
+    // and metadata score was capped at 4-6 / 10.
+    ingredientsHighlights: bp.ingredientsHighlights ?? [],
     price: null,
     currency: 'USD',
     merchantName: bp.merchantName,
     productUrl: bp.productUrl,
     imageUrl: bp.imageUrl,
     imageSource,
-    shortDescription: '',
+    shortDescription: bp.shortDescription ?? '',
     matchReason: '',
     availability: 'available',
     sourceTimestamp: new Date().toISOString(),
@@ -843,13 +842,23 @@ async function tryLiveSearch(
     profile: ReturnType<typeof selectUserProfileContext>;
     skinState: ReturnType<typeof selectSkinState>;
     inferredConcern: ConcernType | null;
-    // v19.27 — generalized intent + optional chip intent.
     intent?: InterpretedIntent;
     chipIntent?: string | null;
   }
-): Promise<{ candidates: LiveProductCandidate[]; failure: string | null }> {
+): Promise<{
+  candidates: LiveProductCandidate[];
+  failure: string | null;
+  // v19.31 — per-candidate matchedProbes annotation from the
+  // server's multi-probe fan-out. Keyed by candidate id; empty
+  // when the legacy single-query path was used.
+  matchedProbesById: Map<string, string[]>;
+}> {
   if (!query || query.trim().length === 0) {
-    return { candidates: [], failure: null };
+    return {
+      candidates: [],
+      failure: null,
+      matchedProbesById: new Map(),
+    };
   }
   try {
     // v19.26 — translate the canonical UserProfileContext +
@@ -908,16 +917,32 @@ async function tryLiveSearch(
       probes: probePlan?.probes,
     });
     if (res.source === 'error') {
-      return { candidates: [], failure: res.failureReason ?? 'unknown' };
+      return {
+        candidates: [],
+        failure: res.failureReason ?? 'unknown',
+        matchedProbesById: new Map(),
+      };
+    }
+    // v19.31 — capture matchedProbes from the wire shape into a
+    // map keyed by id BEFORE the adapter strips the field. The
+    // engine passes this map to the trust scorer so probeSupport
+    // actually reflects multi-probe matches.
+    const matchedProbesById = new Map<string, string[]>();
+    for (const bp of res.candidates) {
+      if (Array.isArray(bp.matchedProbes) && bp.matchedProbes.length > 0) {
+        matchedProbesById.set(bp.id, bp.matchedProbes);
+      }
     }
     return {
       candidates: res.candidates.map(backendCandidateToLive),
       failure: null,
+      matchedProbesById,
     };
   } catch (e) {
     return {
       candidates: [],
       failure: e instanceof Error ? e.message : String(e),
+      matchedProbesById: new Map(),
     };
   }
 }
@@ -1055,17 +1080,16 @@ export async function getRecommendationContextFromQuery(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // STEP D.5 — v19.29 trust scoring + partition. Each candidate
-  // gets a [0..100] score; only candidates above the alternative
-  // threshold survive to AI rerank. Above the hero threshold are
-  // eligible as hero. Image-backed candidates win ties.
+  // STEP D.5 — v19.29 trust scoring + partition. v19.31 passes
+  // per-candidate matchedProbes from the server's multi-probe
+  // fan-out so probeSupport actually reflects evidence quality.
   const scoredFree: ScoredCandidate[] = deduped.map((c) =>
     scoreTrustForCandidate({
       candidate: c,
       intent: interpretedIntent,
       profile,
       skinState: skinStateForCtx,
-      matchedProbes: [],
+      matchedProbes: live.matchedProbesById.get(c.id) ?? [],
     })
   );
   const partitionedFree = partitionByTrust(scoredFree);
@@ -1300,7 +1324,8 @@ export async function getRecommendationContextForScan(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // STEP D.5 — v19.29 trust scoring + partition.
+  // STEP D.5 — v19.29 trust scoring + partition. v19.31 threads
+  // matchedProbes from the server fan-out into the scorer.
   const scanIntent = interpretSearchIntent(liveQuery, profile, skinState);
   const scoredScan: ScoredCandidate[] = deduped.map((c) =>
     scoreTrustForCandidate({
@@ -1308,7 +1333,7 @@ export async function getRecommendationContextForScan(
       intent: scanIntent,
       profile,
       skinState,
-      matchedProbes: [],
+      matchedProbes: live.matchedProbesById.get(c.id) ?? [],
     })
   );
   const partitionedScan = partitionByTrust(scoredScan);
@@ -1519,14 +1544,16 @@ export async function verifyTrustPipeline(
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
 
-  // Score every survivor.
+  // Score every survivor. v19.31 — pass matchedProbes from the
+  // verification's own live retrieval so the trace shows real
+  // probe evidence per candidate.
   const scored: ScoredCandidate[] = deduped.map((c) =>
     scoreTrustForCandidate({
       candidate: c,
       intent: interpretedIntent,
       profile,
       skinState: skinStateForCtx,
-      matchedProbes: [],
+      matchedProbes: live.matchedProbesById.get(c.id) ?? [],
     })
   );
   const partitioned = partitionByTrust(scored);

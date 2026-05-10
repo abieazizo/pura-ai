@@ -126,6 +126,21 @@ export interface BackendProductCandidate {
   skinTypeTags: string[];
   /** Safety tags ('fragrance_free', 'alcohol_free', etc.). */
   safetyTags: string[];
+  /**
+   * v19.31 — best-effort key ingredient highlights derived from
+   * upstream `ingredients_text`. ≤5 entries, each ≤80 chars.
+   * Improves the client's metadataCompleteness trust score and
+   * gives the AI rerank prompt richer context. Empty array when
+   * upstream had no ingredients data.
+   */
+  ingredientsHighlights?: string[];
+  /**
+   * v19.31 — short human-readable description. Synthesized
+   * server-side from product name + category + key ingredients
+   * when upstream has no description field. Bounded to ~140
+   * chars for UI safety.
+   */
+  shortDescription?: string;
   /** Always 'live_backend' on a non-empty response. */
   source: 'live_backend';
   /**

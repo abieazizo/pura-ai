@@ -100,9 +100,27 @@ function scoreConcernFit(
   intent: InterpretedIntent,
   skinState: SkinState | null
 ): number {
-  let s = 0;
+  // v19.31 — when NO concern is in play (intent didn't extract
+  // one AND user has no scan-driven topConcerns), the query is
+  // a pure product-type query like "moisturizer" or "cleanser".
+  // We must NOT punish candidates for lacking concern tags —
+  // the user didn't ask about a concern. Return a neutral
+  // baseline (12 of 20 max ≈ 60% credit) so the trust total
+  // doesn't drop just because OBF metadata is sparse.
+  const noConcernInPlay =
+    !intent.interpretedConcern &&
+    (!skinState?.topConcerns || skinState.topConcerns.length === 0);
+  if (noConcernInPlay) return 12;
+
   const concernTags = c.concernTags ?? [];
-  if (concernTags.length === 0) return 0;
+  if (concernTags.length === 0) {
+    // Concern IS in play but candidate has no tags — small partial
+    // credit (4) instead of zero. Tag-less candidates with weak OBF
+    // metadata can still be valid skincare; the AI rerank step
+    // makes the final call.
+    return 4;
+  }
+  let s = 0;
   if (
     intent.interpretedConcern &&
     concernTags.includes(intent.interpretedConcern)
@@ -116,7 +134,10 @@ function scoreConcernFit(
       }
     }
   }
-  return Math.min(20, s);
+  // Soft baseline of 4 even when no tag matched, so a candidate
+  // with concern tags + concern-in-play still scores something
+  // when the specific concerns happen to differ.
+  return Math.min(20, Math.max(s, 4));
 }
 
 /**

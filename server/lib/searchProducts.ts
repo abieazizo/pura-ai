@@ -276,6 +276,44 @@ function pickBestImageUrl(p: OBFProduct): string | null {
   return null;
 }
 
+/**
+ * v19.31 — extract ≤5 ingredient highlights from OBF
+ * `ingredients_text`. Splits on comma/semicolon, trims, drops
+ * empty / overly long entries. Real OBF data has commas in
+ * almost every ingredient list, so this gives the trust scorer
+ * + AI rerank a useful highlight list.
+ */
+function extractIngredientHighlights(p: OBFProduct): string[] {
+  const text =
+    (p.ingredients_text_en || p.ingredients_text || '').trim();
+  if (text.length === 0) return [];
+  return text
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 3 && s.length <= 80)
+    .slice(0, 5);
+}
+
+/**
+ * v19.31 — synthesize a short human-readable description from
+ * the candidate's name, category, and top ingredient highlights.
+ * Used when upstream has no description field. Bounded to ~140
+ * chars for UI safety.
+ */
+function buildShortDescription(
+  name: string,
+  category: string | null,
+  highlights: string[]
+): string {
+  const parts: string[] = [];
+  if (category) parts.push(category);
+  if (highlights.length > 0) {
+    parts.push(`with ${highlights.slice(0, 2).join(', ')}`);
+  }
+  if (parts.length === 0) return name.slice(0, 140);
+  return parts.join(' ').slice(0, 140);
+}
+
 function toCandidate(p: OBFProduct): BackendProductCandidate | null {
   const code = p.code ?? p._id ?? '';
   const name = (p.product_name_en || p.product_name || p.generic_name || '')
@@ -287,6 +325,14 @@ function toCandidate(p: OBFProduct): BackendProductCandidate | null {
   const category = inferCategory(p.categories);
   const merchant = deriveMerchant(brand, name);
   const imageUrl = pickBestImageUrl(p);
+  // v19.31 — populate highlights + description so client trust
+  // scoring + AI rerank get the metadata they need.
+  const ingredientsHighlights = extractIngredientHighlights(p);
+  const shortDescription = buildShortDescription(
+    name,
+    category,
+    ingredientsHighlights
+  );
 
   return {
     id: `be-${code}`,
@@ -300,6 +346,8 @@ function toCandidate(p: OBFProduct): BackendProductCandidate | null {
     concernTags: deriveConcernTags(p),
     skinTypeTags: [], // OBF doesn't carry skin-type metadata
     safetyTags: deriveSafetyTags(p),
+    ingredientsHighlights,
+    shortDescription,
     source: 'live_backend',
   };
 }
