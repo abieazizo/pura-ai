@@ -1413,39 +1413,50 @@ export const PRODUCT_RERANK_SCHEMA: JsonSchema = {
 // recommendation; retrieval enriches it.
 // ============================================================================
 
+// v21.0 — recommendationMode trimmed to the two modes the spec
+// requires. concern_focused_search collapses into query_driven_search
+// (the planner can still recognize concern-shaped queries; mode
+// distinction is no longer needed for downstream wiring).
 export type ProductRecommendationMode =
   | 'best_for_you'
-  | 'query_driven_search'
-  | 'concern_focused_search';
+  | 'query_driven_search';
+
+export type SlotQueryFamily =
+  | 'moisturizer'
+  | 'serum_texture'
+  | 'chemical_exfoliant'
+  | 'blemish_support'
+  | 'spf'
+  | 'cleanser'
+  | 'other';
 
 export interface ProductRecommendationSlot {
+  /** Stable slot key the selector references back ("slot_1" / "moisturizer"). */
+  slotKey: string;
   /** Short user-facing label ("Lightweight gel moisturizer"). */
   slotLabel: string;
-  /** Product type the slot targets (moisturizer / serum / cleanser / etc). */
-  productType: string;
+  /** v21.0 — canonical query family the slot targets. */
+  queryFamily: SlotQueryFamily;
   /** Plain-English target need this slot addresses for THIS user. */
   targetNeed: string;
   /** Ingredient / texture / safety signals the slot should favor. */
-  desiredSignals: string[];
+  mustHaveSignals: string[];
   /** Signals the slot should avoid. */
   avoidSignals: string[];
-  /**
-   * Retrieval queries the engine will run for this slot. Each should
-   * be a concrete search term (e.g. "gel moisturizer", "ceramide
-   * barrier cream"). The engine will fan out across these via the
-   * existing multi-probe retrieval and enrich the result.
-   */
+  /** Retrieval queries the engine will run for this slot. */
   searchQueries: string[];
+  /** Plain-English reason this slot matters to THIS user. */
+  whyThisSlotMatters: string;
 }
 
 export interface ProductRecommendationPlan {
   recommendationMode: ProductRecommendationMode;
   /** One-line plain-English statement of the user's dominant need. */
   userNeedSummary: string;
+  /** v21.0 — dominant concern label (or null when none dominates). */
+  dominantConcern: string | null;
   /** Ordered slots (strongest first). 1-4 entries. */
-  productRequests: ProductRecommendationSlot[];
-  /** Short reason explaining why these product types fit this user. */
-  whyTheseProducts: string;
+  slots: ProductRecommendationSlot[];
 }
 
 export const PRODUCT_RECOMMENDATION_PLAN_SCHEMA: JsonSchema = {
@@ -1454,39 +1465,100 @@ export const PRODUCT_RECOMMENDATION_PLAN_SCHEMA: JsonSchema = {
   required: [
     'recommendationMode',
     'userNeedSummary',
-    'productRequests',
-    'whyTheseProducts',
+    'dominantConcern',
+    'slots',
   ],
   properties: {
     recommendationMode: {
       type: 'string',
-      enum: ['best_for_you', 'query_driven_search', 'concern_focused_search'],
+      enum: ['best_for_you', 'query_driven_search'],
     },
     userNeedSummary: { type: 'string' },
-    productRequests: {
+    dominantConcern: { type: ['string', 'null'] },
+    slots: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
         required: [
+          'slotKey',
           'slotLabel',
-          'productType',
+          'queryFamily',
           'targetNeed',
-          'desiredSignals',
+          'mustHaveSignals',
           'avoidSignals',
           'searchQueries',
+          'whyThisSlotMatters',
         ],
         properties: {
+          slotKey: { type: 'string' },
           slotLabel: { type: 'string' },
-          productType: { type: 'string' },
+          queryFamily: {
+            type: 'string',
+            enum: [
+              'moisturizer',
+              'serum_texture',
+              'chemical_exfoliant',
+              'blemish_support',
+              'spf',
+              'cleanser',
+              'other',
+            ],
+          },
           targetNeed: { type: 'string' },
-          desiredSignals: { type: 'array', items: { type: 'string' } },
+          mustHaveSignals: { type: 'array', items: { type: 'string' } },
           avoidSignals: { type: 'array', items: { type: 'string' } },
           searchQueries: { type: 'array', items: { type: 'string' } },
+          whyThisSlotMatters: { type: 'string' },
         },
       },
     },
-    whyTheseProducts: { type: 'string' },
+  },
+};
+
+// ============================================================================
+// v21.0 — SLOT SELECTOR.
+// AI picks the best real candidate per slot from an already-retrieved
+// shortlist. Does NOT invent products. Returns one SlotSelection per
+// slot, each referencing a real candidate id.
+// ============================================================================
+
+export interface SlotSelection {
+  slotKey: string;
+  /** Id of the chosen candidate (must exist in the shortlist), or null when no candidate fits. */
+  selectedCandidateId: string | null;
+  /** User-aware specific reason this candidate was picked. */
+  whyPicked: string;
+  /** Short reason why the other candidates lost. */
+  whyNotOthersShort: string;
+}
+
+export interface SlotSelectionResult {
+  selections: SlotSelection[];
+  /** One short overall sentence for the list of picks. */
+  listReason: string;
+}
+
+export const SLOT_SELECTION_RESULT_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['selections', 'listReason'],
+  properties: {
+    selections: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['slotKey', 'selectedCandidateId', 'whyPicked', 'whyNotOthersShort'],
+        properties: {
+          slotKey: { type: 'string' },
+          selectedCandidateId: { type: ['string', 'null'] },
+          whyPicked: { type: 'string' },
+          whyNotOthersShort: { type: 'string' },
+        },
+      },
+    },
+    listReason: { type: 'string' },
   },
 };
 
@@ -1511,6 +1583,7 @@ export interface AIStructuredSchemas {
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA: JsonSchema;
   PRODUCT_RERANK_SCHEMA: JsonSchema;
   PRODUCT_RECOMMENDATION_PLAN_SCHEMA: JsonSchema;
+  SLOT_SELECTION_RESULT_SCHEMA: JsonSchema;
 }
 
 export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
@@ -1528,6 +1601,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
   PRODUCT_RERANK_SCHEMA,
   PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
+  SLOT_SELECTION_RESULT_SCHEMA,
 };
 
 // v11.1 — legacy `Claude*` schema aliases removed.

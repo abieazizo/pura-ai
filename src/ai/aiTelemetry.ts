@@ -59,7 +59,8 @@ export type AIMethodKey =
   | 'buildProgressBundle'
   | 'lookupLiveProducts'
   | 'rerankProducts'
-  | 'recommendProductsForUser';
+  | 'recommendProductsForUser'
+  | 'selectProductForSlot';
 
 export type AIMethodStatus =
   | 'idle'
@@ -185,6 +186,7 @@ const METHOD_KEYS: AIMethodKey[] = [
   'lookupLiveProducts',
   'rerankProducts',
   'recommendProductsForUser',
+  'selectProductForSlot',
 ];
 
 const FEATURE_KEYS: AIFeatureKey[] = [

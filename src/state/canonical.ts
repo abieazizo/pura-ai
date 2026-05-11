@@ -720,16 +720,23 @@ export function buildRecommendationContext(args: {
   const resolvedRecommendationStatus: ProductRecommendationStatus =
     recommendationStatus ?? {
       recommendationMode: null,
-      aiRecommendationAttempted: false,
-      aiRecommendationReturned: false,
-      aiRecommendationApplied: false,
-      aiRecommendationReason:
+      dominantConcern: null,
+      aiPlanAttempted: false,
+      aiPlanReturned: false,
+      aiPlanApplied: false,
+      aiPlanReason:
         'caller did not invoke AI-first planner (legacy code path)',
+      aiSelectAttempted: false,
+      aiSelectReturned: false,
+      aiSelectApplied: false,
+      aiSelectReason: 'planner did not run, selector not attempted',
       userNeedSummary: null,
       whyTheseProducts: null,
       productSourceMode: 'deterministic_only',
       slotCount: 0,
       slotLabels: [],
+      plannerVersion: null,
+      selectorVersion: null,
     };
   // v19.42 — synthesize a deterministic_fallback status when the
   // caller didn't supply one (legacy callers). Default makes the

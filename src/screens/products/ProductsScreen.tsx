@@ -632,7 +632,7 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v19.43
+          REAL PATH v21.0
         </Text>
       </View>
       <View style={realPathStyles.row}>
@@ -689,9 +689,9 @@ function RealPathBadge({
           Every fetch fills this — if AI was skipped, you see the
           reason; if AI failed, you see the reason; if AI applied,
           you see hero-before vs hero-after. */}
-      {/* v19.43 — AI-FIRST PRODUCT RECOMMENDATION STATUS. The
-          single most important status: which path produced the
-          visible result. ai_first means AI drove the picks. */}
+      {/* v21.0 — AI-FIRST PRODUCT RECOMMENDATION STATUS. Two-stage:
+          PLAN (planner) + SELECT (slot selector). productSourceMode
+          tells the user which path produced the visible result. */}
       <View style={realPathStyles.row}>
         <Text style={realPathStyles.label}>productSourceMode</Text>
         <Text style={realPathStyles.value} numberOfLines={1}>
@@ -705,28 +705,72 @@ function RealPathBadge({
         </Text>
       </View>
       <View style={realPathStyles.row}>
-        <Text style={realPathStyles.label}>aiRecommendationAttempted</Text>
-        <Text style={realPathStyles.value}>
-          {rec?.recommendationStatus?.aiRecommendationAttempted ? 'YES' : 'NO'}
+        <Text style={realPathStyles.label}>dominantConcern</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.dominantConcern ?? '(none)'}
         </Text>
       </View>
       <View style={realPathStyles.row}>
-        <Text style={realPathStyles.label}>aiRecommendationReturned</Text>
-        <Text style={realPathStyles.value}>
-          {rec?.recommendationStatus?.aiRecommendationReturned ? 'YES' : 'NO'}
+        <Text style={realPathStyles.label}>plannerVersion</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.plannerVersion ?? '(none)'}
         </Text>
       </View>
       <View style={realPathStyles.row}>
-        <Text style={realPathStyles.label}>aiRecommendationApplied</Text>
-        <Text style={realPathStyles.value}>
-          {rec?.recommendationStatus?.aiRecommendationApplied ? 'YES' : 'NO'}
+        <Text style={realPathStyles.label}>selectorVersion</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.selectorVersion ?? '(none)'}
         </Text>
       </View>
-      {rec?.recommendationStatus?.aiRecommendationReason ? (
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiPlanAttempted</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiPlanAttempted ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiPlanReturned</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiPlanReturned ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiPlanApplied</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiPlanApplied ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      {rec?.recommendationStatus?.aiPlanReason ? (
         <View style={realPathStyles.row}>
-          <Text style={realPathStyles.label}>aiRecommendationReason</Text>
+          <Text style={realPathStyles.label}>aiPlanReason</Text>
           <Text style={realPathStyles.value} numberOfLines={3}>
-            {rec.recommendationStatus.aiRecommendationReason}
+            {rec.recommendationStatus.aiPlanReason}
+          </Text>
+        </View>
+      ) : null}
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiSelectAttempted</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiSelectAttempted ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiSelectReturned</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiSelectReturned ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiSelectApplied</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiSelectApplied ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      {rec?.recommendationStatus?.aiSelectReason ? (
+        <View style={realPathStyles.row}>
+          <Text style={realPathStyles.label}>aiSelectReason</Text>
+          <Text style={realPathStyles.value} numberOfLines={3}>
+            {rec.recommendationStatus.aiSelectReason}
           </Text>
         </View>
       ) : null}

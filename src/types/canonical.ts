@@ -359,23 +359,31 @@ export interface RecommendationContext {
 }
 
 /**
- * v19.43 — AI-first product recommendation status. Every fetch on
- * the user-facing product path produces one of these.
+ * v21.0 — AI-first product recommendation status with explicit
+ * planner + selector breakdown. Replaces the v19.43 fields
+ * (aiRecommendationAttempted/Returned/Applied/Reason) with the
+ * required v21.0 names (aiPlan-prefixed and aiSelect-prefixed) so
+ * the dev panel can distinguish planner failures from selector
+ * failures.
  */
 export interface ProductRecommendationStatus {
-  /** Which mode the planner targeted (and which fallback was used). */
-  recommendationMode: 'best_for_you' | 'query_driven_search' | 'concern_focused_search' | null;
-  /** Did the engine attempt the AI-first planner? */
-  aiRecommendationAttempted: boolean;
-  /** Did the planner return a valid structured plan? */
-  aiRecommendationReturned: boolean;
-  /** Did retrieval enrich the plan into visible products? */
-  aiRecommendationApplied: boolean;
-  /** Short reason — explains every negative branch. */
-  aiRecommendationReason: string | null;
+  /** Which mode the planner targeted. */
+  recommendationMode: 'best_for_you' | 'query_driven_search' | null;
+  /** Dominant concern label inferred by the planner (null when none). */
+  dominantConcern: string | null;
+  /** Planner stage. */
+  aiPlanAttempted: boolean;
+  aiPlanReturned: boolean;
+  aiPlanApplied: boolean;
+  aiPlanReason: string | null;
+  /** Selector stage (only meaningful when planner succeeded). */
+  aiSelectAttempted: boolean;
+  aiSelectReturned: boolean;
+  aiSelectApplied: boolean;
+  aiSelectReason: string | null;
   /** One-line plain-English user-need summary from the planner. */
   userNeedSummary: string | null;
-  /** Short reason explaining why these product types fit. */
+  /** Short reason explaining why this slot fits THIS user (from selector). */
   whyTheseProducts: string | null;
   /**
    * Which path produced the visible result. Three discrete states;
@@ -386,6 +394,9 @@ export interface ProductRecommendationStatus {
   slotCount: number;
   /** Slot labels for the truth panel. */
   slotLabels: readonly string[];
+  /** Version markers so the device test can confirm v21.0 is running. */
+  plannerVersion: string | null;
+  selectorVersion: string | null;
 }
 
 /**

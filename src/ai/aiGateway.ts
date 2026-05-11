@@ -58,6 +58,7 @@ import type {
   ProductRecommendationPlan,
   ProgressExplanation,
   RoutineRecommendation,
+  SlotSelectionResult,
   ScanPreflightResult,
   SearchSuggestionResult,
   SkinScoreExplanation,
@@ -77,6 +78,7 @@ import {
   validateProductMatchResult,
   validateProductRecommendationPlan,
   validateProductRerankResult,
+  validateSlotSelectionResult,
   validateProgressBundle,
   validateProgressExplanation,
   validateRoutineRecommendation,
@@ -201,6 +203,9 @@ const TIMEOUT_MS = {
   // (4 slots × ~100 tokens + overhead). 20s budget covers cold start
   // with comfortable headroom.
   recommendProductsForUser: 20_000,
+  // v21.0 — AI slot selector. One round-trip with 4 slots × ~80 tokens
+  // structured output. 20s budget mirrors the planner.
+  selectProductForSlot: 20_000,
   // v19.14 — DROPPED 45_000 → 25_000. v19.10's 45s budget existed
   // to cover gpt-5-mini's variable reasoning latency. v19.14
   // swaps lookupLiveProducts to gpt-4o-mini (non-reasoning, 2-5s
@@ -857,8 +862,49 @@ export interface AIGateway {
       isCombo: boolean;
       label: string;
     };
-    suggestedMode?: 'best_for_you' | 'query_driven_search' | 'concern_focused_search';
+    suggestedMode?: 'best_for_you' | 'query_driven_search';
   }): Promise<ProductRecommendationPlan>;
+
+  /**
+   * v21.0 — AI slot selector. Given per-slot shortlists of REAL
+   * candidates, picks the best candidate id per slot. AI does not
+   * invent products.
+   */
+  selectProductForSlot(params: {
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    topConcerns: string[];
+    latestScanSummary: string | null;
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
+    slotShortlists: Array<{
+      slotKey: string;
+      slotLabel: string;
+      targetNeed: string;
+      mustHaveSignals: string[];
+      avoidSignals: string[];
+      candidates: Array<{
+        id: string;
+        brand: string;
+        name: string;
+        category: string | null;
+        concernTags: string[];
+        ingredientsHighlights: string[];
+        shortDescription: string;
+      }>;
+    }>;
+  }): Promise<SlotSelectionResult>;
 
   answerAssistant(params: {
     context: AssistantContext;
@@ -1017,6 +1063,15 @@ const gateway: AIGateway = {
       method: 'recommendProductsForUser',
       body: params,
       validate: validateProductRecommendationPlan,
+    });
+  },
+
+  async selectProductForSlot(params) {
+    ensureAvailable();
+    return runMethod({
+      method: 'selectProductForSlot',
+      body: params,
+      validate: validateSlotSelectionResult,
     });
   },
 

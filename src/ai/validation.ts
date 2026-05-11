@@ -880,17 +880,26 @@ export function validateProductRerankResult(v: unknown): {
  * filters out empty slots.
  */
 export function validateProductRecommendationPlan(v: unknown): {
-  recommendationMode: 'best_for_you' | 'query_driven_search' | 'concern_focused_search';
+  recommendationMode: 'best_for_you' | 'query_driven_search';
   userNeedSummary: string;
-  productRequests: Array<{
+  dominantConcern: string | null;
+  slots: Array<{
+    slotKey: string;
     slotLabel: string;
-    productType: string;
+    queryFamily:
+      | 'moisturizer'
+      | 'serum_texture'
+      | 'chemical_exfoliant'
+      | 'blemish_support'
+      | 'spf'
+      | 'cleanser'
+      | 'other';
     targetNeed: string;
-    desiredSignals: string[];
+    mustHaveSignals: string[];
     avoidSignals: string[];
     searchQueries: string[];
+    whyThisSlotMatters: string;
   }>;
-  whyTheseProducts: string;
 } | null {
   if (!isObject(v)) {
     aiLog.warn('validateProductRecommendationPlan', 'not an object');
@@ -898,9 +907,7 @@ export function validateProductRecommendationPlan(v: unknown): {
   }
   const modeRaw = (v as { recommendationMode?: unknown }).recommendationMode;
   const mode =
-    modeRaw === 'best_for_you' ||
-    modeRaw === 'query_driven_search' ||
-    modeRaw === 'concern_focused_search'
+    modeRaw === 'best_for_you' || modeRaw === 'query_driven_search'
       ? modeRaw
       : null;
   if (!mode) {
@@ -910,28 +917,47 @@ export function validateProductRecommendationPlan(v: unknown): {
   const need = (v as { userNeedSummary?: unknown }).userNeedSummary;
   const userNeedSummary =
     typeof need === 'string' && need.trim().length > 0
-      ? need.trim().slice(0, 180)
+      ? need.trim().slice(0, 220)
       : '';
-  const why = (v as { whyTheseProducts?: unknown }).whyTheseProducts;
-  const whyTheseProducts =
-    typeof why === 'string' && why.trim().length > 0
-      ? why.trim().slice(0, 220)
-      : '';
-  const slotsRaw = (v as { productRequests?: unknown }).productRequests;
+  const domRaw = (v as { dominantConcern?: unknown }).dominantConcern;
+  const dominantConcern =
+    typeof domRaw === 'string' && domRaw.trim().length > 0
+      ? domRaw.trim().slice(0, 48)
+      : null;
+  const slotsRaw = (v as { slots?: unknown }).slots;
   if (!Array.isArray(slotsRaw)) {
-    aiLog.warn('validateProductRecommendationPlan', 'productRequests not an array');
+    aiLog.warn('validateProductRecommendationPlan', 'slots not an array');
     return null;
   }
-  const productRequests = slotsRaw
+  const FAMILY_ENUM = new Set([
+    'moisturizer',
+    'serum_texture',
+    'chemical_exfoliant',
+    'blemish_support',
+    'spf',
+    'cleanser',
+    'other',
+  ]);
+  const slots = slotsRaw
     .filter((s): s is Record<string, unknown> => isObject(s))
     .map((s) => ({
+      slotKey:
+        typeof s.slotKey === 'string' ? s.slotKey.trim().slice(0, 48) : '',
       slotLabel:
         typeof s.slotLabel === 'string' ? s.slotLabel.trim().slice(0, 60) : '',
-      productType:
-        typeof s.productType === 'string' ? s.productType.trim().slice(0, 32) : '',
+      queryFamily: (FAMILY_ENUM.has(s.queryFamily as string)
+        ? (s.queryFamily as string)
+        : 'other') as
+        | 'moisturizer'
+        | 'serum_texture'
+        | 'chemical_exfoliant'
+        | 'blemish_support'
+        | 'spf'
+        | 'cleanser'
+        | 'other',
       targetNeed:
         typeof s.targetNeed === 'string' ? s.targetNeed.trim().slice(0, 140) : '',
-      desiredSignals: arrayOfStrings(s.desiredSignals)
+      mustHaveSignals: arrayOfStrings(s.mustHaveSignals)
         .map((x) => x.trim().slice(0, 48))
         .filter((x) => x.length > 0)
         .slice(0, 6),
@@ -943,23 +969,76 @@ export function validateProductRecommendationPlan(v: unknown): {
         .map((x) => x.trim().slice(0, 80))
         .filter((x) => x.length > 0)
         .slice(0, 5),
+      whyThisSlotMatters:
+        typeof s.whyThisSlotMatters === 'string'
+          ? s.whyThisSlotMatters.trim().slice(0, 220)
+          : '',
     }))
-    .filter(
-      (s) =>
-        s.productType.length > 0 &&
-        s.searchQueries.length > 0
-    )
+    .filter((s) => s.slotKey.length > 0 && s.searchQueries.length > 0)
     .slice(0, 4);
-  if (productRequests.length === 0) {
-    aiLog.warn('validateProductRecommendationPlan', 'no usable productRequests');
+  if (slots.length === 0) {
+    aiLog.warn('validateProductRecommendationPlan', 'no usable slots');
     return null;
   }
   return {
     recommendationMode: mode,
     userNeedSummary,
-    productRequests,
-    whyTheseProducts,
+    dominantConcern,
+    slots,
   };
+}
+
+/**
+ * v21.0 — validate the SlotSelectionResult returned by the AI slot
+ * selector. Returns null on malformed payloads. Each selection
+ * references one slotKey + an optional candidate id. The engine
+ * verifies the candidate id is one of the shortlist ids; if not,
+ * it records the selection as null and falls back to deterministic
+ * slot top.
+ */
+export function validateSlotSelectionResult(v: unknown): {
+  selections: Array<{
+    slotKey: string;
+    selectedCandidateId: string | null;
+    whyPicked: string;
+    whyNotOthersShort: string;
+  }>;
+  listReason: string;
+} | null {
+  if (!isObject(v)) {
+    aiLog.warn('validateSlotSelectionResult', 'not an object');
+    return null;
+  }
+  const selectionsRaw = (v as { selections?: unknown }).selections;
+  if (!Array.isArray(selectionsRaw)) {
+    aiLog.warn('validateSlotSelectionResult', 'selections not an array');
+    return null;
+  }
+  const selections = selectionsRaw
+    .filter((s): s is Record<string, unknown> => isObject(s))
+    .map((s) => ({
+      slotKey: typeof s.slotKey === 'string' ? s.slotKey.trim().slice(0, 48) : '',
+      selectedCandidateId:
+        typeof s.selectedCandidateId === 'string' &&
+        s.selectedCandidateId.trim().length > 0
+          ? s.selectedCandidateId.trim()
+          : null,
+      whyPicked:
+        typeof s.whyPicked === 'string' ? s.whyPicked.trim().slice(0, 220) : '',
+      whyNotOthersShort:
+        typeof s.whyNotOthersShort === 'string'
+          ? s.whyNotOthersShort.trim().slice(0, 160)
+          : '',
+    }))
+    .filter((s) => s.slotKey.length > 0);
+  if (selections.length === 0) {
+    aiLog.warn('validateSlotSelectionResult', 'no usable selections');
+    return null;
+  }
+  const listReasonRaw = (v as { listReason?: unknown }).listReason;
+  const listReason =
+    typeof listReasonRaw === 'string' ? listReasonRaw.trim().slice(0, 220) : '';
+  return { selections, listReason };
 }
 
 export function validateProgressBundle(v: unknown): {

@@ -60,6 +60,7 @@ import {
   PRODUCT_MATCH_RESULT_SCHEMA,
   PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
   PRODUCT_RERANK_SCHEMA,
+  SLOT_SELECTION_RESULT_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
   ROUTINE_RECOMMENDATION_SCHEMA,
   SCAN_PREFLIGHT_RESULT_SCHEMA,
@@ -68,6 +69,7 @@ import {
   type AIRerankResult,
   type LiveProductLookupResultLean,
   type ProductRecommendationPlan,
+  type SlotSelectionResult,
 } from '../../src/ai/ai-contracts';
 
 // Re-export for server consumers that previously reached these from
@@ -343,117 +345,160 @@ Pick as if trust and recommendation quality are the whole product.
 // queries should be used to enrich each slot.
 // ----------------------------------------------------------------------------
 
-export const PRODUCT_RECOMMENDATION_PLANNER_VERSION = 'v19.43-planner';
+export const PRODUCT_RECOMMENDATION_PLANNER_VERSION = 'v21.0-planner';
+export const PRODUCT_SLOT_SELECTOR_VERSION = 'v21.0-selector';
 
 const PRODUCT_RECOMMENDATION_PLANNER_SYSTEM_PROMPT = `
 You are the recommendation planner for a skincare product app.
 
-Your job is to create the strongest possible product recommendation plan for ONE specific user.
-You are NOT selecting final products. Retrieval will do that after you.
-You decide WHAT TYPES OF PRODUCTS this user should be shown and WHY.
+Your job is to create the best possible product recommendation plan for one specific user.
+You are not selecting final products yet.
+You are deciding WHAT TYPES OF PRODUCTS this user should be shown and WHY.
 
-You receive:
+You will receive:
 - the user's query or request
 - the user's skin type
 - the user's sensitivities
 - the user's top concerns
 - the user's goals
 - the user's latest scan summary
-- derived skin-profile axes (oily / acne-prone / dry / barrier / sensitive / combo)
+- any derived skin-profile flags already available
 
-Output a structured ProductRecommendationPlan that conforms to the schema.
-Do NOT output fake brands or fake products.
-Do NOT output prose paragraphs.
-Do NOT output generic shopping advice.
-Do NOT output the same plan for every user.
+Your output must be a structured recommendation plan.
+Do not output fake brands or fake products.
+Do not output prose paragraphs.
+Do not output generic shopping advice.
 
 PRIMARY OBJECTIVE
 
 Create a plan that would lead to the strongest possible product recommendations for THIS user.
-A plan that would work for any user is wrong.
-A plan that lists broad generic categories is wrong.
-A plan that ignores the user's sensitivities is wrong.
+Your plan must feel personalized, selective, and high-confidence.
+Do not make a generic category plan.
+Do not make a filler plan.
+Do not make the same plan for every user.
 
 HOW TO THINK
 
-Step 1 — Infer the user's dominant need.
+Infer the user's dominant needs first.
 Examples:
-- oily + breakout-prone + clogged → lightweight non-comedogenic hydration + blemish-safe support
-- dry + barrier-compromised → barrier repair + ceramide support + fragrance-free hydration
-- redness + sensitivity → calming / soothing / fragrance-free support
-- dark spots + texture → smoothing / resurfacing support, sensitivity-aware
-- vague "best for my skin" → infer the single dominant need first, then secondary needs from scan + profile
+- oily + breakout-prone + clogged => lightweight non-comedogenic hydration, blemish-safe support
+- dry + barrier-compromised + sensitive => barrier repair, ceramide support, fragrance-free hydration
+- redness + sensitivity => calming, soothing, fragrance-free support
+- dark spots + texture => smoothing / resurfacing support, but sensitivity-aware
+- vague "best for my skin" => infer the single dominant need first, then secondary needs
 
-Step 2 — Pick 2-4 slots that together address the user's needs.
-Each slot is one product type. The first slot addresses the dominant need; later slots address secondary needs.
+SELECTION RULES
 
-Step 3 — For each slot, specify:
-- slotLabel: short user-facing label ("Lightweight gel moisturizer" / "Niacinamide blemish serum")
-- productType: which product category ("moisturizer" / "serum" / "cleanser" / "exfoliant" / "spf" / "spot_treatment" / "toner" / "mask" / "eye_cream")
-- targetNeed: plain-English single-line need ("Lightweight hydration for oily acne-prone skin")
-- desiredSignals: 2-5 ingredient / texture / safety signals to favor ("niacinamide", "non-comedogenic", "gel texture", "fragrance-free")
-- avoidSignals: 1-4 signals to avoid ("heavy occlusive", "fragrance", "harsh acid")
-- searchQueries: 2-4 concrete search terms retrieval will use ("gel moisturizer", "niacinamide moisturizer", "oil free moisturizer")
+A strong plan:
+- is specific to the user's skin profile
+- reflects the user's query
+- reflects the latest scan summary
+- avoids conflicts with sensitivities
+- avoids generic filler product directions
+- prioritizes what matters most, not everything at once
 
-The searchQueries must be retrieval-shaped: short concrete phrases an ingredient-keyword search index reacts to.
-Do NOT use conversational phrasing in searchQueries.
-Do NOT use brand names in searchQueries.
-
-RECOMMENDATION MODES
-
-Choose ONE recommendationMode:
-- best_for_you            — vague "best for my skin" / "best for you" / default home recommendations
-- query_driven_search     — user typed a specific product type ("moisturizer", "smoothing serum", "chemical exfoliant")
-- concern_focused_search  — user typed a concern ("best for my pimple", "breakouts", "redness")
+A weak plan:
+- is generic
+- repeats the same moisturizer/serum plan for every user
+- ignores sensitivities
+- ignores scan context
+- spreads attention across too many categories with no clear main need
 
 MOISTURIZER RULES
 
-For oily / acne-prone / breakout-prone users:
-- prefer gel moisturizer, gel cream, oil-free moisturizer, non-comedogenic moisturizer, lightweight moisturizer
-- avoid rich cream, heavy cream, balm, ointment, occlusive repair cream
+If moisturizer-family support is relevant:
+- oily / acne-prone / breakout-prone => plan for lightweight, gel, oil-free, non-comedogenic hydration
+- dry / barrier-compromised => plan for ceramide, barrier-repair, richer hydration support
+- sensitive / redness-prone => plan for fragrance-free, calming, soothing, cica/centella support
+- combination => plan for balanced lightweight hydration
 
-For dry / barrier-compromised users:
-- prefer ceramide moisturizer, barrier repair cream, rich moisturizer, repairing cream, fragrance-free cream
-- avoid ultra-light gel-only moisturizers
+Do not plan a random generic moisturizer for every user.
 
-For sensitive / redness-prone users:
-- prefer fragrance-free moisturizer, calming moisturizer, cica moisturizer, centella moisturizer, soothing cream
-- avoid fragranced moisturizers, harsh-active moisturizers
+SMOOTHING / EXFOLIANT RULES
 
-For combination users:
-- prefer lightweight moisturizer, balancing moisturizer, gel cream, daily moisturizer
-- avoid heavy occlusive creams unless dryness is also strong
+If smoothing / texture / exfoliation is relevant:
+- choose direction based on sensitivity and barrier strength
+- sensitive or redness-prone users should skew gentler
+- do not over-aggressively plan harsh exfoliation when the user profile suggests caution
 
-SMOOTHING SERUM RULES
+BREAKOUT RULES
 
-Prefer texture serum, peptide serum, lactic acid serum, PHA serum, gentle resurfacing serum.
-For sensitive / redness-prone users, prefer PHA / gentle resurfacing / peptide over aggressive acid.
-Avoid: random hydrating serums with no smoothing relevance.
+If breakout / pimple support is relevant:
+- prioritize blemish-safe, acne-safe, non-comedogenic directions
+- do not combine breakout support with obviously clogging or conflicting directions
 
-CHEMICAL EXFOLIANT RULES
+OUTPUT STANDARD
 
-Prefer salicylic, lactic, glycolic, PHA exfoliants.
-For sensitive / barrier-compromised users, prefer PHA / lactic / gentle exfoliant; avoid harsh aggressive options.
-Avoid: non-exfoliant products that only weakly match category.
+Act as if this app is launching publicly tomorrow and users will immediately judge whether the plan feels intelligent or generic.
+The plan must be meaningfully different for meaningfully different users.
 
-BREAKOUT / PIMPLE RULES
+Return a structured recommendation plan only.
+`;
 
-Prefer acne treatment, spot treatment, salicylic acid treatment, niacinamide blemish serum, gentle acne treatment.
-For sensitive users, avoid benzoyl peroxide unless sensitivity is mild.
-Avoid: heavy occlusive moisturizers for breakout-prone users.
+// ----------------------------------------------------------------------------
+// v21.0 — AI SLOT SELECTOR PROMPT.
+//
+// After the planner creates slots, retrieval enriches each slot into a
+// shortlist of real candidate products. The selector AI then picks the
+// best real candidate per slot. The selector does NOT invent products.
+// ----------------------------------------------------------------------------
 
-WHY-THESE-PRODUCTS REQUIREMENT
+const PRODUCT_SLOT_SELECTOR_SYSTEM_PROMPT = `
+You are the final product selector for a skincare product app.
 
-whyTheseProducts is one short specific sentence (≤ 140 chars). It must name the user's skin axis explicitly and tie the slot mix to that need.
+You do not invent products.
+You do not retrieve products.
+You choose the best real candidate from a shortlist of already retrieved products for one slot in a recommendation plan.
 
-Good: "Picked because your skin reads oily and breakout-prone — lightweight hydration plus a blemish-supportive treatment fits this need."
-Bad: "These are great products for your skin." / "These match what you searched for."
+You will receive:
+- the user's skin profile
+- the user's sensitivities
+- the user's top concerns
+- the user's latest scan summary
+- the slot purpose
+- slot must-have signals
+- slot avoid signals
+- real candidate products
 
-FINAL INSTRUCTION
+PRIMARY OBJECTIVE
 
-Output one structured plan that fits THIS user, NOW.
-Different users with materially different skin profiles must get materially different plans.
-Pick as if a discerning skincare expert is judging the plan.
+Choose the best real candidate for THIS slot and THIS user.
+Do not choose a broad acceptable filler product.
+Do not choose a candidate just because it matches the category.
+Choose the strongest candidate for the slot's user-specific purpose.
+
+PRIORITY ORDER
+
+Rank candidates in this order:
+1. fit to the slot purpose
+2. fit to the user's skin type
+3. fit to sensitivities / redness / breakout risk / barrier state
+4. fit to top concerns and latest scan summary
+5. texture / formula appropriateness
+6. only after all of that, generic category relevance
+
+NEGATIVE RULES
+
+Reject candidates that:
+- conflict with the user's skin profile
+- violate avoid signals
+- are generic filler with weak user-fit
+- are merely category-correct but clearly weaker than another candidate
+
+WHY PICKED RULE
+
+The reason for the selected candidate must be concise, specific, and user-aware.
+It must sound like an expert reason, not generic marketing copy.
+
+Good example:
+"Picked because this slot needs lightweight breakout-safe hydration and this candidate best fits oily breakout-prone skin without heavy occlusion."
+
+Bad example:
+"This is a great product."
+"It matches the search."
+"It is popular."
+
+Return structured selection only.
 `;
 
 // ----------------------------------------------------------------------------
@@ -1490,6 +1535,72 @@ export class OpenAIClient {
       model: 'gpt-4o-mini',
       // Up to 4 slots × ~100 tokens + overhead ≈ ~500 tokens output.
       // 1024 cap with headroom for the retry envelope.
+      maxTokens: 1024,
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 8e. v21.0 — AI SLOT SELECTOR.
+  //
+  // After the planner produces slots and retrieval enriches each
+  // slot into a shortlist of real candidates, this method picks the
+  // best real candidate per slot. AI does NOT invent products.
+  // Returns one SlotSelection per slot referencing a real candidate
+  // id from the input shortlist.
+  // --------------------------------------------------------------------------
+
+  async selectProductForSlot(params: {
+    /** User context — same shape as planner. */
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    topConcerns: string[];
+    latestScanSummary: string | null;
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
+    /** Slots from the plan, each with their shortlist. */
+    slotShortlists: Array<{
+      slotKey: string;
+      slotLabel: string;
+      targetNeed: string;
+      mustHaveSignals: string[];
+      avoidSignals: string[];
+      candidates: Array<{
+        id: string;
+        brand: string;
+        name: string;
+        category: string | null;
+        concernTags: string[];
+        ingredientsHighlights: string[];
+        shortDescription: string;
+      }>;
+    }>;
+  }): Promise<SlotSelectionResult> {
+    const system = PRODUCT_SLOT_SELECTOR_SYSTEM_PROMPT;
+    const userContent = JSON.stringify({
+      profile: params.profile,
+      top_concerns: params.topConcerns,
+      latest_scan_summary: params.latestScanSummary,
+      skin_profile: params.skinProfile ?? null,
+      slot_shortlists: params.slotShortlists,
+    });
+    return this.runStrictStructured<SlotSelectionResult>({
+      system,
+      userContent,
+      schemaName: 'slot_selection_result',
+      schema: SLOT_SELECTION_RESULT_SCHEMA,
+      model: 'gpt-4o-mini',
+      // ~4 slots × ~80 tokens + overhead ≈ ~400. 1024 with headroom.
       maxTokens: 1024,
     });
   }

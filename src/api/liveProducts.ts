@@ -839,20 +839,29 @@ function buildEmptyAiOutcome(
   attempted: boolean,
   reason: string,
   productSourceMode: 'ai_failed_fallback' | 'deterministic_only',
-  recommendationMode: 'best_for_you' | 'query_driven_search' | 'concern_focused_search' | null = null
+  recommendationMode: 'best_for_you' | 'query_driven_search' | null = null
 ): AiFirstOutcome {
   return {
     status: {
       recommendationMode,
-      aiRecommendationAttempted: attempted,
-      aiRecommendationReturned: false,
-      aiRecommendationApplied: false,
-      aiRecommendationReason: reason,
+      dominantConcern: null,
+      aiPlanAttempted: attempted,
+      aiPlanReturned: false,
+      aiPlanApplied: false,
+      aiPlanReason: reason,
+      aiSelectAttempted: false,
+      aiSelectReturned: false,
+      aiSelectApplied: false,
+      aiSelectReason: attempted
+        ? 'selector not attempted (planner did not produce a usable plan)'
+        : 'selector not attempted (planner stage skipped)',
       userNeedSummary: null,
       whyTheseProducts: null,
       productSourceMode,
       slotCount: 0,
       slotLabels: [],
+      plannerVersion: attempted ? 'v21.0-planner' : null,
+      selectorVersion: null,
     },
     candidates: [],
     matchedProbesById: new Map(),
@@ -878,7 +887,7 @@ async function tryAiFirstRecommendation(args: {
   skinState: ReturnType<typeof selectSkinState>;
   trigger: RetrievalTrigger;
   interpretedIntent: InterpretedIntent;
-  suggestedMode?: 'best_for_you' | 'query_driven_search' | 'concern_focused_search';
+  suggestedMode?: 'best_for_you' | 'query_driven_search';
 }): Promise<AiFirstOutcome> {
   const { query, profile, skinState, trigger, interpretedIntent, suggestedMode } = args;
 
@@ -950,75 +959,220 @@ async function tryAiFirstRecommendation(args: {
   }
   const plan = result.plan;
 
-  if (!plan.productRequests || plan.productRequests.length === 0) {
+  if (!plan.slots || plan.slots.length === 0) {
     return buildEmptyAiOutcome(
       true,
-      'AI planner returned no productRequests',
+      'AI planner returned no slots',
       'ai_failed_fallback',
       plan.recommendationMode
     );
   }
 
-  // For each slot, dispatch retrieval using the slot's
-  // searchQueries (capped at 3 per slot to keep total OBF load
-  // bounded). The first slot's top trust candidate becomes hero.
+  // v21.0 — STEP 1: enrich each slot via retrieval (top 3 trust
+  // candidates per slot). Keep the per-slot shortlist intact so the
+  // AI slot selector can choose from real candidates.
+  type SlotShortlist = {
+    slotKey: string;
+    slotLabel: string;
+    targetNeed: string;
+    mustHaveSignals: string[];
+    avoidSignals: string[];
+    searchQueries: string[];
+    shortlist: LiveProductCandidate[];
+  };
+  const slotShortlists: SlotShortlist[] = [];
   const matchedProbesById = new Map<string, string[]>();
+  for (const slot of plan.slots) {
+    const slotCandidates = await enrichSlot(slot, profile, skinState, interpretedIntent);
+    for (const c of slotCandidates) {
+      const existing = matchedProbesById.get(c.id) ?? [];
+      const next = Array.from(new Set([...existing, ...slot.searchQueries]));
+      matchedProbesById.set(c.id, next);
+    }
+    slotShortlists.push({
+      slotKey: slot.slotKey,
+      slotLabel: slot.slotLabel,
+      targetNeed: slot.targetNeed,
+      mustHaveSignals: slot.mustHaveSignals,
+      avoidSignals: slot.avoidSignals,
+      searchQueries: slot.searchQueries,
+      shortlist: slotCandidates,
+    });
+  }
+
+  const enrichedTotal = slotShortlists.reduce(
+    (n, s) => n + s.shortlist.length,
+    0
+  );
+  if (enrichedTotal === 0) {
+    return buildEmptyAiOutcome(
+      true,
+      `AI planner returned ${plan.slots.length} slot(s) but retrieval enriched 0 candidates`,
+      'ai_failed_fallback',
+      plan.recommendationMode
+    );
+  }
+
+  // v21.0 — STEP 2: AI slot selector picks the best real candidate
+  // per slot from the shortlists. The selector race-times-out the
+  // same way as the planner. On failure, deterministic
+  // slot-top-trust is the fallback per slot, and the status records
+  // aiSelectAttempted/Returned/Applied + reason.
+  let aiSelectAttempted = false;
+  let aiSelectReturned = false;
+  let aiSelectApplied = false;
+  let aiSelectReason: string | null = null;
+  const slotsForSelector = slotShortlists
+    .filter((s) => s.shortlist.length > 0)
+    .map((s) => ({
+      slotKey: s.slotKey,
+      slotLabel: s.slotLabel,
+      targetNeed: s.targetNeed,
+      mustHaveSignals: s.mustHaveSignals,
+      avoidSignals: s.avoidSignals,
+      candidates: s.shortlist.map((c) => ({
+        id: c.id,
+        brand: c.brand,
+        name: c.name,
+        category: c.category ?? null,
+        concernTags: c.concernTags ?? [],
+        ingredientsHighlights: c.ingredientsHighlights ?? [],
+        shortDescription: c.shortDescription ?? '',
+      })),
+    }));
+  const selectionByKey = new Map<string, { id: string; whyPicked: string }>();
+  if (aiGateway.isAvailable() && slotsForSelector.length > 0) {
+    aiSelectAttempted = true;
+    const selectorCall = aiGateway
+      .selectProductForSlot({
+        profile: {
+          displayName: profile.displayName,
+          skinType: profile.skinType,
+          sensitivities: profile.sensitivities,
+          goals: profile.goals,
+        },
+        topConcerns: skinState?.topConcerns?.map((c) => c.concern as string) ?? [],
+        latestScanSummary: skinState?.summaryHeadline ?? null,
+        skinProfile: skinFit,
+        slotShortlists: slotsForSelector,
+      })
+      .then(
+        (sel): { ok: true; sel: typeof sel } => ({ ok: true, sel })
+      )
+      .catch(
+        (e: unknown): { ok: false; reason: string } => ({
+          ok: false,
+          reason: `AI selector threw: ${(e instanceof Error ? e.message : String(e)).slice(0, 140)}`,
+        })
+      );
+    const selectorTimeout = new Promise<{ ok: false; reason: string }>(
+      (resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              ok: false,
+              reason: `AI selector race timeout after ${AI_PLAN_RACE_MS}ms`,
+            }),
+          AI_PLAN_RACE_MS
+        );
+      }
+    );
+    const selResult = await Promise.race([selectorCall, selectorTimeout]);
+    if (selResult.ok) {
+      aiSelectReturned = true;
+      // Verify each selectedCandidateId actually exists in its slot's
+      // shortlist. AI cannot pick an id not in the shortlist.
+      const shortlistByKey = new Map(
+        slotsForSelector.map((s) => [s.slotKey, new Set(s.candidates.map((c) => c.id))])
+      );
+      let appliedAny = false;
+      for (const s of selResult.sel.selections) {
+        if (!s.selectedCandidateId) continue;
+        const okSet = shortlistByKey.get(s.slotKey);
+        if (okSet && okSet.has(s.selectedCandidateId)) {
+          selectionByKey.set(s.slotKey, {
+            id: s.selectedCandidateId,
+            whyPicked: s.whyPicked,
+          });
+          appliedAny = true;
+        }
+      }
+      if (appliedAny) {
+        aiSelectApplied = true;
+        aiSelectReason = `AI selector picked ${selectionByKey.size}/${slotsForSelector.length} slot(s)`;
+      } else {
+        aiSelectReason =
+          'AI selector returned but no valid selection matched a shortlist id; deterministic slot-top used';
+      }
+    } else {
+      aiSelectReason = selResult.reason;
+    }
+  } else if (slotsForSelector.length === 0) {
+    aiSelectReason = 'no enriched shortlists to select from';
+  } else {
+    aiSelectReason = 'AI gateway unavailable; deterministic slot-top used';
+  }
+
+  // v21.0 — STEP 3: assemble final visible list.
+  // - For each slot in plan order, take the AI-selected candidate
+  //   if present; else fall back to the slot's top trust candidate.
+  // - Hero = first slot's chosen candidate.
+  // - Alternatives = remaining slots' chosen candidates + remaining
+  //   shortlist peers (deduped).
   const seen = new Set<string>();
   const heroOrdered: LiveProductCandidate[] = [];
   let heroId: string | null = null;
   const altOrdered: LiveProductCandidate[] = [];
-  for (let slotIdx = 0; slotIdx < plan.productRequests.length; slotIdx++) {
-    const slot = plan.productRequests[slotIdx];
-    const slotCandidates = await enrichSlot(slot, profile, skinState, interpretedIntent);
-    for (let i = 0; i < slotCandidates.length; i++) {
-      const c = slotCandidates[i];
-      if (seen.has(c.id)) {
-        // Merge matchedProbes from another slot.
-        const existing = matchedProbesById.get(c.id) ?? [];
-        const next = Array.from(
-          new Set([...existing, ...slot.searchQueries])
-        );
-        matchedProbesById.set(c.id, next);
-        continue;
-      }
-      seen.add(c.id);
-      matchedProbesById.set(c.id, [...slot.searchQueries]);
+  for (let slotIdx = 0; slotIdx < slotShortlists.length; slotIdx++) {
+    const slot = slotShortlists[slotIdx];
+    if (slot.shortlist.length === 0) continue;
+    const pickedId = selectionByKey.get(slot.slotKey)?.id;
+    const picked = pickedId
+      ? slot.shortlist.find((c) => c.id === pickedId)
+      : null;
+    const slotHero = picked ?? slot.shortlist[0];
+    if (!seen.has(slotHero.id)) {
+      seen.add(slotHero.id);
       if (slotIdx === 0 && heroOrdered.length === 0) {
-        heroOrdered.push(c);
-        heroId = c.id;
-      } else if (slotIdx === 0) {
-        // Same-slot peers go to the front of alternatives.
-        altOrdered.unshift(c);
+        heroOrdered.push(slotHero);
+        heroId = slotHero.id;
       } else {
-        altOrdered.push(c);
+        altOrdered.push(slotHero);
       }
+    }
+    // Same-slot peers go to alternatives.
+    for (const c of slot.shortlist) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      altOrdered.push(c);
     }
   }
   const candidates: LiveProductCandidate[] = [...heroOrdered, ...altOrdered];
 
-  if (candidates.length === 0) {
-    return buildEmptyAiOutcome(
-      true,
-      `AI planner returned ${plan.productRequests.length} slot(s) but retrieval enriched 0 candidates`,
-      'ai_failed_fallback',
-      plan.recommendationMode
-    );
-  }
+  // Build a one-line summary of the whyPicked reasons (hero slot).
+  const heroSelection = plan.slots[0]
+    ? selectionByKey.get(plan.slots[0].slotKey)
+    : undefined;
 
   return {
     status: {
       recommendationMode: plan.recommendationMode,
-      aiRecommendationAttempted: true,
-      aiRecommendationReturned: true,
-      aiRecommendationApplied: true,
-      aiRecommendationReason:
-        `AI planner returned ${plan.productRequests.length} slot(s); ` +
-        `retrieval enriched ${candidates.length} candidate(s)`,
+      dominantConcern: plan.dominantConcern,
+      aiPlanAttempted: true,
+      aiPlanReturned: true,
+      aiPlanApplied: true,
+      aiPlanReason: `Planner returned ${plan.slots.length} slot(s); retrieval enriched ${enrichedTotal} candidate(s)`,
+      aiSelectAttempted,
+      aiSelectReturned,
+      aiSelectApplied,
+      aiSelectReason,
       userNeedSummary: plan.userNeedSummary,
-      whyTheseProducts: plan.whyTheseProducts,
+      whyTheseProducts: heroSelection?.whyPicked ?? plan.slots[0]?.whyThisSlotMatters ?? '',
       productSourceMode: 'ai_first',
-      slotCount: plan.productRequests.length,
-      slotLabels: plan.productRequests.map((s) => s.slotLabel),
+      slotCount: plan.slots.length,
+      slotLabels: plan.slots.map((s) => s.slotLabel),
+      plannerVersion: 'v21.0-planner',
+      selectorVersion: aiSelectApplied ? 'v21.0-selector' : null,
     },
     candidates,
     matchedProbesById,
@@ -1032,9 +1186,11 @@ async function tryAiFirstRecommendation(args: {
 
 /**
  * Enrich a single AI plan slot into real LiveProductCandidate
- * objects. Runs the slot's searchQueries through the existing
- * tryLiveSearch pipeline (which itself fans out across probes),
- * filter+dedup, then returns up to 3 candidates per slot.
+ * objects. Runs the slot's searchQueries[0] through the existing
+ * tryLiveSearch pipeline, then filter+dedup+trust scoring per
+ * slot, then returns up to 3 candidates per slot.
+ *
+ * v21.0 — uses the new slot shape (searchQueries / queryFamily).
  */
 async function enrichSlot(
   slot: ProductRecommendationSlot,
@@ -1042,16 +1198,10 @@ async function enrichSlot(
   skinState: ReturnType<typeof selectSkinState>,
   parentIntent: InterpretedIntent
 ): Promise<LiveProductCandidate[]> {
-  // Use the slot's first searchQuery as the canonical query for
-  // intent interpretation. The other searchQueries are passed as
-  // additional probes via the slot's array.
-  const slotQuery = slot.searchQueries[0] ?? slot.productType;
-  // Reuse the parent intent's avoidance constraints — the AI
-  // already accounted for user sensitivities in the slot's
-  // avoidSignals.
+  const slotQuery = slot.searchQueries[0] ?? slot.slotLabel ?? slot.queryFamily;
   const slotIntent: InterpretedIntent = {
     ...parentIntent,
-    intentLabel: slot.slotLabel || slot.productType,
+    intentLabel: slot.slotLabel || slot.queryFamily,
   };
   const live = await tryLiveSearch(slotQuery, 'background', {
     profile,
@@ -1062,8 +1212,6 @@ async function enrichSlot(
   });
   let candidates: LiveProductCandidate[] = live.candidates;
   if (candidates.length === 0) {
-    // Seed fallback per slot — keeps the visible result non-empty
-    // when OBF is unreachable for this slot.
     candidates = retrieveSeedCandidates({
       query: slotQuery,
       concern: parentIntent.interpretedConcern ?? null,
@@ -1071,7 +1219,6 @@ async function enrichSlot(
       rotation: 0,
     });
   }
-  // Filter + dedupe + trust scoring (per slot).
   const filtered = filterUsableCandidates(candidates);
   const deduped = dedupCandidates(filtered);
   const scored = deduped.map((c) =>
@@ -1554,8 +1701,6 @@ export async function getRecommendationContextFromQuery(
     suggestedMode:
       interpretedIntent.mode === 'best_for_my_skin'
         ? 'best_for_you'
-        : interpretedIntent.mode === 'concern_search'
-        ? 'concern_focused_search'
         : 'query_driven_search',
   });
 
