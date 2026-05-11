@@ -912,7 +912,7 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v21.1
+          REAL PATH v21.2
         </Text>
       </View>
       <View style={realPathStyles.row}>
@@ -982,6 +982,31 @@ function RealPathBadge({
         <Text style={realPathStyles.label}>recommendationMode</Text>
         <Text style={realPathStyles.value} numberOfLines={1}>
           {rec?.recommendationStatus?.recommendationMode ?? '(none)'}
+        </Text>
+      </View>
+      {/* v21.2 — typed-search vs best-for-you mode indicator. */}
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>resultMode</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.resultMode ?? '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>dominantSearchFamily</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.dominantSearchFamily ?? '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>badgeMode</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.badgeMode ?? '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>resultCountTotal</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.resultCountTotal ?? 0}
         </Text>
       </View>
       <View style={realPathStyles.row}>

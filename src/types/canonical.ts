@@ -397,6 +397,25 @@ export interface ProductRecommendationStatus {
   /** Version markers so the device test can confirm v21.0 is running. */
   plannerVersion: string | null;
   selectorVersion: string | null;
+  /**
+   * v21.2 — which visible result model the engine produced.
+   *   `best_for_you_slots` — multi-slot routine layout (each slot
+   *      can be a different product type).
+   *   `typed_search_list`  — flat same-intent ranked list (6 first,
+   *      same dominant family).
+   */
+  resultMode: 'best_for_you_slots' | 'typed_search_list' | null;
+  /** v21.2 — dominant queryFamily resolved for typed-search mode. */
+  dominantSearchFamily: string | null;
+  /** v21.2 — total candidates the engine produced (visible + scroll). */
+  resultCountTotal: number;
+  /**
+   * v21.2 — what the top-right AISourceBadge should display for the
+   * products feature. Computed by the engine; the badge reads it
+   * instead of the generic feature-source telemetry that defaulted
+   * to IDLE.
+   */
+  badgeMode: 'ai_on' | 'fallback' | 'pending' | 'idle';
 }
 
 /**

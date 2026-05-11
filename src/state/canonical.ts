@@ -737,6 +737,11 @@ export function buildRecommendationContext(args: {
       slotLabels: [],
       plannerVersion: null,
       selectorVersion: null,
+      // v21.2 — typed-search vs best-for-you mode fields.
+      resultMode: null,
+      dominantSearchFamily: null,
+      resultCountTotal: 0,
+      badgeMode: 'idle',
     };
   // v19.42 — synthesize a deterministic_fallback status when the
   // caller didn't supply one (legacy callers). Default makes the

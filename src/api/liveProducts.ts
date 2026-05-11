@@ -818,6 +818,7 @@ async function tryRerankProductsBounded(args: {
 import type {
   ProductRecommendationPlan,
   ProductRecommendationSlot,
+  SlotQueryFamily,
 } from '@/ai/ai-contracts';
 import type { ProductRecommendationStatus } from '@/types/canonical';
 
@@ -841,6 +842,13 @@ function buildEmptyAiOutcome(
   productSourceMode: 'ai_failed_fallback' | 'deterministic_only',
   recommendationMode: 'best_for_you' | 'query_driven_search' | null = null
 ): AiFirstOutcome {
+  // v21.2 — surface fallback to the top-right badge so it stops
+  // saying IDLE when the AI engine has been attempted but failed.
+  aiTelemetry.setFeatureSource(
+    'products',
+    productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
+    reason
+  );
   return {
     status: {
       recommendationMode,
@@ -862,6 +870,14 @@ function buildEmptyAiOutcome(
       slotLabels: [],
       plannerVersion: attempted ? 'v21.0-planner' : null,
       selectorVersion: null,
+      // v21.2 — empty/failure outcome: no result mode, no family,
+      // zero count, badge falls back to 'fallback' when AI was
+      // attempted-but-failed, 'idle' when AI was never attempted.
+      resultMode: null,
+      dominantSearchFamily: null,
+      resultCountTotal: 0,
+      badgeMode:
+        productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
     },
     candidates: [],
     matchedProbesById: new Map(),
@@ -1113,38 +1129,171 @@ async function tryAiFirstRecommendation(args: {
     aiSelectReason = 'AI gateway unavailable; deterministic slot-top used';
   }
 
-  // v21.0 — STEP 3: assemble final visible list.
-  // - For each slot in plan order, take the AI-selected candidate
-  //   if present; else fall back to the slot's top trust candidate.
-  // - Hero = first slot's chosen candidate.
-  // - Alternatives = remaining slots' chosen candidates + remaining
-  //   shortlist peers (deduped).
+  // v21.2 — STEP 3: assemble final visible list. THIS IS WHERE
+  // typed search and best-for-you diverge.
+  //
+  // BEST-FOR-YOU MODE (recommendationMode === 'best_for_you'):
+  //   slot-based routine layout. Hero = slot 1's AI pick;
+  //   alternatives = slots 2..N's AI picks + same-slot peers.
+  //   Different slots can be different product types (moisturizer
+  //   + blemish + smoothing serum). This is a personalized
+  //   routine, not a search result.
+  //
+  // TYPED-SEARCH MODE (recommendationMode === 'query_driven_search'):
+  //   FLAT SAME-INTENT LIST. The user typed "moisture" — they
+  //   expect 6 moisturizers, not a moisturizer + an exfoliant
+  //   + a blemish treatment. We:
+  //     1. Determine the dominant queryFamily across slots (most
+  //        common; first slot wins ties).
+  //     2. Pool every enriched candidate from all slots.
+  //     3. Keep only candidates whose name/category/description
+  //        matches the dominant family.
+  //     4. Rank by trust + image quality.
+  //     5. Return a flat list — first 6 visible, rest revealed on
+  //        scroll.
+  const isTypedSearch =
+    plan.recommendationMode === 'query_driven_search';
+  let dominantSearchFamily: string | null = null;
+  let resultMode: 'best_for_you_slots' | 'typed_search_list';
+
   const seen = new Set<string>();
   const heroOrdered: LiveProductCandidate[] = [];
   let heroId: string | null = null;
   const altOrdered: LiveProductCandidate[] = [];
-  for (let slotIdx = 0; slotIdx < slotShortlists.length; slotIdx++) {
-    const slot = slotShortlists[slotIdx];
-    if (slot.shortlist.length === 0) continue;
-    const pickedId = selectionByKey.get(slot.slotKey)?.id;
-    const picked = pickedId
-      ? slot.shortlist.find((c) => c.id === pickedId)
-      : null;
-    const slotHero = picked ?? slot.shortlist[0];
-    if (!seen.has(slotHero.id)) {
-      seen.add(slotHero.id);
-      if (slotIdx === 0 && heroOrdered.length === 0) {
-        heroOrdered.push(slotHero);
-        heroId = slotHero.id;
-      } else {
-        altOrdered.push(slotHero);
+
+  if (isTypedSearch) {
+    resultMode = 'typed_search_list';
+    // Resolve dominant family.
+    const familyCounts = new Map<SlotQueryFamily, number>();
+    for (const slot of plan.slots) {
+      familyCounts.set(
+        slot.queryFamily,
+        (familyCounts.get(slot.queryFamily) ?? 0) + 1
+      );
+    }
+    let topFamily: SlotQueryFamily =
+      plan.slots[0]?.queryFamily ?? ('other' as SlotQueryFamily);
+    let topCount = 0;
+    for (const [fam, cnt] of familyCounts) {
+      if (cnt > topCount) {
+        topCount = cnt;
+        topFamily = fam;
       }
     }
-    // Same-slot peers go to alternatives.
-    for (const c of slot.shortlist) {
-      if (seen.has(c.id)) continue;
-      seen.add(c.id);
-      altOrdered.push(c);
+    dominantSearchFamily = topFamily;
+
+    // Pool all enriched candidates across slots, dedupe by id, and
+    // remember which slot's AI pick (if any) each candidate is.
+    const pool: Array<{
+      candidate: LiveProductCandidate;
+      score: number;
+      wasAiPick: boolean;
+      slotMatchedFamily: boolean;
+    }> = [];
+    const trustById = new Map<string, number>();
+    const slotFamilyById = new Map<string, string>();
+    const aiPickedIds = new Set<string>(
+      [...selectionByKey.values()].map((s) => s.id)
+    );
+    for (const slot of slotShortlists) {
+      // Score per slot via the existing trust scorer.
+      for (const c of slot.shortlist) {
+        if (trustById.has(c.id)) continue;
+        const scored = scoreTrustForCandidate({
+          candidate: c,
+          intent: { ...interpretedIntent, intentLabel: slot.slotLabel },
+          profile,
+          skinState,
+          matchedProbes: matchedProbesById.get(c.id) ?? slot.searchQueries,
+        });
+        trustById.set(c.id, scored.score.total);
+        slotFamilyById.set(
+          c.id,
+          plan.slots.find((s) => s.slotKey === slot.slotKey)?.queryFamily ??
+            'other'
+        );
+      }
+    }
+    // Build the pool with same-family filter.
+    const familyRegexById: Record<string, RegExp> = {
+      moisturizer: /moisturi[sz]er|cream|lotion|emulsion|gel cream|barrier/i,
+      serum_texture: /serum|essence|ampoule|peptide|smooth|texture|resurfac|lactic|pha|retinol|glycolic/i,
+      chemical_exfoliant: /exfoli|salicylic|glycolic|lactic|mandelic|pha|aha|bha|peel|acid/i,
+      blemish_support: /spot|acne|pimple|blemish|salicylic|benzoyl|sulfur|niacinamide/i,
+      spf: /sunscreen|spf|sunblock|uv|sun cream/i,
+      cleanser: /cleanser|wash|foam|micellar|gel cleanser/i,
+      other: /.*/,
+    };
+    const dominantRegex = familyRegexById[dominantSearchFamily] ?? /.*/;
+    const seenPool = new Set<string>();
+    for (const slot of slotShortlists) {
+      for (const c of slot.shortlist) {
+        if (seenPool.has(c.id)) continue;
+        seenPool.add(c.id);
+        const corpus = `${c.name} ${c.category ?? ''} ${c.shortDescription ?? ''}`;
+        const slotFam = slotFamilyById.get(c.id) ?? 'other';
+        // A candidate matches the dominant family when its slot's
+        // family equals dominant, OR its corpus matches the dominant
+        // family regex (catches OBF-returned candidates whose slot
+        // was originally different but whose actual product type
+        // matches the dominant family).
+        const slotMatchedFamily =
+          slotFam === dominantSearchFamily || dominantRegex.test(corpus);
+        if (!slotMatchedFamily && plan.slots.length > 1) {
+          // Hard filter: drop cross-family candidates in typed search.
+          continue;
+        }
+        const baseTrust = trustById.get(c.id) ?? 50;
+        const imageBoost =
+          c.imageQuality === 'high'
+            ? 6
+            : c.imageQuality === 'medium'
+            ? 2
+            : c.imageQuality === 'low'
+            ? -6
+            : 0;
+        const aiBoost = aiPickedIds.has(c.id) ? 3 : 0;
+        pool.push({
+          candidate: c,
+          score: baseTrust + imageBoost + aiBoost,
+          wasAiPick: aiPickedIds.has(c.id),
+          slotMatchedFamily,
+        });
+      }
+    }
+    pool.sort((a, b) => b.score - a.score);
+    // Cap at 18 (enough for visibleCount 6 + 2 reveal batches).
+    const flat = pool.slice(0, 18).map((p) => p.candidate);
+    if (flat.length > 0) {
+      heroOrdered.push(flat[0]);
+      heroId = flat[0].id;
+      altOrdered.push(...flat.slice(1));
+    }
+  } else {
+    // BEST-FOR-YOU SLOT MODE — original v21.0 assembly.
+    resultMode = 'best_for_you_slots';
+    for (let slotIdx = 0; slotIdx < slotShortlists.length; slotIdx++) {
+      const slot = slotShortlists[slotIdx];
+      if (slot.shortlist.length === 0) continue;
+      const pickedId = selectionByKey.get(slot.slotKey)?.id;
+      const picked = pickedId
+        ? slot.shortlist.find((c) => c.id === pickedId)
+        : null;
+      const slotHero = picked ?? slot.shortlist[0];
+      if (!seen.has(slotHero.id)) {
+        seen.add(slotHero.id);
+        if (slotIdx === 0 && heroOrdered.length === 0) {
+          heroOrdered.push(slotHero);
+          heroId = slotHero.id;
+        } else {
+          altOrdered.push(slotHero);
+        }
+      }
+      for (const c of slot.shortlist) {
+        if (seen.has(c.id)) continue;
+        seen.add(c.id);
+        altOrdered.push(c);
+      }
     }
   }
   const candidates: LiveProductCandidate[] = [...heroOrdered, ...altOrdered];
@@ -1153,6 +1302,21 @@ async function tryAiFirstRecommendation(args: {
   const heroSelection = plan.slots[0]
     ? selectionByKey.get(plan.slots[0].slotKey)
     : undefined;
+
+  // v21.2 — badge mode for the AISourceBadge.
+  const badgeMode: 'ai_on' | 'fallback' | 'pending' | 'idle' = 'ai_on';
+
+  // v21.2 — UPDATE THE TOP-RIGHT BADGE. Previously
+  // AISourceBadge read aiTelemetry.features.products.source, which
+  // defaulted to 'idle' and was never updated by the v21.x AI-first
+  // path (only the legacy lookupLiveProducts path set it). The
+  // user saw IDLE on the top-right pill even though productSourceMode
+  // was clearly 'ai_first'. Wire the badge source now.
+  aiTelemetry.setFeatureSource(
+    'products',
+    'ai',
+    `AI-first ${resultMode}: planner+selector applied, ${candidates.length} candidates`
+  );
 
   return {
     status: {
@@ -1173,6 +1337,11 @@ async function tryAiFirstRecommendation(args: {
       slotLabels: plan.slots.map((s) => s.slotLabel),
       plannerVersion: 'v21.0-planner',
       selectorVersion: aiSelectApplied ? 'v21.0-selector' : null,
+      // v21.2 — typed-search vs best-for-you split fields.
+      resultMode,
+      dominantSearchFamily,
+      resultCountTotal: candidates.length,
+      badgeMode,
     },
     candidates,
     matchedProbesById,
@@ -1215,11 +1384,33 @@ async function enrichSlot(
     candidates = retrieveSeedCandidates({
       query: slotQuery,
       concern: parentIntent.interpretedConcern ?? null,
-      limit: 4,
+      limit: 8,
       rotation: 0,
     });
   }
-  const filtered = filterUsableCandidates(candidates);
+  // v21.2 — STRONGER QUALITY FILTERING. Reject candidates that
+  // look like marketplace junk / refills / samples / mini sizes
+  // / accessory items / non-real-product variants before scoring.
+  // The user's reported symptom is "weak product quality"; the
+  // hard filter cuts those out entirely so the AI selector can't
+  // pick from them.
+  const QUALITY_REJECT_PATTERNS: RegExp[] = [
+    /\b(refill|sample|tester|sachet|pouch|travel size|trial size|mini)\b/i,
+    /\b(empty bottle|empty container|dispenser only|pump only|applicator)\b/i,
+    /\b(gift set|bundle|combo pack|kit)\b/i,
+    /\b(value pack|family pack)\b/i,
+  ];
+  const qualityFiltered = candidates.filter((c) => {
+    const corpus = `${c.name ?? ''} ${c.shortDescription ?? ''}`;
+    if (QUALITY_REJECT_PATTERNS.some((re) => re.test(corpus))) return false;
+    // Reject candidates whose brand is missing AND whose name is
+    // suspiciously short / non-product-like.
+    const brand = (c.brand ?? '').trim();
+    const name = (c.name ?? '').trim();
+    if (brand.length < 2 && name.length < 8) return false;
+    return true;
+  });
+  const filtered = filterUsableCandidates(qualityFiltered);
   const deduped = dedupCandidates(filtered);
   const scored = deduped.map((c) =>
     scoreTrustForCandidate({
@@ -1231,7 +1422,13 @@ async function enrichSlot(
     })
   );
   const partition = partitionByTrust(scored);
-  return partition.alternativePool.slice(0, 3).map((s) => s.candidate);
+  // v21.2 — bumped 3 -> 8 candidates per slot. The typed-search
+  // flat-list assembly pools across slots and needs material to
+  // produce 6 same-intent results; 3 per slot * 4 slots = only 12
+  // and aggressive same-family filtering trimmed that to ~3 in
+  // the user's reported case. 8 per slot gives flat list enough
+  // headroom to surface 6-12 same-family results.
+  return partition.alternativePool.slice(0, 8).map((s) => s.candidate);
 }
 
 function inferConcernFromQuery(query: string): ConcernType | null {

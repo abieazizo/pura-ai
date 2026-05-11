@@ -327,6 +327,16 @@ const NOISY_IMAGE_PATTERNS: RegExp[] = [
   /placeholder|missing|invalid/i,
 ];
 
+// v21.2 — TIGHTER IMAGE QUALITY. Only an OBF canonical packshot
+// URL on the `image_url` (full size) field gets HIGH. Everything
+// else starts at MEDIUM or lower. This matches the user's
+// reported symptom: previously "high" was awarded to images that
+// looked low-trust / marketplace-y. The OBF canonical pattern is
+// `https://world.openbeautyfacts.org/images/products/<numeric>/<rev>.jpg`
+// (or variants with the country sub-domain). Anything not matching
+// this canonical pattern is downgraded.
+const OBF_CANONICAL_PACKSHOT = /openbeautyfacts\.org\/images\/products\/.+\.(jpe?g|png|webp)(?:\?|$)/i;
+
 interface ImagePick {
   url: string | null;
   quality: 'high' | 'medium' | 'low' | null;
@@ -336,8 +346,18 @@ interface ImagePick {
 function pickBestImageUrl(p: OBFProduct): ImagePick {
   type Candidate = { url: string; tier: 'high' | 'medium' | 'low'; src: string };
   const ordered: Candidate[] = [];
+  // v21.2 — initial tier assignment is more conservative. HIGH is
+  // only awarded later, AFTER URL-pattern validation against the
+  // OBF canonical packshot regex. Any URL that does not match the
+  // canonical pattern starts at MEDIUM regardless of which OBF
+  // field it came from.
   if (typeof p.image_url === 'string' && p.image_url.trim().length > 0) {
-    ordered.push({ url: p.image_url.trim(), tier: 'high', src: 'image_url' });
+    const u = p.image_url.trim();
+    ordered.push({
+      url: u,
+      tier: OBF_CANONICAL_PACKSHOT.test(u) ? 'high' : 'medium',
+      src: 'image_url',
+    });
   }
   if (
     typeof p.image_small_url === 'string' &&
@@ -345,6 +365,8 @@ function pickBestImageUrl(p: OBFProduct): ImagePick {
   ) {
     ordered.push({
       url: p.image_small_url.trim(),
+      // v21.2 — `image_small_url` is never HIGH (it's the smaller
+      // crop). Best case is MEDIUM.
       tier: 'medium',
       src: 'image_small_url',
     });
