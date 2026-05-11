@@ -487,6 +487,7 @@ import type {
   RecommendationAvailability,
   RecommendationContext,
   RecommendationIntent,
+  RerankStatus,
 } from '@/types/canonical';
 import type { AIRerankResult } from '@/ai/ai-contracts';
 // v19.17 — deterministic seed catalog retrieval. v19.23 — now
@@ -599,6 +600,18 @@ const APP_CONCERN_TO_AI_CONCERN: Record<string, ConcernType> = {
  * back to the deterministic local-score order. The AI rerank is
  * BEST-EFFORT — never blocking.
  */
+// v19.42 — outcome envelope. Replaces the silent `null` return with
+// a structured shape so the caller always knows WHY the rerank
+// didn't apply. The dev truth panel surfaces every field.
+export interface RerankAttemptOutcome {
+  result: AIRerankResult | null;
+  attempted: boolean;
+  skipped: boolean;
+  skipReason: string | null;
+  returned: boolean;
+  returnReason: string | null;
+}
+
 async function tryRerankProducts(args: {
   candidates: LiveProductCandidate[];
   profile: ReturnType<typeof selectUserProfileContext>;
@@ -612,7 +625,7 @@ async function tryRerankProducts(args: {
   trustScores?: Array<{ id: string; trust: number; hasImage: boolean }>;
   // v19.36 — derived skin-profile axes.
   skinProfile?: InferredSkinProfile;
-}): Promise<AIRerankResult | null> {
+}): Promise<RerankAttemptOutcome> {
   const {
     candidates,
     profile,
@@ -624,7 +637,29 @@ async function tryRerankProducts(args: {
     trustScores,
     skinProfile,
   } = args;
-  if (!aiGateway.isAvailable() || candidates.length === 0) return null;
+  // v19.42 — explicit skip-reason capture. Pre-v19.42 these
+  // conditions returned a silent `null` and the dev panel went
+  // gray. Now every skip has an explicit human-readable reason.
+  if (!aiGateway.isAvailable()) {
+    return {
+      result: null,
+      attempted: false,
+      skipped: true,
+      skipReason: 'AI gateway unavailable (proxy unreachable / not configured)',
+      returned: false,
+      returnReason: null,
+    };
+  }
+  if (candidates.length === 0) {
+    return {
+      result: null,
+      attempted: false,
+      skipped: true,
+      skipReason: 'candidate pool is empty (nothing to rerank)',
+      returned: false,
+      returnReason: null,
+    };
+  }
   // Trim to top 8 by deterministic localScore — rerank only the
   // strongest candidates so the call stays cheap.
   const scored = candidates
@@ -634,7 +669,16 @@ async function tryRerankProducts(args: {
     }))
     .sort((a, b) => b.localScore - a.localScore)
     .slice(0, 8);
-  if (scored.length === 0) return null;
+  if (scored.length === 0) {
+    return {
+      result: null,
+      attempted: false,
+      skipped: true,
+      skipReason: 'scored candidate set empty after localScore sort',
+      returned: false,
+      returnReason: null,
+    };
+  }
   const payload = {
     candidates: scored.map(({ c, localScore }) => ({
       id: c.id,
@@ -676,12 +720,38 @@ async function tryRerankProducts(args: {
     skinProfile: skinProfile ?? undefined,
   };
   try {
-    return await aiGateway.rerankProducts(payload);
+    const result = await aiGateway.rerankProducts(payload);
+    if (!result || !result.heroId) {
+      return {
+        result: null,
+        attempted: true,
+        skipped: false,
+        skipReason: null,
+        returned: false,
+        returnReason: 'AI rerank returned null or empty heroId',
+      };
+    }
+    return {
+      result,
+      attempted: true,
+      skipped: false,
+      skipReason: null,
+      returned: true,
+      returnReason: null,
+    };
   } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
     aiLog.warn('liveProducts.rerank', 'AI rerank failed; falling back to local order', {
-      error: e instanceof Error ? e.message : String(e),
+      error: reason,
     });
-    return null;
+    return {
+      result: null,
+      attempted: true,
+      skipped: false,
+      skipReason: null,
+      returned: false,
+      returnReason: `AI rerank threw: ${reason.slice(0, 120)}`,
+    };
   }
 }
 
@@ -707,13 +777,27 @@ async function tryRerankProductsBounded(args: {
   trustScores?: Array<{ id: string; trust: number; hasImage: boolean }>;
   // v19.36 — derived skin-profile axes.
   skinProfile?: InferredSkinProfile;
-}): Promise<AIRerankResult | null> {
-  return Promise.race([
-    tryRerankProducts(args),
-    new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), RERANK_RACE_MS);
-    }),
-  ]);
+}): Promise<RerankAttemptOutcome> {
+  // v19.42 — race-timeout outcome envelope. Pre-v19.42 the race
+  // resolved with `null` and the dev panel went gray. Now the
+  // timeout returns an explicit RerankAttemptOutcome with reason.
+  const timeoutOutcome: Promise<RerankAttemptOutcome> = new Promise(
+    (resolve) => {
+      setTimeout(
+        () =>
+          resolve({
+            result: null,
+            attempted: true,
+            skipped: false,
+            skipReason: null,
+            returned: false,
+            returnReason: `AI rerank race timeout after ${RERANK_RACE_MS}ms`,
+          }),
+        RERANK_RACE_MS
+      );
+    }
+  );
+  return Promise.race([tryRerankProducts(args), timeoutOutcome]);
 }
 
 function inferConcernFromQuery(query: string): ConcernType | null {
@@ -1282,9 +1366,50 @@ export async function getRecommendationContextFromQuery(
   // STEP F — personalized AI rerank with bounded race.
   // v19.29 — receives ONLY the trust pool. AI cannot rescue
   // dropped junk; AI personalizes WITHIN the trustworthy set.
+  // v19.42 — record EVERY step of the rerank attempt in
+  // `rerankStatus` so the dev panel can never go gray. The
+  // status starts as "deterministic_fallback" (the default) and
+  // is upgraded as the attempt progresses.
   let rerank: AIRerankResult | null = null;
-  if (trustedFree.length >= 2 && trigger !== 'background') {
-    rerank = await tryRerankProductsBounded({
+  // Deterministic baseline: what would the hero be WITHOUT AI?
+  const heroBeforeRerank: string | null =
+    heroFitFree.kept[0]?.candidate.id ??
+    partitionedFree.alternativePool[0]?.candidate.id ??
+    null;
+  const alternativeIdsBeforeRerank: string[] = trustedFree
+    .filter((c) => c.id !== heroBeforeRerank)
+    .slice(0, 4)
+    .map((c) => c.id);
+  let rerankStatusFree: RerankStatus = {
+    attempted: false,
+    skipped: true,
+    skipReason: null,
+    returned: false,
+    returnReason: null,
+    applied: false,
+    appliedReason: null,
+    heroBeforeRerank,
+    heroAfterRerank: heroBeforeRerank,
+    alternativeIdsBeforeRerank,
+    alternativeIdsAfterRerank: alternativeIdsBeforeRerank,
+    source: 'deterministic_fallback',
+  };
+
+  if (trigger === 'background') {
+    rerankStatusFree = {
+      ...rerankStatusFree,
+      skipReason:
+        "trigger='background' (engine called for cache prewarm, AI rerank deliberately skipped)",
+    };
+  } else if (trustedFree.length < 2) {
+    rerankStatusFree = {
+      ...rerankStatusFree,
+      skipReason: `trustedFree.length=${trustedFree.length} (< 2, nothing to rerank)`,
+    };
+  } else {
+    // v19.42 — gate cleared. Attempt rerank and capture the
+    // explicit outcome envelope. No more silent null.
+    const outcome = await tryRerankProductsBounded({
       candidates: trustedFree,
       profile,
       skinState: skinStateForCtx,
@@ -1297,12 +1422,37 @@ export async function getRecommendationContextFromQuery(
         trust: s.score.total,
         hasImage: s.hasImage,
       })),
-      // v19.36 — pass derived skin-profile axes so the AI prompt
-      // can anchor the hero pick + whyHeroFits to the user's
-      // actual skin signals (no random heavy creams for oily
-      // users, no fragranced products for sensitive users).
       skinProfile: skinFitFree,
     });
+    rerankStatusFree = {
+      ...rerankStatusFree,
+      attempted: outcome.attempted,
+      skipped: outcome.skipped,
+      skipReason: outcome.skipReason,
+      returned: outcome.returned,
+      returnReason: outcome.returnReason,
+    };
+    if (outcome.result && outcome.result.heroId) {
+      rerank = outcome.result;
+      rerankStatusFree = {
+        ...rerankStatusFree,
+        applied: true,
+        appliedReason: 'AI rerank returned valid heroId; applying',
+        heroAfterRerank: outcome.result.heroId,
+        alternativeIdsAfterRerank: outcome.result.alternativeIds,
+        source: 'ai_rerank',
+      };
+    } else if (outcome.attempted) {
+      // AI was attempted but failed — explicit reason on the
+      // status; deterministic skin-fit fallback follows.
+      rerankStatusFree = {
+        ...rerankStatusFree,
+        source: 'ai_failed_fallback',
+        appliedReason:
+          outcome.returnReason ??
+          'AI rerank returned no valid heroId; using deterministic skin-fit hero',
+      };
+    }
   }
 
   // v19.38 — DETERMINISTIC SKIN-FIT FALLBACK.
@@ -1457,6 +1607,10 @@ export async function getRecommendationContextFromQuery(
     skinFitReason: skinFitFree.label,
     heroSkinFitScore,
     excludedFromHero: heroFitFree.dropped,
+    // v19.42 — explicit rerank execution status. The dev truth
+    // panel renders every field; gray/silent state is no longer
+    // possible.
+    rerankStatus: rerankStatusFree,
   });
 }
 
@@ -1604,9 +1758,48 @@ export async function getRecommendationContextForScan(
 
   // STEP F — personalized AI rerank with bounded race.
   // v19.29 — receives ONLY trust-pool candidates.
+  // v19.42 — same explicit rerank-status capture as the
+  // free-text path. Best-for-you (scan path) is the surface the
+  // user specifically complained about (different users see the
+  // same products); the status now records EXACTLY whether AI
+  // ran for this scan and, if not, why.
   let rerank: AIRerankResult | null = null;
-  if (trustedScan.length >= 2 && trigger !== 'background') {
-    rerank = await tryRerankProductsBounded({
+  const heroBeforeRerankScan: string | null =
+    heroFitScan.kept[0]?.candidate.id ??
+    partitionedScan.alternativePool[0]?.candidate.id ??
+    null;
+  const alternativeIdsBeforeRerankScan: string[] = trustedScan
+    .filter((c) => c.id !== heroBeforeRerankScan)
+    .slice(0, 4)
+    .map((c) => c.id);
+  let rerankStatusScan: RerankStatus = {
+    attempted: false,
+    skipped: true,
+    skipReason: null,
+    returned: false,
+    returnReason: null,
+    applied: false,
+    appliedReason: null,
+    heroBeforeRerank: heroBeforeRerankScan,
+    heroAfterRerank: heroBeforeRerankScan,
+    alternativeIdsBeforeRerank: alternativeIdsBeforeRerankScan,
+    alternativeIdsAfterRerank: alternativeIdsBeforeRerankScan,
+    source: 'deterministic_fallback',
+  };
+
+  if (trigger === 'background') {
+    rerankStatusScan = {
+      ...rerankStatusScan,
+      skipReason:
+        "trigger='background' (scan engine called for cache prewarm, AI rerank deliberately skipped)",
+    };
+  } else if (trustedScan.length < 2) {
+    rerankStatusScan = {
+      ...rerankStatusScan,
+      skipReason: `trustedScan.length=${trustedScan.length} (< 2, nothing to rerank)`,
+    };
+  } else {
+    const outcome = await tryRerankProductsBounded({
       candidates: trustedScan,
       profile,
       skinState,
@@ -1620,9 +1813,35 @@ export async function getRecommendationContextForScan(
         trust: s.score.total,
         hasImage: s.hasImage,
       })),
-      // v19.36 — derived skin-profile axes (scan path).
       skinProfile: skinFitScan,
     });
+    rerankStatusScan = {
+      ...rerankStatusScan,
+      attempted: outcome.attempted,
+      skipped: outcome.skipped,
+      skipReason: outcome.skipReason,
+      returned: outcome.returned,
+      returnReason: outcome.returnReason,
+    };
+    if (outcome.result && outcome.result.heroId) {
+      rerank = outcome.result;
+      rerankStatusScan = {
+        ...rerankStatusScan,
+        applied: true,
+        appliedReason: 'AI rerank returned valid heroId; applying',
+        heroAfterRerank: outcome.result.heroId,
+        alternativeIdsAfterRerank: outcome.result.alternativeIds,
+        source: 'ai_rerank',
+      };
+    } else if (outcome.attempted) {
+      rerankStatusScan = {
+        ...rerankStatusScan,
+        source: 'ai_failed_fallback',
+        appliedReason:
+          outcome.returnReason ??
+          'AI rerank returned no valid heroId; using deterministic skin-fit hero',
+      };
+    }
   }
 
   // v19.38 — same deterministic skin-fit fallback for the scan path.
@@ -1747,6 +1966,8 @@ export async function getRecommendationContextForScan(
     skinFitReason: skinFitScan.label,
     heroSkinFitScore: heroSkinFitScoreScan,
     excludedFromHero: heroFitScan.dropped,
+    // v19.42 — rerank status (scan path).
+    rerankStatus: rerankStatusScan,
   });
 }
 

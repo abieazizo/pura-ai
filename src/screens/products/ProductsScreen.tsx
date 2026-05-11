@@ -632,7 +632,7 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v19.41
+          REAL PATH v19.42
         </Text>
       </View>
       <View style={realPathStyles.row}>
@@ -685,6 +685,68 @@ function RealPathBadge({
           {rec?.retrievalSource ?? '(none)'}
         </Text>
       </View>
+      {/* v19.42 — EXPLICIT AI RERANK STATUS. No more gray panel.
+          Every fetch fills this — if AI was skipped, you see the
+          reason; if AI failed, you see the reason; if AI applied,
+          you see hero-before vs hero-after. */}
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>rerankSource</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.rerankStatus?.source ?? '(unknown)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>rerankAttempted</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.rerankStatus?.attempted ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>rerankApplied</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.rerankStatus?.applied ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      {rec?.rerankStatus?.skipped && rec.rerankStatus.skipReason ? (
+        <View style={realPathStyles.row}>
+          <Text style={realPathStyles.label}>skipReason</Text>
+          <Text style={realPathStyles.value} numberOfLines={2}>
+            {rec.rerankStatus.skipReason}
+          </Text>
+        </View>
+      ) : null}
+      {rec?.rerankStatus?.returnReason ? (
+        <View style={realPathStyles.row}>
+          <Text style={realPathStyles.label}>returnReason</Text>
+          <Text style={realPathStyles.value} numberOfLines={2}>
+            {rec.rerankStatus.returnReason}
+          </Text>
+        </View>
+      ) : null}
+      {rec?.rerankStatus?.appliedReason ? (
+        <View style={realPathStyles.row}>
+          <Text style={realPathStyles.label}>appliedReason</Text>
+          <Text style={realPathStyles.value} numberOfLines={2}>
+            {rec.rerankStatus.appliedReason}
+          </Text>
+        </View>
+      ) : null}
+      {rec?.rerankStatus ? (
+        <>
+          <View style={realPathStyles.row}>
+            <Text style={realPathStyles.label}>heroBeforeRerank</Text>
+            <Text style={realPathStyles.value} numberOfLines={1}>
+              {rec.rerankStatus.heroBeforeRerank ?? '(none)'}
+            </Text>
+          </View>
+          <View style={realPathStyles.row}>
+            <Text style={realPathStyles.label}>heroAfterRerank</Text>
+            <Text style={realPathStyles.value} numberOfLines={1}>
+              {rec.rerankStatus.heroAfterRerank ?? '(none)'}
+            </Text>
+          </View>
+        </>
+      ) : null}
       <View style={realPathStyles.row}>
         <Text style={realPathStyles.label}>lastUpdatedAt</Text>
         <Text style={realPathStyles.value} numberOfLines={1}>

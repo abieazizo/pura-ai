@@ -319,6 +319,48 @@ export interface RecommendationContext {
     name: string;
     reason: string;
   }>;
+
+  /**
+   * v19.42 — explicit AI rerank status. Replaces the previous
+   * fuzzy "source: 'ai-rerank' | 'deterministic'" tag which
+   * collapsed many distinct failure modes into one label and
+   * showed up as gray/silent in the diagnostics panel. The
+   * RerankStatus records every step from "attempted" through
+   * "applied" with explicit reasons for each negative branch.
+   * The dev truth panel surfaces this so the user can see
+   * exactly WHY the hero is what it is.
+   */
+  rerankStatus: RerankStatus;
+}
+
+/**
+ * v19.42 — explicit AI rerank execution status. Every fetch on
+ * the user-facing product path produces one of these.
+ *
+ * `source` resolves to:
+ *   • 'ai_rerank'              — AI rerank ran and was applied
+ *   • 'deterministic_fallback' — AI rerank was deliberately not
+ *                                attempted (e.g. background trigger,
+ *                                empty candidate pool), so the
+ *                                deterministic skin-fit hero won
+ *   • 'ai_failed_fallback'     — AI rerank was attempted but failed
+ *                                (proxy down / race timeout / null /
+ *                                invalid output), so the deterministic
+ *                                skin-fit hero won
+ */
+export interface RerankStatus {
+  attempted: boolean;
+  skipped: boolean;
+  skipReason: string | null;
+  returned: boolean;
+  returnReason: string | null;
+  applied: boolean;
+  appliedReason: string | null;
+  heroBeforeRerank: string | null;
+  heroAfterRerank: string | null;
+  alternativeIdsBeforeRerank: readonly string[];
+  alternativeIdsAfterRerank: readonly string[];
+  source: 'ai_rerank' | 'deterministic_fallback' | 'ai_failed_fallback';
 }
 
 // ============================================================================

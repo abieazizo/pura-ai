@@ -35,6 +35,7 @@ import type {
   RecommendationAvailability,
   RecommendationContext,
   RecommendationIntent,
+  RerankStatus,
   RetrievalAttempt,
   SkinConcernSummary,
   SkinScoreBand,
@@ -679,6 +680,13 @@ export function buildRecommendationContext(args: {
     name: string;
     reason: string;
   }>;
+  /**
+   * v19.42 — explicit rerank execution status. When supplied, the
+   * builder threads it onto the canonical RecommendationContext.
+   * When absent (legacy callers), a default `deterministic_fallback`
+   * status is synthesized so the field is never null.
+   */
+  rerankStatus?: RerankStatus;
 }): RecommendationContext {
   const {
     intent,
@@ -697,7 +705,25 @@ export function buildRecommendationContext(args: {
     skinFitReason = null,
     heroSkinFitScore = null,
     excludedFromHero = [],
+    rerankStatus,
   } = args;
+  // v19.42 — synthesize a deterministic_fallback status when the
+  // caller didn't supply one (legacy callers). Default makes the
+  // field non-null so the dev panel always renders something.
+  const resolvedRerankStatus: RerankStatus = rerankStatus ?? {
+    attempted: false,
+    skipped: true,
+    skipReason: 'caller did not invoke AI rerank (legacy code path)',
+    returned: false,
+    returnReason: null,
+    applied: false,
+    appliedReason: null,
+    heroBeforeRerank: null,
+    heroAfterRerank: null,
+    alternativeIdsBeforeRerank: [],
+    alternativeIdsAfterRerank: [],
+    source: 'deterministic_fallback',
+  };
   const lastAttempt: RetrievalAttempt = attempt ?? {
     id: genRecommendationId(),
     startedAt: new Date().toISOString(),
@@ -747,6 +773,7 @@ export function buildRecommendationContext(args: {
       skinFitReason,
       heroSkinFitScore,
       excludedFromHero,
+      rerankStatus: resolvedRerankStatus,
     };
   }
 
@@ -777,6 +804,7 @@ export function buildRecommendationContext(args: {
       skinFitReason,
       heroSkinFitScore,
       excludedFromHero,
+      rerankStatus: resolvedRerankStatus,
     };
   }
 
@@ -883,6 +911,7 @@ export function buildRecommendationContext(args: {
     skinFitReason,
     heroSkinFitScore,
     excludedFromHero,
+    rerankStatus: resolvedRerankStatus,
   };
 }
 
