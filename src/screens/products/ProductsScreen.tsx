@@ -632,13 +632,13 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v19.40
+          REAL PATH v19.41
         </Text>
       </View>
       <View style={realPathStyles.row}>
         <Text style={realPathStyles.label}>rerankPromptVersion</Text>
         <Text style={realPathStyles.value} numberOfLines={1}>
-          v19.40-exact
+          v19.41-exact-hard-filter
         </Text>
       </View>
       <View style={realPathStyles.row}>
