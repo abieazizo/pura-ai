@@ -32,6 +32,7 @@ import type {
 import type {
   CandidateScore,
   ConfidenceTier,
+  ProductRecommendationStatus,
   RecommendationAvailability,
   RecommendationContext,
   RecommendationIntent,
@@ -687,6 +688,12 @@ export function buildRecommendationContext(args: {
    * status is synthesized so the field is never null.
    */
   rerankStatus?: RerankStatus;
+  /**
+   * v19.43 — AI-first product recommendation status. When supplied,
+   * the builder threads it through. When absent, a default
+   * `deterministic_only` status is synthesized.
+   */
+  recommendationStatus?: ProductRecommendationStatus;
 }): RecommendationContext {
   const {
     intent,
@@ -706,7 +713,24 @@ export function buildRecommendationContext(args: {
     heroSkinFitScore = null,
     excludedFromHero = [],
     rerankStatus,
+    recommendationStatus,
   } = args;
+  // v19.43 — default ProductRecommendationStatus when callers
+  // didn't supply one (legacy paths). Always non-null.
+  const resolvedRecommendationStatus: ProductRecommendationStatus =
+    recommendationStatus ?? {
+      recommendationMode: null,
+      aiRecommendationAttempted: false,
+      aiRecommendationReturned: false,
+      aiRecommendationApplied: false,
+      aiRecommendationReason:
+        'caller did not invoke AI-first planner (legacy code path)',
+      userNeedSummary: null,
+      whyTheseProducts: null,
+      productSourceMode: 'deterministic_only',
+      slotCount: 0,
+      slotLabels: [],
+    };
   // v19.42 — synthesize a deterministic_fallback status when the
   // caller didn't supply one (legacy callers). Default makes the
   // field non-null so the dev panel always renders something.
@@ -774,6 +798,7 @@ export function buildRecommendationContext(args: {
       heroSkinFitScore,
       excludedFromHero,
       rerankStatus: resolvedRerankStatus,
+      recommendationStatus: resolvedRecommendationStatus,
     };
   }
 
@@ -805,6 +830,7 @@ export function buildRecommendationContext(args: {
       heroSkinFitScore,
       excludedFromHero,
       rerankStatus: resolvedRerankStatus,
+      recommendationStatus: resolvedRecommendationStatus,
     };
   }
 
@@ -912,6 +938,7 @@ export function buildRecommendationContext(args: {
     heroSkinFitScore,
     excludedFromHero,
     rerankStatus: resolvedRerankStatus,
+    recommendationStatus: resolvedRecommendationStatus,
   };
 }
 

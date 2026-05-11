@@ -55,6 +55,7 @@ import type {
   LiveProductLookupResult,
   ProductIdentity,
   ProductMatchResult,
+  ProductRecommendationPlan,
   ProgressExplanation,
   RoutineRecommendation,
   ScanPreflightResult,
@@ -74,6 +75,7 @@ import {
   validateLiveProductLookupResult,
   validateProductIdentity,
   validateProductMatchResult,
+  validateProductRecommendationPlan,
   validateProductRerankResult,
   validateProgressBundle,
   validateProgressExplanation,
@@ -195,6 +197,10 @@ const TIMEOUT_MS = {
   // with comfortable headroom. Failure here is recoverable —
   // pipeline falls back to deterministic local-score order.
   rerankProducts: 15_000,
+  // v19.43 — AI-first planner. Larger structured output than rerank
+  // (4 slots × ~100 tokens + overhead). 20s budget covers cold start
+  // with comfortable headroom.
+  recommendProductsForUser: 20_000,
   // v19.14 — DROPPED 45_000 → 25_000. v19.10's 45s budget existed
   // to cover gpt-5-mini's variable reasoning latency. v19.14
   // swaps lookupLiveProducts to gpt-4o-mini (non-reasoning, 2-5s
@@ -825,6 +831,35 @@ export interface AIGateway {
     };
   }): Promise<AIRerankResult>;
 
+  /**
+   * v19.43 — AI-FIRST product planner. The model returns a structured
+   * ProductRecommendationPlan (mode + userNeedSummary + 1-4 product
+   * slots with searchQueries). Retrieval then enriches each slot
+   * into a real product card. AI drives the recommendation;
+   * retrieval enriches it.
+   */
+  recommendProductsForUser(params: {
+    query: string | null;
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    topConcerns: string[];
+    latestScanSummary: string | null;
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
+    suggestedMode?: 'best_for_you' | 'query_driven_search' | 'concern_focused_search';
+  }): Promise<ProductRecommendationPlan>;
+
   answerAssistant(params: {
     context: AssistantContext;
     userQuestion: string;
@@ -973,6 +1008,15 @@ const gateway: AIGateway = {
       method: 'rerankProducts',
       body: params,
       validate: validateProductRerankResult,
+    });
+  },
+
+  async recommendProductsForUser(params) {
+    ensureAvailable();
+    return runMethod({
+      method: 'recommendProductsForUser',
+      body: params,
+      validate: validateProductRecommendationPlan,
     });
   },
 

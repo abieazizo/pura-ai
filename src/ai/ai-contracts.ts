@@ -1404,6 +1404,93 @@ export const PRODUCT_RERANK_SCHEMA: JsonSchema = {
 };
 
 // ============================================================================
+// v19.43 — AI-FIRST PRODUCT RECOMMENDATION PLAN.
+//
+// AI is no longer just a reranker. The planner now decides WHAT KINDS
+// of products this user should be shown (per-slot productType + signals
+// + search queries). Retrieval then enriches each slot into a real
+// product card with images + merchant info + metadata. AI drives the
+// recommendation; retrieval enriches it.
+// ============================================================================
+
+export type ProductRecommendationMode =
+  | 'best_for_you'
+  | 'query_driven_search'
+  | 'concern_focused_search';
+
+export interface ProductRecommendationSlot {
+  /** Short user-facing label ("Lightweight gel moisturizer"). */
+  slotLabel: string;
+  /** Product type the slot targets (moisturizer / serum / cleanser / etc). */
+  productType: string;
+  /** Plain-English target need this slot addresses for THIS user. */
+  targetNeed: string;
+  /** Ingredient / texture / safety signals the slot should favor. */
+  desiredSignals: string[];
+  /** Signals the slot should avoid. */
+  avoidSignals: string[];
+  /**
+   * Retrieval queries the engine will run for this slot. Each should
+   * be a concrete search term (e.g. "gel moisturizer", "ceramide
+   * barrier cream"). The engine will fan out across these via the
+   * existing multi-probe retrieval and enrich the result.
+   */
+  searchQueries: string[];
+}
+
+export interface ProductRecommendationPlan {
+  recommendationMode: ProductRecommendationMode;
+  /** One-line plain-English statement of the user's dominant need. */
+  userNeedSummary: string;
+  /** Ordered slots (strongest first). 1-4 entries. */
+  productRequests: ProductRecommendationSlot[];
+  /** Short reason explaining why these product types fit this user. */
+  whyTheseProducts: string;
+}
+
+export const PRODUCT_RECOMMENDATION_PLAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'recommendationMode',
+    'userNeedSummary',
+    'productRequests',
+    'whyTheseProducts',
+  ],
+  properties: {
+    recommendationMode: {
+      type: 'string',
+      enum: ['best_for_you', 'query_driven_search', 'concern_focused_search'],
+    },
+    userNeedSummary: { type: 'string' },
+    productRequests: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'slotLabel',
+          'productType',
+          'targetNeed',
+          'desiredSignals',
+          'avoidSignals',
+          'searchQueries',
+        ],
+        properties: {
+          slotLabel: { type: 'string' },
+          productType: { type: 'string' },
+          targetNeed: { type: 'string' },
+          desiredSignals: { type: 'array', items: { type: 'string' } },
+          avoidSignals: { type: 'array', items: { type: 'string' } },
+          searchQueries: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+    whyTheseProducts: { type: 'string' },
+  },
+};
+
+// ============================================================================
 // Aggregate map — every named schema indexed by its variable name. Useful
 // for telemetry, debugging, and any consumer that needs to enumerate
 // schemas (e.g. a dev console "show all AI schemas" panel).
@@ -1423,6 +1510,7 @@ export interface AIStructuredSchemas {
   LIVE_PRODUCT_LOOKUP_SCHEMA: JsonSchema;
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA: JsonSchema;
   PRODUCT_RERANK_SCHEMA: JsonSchema;
+  PRODUCT_RECOMMENDATION_PLAN_SCHEMA: JsonSchema;
 }
 
 export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
@@ -1439,6 +1527,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   LIVE_PRODUCT_LOOKUP_SCHEMA,
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
   PRODUCT_RERANK_SCHEMA,
+  PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
 };
 
 // v11.1 — legacy `Claude*` schema aliases removed.

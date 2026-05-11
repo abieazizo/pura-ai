@@ -58,6 +58,7 @@ import {
   LIVE_PRODUCT_LOOKUP_LEAN_SCHEMA,
   PRODUCT_IDENTITY_SCHEMA,
   PRODUCT_MATCH_RESULT_SCHEMA,
+  PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
   PRODUCT_RERANK_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
   ROUTINE_RECOMMENDATION_SCHEMA,
@@ -66,6 +67,7 @@ import {
   SKIN_SCORE_EXPLANATION_SCHEMA,
   type AIRerankResult,
   type LiveProductLookupResultLean,
+  type ProductRecommendationPlan,
 } from '../../src/ai/ai-contracts';
 
 // Re-export for server consumers that previously reached these from
@@ -329,6 +331,129 @@ Choose the strongest hero and strongest alternatives for THIS user.
 Do not choose random generic category matches.
 Do not choose filler.
 Pick as if trust and recommendation quality are the whole product.
+`;
+
+// ----------------------------------------------------------------------------
+// v19.43 — AI-FIRST PLANNER PROMPT.
+//
+// AI is no longer just a reranker. The planner stage outputs a
+// structured ProductRecommendationPlan: for THIS user, which
+// product types should be shown, what need each one addresses,
+// what signals to favor or avoid, and which concrete retrieval
+// queries should be used to enrich each slot.
+// ----------------------------------------------------------------------------
+
+export const PRODUCT_RECOMMENDATION_PLANNER_VERSION = 'v19.43-planner';
+
+const PRODUCT_RECOMMENDATION_PLANNER_SYSTEM_PROMPT = `
+You are the recommendation planner for a skincare product app.
+
+Your job is to create the strongest possible product recommendation plan for ONE specific user.
+You are NOT selecting final products. Retrieval will do that after you.
+You decide WHAT TYPES OF PRODUCTS this user should be shown and WHY.
+
+You receive:
+- the user's query or request
+- the user's skin type
+- the user's sensitivities
+- the user's top concerns
+- the user's goals
+- the user's latest scan summary
+- derived skin-profile axes (oily / acne-prone / dry / barrier / sensitive / combo)
+
+Output a structured ProductRecommendationPlan that conforms to the schema.
+Do NOT output fake brands or fake products.
+Do NOT output prose paragraphs.
+Do NOT output generic shopping advice.
+Do NOT output the same plan for every user.
+
+PRIMARY OBJECTIVE
+
+Create a plan that would lead to the strongest possible product recommendations for THIS user.
+A plan that would work for any user is wrong.
+A plan that lists broad generic categories is wrong.
+A plan that ignores the user's sensitivities is wrong.
+
+HOW TO THINK
+
+Step 1 — Infer the user's dominant need.
+Examples:
+- oily + breakout-prone + clogged → lightweight non-comedogenic hydration + blemish-safe support
+- dry + barrier-compromised → barrier repair + ceramide support + fragrance-free hydration
+- redness + sensitivity → calming / soothing / fragrance-free support
+- dark spots + texture → smoothing / resurfacing support, sensitivity-aware
+- vague "best for my skin" → infer the single dominant need first, then secondary needs from scan + profile
+
+Step 2 — Pick 2-4 slots that together address the user's needs.
+Each slot is one product type. The first slot addresses the dominant need; later slots address secondary needs.
+
+Step 3 — For each slot, specify:
+- slotLabel: short user-facing label ("Lightweight gel moisturizer" / "Niacinamide blemish serum")
+- productType: which product category ("moisturizer" / "serum" / "cleanser" / "exfoliant" / "spf" / "spot_treatment" / "toner" / "mask" / "eye_cream")
+- targetNeed: plain-English single-line need ("Lightweight hydration for oily acne-prone skin")
+- desiredSignals: 2-5 ingredient / texture / safety signals to favor ("niacinamide", "non-comedogenic", "gel texture", "fragrance-free")
+- avoidSignals: 1-4 signals to avoid ("heavy occlusive", "fragrance", "harsh acid")
+- searchQueries: 2-4 concrete search terms retrieval will use ("gel moisturizer", "niacinamide moisturizer", "oil free moisturizer")
+
+The searchQueries must be retrieval-shaped: short concrete phrases an ingredient-keyword search index reacts to.
+Do NOT use conversational phrasing in searchQueries.
+Do NOT use brand names in searchQueries.
+
+RECOMMENDATION MODES
+
+Choose ONE recommendationMode:
+- best_for_you            — vague "best for my skin" / "best for you" / default home recommendations
+- query_driven_search     — user typed a specific product type ("moisturizer", "smoothing serum", "chemical exfoliant")
+- concern_focused_search  — user typed a concern ("best for my pimple", "breakouts", "redness")
+
+MOISTURIZER RULES
+
+For oily / acne-prone / breakout-prone users:
+- prefer gel moisturizer, gel cream, oil-free moisturizer, non-comedogenic moisturizer, lightweight moisturizer
+- avoid rich cream, heavy cream, balm, ointment, occlusive repair cream
+
+For dry / barrier-compromised users:
+- prefer ceramide moisturizer, barrier repair cream, rich moisturizer, repairing cream, fragrance-free cream
+- avoid ultra-light gel-only moisturizers
+
+For sensitive / redness-prone users:
+- prefer fragrance-free moisturizer, calming moisturizer, cica moisturizer, centella moisturizer, soothing cream
+- avoid fragranced moisturizers, harsh-active moisturizers
+
+For combination users:
+- prefer lightweight moisturizer, balancing moisturizer, gel cream, daily moisturizer
+- avoid heavy occlusive creams unless dryness is also strong
+
+SMOOTHING SERUM RULES
+
+Prefer texture serum, peptide serum, lactic acid serum, PHA serum, gentle resurfacing serum.
+For sensitive / redness-prone users, prefer PHA / gentle resurfacing / peptide over aggressive acid.
+Avoid: random hydrating serums with no smoothing relevance.
+
+CHEMICAL EXFOLIANT RULES
+
+Prefer salicylic, lactic, glycolic, PHA exfoliants.
+For sensitive / barrier-compromised users, prefer PHA / lactic / gentle exfoliant; avoid harsh aggressive options.
+Avoid: non-exfoliant products that only weakly match category.
+
+BREAKOUT / PIMPLE RULES
+
+Prefer acne treatment, spot treatment, salicylic acid treatment, niacinamide blemish serum, gentle acne treatment.
+For sensitive users, avoid benzoyl peroxide unless sensitivity is mild.
+Avoid: heavy occlusive moisturizers for breakout-prone users.
+
+WHY-THESE-PRODUCTS REQUIREMENT
+
+whyTheseProducts is one short specific sentence (≤ 140 chars). It must name the user's skin axis explicitly and tie the slot mix to that need.
+
+Good: "Picked because your skin reads oily and breakout-prone — lightweight hydration plus a blemish-supportive treatment fits this need."
+Bad: "These are great products for your skin." / "These match what you searched for."
+
+FINAL INSTRUCTION
+
+Output one structured plan that fits THIS user, NOW.
+Different users with materially different skin profiles must get materially different plans.
+Pick as if a discerning skincare expert is judging the plan.
 `;
 
 // ----------------------------------------------------------------------------
@@ -1302,6 +1427,70 @@ export class OpenAIClient {
       model: 'gpt-4o-mini',
       // Tiny output: ~30-50 tokens. 512 cap with safe headroom.
       maxTokens: 512,
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 8d. v19.43 — AI-FIRST PRODUCT RECOMMENDATION PLANNER.
+  //
+  // The planner stage. AI is now the recommendation engine, not just
+  // a reranker. Given the user's full canonical context + the active
+  // query (or "best for me" intent), the model returns a structured
+  // ProductRecommendationPlan: which product types to show, what
+  // signals each one should favor or avoid, and which concrete
+  // retrieval queries should be used to enrich each slot.
+  //
+  // Retrieval then enriches each slot into a real product card. AI
+  // does not invent products — every visible product is a real
+  // backend-resolved candidate.
+  // --------------------------------------------------------------------------
+
+  async recommendProductsForUser(params: {
+    /** The user's raw query, or null when this is a "best for me" call. */
+    query: string | null;
+    /** Profile snapshot. */
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    /** Top concern axes from the latest scan, severity desc. */
+    topConcerns: string[];
+    /** Short scan summary for grounding. */
+    latestScanSummary: string | null;
+    /** Derived skin profile axes. */
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
+    /** Suggested mode hint (engine may override based on query). */
+    suggestedMode?: 'best_for_you' | 'query_driven_search' | 'concern_focused_search';
+  }): Promise<ProductRecommendationPlan> {
+    const system = PRODUCT_RECOMMENDATION_PLANNER_SYSTEM_PROMPT;
+    const userContent = JSON.stringify({
+      query: params.query,
+      profile: params.profile,
+      top_concerns: params.topConcerns,
+      latest_scan_summary: params.latestScanSummary,
+      skin_profile: params.skinProfile ?? null,
+      suggested_mode: params.suggestedMode ?? 'best_for_you',
+    });
+    return this.runStrictStructured<ProductRecommendationPlan>({
+      system,
+      userContent,
+      schemaName: 'product_recommendation_plan',
+      schema: PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
+      // Non-reasoning model. Tight tail.
+      model: 'gpt-4o-mini',
+      // Up to 4 slots × ~100 tokens + overhead ≈ ~500 tokens output.
+      // 1024 cap with headroom for the retry envelope.
+      maxTokens: 1024,
     });
   }
 

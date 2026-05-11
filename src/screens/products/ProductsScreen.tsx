@@ -632,7 +632,7 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v19.42
+          REAL PATH v19.43
         </Text>
       </View>
       <View style={realPathStyles.row}>
@@ -689,6 +689,64 @@ function RealPathBadge({
           Every fetch fills this — if AI was skipped, you see the
           reason; if AI failed, you see the reason; if AI applied,
           you see hero-before vs hero-after. */}
+      {/* v19.43 — AI-FIRST PRODUCT RECOMMENDATION STATUS. The
+          single most important status: which path produced the
+          visible result. ai_first means AI drove the picks. */}
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>productSourceMode</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.productSourceMode ?? '(unknown)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>recommendationMode</Text>
+        <Text style={realPathStyles.value} numberOfLines={1}>
+          {rec?.recommendationStatus?.recommendationMode ?? '(none)'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiRecommendationAttempted</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiRecommendationAttempted ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiRecommendationReturned</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiRecommendationReturned ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      <View style={realPathStyles.row}>
+        <Text style={realPathStyles.label}>aiRecommendationApplied</Text>
+        <Text style={realPathStyles.value}>
+          {rec?.recommendationStatus?.aiRecommendationApplied ? 'YES' : 'NO'}
+        </Text>
+      </View>
+      {rec?.recommendationStatus?.aiRecommendationReason ? (
+        <View style={realPathStyles.row}>
+          <Text style={realPathStyles.label}>aiRecommendationReason</Text>
+          <Text style={realPathStyles.value} numberOfLines={3}>
+            {rec.recommendationStatus.aiRecommendationReason}
+          </Text>
+        </View>
+      ) : null}
+      {rec?.recommendationStatus?.userNeedSummary ? (
+        <View style={realPathStyles.row}>
+          <Text style={realPathStyles.label}>userNeedSummary</Text>
+          <Text style={realPathStyles.value} numberOfLines={3}>
+            {rec.recommendationStatus.userNeedSummary}
+          </Text>
+        </View>
+      ) : null}
+      {rec?.recommendationStatus?.slotLabels &&
+      rec.recommendationStatus.slotLabels.length > 0 ? (
+        <View style={realPathStyles.row}>
+          <Text style={realPathStyles.label}>aiSlots</Text>
+          <Text style={realPathStyles.value} numberOfLines={3}>
+            {rec.recommendationStatus.slotLabels.join(' / ')}
+          </Text>
+        </View>
+      ) : null}
       <View style={realPathStyles.row}>
         <Text style={realPathStyles.label}>rerankSource</Text>
         <Text style={realPathStyles.value} numberOfLines={1}>

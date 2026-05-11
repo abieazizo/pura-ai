@@ -331,6 +331,61 @@ export interface RecommendationContext {
    * exactly WHY the hero is what it is.
    */
   rerankStatus: RerankStatus;
+
+  /**
+   * v19.43 — AI-FIRST PRODUCT RECOMMENDATION STATUS. The planner
+   * stage runs BEFORE retrieval and produces a structured plan
+   * (mode + slots + searchQueries). Retrieval then enriches each
+   * slot into a real product card. The status records every step
+   * so the dev panel can never be gray and `productSourceMode`
+   * tells the user exactly which path produced the visible
+   * result:
+   *
+   *   • `ai_first`             — AI planner returned a plan and
+   *                              retrieval enriched it; visible
+   *                              products come from the AI's
+   *                              chosen slots.
+   *   • `ai_failed_fallback`   — AI planner was attempted but
+   *                              failed (proxy down / timeout /
+   *                              invalid plan); visible products
+   *                              come from the legacy retrieval +
+   *                              rerank pipeline.
+   *   • `deterministic_only`   — AI planner was deliberately not
+   *                              attempted (e.g. background
+   *                              trigger); visible products come
+   *                              from retrieval + rerank only.
+   */
+  recommendationStatus: ProductRecommendationStatus;
+}
+
+/**
+ * v19.43 — AI-first product recommendation status. Every fetch on
+ * the user-facing product path produces one of these.
+ */
+export interface ProductRecommendationStatus {
+  /** Which mode the planner targeted (and which fallback was used). */
+  recommendationMode: 'best_for_you' | 'query_driven_search' | 'concern_focused_search' | null;
+  /** Did the engine attempt the AI-first planner? */
+  aiRecommendationAttempted: boolean;
+  /** Did the planner return a valid structured plan? */
+  aiRecommendationReturned: boolean;
+  /** Did retrieval enrich the plan into visible products? */
+  aiRecommendationApplied: boolean;
+  /** Short reason — explains every negative branch. */
+  aiRecommendationReason: string | null;
+  /** One-line plain-English user-need summary from the planner. */
+  userNeedSummary: string | null;
+  /** Short reason explaining why these product types fit. */
+  whyTheseProducts: string | null;
+  /**
+   * Which path produced the visible result. Three discrete states;
+   * gray/unknown is forbidden.
+   */
+  productSourceMode: 'ai_first' | 'ai_failed_fallback' | 'deterministic_only';
+  /** Number of slots in the AI plan (0 when no plan). */
+  slotCount: number;
+  /** Slot labels for the truth panel. */
+  slotLabels: readonly string[];
 }
 
 /**

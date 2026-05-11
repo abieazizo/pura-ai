@@ -800,6 +800,293 @@ async function tryRerankProductsBounded(args: {
   return Promise.race([tryRerankProducts(args), timeoutOutcome]);
 }
 
+// ===========================================================================
+// v19.43 — AI-FIRST PRODUCT RECOMMENDATION ORCHESTRATOR.
+//
+// The new primary path. Calls the AI planner first to decide WHAT
+// types of products to show this user, then enriches each slot
+// into real candidates via the existing multi-probe retrieval and
+// trust pipeline. Returns a structured outcome the engine entries
+// fold into RecommendationContext.recommendationStatus.
+//
+// If AI is unavailable / fails / returns invalid plan / enriches
+// zero candidates, the outer engine falls back to the rerank-only
+// path and the status records ai_failed_fallback with an explicit
+// reason. AI cannot fail silently.
+// ===========================================================================
+
+import type {
+  ProductRecommendationPlan,
+  ProductRecommendationSlot,
+} from '@/ai/ai-contracts';
+import type { ProductRecommendationStatus } from '@/types/canonical';
+
+const AI_PLAN_RACE_MS = 12_000;
+
+interface AiFirstOutcome {
+  status: ProductRecommendationStatus;
+  /** Candidates assembled from enriched AI plan slots. Ordered. */
+  candidates: LiveProductCandidate[];
+  /** matchedProbes per id, threaded from each slot's retrieval. */
+  matchedProbesById: Map<string, string[]>;
+  /** Hero candidate id (first slot's strongest). */
+  heroId: string | null;
+  /** Alt ids (slots 2..N + same-slot peers). */
+  alternativeIds: string[];
+}
+
+function buildEmptyAiOutcome(
+  attempted: boolean,
+  reason: string,
+  productSourceMode: 'ai_failed_fallback' | 'deterministic_only',
+  recommendationMode: 'best_for_you' | 'query_driven_search' | 'concern_focused_search' | null = null
+): AiFirstOutcome {
+  return {
+    status: {
+      recommendationMode,
+      aiRecommendationAttempted: attempted,
+      aiRecommendationReturned: false,
+      aiRecommendationApplied: false,
+      aiRecommendationReason: reason,
+      userNeedSummary: null,
+      whyTheseProducts: null,
+      productSourceMode,
+      slotCount: 0,
+      slotLabels: [],
+    },
+    candidates: [],
+    matchedProbesById: new Map(),
+    heroId: null,
+    alternativeIds: [],
+  };
+}
+
+/**
+ * v19.43 — primary AI-first recommendation orchestrator.
+ *
+ * Calls the planner, dispatches retrieval per slot, dedupes
+ * candidates across slots, and returns a final ordered candidate
+ * list with the hero pinned to the first slot's top result.
+ *
+ * Pure side-effect-free until cacheCandidates is called by the
+ * engine entry. Never throws — every failure mode resolves to a
+ * structured outcome with `aiRecommendationReason` set.
+ */
+async function tryAiFirstRecommendation(args: {
+  query: string | null;
+  profile: ReturnType<typeof selectUserProfileContext>;
+  skinState: ReturnType<typeof selectSkinState>;
+  trigger: RetrievalTrigger;
+  interpretedIntent: InterpretedIntent;
+  suggestedMode?: 'best_for_you' | 'query_driven_search' | 'concern_focused_search';
+}): Promise<AiFirstOutcome> {
+  const { query, profile, skinState, trigger, interpretedIntent, suggestedMode } = args;
+
+  if (trigger === 'background') {
+    return buildEmptyAiOutcome(
+      false,
+      "trigger='background' (engine called for cache prewarm; AI planner deliberately skipped)",
+      'deterministic_only'
+    );
+  }
+  if (!aiGateway.isAvailable()) {
+    return buildEmptyAiOutcome(
+      false,
+      'AI gateway unavailable (proxy unreachable / not configured)',
+      'deterministic_only'
+    );
+  }
+
+  // Derive skin profile axes once.
+  const skinFit = inferSkinProfile(profile, skinState);
+
+  // Call the planner with a bounded race so the user-facing path
+  // never blocks more than AI_PLAN_RACE_MS.
+  const plannerCall = aiGateway
+    .recommendProductsForUser({
+      query,
+      profile: {
+        displayName: profile.displayName,
+        skinType: profile.skinType,
+        sensitivities: profile.sensitivities,
+        goals: profile.goals,
+      },
+      topConcerns: skinState?.topConcerns?.map((c) => c.concern as string) ?? [],
+      latestScanSummary: skinState?.summaryHeadline ?? null,
+      skinProfile: skinFit,
+      suggestedMode,
+    })
+    .then(
+      (plan): { ok: true; plan: ProductRecommendationPlan } => ({
+        ok: true,
+        plan,
+      })
+    )
+    .catch(
+      (e: unknown): { ok: false; reason: string } => ({
+        ok: false,
+        reason: `AI planner threw: ${(e instanceof Error ? e.message : String(e)).slice(0, 140)}`,
+      })
+    );
+  const timeoutCall = new Promise<{ ok: false; reason: string }>((resolve) => {
+    setTimeout(
+      () =>
+        resolve({
+          ok: false,
+          reason: `AI planner race timeout after ${AI_PLAN_RACE_MS}ms`,
+        }),
+      AI_PLAN_RACE_MS
+    );
+  });
+  const result = await Promise.race([plannerCall, timeoutCall]);
+
+  if (!result.ok) {
+    return buildEmptyAiOutcome(
+      true,
+      result.reason,
+      'ai_failed_fallback',
+      suggestedMode ?? null
+    );
+  }
+  const plan = result.plan;
+
+  if (!plan.productRequests || plan.productRequests.length === 0) {
+    return buildEmptyAiOutcome(
+      true,
+      'AI planner returned no productRequests',
+      'ai_failed_fallback',
+      plan.recommendationMode
+    );
+  }
+
+  // For each slot, dispatch retrieval using the slot's
+  // searchQueries (capped at 3 per slot to keep total OBF load
+  // bounded). The first slot's top trust candidate becomes hero.
+  const matchedProbesById = new Map<string, string[]>();
+  const seen = new Set<string>();
+  const heroOrdered: LiveProductCandidate[] = [];
+  let heroId: string | null = null;
+  const altOrdered: LiveProductCandidate[] = [];
+  for (let slotIdx = 0; slotIdx < plan.productRequests.length; slotIdx++) {
+    const slot = plan.productRequests[slotIdx];
+    const slotCandidates = await enrichSlot(slot, profile, skinState, interpretedIntent);
+    for (let i = 0; i < slotCandidates.length; i++) {
+      const c = slotCandidates[i];
+      if (seen.has(c.id)) {
+        // Merge matchedProbes from another slot.
+        const existing = matchedProbesById.get(c.id) ?? [];
+        const next = Array.from(
+          new Set([...existing, ...slot.searchQueries])
+        );
+        matchedProbesById.set(c.id, next);
+        continue;
+      }
+      seen.add(c.id);
+      matchedProbesById.set(c.id, [...slot.searchQueries]);
+      if (slotIdx === 0 && heroOrdered.length === 0) {
+        heroOrdered.push(c);
+        heroId = c.id;
+      } else if (slotIdx === 0) {
+        // Same-slot peers go to the front of alternatives.
+        altOrdered.unshift(c);
+      } else {
+        altOrdered.push(c);
+      }
+    }
+  }
+  const candidates: LiveProductCandidate[] = [...heroOrdered, ...altOrdered];
+
+  if (candidates.length === 0) {
+    return buildEmptyAiOutcome(
+      true,
+      `AI planner returned ${plan.productRequests.length} slot(s) but retrieval enriched 0 candidates`,
+      'ai_failed_fallback',
+      plan.recommendationMode
+    );
+  }
+
+  return {
+    status: {
+      recommendationMode: plan.recommendationMode,
+      aiRecommendationAttempted: true,
+      aiRecommendationReturned: true,
+      aiRecommendationApplied: true,
+      aiRecommendationReason:
+        `AI planner returned ${plan.productRequests.length} slot(s); ` +
+        `retrieval enriched ${candidates.length} candidate(s)`,
+      userNeedSummary: plan.userNeedSummary,
+      whyTheseProducts: plan.whyTheseProducts,
+      productSourceMode: 'ai_first',
+      slotCount: plan.productRequests.length,
+      slotLabels: plan.productRequests.map((s) => s.slotLabel),
+    },
+    candidates,
+    matchedProbesById,
+    heroId,
+    alternativeIds: candidates
+      .filter((c) => c.id !== heroId)
+      .slice(0, 4)
+      .map((c) => c.id),
+  };
+}
+
+/**
+ * Enrich a single AI plan slot into real LiveProductCandidate
+ * objects. Runs the slot's searchQueries through the existing
+ * tryLiveSearch pipeline (which itself fans out across probes),
+ * filter+dedup, then returns up to 3 candidates per slot.
+ */
+async function enrichSlot(
+  slot: ProductRecommendationSlot,
+  profile: ReturnType<typeof selectUserProfileContext>,
+  skinState: ReturnType<typeof selectSkinState>,
+  parentIntent: InterpretedIntent
+): Promise<LiveProductCandidate[]> {
+  // Use the slot's first searchQuery as the canonical query for
+  // intent interpretation. The other searchQueries are passed as
+  // additional probes via the slot's array.
+  const slotQuery = slot.searchQueries[0] ?? slot.productType;
+  // Reuse the parent intent's avoidance constraints — the AI
+  // already accounted for user sensitivities in the slot's
+  // avoidSignals.
+  const slotIntent: InterpretedIntent = {
+    ...parentIntent,
+    intentLabel: slot.slotLabel || slot.productType,
+  };
+  const live = await tryLiveSearch(slotQuery, 'background', {
+    profile,
+    skinState,
+    inferredConcern: parentIntent.interpretedConcern as ConcernType | null,
+    intent: slotIntent,
+    chipIntent: null,
+  });
+  let candidates: LiveProductCandidate[] = live.candidates;
+  if (candidates.length === 0) {
+    // Seed fallback per slot — keeps the visible result non-empty
+    // when OBF is unreachable for this slot.
+    candidates = retrieveSeedCandidates({
+      query: slotQuery,
+      concern: parentIntent.interpretedConcern ?? null,
+      limit: 4,
+      rotation: 0,
+    });
+  }
+  // Filter + dedupe + trust scoring (per slot).
+  const filtered = filterUsableCandidates(candidates);
+  const deduped = dedupCandidates(filtered);
+  const scored = deduped.map((c) =>
+    scoreTrustForCandidate({
+      candidate: c,
+      intent: slotIntent,
+      profile,
+      skinState,
+      matchedProbes: live.matchedProbesById.get(c.id) ?? slot.searchQueries,
+    })
+  );
+  const partition = partitionByTrust(scored);
+  return partition.alternativePool.slice(0, 3).map((s) => s.candidate);
+}
+
 function inferConcernFromQuery(query: string): ConcernType | null {
   const q = query.toLowerCase();
   if (/breakout|acne|spot|pimple|clog/.test(q)) return 'breakouts';
@@ -1253,6 +1540,127 @@ export async function getRecommendationContextFromQuery(
     { chipIntent: opts.chipIntent }
   );
 
+  // v19.43 — AI-FIRST PRIMARY PATH. Run the planner first; if it
+  // succeeds, the visible result comes from AI-chosen slots. If
+  // it fails (proxy down / timeout / invalid plan / zero enriched
+  // candidates), fall through to the rerank-only legacy path
+  // below and record `productSourceMode: 'ai_failed_fallback'`.
+  const aiFirstOutcome = await tryAiFirstRecommendation({
+    query,
+    profile,
+    skinState: skinStateForCtx,
+    trigger,
+    interpretedIntent,
+    suggestedMode:
+      interpretedIntent.mode === 'best_for_my_skin'
+        ? 'best_for_you'
+        : interpretedIntent.mode === 'concern_search'
+        ? 'concern_focused_search'
+        : 'query_driven_search',
+  });
+
+  // When AI-first SUCCEEDS, skip the entire legacy
+  // retrieve+filter+trust+rerank pipeline. The AI plan + slot
+  // enrichment IS the final result. Cache + build the canonical
+  // context directly.
+  if (aiFirstOutcome.status.productSourceMode === 'ai_first') {
+    cacheCandidates(aiFirstOutcome.candidates);
+    const aiHero = aiFirstOutcome.candidates.find(
+      (c) => c.id === aiFirstOutcome.heroId
+    ) ?? null;
+    // v19.43 — heroSkinFitScore for the AI-chosen hero. Compute
+    // from a single-candidate trust score so the dev panel still
+    // surfaces a comparable number.
+    const heroSkinFit = aiHero
+      ? scoreTrustForCandidate({
+          candidate: aiHero,
+          intent: interpretedIntent,
+          profile,
+          skinState: skinStateForCtx,
+          matchedProbes:
+            aiFirstOutcome.matchedProbesById.get(aiHero.id) ?? [],
+        })
+      : null;
+    const heroSkinFitScoreAi = heroSkinFit
+      ? Math.round(
+          Math.max(
+            0,
+            Math.min(
+              100,
+              heroSkinFit.score.safetyFit * (100 / 15) -
+                heroSkinFit.score.noisePenalty
+            )
+          )
+        )
+      : null;
+    const attempt: RetrievalAttempt = {
+      id: attemptId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      trigger,
+      query,
+      source: 'obf_live',
+      success: true,
+      failureReason: null,
+    };
+    const attempts = recordAttempt(attempt);
+    // Synthesize a rerank status that explicitly says AI-first
+    // drove the result. heroBefore/heroAfter both = AI hero, source
+    // = 'ai_rerank' (the planner IS the AI rerank). This keeps the
+    // existing rerank fields meaningful even though the rerank
+    // method itself was bypassed.
+    const aiFirstRerankStatus: RerankStatus = {
+      attempted: true,
+      skipped: false,
+      skipReason: null,
+      returned: true,
+      returnReason: null,
+      applied: true,
+      appliedReason: 'AI-first planner produced enriched candidates',
+      heroBeforeRerank: aiFirstOutcome.heroId,
+      heroAfterRerank: aiFirstOutcome.heroId,
+      alternativeIdsBeforeRerank: aiFirstOutcome.alternativeIds,
+      alternativeIdsAfterRerank: aiFirstOutcome.alternativeIds,
+      source: 'ai_rerank',
+    };
+    return buildRecommendationContext({
+      intent,
+      candidates: aiFirstOutcome.candidates,
+      profile,
+      skinState: skinStateForCtx,
+      state: 'available',
+      failureReason: undefined,
+      rerankResult: {
+        heroId: aiFirstOutcome.heroId,
+        alternativeIds: aiFirstOutcome.alternativeIds,
+        whyHeroFits: aiFirstOutcome.status.whyTheseProducts,
+        whatToAvoid: [],
+      },
+      retrievalSource: 'live',
+      attempt,
+      attemptHistory: attempts,
+      interpretedIntentLabel: interpretedIntent.intentLabel,
+      probeQueries: aiFirstOutcome.candidates
+        .flatMap((c) => aiFirstOutcome.matchedProbesById.get(c.id) ?? [])
+        .filter((q, i, arr) => arr.indexOf(q) === i)
+        .slice(0, 8),
+      queryFamily: `ai_first:${aiFirstOutcome.status.recommendationMode}`,
+      skinFitReason:
+        inferSkinProfile(profile, skinStateForCtx).label,
+      heroSkinFitScore: heroSkinFitScoreAi,
+      excludedFromHero: [],
+      rerankStatus: aiFirstRerankStatus,
+      recommendationStatus: aiFirstOutcome.status,
+    });
+  }
+
+  // AI-first did not produce a usable plan. The status records
+  // WHY (proxy unavailable / planner failed / zero enriched). The
+  // legacy retrieve+filter+trust+rerank path runs below as the
+  // fallback. We stash the status to thread onto the final
+  // RecommendationContext after the legacy path finishes.
+  const fallbackRecommendationStatus = aiFirstOutcome.status;
+
   const live = await tryLiveSearch(query, trigger, {
     profile,
     skinState: skinStateForCtx,
@@ -1611,6 +2019,11 @@ export async function getRecommendationContextFromQuery(
     // panel renders every field; gray/silent state is no longer
     // possible.
     rerankStatus: rerankStatusFree,
+    // v19.43 — thread the AI-first attempt outcome onto the canonical
+    // context. Even though the legacy path produced the visible
+    // result, the recommendationStatus tells the user WHY AI-first
+    // didn't (proxy down / timeout / empty plan / zero enriched).
+    recommendationStatus: fallbackRecommendationStatus,
   });
 }
 
@@ -1685,6 +2098,106 @@ export async function getRecommendationContextForScan(
     profile,
     skinState
   );
+
+  // v19.43 — AI-FIRST PRIMARY PATH for the scan engine. Same
+  // pattern as the free-text engine: planner runs first; if it
+  // succeeds, AI-chosen slots are the visible result. If it fails,
+  // the legacy path below runs as fallback and the status
+  // records why.
+  const aiFirstOutcomeScan = await tryAiFirstRecommendation({
+    query: null, // scan-driven, no typed query
+    profile,
+    skinState,
+    trigger,
+    interpretedIntent: scanIntentForLive,
+    suggestedMode: 'best_for_you',
+  });
+  if (aiFirstOutcomeScan.status.productSourceMode === 'ai_first') {
+    cacheCandidates(aiFirstOutcomeScan.candidates);
+    const aiHero = aiFirstOutcomeScan.candidates.find(
+      (c) => c.id === aiFirstOutcomeScan.heroId
+    ) ?? null;
+    const heroSkinFit = aiHero
+      ? scoreTrustForCandidate({
+          candidate: aiHero,
+          intent: scanIntentForLive,
+          profile,
+          skinState,
+          matchedProbes:
+            aiFirstOutcomeScan.matchedProbesById.get(aiHero.id) ?? [],
+        })
+      : null;
+    const heroSkinFitScoreAi = heroSkinFit
+      ? Math.round(
+          Math.max(
+            0,
+            Math.min(
+              100,
+              heroSkinFit.score.safetyFit * (100 / 15) -
+                heroSkinFit.score.noisePenalty
+            )
+          )
+        )
+      : null;
+    const attempt: RetrievalAttempt = {
+      id: attemptId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      trigger,
+      query: liveQuery,
+      source: 'obf_live',
+      success: true,
+      failureReason: null,
+    };
+    const attempts = recordAttempt(attempt);
+    const aiFirstRerankStatus: RerankStatus = {
+      attempted: true,
+      skipped: false,
+      skipReason: null,
+      returned: true,
+      returnReason: null,
+      applied: true,
+      appliedReason:
+        'AI-first planner produced enriched candidates (scan path)',
+      heroBeforeRerank: aiFirstOutcomeScan.heroId,
+      heroAfterRerank: aiFirstOutcomeScan.heroId,
+      alternativeIdsBeforeRerank: aiFirstOutcomeScan.alternativeIds,
+      alternativeIdsAfterRerank: aiFirstOutcomeScan.alternativeIds,
+      source: 'ai_rerank',
+    };
+    return buildRecommendationContext({
+      intent,
+      candidates: aiFirstOutcomeScan.candidates,
+      profile,
+      skinState,
+      state: 'available',
+      failureReason: undefined,
+      rerankResult: {
+        heroId: aiFirstOutcomeScan.heroId,
+        alternativeIds: aiFirstOutcomeScan.alternativeIds,
+        whyHeroFits: aiFirstOutcomeScan.status.whyTheseProducts,
+        whatToAvoid: [],
+      },
+      retrievalSource: 'live',
+      attempt,
+      attemptHistory: attempts,
+      interpretedIntentLabel: scanIntentForLive.intentLabel,
+      probeQueries: aiFirstOutcomeScan.candidates
+        .flatMap(
+          (c) => aiFirstOutcomeScan.matchedProbesById.get(c.id) ?? []
+        )
+        .filter((q, i, arr) => arr.indexOf(q) === i)
+        .slice(0, 8),
+      queryFamily: `ai_first:${aiFirstOutcomeScan.status.recommendationMode}`,
+      skinFitReason: inferSkinProfile(profile, skinState).label,
+      heroSkinFitScore: heroSkinFitScoreAi,
+      excludedFromHero: [],
+      rerankStatus: aiFirstRerankStatus,
+      recommendationStatus: aiFirstOutcomeScan.status,
+    });
+  }
+  const fallbackRecommendationStatusScan = aiFirstOutcomeScan.status;
+
   const live = await tryLiveSearch(liveQuery, trigger, {
     profile,
     skinState,
@@ -1968,6 +2481,9 @@ export async function getRecommendationContextForScan(
     excludedFromHero: heroFitScan.dropped,
     // v19.42 — rerank status (scan path).
     rerankStatus: rerankStatusScan,
+    // v19.43 — recommendation status from the AI-first attempt
+    // (scan path fallback).
+    recommendationStatus: fallbackRecommendationStatusScan,
   });
 }
 

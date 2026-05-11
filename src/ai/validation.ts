@@ -872,6 +872,96 @@ export function validateProductRerankResult(v: unknown): {
   };
 }
 
+/**
+ * v19.43 — validate the AI-first ProductRecommendationPlan. Returns
+ * `null` when the payload is missing or malformed; the engine then
+ * records that as an explicit failure reason in ProductSourceMode
+ * (no silent gray panel). Trims strings to safe UI lengths and
+ * filters out empty slots.
+ */
+export function validateProductRecommendationPlan(v: unknown): {
+  recommendationMode: 'best_for_you' | 'query_driven_search' | 'concern_focused_search';
+  userNeedSummary: string;
+  productRequests: Array<{
+    slotLabel: string;
+    productType: string;
+    targetNeed: string;
+    desiredSignals: string[];
+    avoidSignals: string[];
+    searchQueries: string[];
+  }>;
+  whyTheseProducts: string;
+} | null {
+  if (!isObject(v)) {
+    aiLog.warn('validateProductRecommendationPlan', 'not an object');
+    return null;
+  }
+  const modeRaw = (v as { recommendationMode?: unknown }).recommendationMode;
+  const mode =
+    modeRaw === 'best_for_you' ||
+    modeRaw === 'query_driven_search' ||
+    modeRaw === 'concern_focused_search'
+      ? modeRaw
+      : null;
+  if (!mode) {
+    aiLog.warn('validateProductRecommendationPlan', 'invalid recommendationMode');
+    return null;
+  }
+  const need = (v as { userNeedSummary?: unknown }).userNeedSummary;
+  const userNeedSummary =
+    typeof need === 'string' && need.trim().length > 0
+      ? need.trim().slice(0, 180)
+      : '';
+  const why = (v as { whyTheseProducts?: unknown }).whyTheseProducts;
+  const whyTheseProducts =
+    typeof why === 'string' && why.trim().length > 0
+      ? why.trim().slice(0, 220)
+      : '';
+  const slotsRaw = (v as { productRequests?: unknown }).productRequests;
+  if (!Array.isArray(slotsRaw)) {
+    aiLog.warn('validateProductRecommendationPlan', 'productRequests not an array');
+    return null;
+  }
+  const productRequests = slotsRaw
+    .filter((s): s is Record<string, unknown> => isObject(s))
+    .map((s) => ({
+      slotLabel:
+        typeof s.slotLabel === 'string' ? s.slotLabel.trim().slice(0, 60) : '',
+      productType:
+        typeof s.productType === 'string' ? s.productType.trim().slice(0, 32) : '',
+      targetNeed:
+        typeof s.targetNeed === 'string' ? s.targetNeed.trim().slice(0, 140) : '',
+      desiredSignals: arrayOfStrings(s.desiredSignals)
+        .map((x) => x.trim().slice(0, 48))
+        .filter((x) => x.length > 0)
+        .slice(0, 6),
+      avoidSignals: arrayOfStrings(s.avoidSignals)
+        .map((x) => x.trim().slice(0, 48))
+        .filter((x) => x.length > 0)
+        .slice(0, 6),
+      searchQueries: arrayOfStrings(s.searchQueries)
+        .map((x) => x.trim().slice(0, 80))
+        .filter((x) => x.length > 0)
+        .slice(0, 5),
+    }))
+    .filter(
+      (s) =>
+        s.productType.length > 0 &&
+        s.searchQueries.length > 0
+    )
+    .slice(0, 4);
+  if (productRequests.length === 0) {
+    aiLog.warn('validateProductRecommendationPlan', 'no usable productRequests');
+    return null;
+  }
+  return {
+    recommendationMode: mode,
+    userNeedSummary,
+    productRequests,
+    whyTheseProducts,
+  };
+}
+
 export function validateProgressBundle(v: unknown): {
   progress: ProgressExplanation;
   score: SkinScoreExplanation;

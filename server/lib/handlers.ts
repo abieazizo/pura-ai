@@ -23,6 +23,7 @@ import {
   validateLiveProductLookupResult,
   validateProductIdentity,
   validateProductMatchResult,
+  validateProductRecommendationPlan,
   validateProductRerankResult,
   validateProgressBundle,
   validateProgressExplanation,
@@ -685,6 +686,95 @@ export const HANDLERS: Record<string, Handler> = {
     );
     const validated = validateProductRerankResult(result);
     if (!validated) aiBad('rerankProducts');
+    return validated;
+  },
+
+  // v19.43 — AI-first product recommendation planner.
+  async recommendProductsForUser(client, body) {
+    const queryRaw = body['query'];
+    const query =
+      typeof queryRaw === 'string' && queryRaw.trim().length > 0
+        ? queryRaw.trim().slice(0, 200)
+        : null;
+    const profileRaw = body['profile'];
+    const profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    } = {
+      displayName: null,
+      skinType: 'unknown',
+      sensitivities: [],
+      goals: [],
+    };
+    if (profileRaw && typeof profileRaw === 'object') {
+      const r = profileRaw as Record<string, unknown>;
+      if (typeof r.displayName === 'string') profile.displayName = r.displayName;
+      if (typeof r.skinType === 'string') profile.skinType = r.skinType;
+      if (Array.isArray(r.sensitivities)) {
+        profile.sensitivities = (r.sensitivities as unknown[]).filter(
+          (s): s is string => typeof s === 'string'
+        );
+      }
+      if (Array.isArray(r.goals)) {
+        profile.goals = (r.goals as unknown[]).filter(
+          (g): g is string => typeof g === 'string'
+        );
+      }
+    }
+    const topConcerns = Array.isArray(body['topConcerns'])
+      ? (body['topConcerns'] as unknown[]).filter(
+          (c): c is string => typeof c === 'string'
+        )
+      : [];
+    const latestScanSummary =
+      typeof body['latestScanSummary'] === 'string'
+        ? (body['latestScanSummary'] as string).slice(0, 320)
+        : null;
+    const sp = body['skinProfile'];
+    let skinProfile:
+      | {
+          isOily: boolean;
+          isAcneProne: boolean;
+          isDry: boolean;
+          isBarrier: boolean;
+          isSensitive: boolean;
+          isCombo: boolean;
+          label: string;
+        }
+      | undefined;
+    if (sp && typeof sp === 'object') {
+      const r = sp as Record<string, unknown>;
+      skinProfile = {
+        isOily: r.isOily === true,
+        isAcneProne: r.isAcneProne === true,
+        isDry: r.isDry === true,
+        isBarrier: r.isBarrier === true,
+        isSensitive: r.isSensitive === true,
+        isCombo: r.isCombo === true,
+        label: typeof r.label === 'string' ? r.label : 'unknown',
+      };
+    }
+    const modeRaw = body['suggestedMode'];
+    const suggestedMode =
+      modeRaw === 'best_for_you' ||
+      modeRaw === 'query_driven_search' ||
+      modeRaw === 'concern_focused_search'
+        ? modeRaw
+        : undefined;
+    const result = await withAIErrorTranslation('recommendProductsForUser', () =>
+      client.recommendProductsForUser({
+        query,
+        profile,
+        topConcerns,
+        latestScanSummary,
+        skinProfile,
+        suggestedMode,
+      })
+    );
+    const validated = validateProductRecommendationPlan(result);
+    if (!validated) aiBad('recommendProductsForUser');
     return validated;
   },
 
