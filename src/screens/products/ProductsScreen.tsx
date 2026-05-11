@@ -41,6 +41,8 @@ import { getSearchSuggestions } from '@/api';
 // retrieval, normalization, dedupe, local scoring, and (best-effort)
 // AI rerank — all in one shared path with ResultScreen + Diagnostics.
 import { getRecommendationContextFromQuery } from '@/api/liveProducts';
+import { aiGateway } from '@/ai/aiGateway';
+import { rePingProxyHealthz } from '@/ai/aiHealthProbe';
 // v19.32 — real UI trace store. ProductsScreen writes this AFTER
 // every fetch resolve so diagnostics + the user can verify what
 // the actual UI rendered.
@@ -436,6 +438,16 @@ export function ProductsScreen() {
         />
       ) : null}
 
+      {/* v21.1 — AI TRANSPORT BANNER. Renders unconditionally in
+          dev/Expo Go whenever the AI gateway transport is not
+          available. This is the SINGLE LOUDEST SIGNAL we have:
+          if you see this red banner, AI is OFF on your device and
+          every "best for you" / search result is the deterministic
+          fallback, which is the same across all users. */}
+      {__DEV__ && !aiGateway.isAvailable() ? (
+        <AiTransportOfflineBanner />
+      ) : null}
+
       {isSearching ? (
         <ScrollView
           style={styles.flex}
@@ -589,6 +601,274 @@ export function ProductsScreen() {
 // ---------------------------------------------------------------------------
 
 /**
+ * v21.1 — AI TRANSPORT OFFLINE BANNER.
+ *
+ * This is the single loudest user-visible signal in the app.
+ * Renders in __DEV__ builds ONLY when `aiGateway.isAvailable()`
+ * returns false, which happens when:
+ *   • EXPO_PUBLIC_PURA_AI_PROXY_URL is not set
+ *   • The proxy URL candidate auto-derivation found nothing reachable
+ *   • The proxy URL is set but /healthz never responded with 200
+ *
+ * If you see this banner on device, AI rerank / AI planner / AI
+ * selector ALL silently no-op. Every "best for you" hero is the
+ * deterministic skin-fit fallback, which collapses to the same
+ * candidate for users whose top-trust pool head matches — which
+ * is exactly why different accounts see the same products.
+ *
+ * The banner exposes:
+ *   • proxy URL the client is trying
+ *   • source of that URL (bundle host / env var / etc)
+ *   • a "Re-ping /healthz" button that re-attempts transport
+ *     resolution
+ *   • a "Run AI planner now" button that bypasses isAvailable()
+ *     and POSTs directly to the proxy with the raw response
+ *     surfaced (success or failure body / status code).
+ */
+function AiTransportOfflineBanner() {
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState<string | null>(null);
+  const proxyUrl = aiGateway.proxyUrl();
+  const proxyUrlSource = aiGateway.proxyUrlSource();
+  const transport = aiGateway.transport();
+
+  const onRePing = async () => {
+    if (busy) return;
+    setBusy(true);
+    setReport('Re-pinging /healthz…');
+    try {
+      await rePingProxyHealthz();
+    } catch (e) {
+      setReport(
+        `Healthz threw: ${e instanceof Error ? e.message : String(e)}`
+      );
+      setBusy(false);
+      return;
+    }
+    setReport(
+      aiGateway.isAvailable()
+        ? 'Healthz OK — AI transport is now AVAILABLE. ' +
+            'Re-open the search to see AI-driven results.'
+        : 'Healthz did not unlock transport. ' +
+            'Check Metro is running with `npm run server:ai` and your ' +
+            'device is on the same network as the host. Proxy URL is shown above.'
+    );
+    setBusy(false);
+  };
+
+  const onTestPlanner = async () => {
+    if (busy) return;
+    setBusy(true);
+    setReport('Calling AI planner directly via the gateway…');
+    try {
+      const plan = await aiGateway.recommendProductsForUser({
+        query: 'moisturizer',
+        profile: {
+          displayName: 'Diagnostic',
+          skinType: 'oily',
+          sensitivities: ['breakouts'],
+          goals: ['reduce breakouts'],
+        },
+        topConcerns: ['breakouts', 'oiliness'],
+        latestScanSummary: 'Oily skin with mild forehead breakouts.',
+        skinProfile: {
+          isOily: true,
+          isAcneProne: true,
+          isDry: false,
+          isBarrier: false,
+          isSensitive: false,
+          isCombo: false,
+          label: 'oily acne-prone',
+        },
+        suggestedMode: 'best_for_you',
+      });
+      setReport(
+        'AI PLANNER RETURNED.\n' +
+          `mode: ${plan.recommendationMode}\n` +
+          `dominantConcern: ${plan.dominantConcern ?? '(none)'}\n` +
+          `userNeedSummary: ${plan.userNeedSummary}\n` +
+          `slots (${plan.slots.length}):\n` +
+          plan.slots
+            .map(
+              (s) =>
+                `  • ${s.slotLabel} (${s.queryFamily}) — ${s.targetNeed}`
+            )
+            .join('\n')
+      );
+    } catch (e) {
+      setReport(
+        'AI PLANNER FAILED.\n' +
+          (e instanceof Error ? `${e.name}: ${e.message}` : String(e)) +
+          '\n\nThis is the EXACT reason AI is off in the rest of the app.'
+      );
+    }
+    setBusy(false);
+  };
+
+  return (
+    <View style={aiOfflineStyles.banner}>
+      <Text style={aiOfflineStyles.heading} maxFontSizeMultiplier={1.1}>
+        AI PROXY OFFLINE
+      </Text>
+      <Text style={aiOfflineStyles.subhead} maxFontSizeMultiplier={1.1}>
+        AI is not running. Every "Best for you" / search result is the
+        deterministic fallback — same hero across users.
+      </Text>
+      <View style={aiOfflineStyles.kvRow}>
+        <Text style={aiOfflineStyles.kvLabel}>transport</Text>
+        <Text style={aiOfflineStyles.kvValue} numberOfLines={1}>
+          {transport}
+        </Text>
+      </View>
+      <View style={aiOfflineStyles.kvRow}>
+        <Text style={aiOfflineStyles.kvLabel}>proxy URL</Text>
+        <Text style={aiOfflineStyles.kvValue} numberOfLines={1}>
+          {proxyUrl || '(not configured)'}
+        </Text>
+      </View>
+      <View style={aiOfflineStyles.kvRow}>
+        <Text style={aiOfflineStyles.kvLabel}>URL source</Text>
+        <Text style={aiOfflineStyles.kvValue} numberOfLines={1}>
+          {proxyUrlSource}
+        </Text>
+      </View>
+      <View style={aiOfflineStyles.btnRow}>
+        <Pressable
+          onPress={onRePing}
+          disabled={busy}
+          style={({ pressed }) => [
+            aiOfflineStyles.btn,
+            pressed && { opacity: 0.85 },
+            busy && { opacity: 0.6 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Re-ping AI proxy healthz"
+        >
+          <Text style={aiOfflineStyles.btnText} maxFontSizeMultiplier={1.1}>
+            Re-ping /healthz
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onTestPlanner}
+          disabled={busy}
+          style={({ pressed }) => [
+            aiOfflineStyles.btn,
+            pressed && { opacity: 0.85 },
+            busy && { opacity: 0.6 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Test AI planner now"
+        >
+          <Text style={aiOfflineStyles.btnText} maxFontSizeMultiplier={1.1}>
+            Test AI planner now
+          </Text>
+        </Pressable>
+      </View>
+      {report ? (
+        <Text
+          style={aiOfflineStyles.report}
+          maxFontSizeMultiplier={1.1}
+          numberOfLines={20}
+        >
+          {report}
+        </Text>
+      ) : null}
+      <Text style={aiOfflineStyles.fix} maxFontSizeMultiplier={1.1}>
+        Fix: start the proxy with `npm run server:ai` on the host that
+        Metro detected, OR set EXPO_PUBLIC_PURA_AI_PROXY_URL to a
+        reachable URL and reload Expo Go.
+      </Text>
+    </View>
+  );
+}
+
+const aiOfflineStyles = StyleSheet.create({
+  banner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#FDECEA',
+    borderWidth: 2,
+    borderColor: '#C0392B',
+  },
+  heading: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    letterSpacing: 1.4,
+    color: '#9B1B0A',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  subhead: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#5B1208',
+    marginBottom: 10,
+  },
+  kvRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 8,
+    marginTop: 2,
+  },
+  kvLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 0.4,
+    color: '#7C2310',
+    textTransform: 'uppercase',
+  },
+  kvValue: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: '#0B1220',
+    flex: 1,
+    textAlign: 'right',
+  },
+  btnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  btn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#9B1B0A',
+    alignItems: 'center',
+  },
+  btnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11.5,
+    letterSpacing: 0.3,
+    color: '#FFFFFF',
+  },
+  report: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#0B1220',
+    marginTop: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 8,
+    borderRadius: 8,
+  },
+  fix: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#5B1208',
+    marginTop: 10,
+    fontStyle: 'italic',
+  },
+});
+
+/**
  * v19.38 — REAL PATH PROOF MARKER + dev panel.
  *
  * Visible only when __DEV__ is true. Rendered DIRECTLY inside the
@@ -632,7 +912,7 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v21.0
+          REAL PATH v21.1
         </Text>
       </View>
       <View style={realPathStyles.row}>
