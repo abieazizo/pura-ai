@@ -821,6 +821,16 @@ import type {
   SearchIntentPlan,
   SlotQueryFamily,
 } from '@/ai/ai-contracts';
+// v22.2 — deterministic fallback for typed search. When AI fails
+// (proxy down / race timeout / invalid plan), the engine MUST still
+// return a strong curated result. This module provides the
+// catalog-backed planner + quality filter + min-6 enforcer.
+import {
+  planTypedSearchDeterministic,
+  filterLiveQuality,
+  ensureMinimumResults,
+} from './typedSearchDeterministic';
+import { resolveCategoryFromQuery } from '@/data/baseCategories';
 import type { ProductRecommendationStatus } from '@/types/canonical';
 
 const AI_PLAN_RACE_MS = 12_000;
@@ -1387,6 +1397,73 @@ const SEARCH_FAMILY_REGEX: Record<string, RegExp> = {
   other: /.*/,
 };
 
+/**
+ * v22.2 — Build a deterministic typed-search outcome from the
+ * curated catalog. Used when AI is unavailable, fails, or returns
+ * nothing usable — instead of showing "1 picks" or an empty state,
+ * the user sees a strong curated category result. The visible
+ * recommendation is GOOD even when AI is off.
+ *
+ * `aiPlanReason` captures the underlying AI failure so the dev
+ * panel still shows the truth, but the user just sees products.
+ */
+function buildDeterministicTypedSearchOutcome(
+  rawQuery: string,
+  profile: ReturnType<typeof selectUserProfileContext>,
+  skinState: ReturnType<typeof selectSkinState>,
+  productSourceMode: 'ai_failed_fallback' | 'deterministic_only',
+  aiReason: string
+): TypedSearchOutcome {
+  const det = planTypedSearchDeterministic(rawQuery, profile, skinState);
+  aiTelemetry.setFeatureSource(
+    'products',
+    productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
+    `${aiReason} — falling back to curated catalog (${det.category.label})`
+  );
+  // Cache into the store so ProductDetail can resolve taps.
+  try {
+    useAppStore.getState().cacheLiveProducts(det.candidates);
+  } catch {
+    /* never block on cache write */
+  }
+  const matchedProbesById = new Map<string, string[]>();
+  for (const c of det.candidates) {
+    matchedProbesById.set(c.id, [det.category.id]);
+  }
+  return {
+    status: {
+      recommendationMode: 'query_driven_search',
+      dominantConcern: null,
+      aiPlanAttempted: true,
+      aiPlanReturned: false,
+      aiPlanApplied: false,
+      aiPlanReason: aiReason,
+      aiSelectAttempted: false,
+      aiSelectReturned: false,
+      aiSelectApplied: false,
+      aiSelectReason:
+        'deterministic typed-search planner: AI not used for this fetch',
+      userNeedSummary: det.userNeedSummary,
+      whyTheseProducts: det.searchIntentLabel,
+      productSourceMode,
+      slotCount: 0,
+      slotLabels: [],
+      plannerVersion: 'v22.2-deterministic',
+      selectorVersion: null,
+      resultMode: 'typed_search_flat',
+      dominantSearchFamily: det.dominantProductFamily,
+      resultCountTotal: det.candidates.length,
+      badgeMode: productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
+    },
+    candidates: det.candidates,
+    matchedProbesById,
+    heroId: det.candidates[0]?.id ?? null,
+    alternativeIds: det.candidates
+      .slice(1, 5)
+      .map((c) => c.id),
+  };
+}
+
 function buildEmptyTypedSearchOutcome(
   attempted: boolean,
   reason: string,
@@ -1450,10 +1527,15 @@ async function tryTypedSearch(args: {
     );
   }
   if (!aiGateway.isAvailable()) {
-    return buildEmptyTypedSearchOutcome(
-      false,
-      'AI gateway unavailable (proxy unreachable / not configured)',
-      'deterministic_only'
+    // v22.2 — AI proxy off. Fall through to curated catalog so the
+    // user STILL sees a strong same-intent list. Status records
+    // the AI-off state for dev; user just sees products.
+    return buildDeterministicTypedSearchOutcome(
+      rawQuery,
+      profile,
+      skinState,
+      'deterministic_only',
+      'AI gateway unavailable (proxy unreachable / not configured)'
     );
   }
   if (!rawQuery || rawQuery.trim().length === 0) {
@@ -1502,15 +1584,27 @@ async function tryTypedSearch(args: {
   const result = await Promise.race([plannerCall, timeoutCall]);
 
   if (!result.ok) {
-    return buildEmptyTypedSearchOutcome(true, result.reason, 'ai_failed_fallback');
+    // v22.2 — AI planner failed. Don't return an empty failure
+    // outcome that shows "1 picks" to the user. Build a strong
+    // deterministic curated result from the base category registry
+    // so the visible UI looks like a real search result.
+    return buildDeterministicTypedSearchOutcome(
+      rawQuery,
+      profile,
+      skinState,
+      'ai_failed_fallback',
+      result.reason
+    );
   }
   const plan = result.plan;
 
   if (!plan.searchQueries || plan.searchQueries.length === 0) {
-    return buildEmptyTypedSearchOutcome(
-      true,
-      'typed-search planner returned no searchQueries',
-      'ai_failed_fallback'
+    return buildDeterministicTypedSearchOutcome(
+      rawQuery,
+      profile,
+      skinState,
+      'ai_failed_fallback',
+      'typed-search planner returned no searchQueries'
     );
   }
 
@@ -1560,7 +1654,9 @@ async function tryTypedSearch(args: {
   ];
   const familyRegex = SEARCH_FAMILY_REGEX[plan.dominantProductFamily] ?? /.*/;
   const allCandidates = Array.from(candidatePool.values());
-  const qualityFiltered = allCandidates.filter((c) => {
+  // v22.2 — first pass: reject promo/junk via the shared quality filter.
+  const promoSafe = filterLiveQuality(allCandidates);
+  const qualityFiltered = promoSafe.filter((c) => {
     const corpus = `${c.name ?? ''} ${c.shortDescription ?? ''}`;
     if (QUALITY_REJECT_PATTERNS.some((re) => re.test(corpus))) return false;
     const brand = (c.brand ?? '').trim();
@@ -1579,10 +1675,15 @@ async function tryTypedSearch(args: {
   });
 
   if (familyMatched.length === 0) {
-    return buildEmptyTypedSearchOutcome(
-      true,
-      `typed-search planner returned ${plan.searchQueries.length} queries for family=${plan.dominantProductFamily}; retrieval matched 0 candidates`,
-      'ai_failed_fallback'
+    // v22.2 — retrieval found nothing usable for this family. Don't
+    // show an empty state; fall through to curated catalog so the
+    // user sees real products.
+    return buildDeterministicTypedSearchOutcome(
+      rawQuery,
+      profile,
+      skinState,
+      'ai_failed_fallback',
+      `AI planner returned ${plan.searchQueries.length} queries for family=${plan.dominantProductFamily} but retrieval matched 0 candidates after quality filter`
     );
   }
 
@@ -1608,7 +1709,25 @@ async function tryTypedSearch(args: {
     return imgRank(b.candidate) - imgRank(a.candidate);
   });
   // Cap at 18 (visibleCount 6 + 2 reveal batches with headroom).
-  const flatCandidates = scored.slice(0, 18).map((s) => s.candidate);
+  const rankedLive = scored.slice(0, 18).map((s) => s.candidate);
+
+  // v22.2 — MINIMUM-6 ENFORCEMENT. If live retrieval returned fewer
+  // than 6 strong candidates, top up from the curated catalog for
+  // the resolved category. Users never see "1 picks" or a thin
+  // 2-item shelf for a typed search.
+  const resolvedCategory = resolveCategoryFromQuery(rawQuery);
+  const minResults =
+    resolvedCategory?.minResults ??
+    6;
+  const flatCandidates = resolvedCategory
+    ? ensureMinimumResults(
+        rankedLive,
+        resolvedCategory,
+        profile,
+        skinState,
+        minResults
+      )
+    : rankedLive;
 
   const heroId = flatCandidates[0]?.id ?? null;
   const alternativeIds = flatCandidates

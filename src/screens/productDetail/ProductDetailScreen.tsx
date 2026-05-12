@@ -38,6 +38,8 @@ import type { LiveProductCandidate } from '@/ai/ai-contracts';
 // v19.37 — record which source resolved the tapped product so the
 // dev truth panel can prove there's no "Product not found" loop.
 import { setDetailResolution } from '@/state/productUiTrace';
+// v22.2 — gate the detail debug marker so it doesn't leak to users.
+import { shouldShowProductDebug } from '@/utils/devDebug';
 // v19.20 — ProductDetailScreen's "alternatives" row now flows
 // through the shared deterministic recommendation engine.
 import {
@@ -188,7 +190,7 @@ export function ProductDetailScreen() {
       <StatusBar style="dark" />
       <DetailHeader productId={product.id} />
 
-      {__DEV__ ? (
+      {shouldShowProductDebug() ? (
         <View style={detailMarkerStyles.wrap}>
           <View style={detailMarkerStyles.pill}>
             <Text style={detailMarkerStyles.pillText} maxFontSizeMultiplier={1}>

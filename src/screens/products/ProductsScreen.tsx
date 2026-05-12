@@ -43,6 +43,9 @@ import { getSearchSuggestions } from '@/api';
 import { getRecommendationContextFromQuery } from '@/api/liveProducts';
 import { aiGateway } from '@/ai/aiGateway';
 import { rePingProxyHealthz } from '@/ai/aiHealthProbe';
+// v22.2 — debug surfaces are hidden by default. Only render when
+// `shouldShowProductDebug()` is true (dev build + explicit env flag).
+import { shouldShowProductDebug } from '@/utils/devDebug';
 // v19.32 — real UI trace store. ProductsScreen writes this AFTER
 // every fetch resolve so diagnostics + the user can verify what
 // the actual UI rendered.
@@ -444,7 +447,7 @@ export function ProductsScreen() {
           if you see this red banner, AI is OFF on your device and
           every "best for you" / search result is the deterministic
           fallback, which is the same across all users. */}
-      {__DEV__ && !aiGateway.isAvailable() ? (
+      {shouldShowProductDebug() && !aiGateway.isAvailable() ? (
         <AiTransportOfflineBanner />
       ) : null}
 
@@ -481,7 +484,7 @@ export function ProductsScreen() {
               {/* v19.38 — REAL PATH PROOF MARKER. Renders in dev
                   builds only, inside the same JSX branch that
                   renders live hero+alts. */}
-              {__DEV__ ? (
+              {shouldShowProductDebug() ? (
                 <RealPathBadge
                   rec={lastRec}
                   at={lastRecAt}
@@ -912,7 +915,7 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v22.1
+          REAL PATH v22.2
         </Text>
       </View>
       <View style={realPathStyles.row}>
