@@ -818,6 +818,7 @@ async function tryRerankProductsBounded(args: {
 import type {
   ProductRecommendationPlan,
   ProductRecommendationSlot,
+  SearchIntentPlan,
   SlotQueryFamily,
 } from '@/ai/ai-contracts';
 import type { ProductRecommendationStatus } from '@/types/canonical';
@@ -1353,6 +1354,324 @@ async function tryAiFirstRecommendation(args: {
   };
 }
 
+// ===========================================================================
+// v22.1 — TYPED-SEARCH ORCHESTRATOR.
+//
+// COMPLETELY SEPARATE from tryAiFirstRecommendation. Does NOT call the
+// slot planner. Does NOT use slot output to derive the dominant family
+// (no majority vote, no first-slot fallback). Calls planTypedSearch
+// instead, retrieves real candidates using the plan's searchQueries,
+// hard-filters to dominantProductFamily, ranks flat, and returns.
+//
+// Used by getRecommendationContextFromQuery (typed search entry).
+// getRecommendationContextForScan (best-for-you) keeps the slot path.
+// ===========================================================================
+
+const TYPED_SEARCH_RACE_MS = 12_000;
+
+interface TypedSearchOutcome {
+  status: ProductRecommendationStatus;
+  candidates: LiveProductCandidate[];
+  matchedProbesById: Map<string, string[]>;
+  heroId: string | null;
+  alternativeIds: string[];
+}
+
+const SEARCH_FAMILY_REGEX: Record<string, RegExp> = {
+  moisturizer: /moisturi[sz]er|cream|lotion|emulsion|gel cream|barrier/i,
+  serum_texture: /serum|essence|ampoule|peptide|smooth|texture|resurfac|lactic|pha|retinol|glycolic/i,
+  chemical_exfoliant: /exfoli|salicylic|glycolic|lactic|mandelic|pha|aha|bha|peel|acid/i,
+  blemish_support: /spot|acne|pimple|blemish|salicylic|benzoyl|sulfur|niacinamide/i,
+  spf: /sunscreen|spf|sunblock|uv|sun cream/i,
+  cleanser: /cleanser|wash|foam|micellar|gel cleanser/i,
+  other: /.*/,
+};
+
+function buildEmptyTypedSearchOutcome(
+  attempted: boolean,
+  reason: string,
+  productSourceMode: 'ai_failed_fallback' | 'deterministic_only'
+): TypedSearchOutcome {
+  aiTelemetry.setFeatureSource(
+    'products',
+    productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
+    reason
+  );
+  return {
+    status: {
+      recommendationMode: null,
+      dominantConcern: null,
+      aiPlanAttempted: attempted,
+      aiPlanReturned: false,
+      aiPlanApplied: false,
+      aiPlanReason: reason,
+      aiSelectAttempted: false,
+      aiSelectReturned: false,
+      aiSelectApplied: false,
+      aiSelectReason: 'typed_search path: selector is not used',
+      userNeedSummary: null,
+      whyTheseProducts: null,
+      productSourceMode,
+      slotCount: 0,
+      slotLabels: [],
+      plannerVersion: attempted ? 'v22.1-search-only' : null,
+      selectorVersion: null,
+      resultMode: null,
+      dominantSearchFamily: null,
+      resultCountTotal: 0,
+      badgeMode:
+        productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
+    },
+    candidates: [],
+    matchedProbesById: new Map(),
+    heroId: null,
+    alternativeIds: [],
+  };
+}
+
+/**
+ * v22.1 — Typed-search orchestrator. Single-family flat-list path.
+ * Bypasses the slot planner entirely.
+ */
+async function tryTypedSearch(args: {
+  rawQuery: string;
+  profile: ReturnType<typeof selectUserProfileContext>;
+  skinState: ReturnType<typeof selectSkinState>;
+  trigger: RetrievalTrigger;
+  interpretedIntent: InterpretedIntent;
+}): Promise<TypedSearchOutcome> {
+  const { rawQuery, profile, skinState, trigger, interpretedIntent } = args;
+
+  if (trigger === 'background') {
+    return buildEmptyTypedSearchOutcome(
+      false,
+      "trigger='background' (cache prewarm; typed-search planner skipped)",
+      'deterministic_only'
+    );
+  }
+  if (!aiGateway.isAvailable()) {
+    return buildEmptyTypedSearchOutcome(
+      false,
+      'AI gateway unavailable (proxy unreachable / not configured)',
+      'deterministic_only'
+    );
+  }
+  if (!rawQuery || rawQuery.trim().length === 0) {
+    return buildEmptyTypedSearchOutcome(
+      false,
+      'empty raw query (typed-search planner needs a real user query)',
+      'deterministic_only'
+    );
+  }
+
+  const skinFit = inferSkinProfile(profile, skinState);
+
+  // Call the typed-search planner with a bounded race.
+  const plannerCall = aiGateway
+    .planTypedSearch({
+      rawQuery,
+      profile: {
+        displayName: profile.displayName,
+        skinType: profile.skinType,
+        sensitivities: profile.sensitivities,
+        goals: profile.goals,
+      },
+      topConcerns: skinState?.topConcerns?.map((c) => c.concern as string) ?? [],
+      latestScanSummary: skinState?.summaryHeadline ?? null,
+      skinProfile: skinFit,
+    })
+    .then(
+      (plan): { ok: true; plan: SearchIntentPlan } => ({ ok: true, plan })
+    )
+    .catch(
+      (e: unknown): { ok: false; reason: string } => ({
+        ok: false,
+        reason: `typed-search planner threw: ${(e instanceof Error ? e.message : String(e)).slice(0, 140)}`,
+      })
+    );
+  const timeoutCall = new Promise<{ ok: false; reason: string }>((resolve) => {
+    setTimeout(
+      () =>
+        resolve({
+          ok: false,
+          reason: `typed-search planner race timeout after ${TYPED_SEARCH_RACE_MS}ms`,
+        }),
+      TYPED_SEARCH_RACE_MS
+    );
+  });
+  const result = await Promise.race([plannerCall, timeoutCall]);
+
+  if (!result.ok) {
+    return buildEmptyTypedSearchOutcome(true, result.reason, 'ai_failed_fallback');
+  }
+  const plan = result.plan;
+
+  if (!plan.searchQueries || plan.searchQueries.length === 0) {
+    return buildEmptyTypedSearchOutcome(
+      true,
+      'typed-search planner returned no searchQueries',
+      'ai_failed_fallback'
+    );
+  }
+
+  // Retrieve real candidates using the plan's searchQueries.
+  // Each searchQuery hits tryLiveSearch (multi-probe OBF fan-out).
+  // We capture the union, hard-filter to dominantProductFamily, and
+  // rank flat.
+  const matchedProbesById = new Map<string, string[]>();
+  const candidatePool = new Map<string, LiveProductCandidate>();
+  const intentForRetrieval: InterpretedIntent = {
+    ...interpretedIntent,
+    intentLabel: plan.searchIntentLabel || rawQuery,
+  };
+  for (const q of plan.searchQueries.slice(0, 4)) {
+    const live = await tryLiveSearch(q, 'background', {
+      profile,
+      skinState,
+      inferredConcern: interpretedIntent.interpretedConcern as ConcernType | null,
+      intent: intentForRetrieval,
+      chipIntent: null,
+    });
+    for (const c of live.candidates) {
+      if (!candidatePool.has(c.id)) candidatePool.set(c.id, c);
+      const existing = matchedProbesById.get(c.id) ?? [];
+      matchedProbesById.set(c.id, Array.from(new Set([...existing, q])));
+    }
+  }
+  // Seed fallback if OBF returned nothing for all queries.
+  if (candidatePool.size === 0) {
+    const seedHits = retrieveSeedCandidates({
+      query: plan.searchQueries[0] ?? rawQuery,
+      concern: interpretedIntent.interpretedConcern ?? null,
+      limit: 16,
+      rotation: 0,
+    });
+    for (const c of seedHits) {
+      if (!candidatePool.has(c.id)) candidatePool.set(c.id, c);
+    }
+  }
+
+  // Filter usable + dedupe + quality reject + dominant-family filter.
+  const QUALITY_REJECT_PATTERNS: RegExp[] = [
+    /\b(refill|sample|tester|sachet|pouch|travel size|trial size|mini)\b/i,
+    /\b(empty bottle|empty container|dispenser only|pump only|applicator)\b/i,
+    /\b(gift set|bundle|combo pack|kit)\b/i,
+    /\b(value pack|family pack)\b/i,
+  ];
+  const familyRegex = SEARCH_FAMILY_REGEX[plan.dominantProductFamily] ?? /.*/;
+  const allCandidates = Array.from(candidatePool.values());
+  const qualityFiltered = allCandidates.filter((c) => {
+    const corpus = `${c.name ?? ''} ${c.shortDescription ?? ''}`;
+    if (QUALITY_REJECT_PATTERNS.some((re) => re.test(corpus))) return false;
+    const brand = (c.brand ?? '').trim();
+    const name = (c.name ?? '').trim();
+    if (brand.length < 2 && name.length < 8) return false;
+    return true;
+  });
+  const filterUsable = filterUsableCandidates(qualityFiltered);
+  const deduped = dedupCandidates(filterUsable);
+  // HARD family filter — typed-search must only return candidates
+  // whose name/category/description matches the dominant family.
+  // For 'other' the regex matches everything (vague queries).
+  const familyMatched = deduped.filter((c) => {
+    const corpus = `${c.name ?? ''} ${c.category ?? ''} ${c.shortDescription ?? ''}`;
+    return familyRegex.test(corpus);
+  });
+
+  if (familyMatched.length === 0) {
+    return buildEmptyTypedSearchOutcome(
+      true,
+      `typed-search planner returned ${plan.searchQueries.length} queries for family=${plan.dominantProductFamily}; retrieval matched 0 candidates`,
+      'ai_failed_fallback'
+    );
+  }
+
+  // Trust-score + flat rank. searchQueries from the plan become the
+  // matchedProbes signal so probeSupport scoring counts them.
+  const scored = familyMatched.map((c) =>
+    scoreTrustForCandidate({
+      candidate: c,
+      intent: intentForRetrieval,
+      profile,
+      skinState,
+      matchedProbes:
+        matchedProbesById.get(c.id) ?? plan.searchQueries.slice(0, 2),
+    })
+  );
+  // Final flat ranking:
+  //   primary: trust score total
+  //   secondary: image tier (high > medium > low)
+  scored.sort((a, b) => {
+    if (b.score.total !== a.score.total) return b.score.total - a.score.total;
+    const imgRank = (c: LiveProductCandidate): number =>
+      c.imageQuality === 'high' ? 3 : c.imageQuality === 'medium' ? 2 : c.imageQuality === 'low' ? 1 : 0;
+    return imgRank(b.candidate) - imgRank(a.candidate);
+  });
+  // Cap at 18 (visibleCount 6 + 2 reveal batches with headroom).
+  const flatCandidates = scored.slice(0, 18).map((s) => s.candidate);
+
+  const heroId = flatCandidates[0]?.id ?? null;
+  const alternativeIds = flatCandidates
+    .filter((c) => c.id !== heroId)
+    .slice(0, 4)
+    .map((c) => c.id);
+
+  // Compute hero skin-fit score for the dev panel.
+  const heroSkinFitScore = (() => {
+    if (flatCandidates.length === 0) return null;
+    const s = scored[0];
+    return Math.round(
+      Math.max(
+        0,
+        Math.min(
+          100,
+          s.score.safetyFit * (100 / 15) - s.score.noisePenalty
+        )
+      )
+    );
+  })();
+  void heroSkinFitScore; // returned by caller as part of context, not the status
+
+  // v22.1 — surface AI ON to the badge.
+  aiTelemetry.setFeatureSource(
+    'products',
+    'ai',
+    `typed-search AI-first: family=${plan.dominantProductFamily}, ${flatCandidates.length} candidates`
+  );
+
+  return {
+    status: {
+      recommendationMode: 'query_driven_search',
+      dominantConcern: null,
+      aiPlanAttempted: true,
+      aiPlanReturned: true,
+      aiPlanApplied: true,
+      aiPlanReason:
+        `typed-search planner returned dominant family ${plan.dominantProductFamily} ` +
+        `+ ${plan.searchQueries.length} searchQueries; retrieval matched ${familyMatched.length}/${deduped.length} candidates`,
+      aiSelectAttempted: false,
+      aiSelectReturned: false,
+      aiSelectApplied: false,
+      aiSelectReason: 'typed_search path: slot selector intentionally not used',
+      userNeedSummary: plan.userNeedSummary,
+      whyTheseProducts: plan.searchIntentLabel,
+      productSourceMode: 'ai_first',
+      slotCount: 0,
+      slotLabels: [],
+      plannerVersion: 'v22.1-search-only',
+      selectorVersion: null,
+      resultMode: 'typed_search_flat',
+      dominantSearchFamily: plan.dominantProductFamily,
+      resultCountTotal: flatCandidates.length,
+      badgeMode: 'ai_on',
+    },
+    candidates: flatCandidates,
+    matchedProbesById,
+    heroId,
+    alternativeIds,
+  };
+}
+
 /**
  * Enrich a single AI plan slot into real LiveProductCandidate
  * objects. Runs the slot's searchQueries[0] through the existing
@@ -1884,26 +2203,39 @@ export async function getRecommendationContextFromQuery(
     { chipIntent: opts.chipIntent }
   );
 
-  // v19.43 — AI-FIRST PRIMARY PATH. Run the planner first; if it
-  // succeeds, the visible result comes from AI-chosen slots. If
-  // it fails (proxy down / timeout / invalid plan / zero enriched
-  // candidates), fall through to the rerank-only legacy path
-  // below and record `productSourceMode: 'ai_failed_fallback'`.
-  const aiFirstOutcome = await tryAiFirstRecommendation({
-    query,
+  // v22.1 — TYPED SEARCH GOES THROUGH tryTypedSearch (NOT the slot
+  // planner). The slot planner is for best-for-you only and is
+  // reachable via getRecommendationContextForScan, not this entry.
+  // This entry point is always typed search (free-text from the
+  // search bar OR a concern chip routed through it). The previous
+  // multi-slot planner + majority-vote dominantFamily approach was
+  // the bug — replaced verbatim by the dedicated typed-search path.
+  //
+  // For "best for my skin" / "best for me" free-text queries the
+  // user typed explicitly, we still route through tryTypedSearch
+  // (the typed-search planner is smart enough to infer dominant
+  // family from skin profile when the query is vague). The slot
+  // planner is reserved for the scan-driven best-for-you surface.
+  const typedOutcome = await tryTypedSearch({
+    rawQuery: query,
     profile,
     skinState: skinStateForCtx,
     trigger,
     interpretedIntent,
-    suggestedMode:
-      interpretedIntent.mode === 'best_for_my_skin'
-        ? 'best_for_you'
-        : 'query_driven_search',
   });
+  // Alias to the legacy variable name so the success branch below
+  // reads as before. The AiFirstOutcome shape is compatible.
+  const aiFirstOutcome: AiFirstOutcome = {
+    status: typedOutcome.status,
+    candidates: typedOutcome.candidates,
+    matchedProbesById: typedOutcome.matchedProbesById,
+    heroId: typedOutcome.heroId,
+    alternativeIds: typedOutcome.alternativeIds,
+  };
 
-  // When AI-first SUCCEEDS, skip the entire legacy
-  // retrieve+filter+trust+rerank pipeline. The AI plan + slot
-  // enrichment IS the final result. Cache + build the canonical
+  // When typed-search AI SUCCEEDS, skip the entire legacy
+  // retrieve+filter+trust+rerank pipeline. The flat AI-driven
+  // ranked list IS the final result. Cache + build the canonical
   // context directly.
   if (aiFirstOutcome.status.productSourceMode === 'ai_first') {
     cacheCandidates(aiFirstOutcome.candidates);

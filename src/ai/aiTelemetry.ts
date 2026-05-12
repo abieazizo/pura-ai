@@ -60,7 +60,8 @@ export type AIMethodKey =
   | 'lookupLiveProducts'
   | 'rerankProducts'
   | 'recommendProductsForUser'
-  | 'selectProductForSlot';
+  | 'selectProductForSlot'
+  | 'planTypedSearch';
 
 export type AIMethodStatus =
   | 'idle'
@@ -187,6 +188,7 @@ const METHOD_KEYS: AIMethodKey[] = [
   'rerankProducts',
   'recommendProductsForUser',
   'selectProductForSlot',
+  'planTypedSearch',
 ];
 
 const FEATURE_KEYS: AIFeatureKey[] = [

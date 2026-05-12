@@ -60,6 +60,7 @@ import {
   PRODUCT_MATCH_RESULT_SCHEMA,
   PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
   PRODUCT_RERANK_SCHEMA,
+  SEARCH_INTENT_PLAN_SCHEMA,
   SLOT_SELECTION_RESULT_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
   ROUTINE_RECOMMENDATION_SCHEMA,
@@ -69,6 +70,7 @@ import {
   type AIRerankResult,
   type LiveProductLookupResultLean,
   type ProductRecommendationPlan,
+  type SearchIntentPlan,
   type SlotSelectionResult,
 } from '../../src/ai/ai-contracts';
 
@@ -499,6 +501,117 @@ Bad example:
 "It is popular."
 
 Return structured selection only.
+`;
+
+// ----------------------------------------------------------------------------
+// v22.1 — TYPED-SEARCH PROMPT (EXACT verbatim per user directive).
+//
+// Used ONLY for typed search via the new `planTypedSearch` method.
+// Returns ONE dominant product family + a flat single-family search
+// plan. Not a routine. Not a slot plan.
+// ----------------------------------------------------------------------------
+
+export const PRODUCT_TYPED_SEARCH_VERSION = 'v22.1-search-only';
+
+const PRODUCT_TYPED_SEARCH_SYSTEM_PROMPT = `
+You are the typed-search intent planner for a skincare product app.
+
+Your job is to convert one user search query into ONE dominant product-family search plan for that specific user.
+
+You are NOT building a routine.
+You are NOT building multiple slots.
+You are NOT returning one product per category.
+You are deciding the single dominant product family and the exact search direction for this query.
+
+You will receive:
+- the raw user query
+- the user's skin type
+- the user's sensitivities
+- the user's top concerns
+- the user's goals
+- the user's latest scan summary
+- any derived skin-profile flags already available
+
+PRIMARY OBJECTIVE
+
+For a typed search, choose the ONE dominant product family that best matches the user's search intent and skin needs.
+Then generate a strong, user-specific search plan for that family only.
+
+DO NOT produce a multi-slot plan.
+DO NOT produce multiple categories unless the query truly requires one category family that overlaps conceptually.
+DO NOT return a moisturizer + treatment + exfoliant bundle for a search query.
+This is SEARCH, not a routine plan.
+
+GOOD EXAMPLES
+
+If the query is "moisture" or "moisturizer":
+- dominantProductFamily = moisturizer
+- the result should become a list of moisturizers appropriate for the user's skin
+
+If the query is "chemical exfoliant":
+- dominantProductFamily = chemical_exfoliant
+- the result should become a list of exfoliation-relevant products only
+
+If the query is "niacinamide serum":
+- dominantProductFamily = serum_texture or blemish_support depending on user/context
+- the result should become a list of relevant serums only
+
+If the query is "best for my pimple":
+- dominantProductFamily = blemish_support
+- the result should become a list of blemish-supportive products only
+
+HOW TO THINK
+
+1. Infer the user's search intent from the query first.
+2. Use skin type, sensitivities, goals, top concerns, and latest scan summary to personalize WITHIN that search family.
+3. Return one dominant product family only.
+4. Create a user-specific search plan for that family.
+
+MOISTURIZER RULES
+
+For oily / acne-prone / breakout-prone users:
+- prefer lightweight, gel, oil-free, non-comedogenic hydration
+- avoid heavy occlusive or rich barrier creams unless barrier repair clearly dominates
+
+For dry / dehydrated / barrier-compromised users:
+- prefer ceramide, barrier-repair, richer hydration
+- avoid ultra-light gels if clearly too weak
+
+For sensitive / redness-prone users:
+- prefer fragrance-free, calming, soothing support
+- avoid fragranced or harsh-active moisturizers
+
+SMOOTHING / EXFOLIANT RULES
+
+If the search is for smoothing / exfoliation:
+- stay inside that family
+- prefer gentler options when sensitivity/barrier weakness is present
+- do not drift into random hydration-only products
+
+BREAKOUT RULES
+
+If the search is blemish/pimple-focused:
+- stay inside blemish-support logic
+- do not drift into unrelated hydration or exfoliation unless the query itself demands it
+
+OUTPUT RULES
+
+Return structured JSON only with:
+- recommendationMode
+- rawQuery
+- normalizedQuery
+- searchIntentLabel
+- dominantProductFamily
+- userNeedSummary
+- mustHaveSignals
+- avoidSignals
+- preferredTextures
+- searchQueries
+- rankingPriorities
+
+Do not output prose.
+Do not output slots.
+Do not output a routine.
 `;
 
 // ----------------------------------------------------------------------------
@@ -1602,6 +1715,55 @@ export class OpenAIClient {
       model: 'gpt-4o-mini',
       // ~4 slots × ~80 tokens + overhead ≈ ~400. 1024 with headroom.
       maxTokens: 1024,
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 8f. v22.1 — TYPED-SEARCH PLANNER.
+  //
+  // Used ONLY for typed product search. Returns ONE dominant product
+  // family + a flat single-family search plan. NOT a slot plan, NOT a
+  // routine builder. The engine retrieves real products using
+  // `searchQueries`, filters to `dominantProductFamily`, ranks flat,
+  // and returns a search-result-style list.
+  // --------------------------------------------------------------------------
+
+  async planTypedSearch(params: {
+    rawQuery: string;
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    topConcerns: string[];
+    latestScanSummary: string | null;
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
+  }): Promise<SearchIntentPlan> {
+    const system = PRODUCT_TYPED_SEARCH_SYSTEM_PROMPT;
+    const userContent = JSON.stringify({
+      raw_query: params.rawQuery,
+      profile: params.profile,
+      top_concerns: params.topConcerns,
+      latest_scan_summary: params.latestScanSummary,
+      skin_profile: params.skinProfile ?? null,
+    });
+    return this.runStrictStructured<SearchIntentPlan>({
+      system,
+      userContent,
+      schemaName: 'search_intent_plan',
+      schema: SEARCH_INTENT_PLAN_SCHEMA,
+      model: 'gpt-4o-mini',
+      // ~12 fields × ~30 tokens + overhead ≈ ~400. 768 with headroom.
+      maxTokens: 768,
     });
   }
 

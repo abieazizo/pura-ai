@@ -1041,6 +1041,125 @@ export function validateSlotSelectionResult(v: unknown): {
   return { selections, listReason };
 }
 
+/**
+ * v22.1 — validate the SearchIntentPlan returned by the typed-search
+ * planner. Returns null on malformed payloads. Single-family search
+ * plan (NOT a slot plan).
+ */
+export function validateSearchIntentPlan(v: unknown): {
+  recommendationMode: 'typed_search';
+  rawQuery: string;
+  normalizedQuery: string;
+  searchIntentLabel: string;
+  dominantProductFamily:
+    | 'moisturizer'
+    | 'serum_texture'
+    | 'chemical_exfoliant'
+    | 'blemish_support'
+    | 'spf'
+    | 'cleanser'
+    | 'other';
+  userNeedSummary: string;
+  mustHaveSignals: string[];
+  avoidSignals: string[];
+  preferredTextures: string[];
+  searchQueries: string[];
+  rankingPriorities: string[];
+} | null {
+  if (!isObject(v)) {
+    aiLog.warn('validateSearchIntentPlan', 'not an object');
+    return null;
+  }
+  const modeRaw = (v as { recommendationMode?: unknown }).recommendationMode;
+  if (modeRaw !== 'typed_search') {
+    aiLog.warn('validateSearchIntentPlan', 'recommendationMode must be typed_search');
+    return null;
+  }
+  const FAMILY_ENUM = new Set([
+    'moisturizer',
+    'serum_texture',
+    'chemical_exfoliant',
+    'blemish_support',
+    'spf',
+    'cleanser',
+    'other',
+  ]);
+  const famRaw = (v as { dominantProductFamily?: unknown }).dominantProductFamily;
+  const dominantProductFamily = FAMILY_ENUM.has(famRaw as string)
+    ? (famRaw as
+        | 'moisturizer'
+        | 'serum_texture'
+        | 'chemical_exfoliant'
+        | 'blemish_support'
+        | 'spf'
+        | 'cleanser'
+        | 'other')
+    : 'other';
+  const rawQuery =
+    typeof (v as { rawQuery?: unknown }).rawQuery === 'string'
+      ? ((v as { rawQuery: string }).rawQuery).slice(0, 200)
+      : '';
+  const normalizedQuery =
+    typeof (v as { normalizedQuery?: unknown }).normalizedQuery === 'string'
+      ? ((v as { normalizedQuery: string }).normalizedQuery).slice(0, 200)
+      : rawQuery;
+  const searchIntentLabel =
+    typeof (v as { searchIntentLabel?: unknown }).searchIntentLabel === 'string'
+      ? ((v as { searchIntentLabel: string }).searchIntentLabel).slice(0, 120)
+      : '';
+  const userNeedSummary =
+    typeof (v as { userNeedSummary?: unknown }).userNeedSummary === 'string'
+      ? ((v as { userNeedSummary: string }).userNeedSummary).slice(0, 220)
+      : '';
+  const sQueries = arrayOfStrings(
+    (v as { searchQueries?: unknown }).searchQueries
+  )
+    .map((x) => x.trim().slice(0, 80))
+    .filter((x) => x.length > 0)
+    .slice(0, 6);
+  if (sQueries.length === 0) {
+    aiLog.warn('validateSearchIntentPlan', 'searchQueries empty');
+    return null;
+  }
+  const mustHaveSignals = arrayOfStrings(
+    (v as { mustHaveSignals?: unknown }).mustHaveSignals
+  )
+    .map((x) => x.trim().slice(0, 48))
+    .filter((x) => x.length > 0)
+    .slice(0, 6);
+  const avoidSignals = arrayOfStrings(
+    (v as { avoidSignals?: unknown }).avoidSignals
+  )
+    .map((x) => x.trim().slice(0, 48))
+    .filter((x) => x.length > 0)
+    .slice(0, 6);
+  const preferredTextures = arrayOfStrings(
+    (v as { preferredTextures?: unknown }).preferredTextures
+  )
+    .map((x) => x.trim().slice(0, 48))
+    .filter((x) => x.length > 0)
+    .slice(0, 6);
+  const rankingPriorities = arrayOfStrings(
+    (v as { rankingPriorities?: unknown }).rankingPriorities
+  )
+    .map((x) => x.trim().slice(0, 80))
+    .filter((x) => x.length > 0)
+    .slice(0, 6);
+  return {
+    recommendationMode: 'typed_search',
+    rawQuery,
+    normalizedQuery,
+    searchIntentLabel,
+    dominantProductFamily,
+    userNeedSummary,
+    mustHaveSignals,
+    avoidSignals,
+    preferredTextures,
+    searchQueries: sQueries,
+    rankingPriorities,
+  };
+}
+
 export function validateProgressBundle(v: unknown): {
   progress: ProgressExplanation;
   score: SkinScoreExplanation;

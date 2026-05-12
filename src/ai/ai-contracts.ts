@@ -1563,6 +1563,72 @@ export const SLOT_SELECTION_RESULT_SCHEMA: JsonSchema = {
 };
 
 // ============================================================================
+// v22.1 — TYPED-SEARCH-ONLY AI CONTRACT.
+//
+// DEDICATED to typed search. NOT a slot planner. NOT a routine builder.
+// Returns ONE dominant product family + a flat single-family search plan.
+// The engine uses this for getRecommendationContextFromQuery; the
+// slot planner (recommendProductsForUser) remains in use ONLY for
+// getRecommendationContextForScan (best-for-you).
+// ============================================================================
+
+export interface SearchIntentPlan {
+  recommendationMode: 'typed_search';
+  rawQuery: string;
+  normalizedQuery: string;
+  searchIntentLabel: string;
+  dominantProductFamily: SlotQueryFamily;
+  userNeedSummary: string;
+  mustHaveSignals: string[];
+  avoidSignals: string[];
+  preferredTextures: string[];
+  searchQueries: string[];
+  rankingPriorities: string[];
+}
+
+export const SEARCH_INTENT_PLAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'recommendationMode',
+    'rawQuery',
+    'normalizedQuery',
+    'searchIntentLabel',
+    'dominantProductFamily',
+    'userNeedSummary',
+    'mustHaveSignals',
+    'avoidSignals',
+    'preferredTextures',
+    'searchQueries',
+    'rankingPriorities',
+  ],
+  properties: {
+    recommendationMode: { type: 'string', enum: ['typed_search'] },
+    rawQuery: { type: 'string' },
+    normalizedQuery: { type: 'string' },
+    searchIntentLabel: { type: 'string' },
+    dominantProductFamily: {
+      type: 'string',
+      enum: [
+        'moisturizer',
+        'serum_texture',
+        'chemical_exfoliant',
+        'blemish_support',
+        'spf',
+        'cleanser',
+        'other',
+      ],
+    },
+    userNeedSummary: { type: 'string' },
+    mustHaveSignals: { type: 'array', items: { type: 'string' } },
+    avoidSignals: { type: 'array', items: { type: 'string' } },
+    preferredTextures: { type: 'array', items: { type: 'string' } },
+    searchQueries: { type: 'array', items: { type: 'string' } },
+    rankingPriorities: { type: 'array', items: { type: 'string' } },
+  },
+};
+
+// ============================================================================
 // Aggregate map — every named schema indexed by its variable name. Useful
 // for telemetry, debugging, and any consumer that needs to enumerate
 // schemas (e.g. a dev console "show all AI schemas" panel).
@@ -1584,6 +1650,7 @@ export interface AIStructuredSchemas {
   PRODUCT_RERANK_SCHEMA: JsonSchema;
   PRODUCT_RECOMMENDATION_PLAN_SCHEMA: JsonSchema;
   SLOT_SELECTION_RESULT_SCHEMA: JsonSchema;
+  SEARCH_INTENT_PLAN_SCHEMA: JsonSchema;
 }
 
 export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
@@ -1602,6 +1669,7 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
   PRODUCT_RERANK_SCHEMA,
   PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
   SLOT_SELECTION_RESULT_SCHEMA,
+  SEARCH_INTENT_PLAN_SCHEMA,
 };
 
 // v11.1 — legacy `Claude*` schema aliases removed.

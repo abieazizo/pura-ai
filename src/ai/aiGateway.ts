@@ -58,6 +58,7 @@ import type {
   ProductRecommendationPlan,
   ProgressExplanation,
   RoutineRecommendation,
+  SearchIntentPlan,
   SlotSelectionResult,
   ScanPreflightResult,
   SearchSuggestionResult,
@@ -78,6 +79,7 @@ import {
   validateProductMatchResult,
   validateProductRecommendationPlan,
   validateProductRerankResult,
+  validateSearchIntentPlan,
   validateSlotSelectionResult,
   validateProgressBundle,
   validateProgressExplanation,
@@ -206,6 +208,9 @@ const TIMEOUT_MS = {
   // v21.0 — AI slot selector. One round-trip with 4 slots × ~80 tokens
   // structured output. 20s budget mirrors the planner.
   selectProductForSlot: 20_000,
+  // v22.1 — typed-search-only planner. Single-family flat plan,
+  // smaller output than the slot planner. 15s is plenty.
+  planTypedSearch: 15_000,
   // v19.14 — DROPPED 45_000 → 25_000. v19.10's 45s budget existed
   // to cover gpt-5-mini's variable reasoning latency. v19.14
   // swaps lookupLiveProducts to gpt-4o-mini (non-reasoning, 2-5s
@@ -906,6 +911,34 @@ export interface AIGateway {
     }>;
   }): Promise<SlotSelectionResult>;
 
+  /**
+   * v22.1 — TYPED-SEARCH-ONLY planner. Returns ONE dominant
+   * product family + flat single-family search plan. NOT a slot
+   * plan. The engine uses this for getRecommendationContextFromQuery
+   * (typed search) and routes its output directly to retrieval +
+   * flat ranking.
+   */
+  planTypedSearch(params: {
+    rawQuery: string;
+    profile: {
+      displayName: string | null;
+      skinType: string;
+      sensitivities: string[];
+      goals: string[];
+    };
+    topConcerns: string[];
+    latestScanSummary: string | null;
+    skinProfile?: {
+      isOily: boolean;
+      isAcneProne: boolean;
+      isDry: boolean;
+      isBarrier: boolean;
+      isSensitive: boolean;
+      isCombo: boolean;
+      label: string;
+    };
+  }): Promise<SearchIntentPlan>;
+
   answerAssistant(params: {
     context: AssistantContext;
     userQuestion: string;
@@ -1072,6 +1105,15 @@ const gateway: AIGateway = {
       method: 'selectProductForSlot',
       body: params,
       validate: validateSlotSelectionResult,
+    });
+  },
+
+  async planTypedSearch(params) {
+    ensureAvailable();
+    return runMethod({
+      method: 'planTypedSearch',
+      body: params,
+      validate: validateSearchIntentPlan,
     });
   },
 

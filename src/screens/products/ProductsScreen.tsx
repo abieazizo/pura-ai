@@ -912,7 +912,7 @@ function RealPathBadge({
     <View style={realPathStyles.wrap}>
       <View style={realPathStyles.pill}>
         <Text style={realPathStyles.pillText} maxFontSizeMultiplier={1}>
-          REAL PATH v21.2
+          REAL PATH v22.1
         </Text>
       </View>
       <View style={realPathStyles.row}>

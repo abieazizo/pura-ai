@@ -404,7 +404,18 @@ export interface ProductRecommendationStatus {
    *   `typed_search_list`  — flat same-intent ranked list (6 first,
    *      same dominant family).
    */
-  resultMode: 'best_for_you_slots' | 'typed_search_list' | null;
+  /**
+   * v22.1 — `typed_search_flat` is the new flat single-family
+   * typed-search mode (planTypedSearch -> retrieval -> flat rank).
+   * `typed_search_list` was the v21.2 slot-flatten hack and is no
+   * longer produced by the engine; kept in the type for backwards-
+   * compat with any saved trace fixtures.
+   */
+  resultMode:
+    | 'best_for_you_slots'
+    | 'typed_search_list'
+    | 'typed_search_flat'
+    | null;
   /** v21.2 — dominant queryFamily resolved for typed-search mode. */
   dominantSearchFamily: string | null;
   /** v21.2 — total candidates the engine produced (visible + scroll). */
