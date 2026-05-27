@@ -58,6 +58,7 @@ import type {
   ProductRecommendationPlan,
   ProgressExplanation,
   RoutineRecommendation,
+  ScanResultV2,
   SearchIntentPlan,
   SlotSelectionResult,
   ScanPreflightResult,
@@ -79,6 +80,7 @@ import {
   validateProductMatchResult,
   validateProductRecommendationPlan,
   validateProductRerankResult,
+  validateScanResultV2,
   validateSearchIntentPlan,
   validateSlotSelectionResult,
   validateProgressBundle,
@@ -181,6 +183,7 @@ const TIMEOUT_MS = {
   // policy this caps worst case at 35 s.
   validateScanPreflight: 35_000,
   analyzeFaceScan: 75_000,
+  analyzeFaceScanV2: 90_000,
   identifyProductFromImage: 60_000,
   normalizeBarcodeResolution: 30_000,
   matchProductsForUser: 90_000,
@@ -698,6 +701,12 @@ export interface AIGateway {
     userProfileSummary: string;
   }): Promise<FaceScanAnalysis>;
 
+  analyzeFaceScanV2(params: {
+    imageBase64: string;
+    mediaType: SupportedImageMediaType;
+    scanId: string;
+  }): Promise<ScanResultV2>;
+
   identifyProductFromImage(params: {
     imageBase64: string;
     mediaType: SupportedImageMediaType;
@@ -1006,6 +1015,15 @@ const gateway: AIGateway = {
       method: 'analyzeFaceScan',
       body: params,
       validate: validateFaceScanAnalysis,
+    });
+  },
+
+  async analyzeFaceScanV2(params) {
+    ensureAvailable();
+    return runMethod({
+      method: 'analyzeFaceScanV2',
+      body: params,
+      validate: validateScanResultV2,
     });
   },
 

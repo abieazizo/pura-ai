@@ -1168,6 +1168,33 @@ export interface LiveProductCandidate {
   sourceTimestamp: string;
   /** 0..100 ranked confidence within the result set. */
   matchScore: number;
+  /**
+   * v22.4 — UI-facing fit band, populated by the deterministic
+   * trust scorer after retrieval. Not produced by the AI; not part
+   * of the wire schema. Empty `undefined` for legacy candidates that
+   * haven't been scored.
+   *   • `exact`   — query format + concern both match
+   *   • `strong`  — format matches, concern partial / vice versa
+   *   • `related` — relevant but format or concern off
+   *   • `broad`   — loose category overlap
+   */
+  fitBand?: 'exact' | 'strong' | 'related' | 'broad';
+  /**
+   * v22.4 — believable compressed relevance % for display. Set by
+   * the deterministic trust scorer per query. Always ≤ matchScore
+   * cap of the fit band (96 / 84 / 72 / 58). Empty `undefined` for
+   * legacy non-scored candidates.
+   */
+  relevancePercent?: number;
+  /**
+   * v22.4 — source of THIS candidate for the visible result set.
+   *   • `live`        — came from live retrieval (OBF / merchant API)
+   *   • `curated`     — came from the deterministic curated catalog
+   *   • `seed`        — came from the legacy seed catalog fallback
+   * Populated when the engine assembles the final list so the card
+   * can show an honest source label.
+   */
+  visibleSource?: 'live' | 'curated' | 'seed';
 }
 
 export interface LiveProductLookupResult {
@@ -1673,6 +1700,109 @@ export const AI_STRUCTURED_SCHEMAS: AIStructuredSchemas = {
 };
 
 // v11.1 — legacy `Claude*` schema aliases removed.
+
+// ============================================================================
+// Scan Result V2 — strict-3-to-6-findings face analysis (forces always-on
+// findings; no empty arrays). Defines a tight JSON schema that the model
+// returns under response_format=json_schema strict.
+//
+// Defined here (not in src/types/) so the schema literal can be passed
+// straight to the OpenAI strict-mode handler without crossing module
+// boundaries the way server code is restricted to.
+// ============================================================================
+
+import {
+  ZONE_IDS,
+  CONCERN_IDS,
+  MIN_FINDINGS,
+  MAX_FINDINGS,
+} from '@/types/scanResultV2';
+import type {
+  ScanResultV2,
+  ZoneId,
+  ConcernId,
+} from '@/types/scanResultV2';
+
+export type { ScanResultV2, ZoneId, ConcernId };
+
+export const SCAN_RESULT_V2_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'overall_score',
+    'score_breakdown',
+    'headline',
+    'summary',
+    'findings',
+  ],
+  properties: {
+    overall_score: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 100,
+      description:
+        'Overall skin score 0-100. 70-90 is typical for healthy skin.',
+    },
+    score_breakdown: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['hydration', 'texture', 'tone', 'clarity', 'vitality'],
+      properties: {
+        hydration: { type: 'integer', minimum: 0, maximum: 100 },
+        texture: { type: 'integer', minimum: 0, maximum: 100 },
+        tone: { type: 'integer', minimum: 0, maximum: 100 },
+        clarity: { type: 'integer', minimum: 0, maximum: 100 },
+        vitality: { type: 'integer', minimum: 0, maximum: 100 },
+      },
+    },
+    headline: {
+      type: 'string',
+      description: 'One short editorial sentence, max 8 words.',
+      minLength: 6,
+      maxLength: 80,
+    },
+    summary: {
+      type: 'string',
+      description: '2-3 sentences, warm but specific, no fluff.',
+      minLength: 30,
+      maxLength: 360,
+    },
+    findings: {
+      type: 'array',
+      minItems: MIN_FINDINGS,
+      maxItems: MAX_FINDINGS,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'id',
+          'zone',
+          'concern',
+          'severity',
+          'title',
+          'observation',
+          'recommendation',
+          'ingredient_hints',
+        ],
+        properties: {
+          id: { type: 'string', minLength: 4, maxLength: 64 },
+          zone: { type: 'string', enum: [...ZONE_IDS] },
+          concern: { type: 'string', enum: [...CONCERN_IDS] },
+          severity: { type: 'integer', minimum: 1, maximum: 5 },
+          title: { type: 'string', minLength: 4, maxLength: 60 },
+          observation: { type: 'string', minLength: 10, maxLength: 220 },
+          recommendation: { type: 'string', minLength: 8, maxLength: 220 },
+          ingredient_hints: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 3,
+            items: { type: 'string', minLength: 2, maxLength: 40 },
+          },
+        },
+      },
+    },
+  },
+};
 
 // ============================================================================
 // Cross-boundary shared types — used by both client gateway (proxy

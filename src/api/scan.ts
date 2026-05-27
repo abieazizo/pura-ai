@@ -22,6 +22,7 @@ import { translateAnalysisToScan, buildPreviousSummary } from '@/ai/translateAna
 import { useAppStore } from '@/store/useAppStore';
 import { buildSafetyProfile } from '@/utils/safetyProfile';
 import type { ProductIdentity, ProductMatchResult } from '@/ai/ai-contracts';
+import type { ScanResultV2 } from '@/types/scanResultV2';
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -182,7 +183,33 @@ export async function analyzeFaceScan(args: {
           'ai',
           `analyzed scan ${scanId} via proxy (skin score ${analysis.skin_score.value}, ${analysis.findings.length} findings, overlay=${overlayPresent ? 'yes' : 'no'}, polys=${polygonCount}/${analysis.findings.length})`
         );
-        return translateAnalysisToScan({
+
+        // v32 — fire the V2 analysis call in parallel with the V1
+        // path. V2 guarantees 3-6 findings via prompt + schema +
+        // retry + deterministic fallback; the server proxy will
+        // never return zero findings. The V2 result rides on the
+        // Scan record so the new ScanResultsV2Screen can render it
+        // without invalidating the rest of the V1 pipeline.
+        let v2Analysis: ScanResultV2 | undefined;
+        try {
+          v2Analysis = await aiGateway.analyzeFaceScanV2({
+            imageBase64: imageBase64!,
+            mediaType: 'image/jpeg',
+            scanId,
+          });
+          aiLog.info('analyzeFaceScanV2', 'v2 result attached to scan', {
+            scanId,
+            overall_score: v2Analysis.overall_score,
+            findings_count: v2Analysis.findings.length,
+          });
+        } catch (e) {
+          aiLog.warn('analyzeFaceScanV2', 'v2 call failed, omitting from scan', {
+            scanId,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+
+        const scan = translateAnalysisToScan({
           analysis,
           photoUri,
           dayNumber,
@@ -191,6 +218,8 @@ export async function analyzeFaceScan(args: {
           // can smooth the new value against it (cap +/- 15 points).
           previousScore: previousScan?.overallScore ?? null,
         });
+        if (v2Analysis) scan.v2Analysis = v2Analysis;
+        return scan;
       }
       aiLog.warn(
         'analyzeFaceScan',

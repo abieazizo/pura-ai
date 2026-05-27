@@ -1,5 +1,6 @@
 import type { AvatarColor } from '@/theme';
 import type { FaceScanAnalysis } from '@/ai/ai-contracts';
+import type { ScanResultV2 } from '@/types/scanResultV2';
 
 export interface User {
   id: string;
@@ -63,6 +64,14 @@ export interface Scan {
    * voice without rewiring.
    */
   aiAnalysis?: FaceScanAnalysis;
+  /**
+   * v32 — strict 3-to-6 findings analysis driving the new SkinMap +
+   * results screen. Always populated for new scans: the server
+   * guarantees at least 3 findings via prompt + schema + retry +
+   * deterministic fallback. Optional only for back-compat with scans
+   * persisted before v32.
+   */
+  v2Analysis?: ScanResultV2;
 }
 
 // ---------- Concern model (v8.1) ----------
@@ -245,6 +254,19 @@ export interface AssistantMessage {
    * Absent on user messages and on deterministic-fallback replies.
    */
   groundedFrom?: string[];
+  /**
+   * v20.0 — structured assistant answer produced by the
+   * AI Assist screen's template engine. Present on every
+   * assistant message emitted by `askAssistant`. The chat
+   * UI renders this as a premium card (title, badge,
+   * summary, steps, avoid, why, CTAs, follow-ups).
+   *
+   * Typed loosely here to avoid a circular import between
+   * the types package and the templates utility — the
+   * canonical type is `AiStructuredAnswer` in
+   * `src/utils/assistantTemplates.ts`.
+   */
+  structured?: import('@/utils/assistantTemplates').AiStructuredAnswer;
 }
 
 // SKIN_CYCLE_DAYS lives in theme/tokens.ts so it sits alongside other

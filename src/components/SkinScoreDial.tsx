@@ -108,7 +108,7 @@ export function SkinScoreDial({
     displayValue.value = 0;
     progress.value = withDelay(
       delay,
-      withTiming(1, { duration: 1100, easing: Easing.out(Easing.cubic) })
+      withTiming(1, { duration: 1200, easing: Easing.out(Easing.cubic) })
     );
     displayValue.value = withDelay(
       delay,

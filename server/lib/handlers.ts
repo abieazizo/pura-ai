@@ -17,6 +17,7 @@ import { OpenAIClient, AIError } from '../openai/openai-client';
 // under the method name `searchProducts`.
 import { searchProductsHandler } from './searchProducts';
 import {
+  deterministicScanResultV2,
   validateAssistantContext,
   validateBarcodeResolution,
   validateFaceScanAnalysis,
@@ -25,6 +26,7 @@ import {
   validateProductMatchResult,
   validateProductRecommendationPlan,
   validateProductRerankResult,
+  validateScanResultV2,
   validateSearchIntentPlan,
   validateSlotSelectionResult,
   validateProgressBundle,
@@ -36,6 +38,7 @@ import {
   validateSearchSuggestionResult,
   validateSkinScoreExplanation,
 } from '../../src/ai/validation';
+import { aiLog } from '../../src/ai/aiLog';
 import { sanitizeAndEnrich } from '../../src/lib/commerceEnrichment';
 import { lookupBarcodeServerSide } from './barcodeLookup';
 
@@ -246,6 +249,74 @@ export const HANDLERS: Record<string, Handler> = {
     const validated = validateFaceScanAnalysis(repaired);
     if (!validated) aiBad('analyzeFaceScan');
     return validated;
+  },
+
+  /**
+   * v32 — analyzeFaceScanV2 — strict 3-to-6 findings.
+   *
+   * Pipeline:
+   *   1. Call OpenAI with the V2 prompt + schema (the schema itself
+   *      enforces minItems: 3).
+   *   2. Validate the result via `validateScanResultV2` (rejects empty,
+   *      out-of-enum, missing fields).
+   *   3. If validation fails, retry ONCE with a stricter system prompt
+   *      addendum.
+   *   4. If retry still fails, return a deterministic minimum-viable
+   *      result. The client UI never branches on "nothing stood out"
+   *      because the API contract always carries at least 3 findings.
+   */
+  async analyzeFaceScanV2(client, body) {
+    const params = {
+      imageBase64: reqString(body, 'imageBase64'),
+      mediaType: reqMediaType(body, 'mediaType'),
+      scanId: reqString(body, 'scanId'),
+    };
+
+    try {
+      const first = await client.analyzeFaceScanV2({
+        ...params,
+        stricterReminder: false,
+      });
+      const validatedFirst = validateScanResultV2(first);
+      if (validatedFirst) return validatedFirst;
+      aiLog.warn(
+        'analyzeFaceScanV2',
+        'first attempt failed validation, retrying with stricter prompt',
+        { scanId: params.scanId },
+      );
+    } catch (err) {
+      aiLog.warn('analyzeFaceScanV2', 'first attempt threw, retrying', {
+        scanId: params.scanId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
+      const second = await client.analyzeFaceScanV2({
+        ...params,
+        stricterReminder: true,
+      });
+      const validatedSecond = validateScanResultV2(second);
+      if (validatedSecond) return validatedSecond;
+      aiLog.warn(
+        'analyzeFaceScanV2',
+        'retry also failed validation, returning deterministic fallback',
+        { scanId: params.scanId },
+      );
+    } catch (err) {
+      aiLog.warn(
+        'analyzeFaceScanV2',
+        'retry threw, returning deterministic fallback',
+        {
+          scanId: params.scanId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+    }
+
+    // Deterministic minimum-viable fallback. The shape conforms to the
+    // schema; the client never has to handle a degenerate empty result.
+    return deterministicScanResultV2(params.scanId);
   },
 
   async identifyProductFromImage(client, body) {

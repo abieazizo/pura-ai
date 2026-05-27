@@ -46,6 +46,7 @@ import type { AiLogRecord } from './aiLog';
 export type AIMethodKey =
   | 'validateScanPreflight'
   | 'analyzeFaceScan'
+  | 'analyzeFaceScanV2'
   | 'identifyProductFromImage'
   | 'normalizeBarcodeResolution'
   | 'matchProductsForUser'
@@ -173,6 +174,7 @@ const METHOD_KEYS: AIMethodKey[] = [
   //   'fail' of undefined" → the whole face-scan flow dies silently.
   'validateScanPreflight',
   'analyzeFaceScan',
+  'analyzeFaceScanV2',
   'identifyProductFromImage',
   'normalizeBarcodeResolution',
   'matchProductsForUser',

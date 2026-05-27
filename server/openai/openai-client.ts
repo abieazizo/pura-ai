@@ -60,6 +60,7 @@ import {
   PRODUCT_MATCH_RESULT_SCHEMA,
   PRODUCT_RECOMMENDATION_PLAN_SCHEMA,
   PRODUCT_RERANK_SCHEMA,
+  SCAN_RESULT_V2_SCHEMA,
   SEARCH_INTENT_PLAN_SCHEMA,
   SLOT_SELECTION_RESULT_SCHEMA,
   PROGRESS_EXPLANATION_SCHEMA,
@@ -70,6 +71,7 @@ import {
   type AIRerankResult,
   type LiveProductLookupResultLean,
   type ProductRecommendationPlan,
+  type ScanResultV2,
   type SearchIntentPlan,
   type SlotSelectionResult,
 } from '../../src/ai/ai-contracts';
@@ -612,6 +614,36 @@ Return structured JSON only with:
 Do not output prose.
 Do not output slots.
 Do not output a routine.
+
+USER-FACING SUMMARY RULES (userNeedSummary)
+
+userNeedSummary is rendered DIRECTLY in the app under a "PICKED FOR THIS SEARCH" kicker. It is a single calm editorial caption shown to the end user. Treat it as final UI copy, not internal analysis.
+
+Requirements:
+- Maximum 110 characters. One sentence. Calm and concrete.
+- Never start with "User needs", "The user", "User wants", "User is", "User has".
+- No third-person clinical phrasing about the user.
+- No medical or therapeutic claims ("cures", "treats", "clinically proven", "guaranteed", "dermatologist-verified").
+- Do not use the word "verified" — the app does not verify products.
+- No engineering or planner jargon ("intent", "user-need", "diagnosis", "matching pipeline").
+- Skincare-safe verbs: "supports", "helps", "designed for", "good fit for", "selected for".
+- Prefer the form: "Selected for X." / "Curated around X." / "Good fits for X." / "Closest catalog matches for X."
+
+Good display examples:
+- "Selected for smoother-looking texture and a gentler exfoliation profile."
+- "Curated around lightweight, breakout-conscious hydration."
+- "Good fits for barrier support and comfortable hydration."
+- "Closest catalog matches for tone-supporting serums."
+
+Bad examples (must NOT produce):
+- "User needs gentle exfoliants…"
+- "The user is looking for…"
+- "Diagnosed with…"
+- "Verified matches…"
+- "Cures…"
+- "Guaranteed…"
+
+If you cannot produce a clean caption, return a short factual category line ("Curated picks for \${category}.") rather than third-person analysis text. The client also sanitizes and validates this field, so awkward output will be rejected and replaced.
 `;
 
 // ----------------------------------------------------------------------------
@@ -887,24 +919,37 @@ export class OpenAIClient {
       'skin reads as exceptionally clear with no visible texture, ' +
       'redness, breakouts, or marks of any kind. Do not produce ' +
       'wide swings on routine photos.\n\n' +
-      'CONSERVATISM (the most important rule set):\n' +
+      'CALIBRATION (the most important rule set):\n' +
       '• Only return a finding when the photograph SHOWS the issue. ' +
       'Do not infer from age, demographics, lighting, or generic ' +
       'expectations. If you cannot point to visible pixels supporting ' +
       'the finding, do not return it.\n' +
-      '• If a region looks ordinary, the correct severity is "none" ' +
-      'or "low" — NOT "mild". "Mild" already means there is something ' +
-      'visible.\n' +
-      '• Confidence must reflect the visual evidence strength, not ' +
-      'your classification certainty. A faint, hard-to-see signal is ' +
-      'low confidence even if you are sure of its category.\n' +
+      '• MILD findings are valid and IMPORTANT. Under-eye shadowing, ' +
+      'faint fine lines, mild redness, light texture, small blemishes ' +
+      'are all worth surfacing when they are visibly present. Do not ' +
+      'suppress a real visible signal merely because it is mild — that ' +
+      'eroded user trust in earlier builds.\n' +
+      '• If a region looks ordinary, the correct severity is "none". ' +
+      '"Mild" means a visible signal is present but subtle.\n' +
+      '• Confidence reflects visual-evidence strength, not your ' +
+      'classification certainty. A clearly visible mild signal can ' +
+      'sit around 0.55–0.70. A clearly visible moderate signal sits ' +
+      'around 0.70–0.85. Reserve 0.85+ for unambiguous moderate or ' +
+      'pronounced signals. A signal you can barely make out sits ' +
+      'around 0.40–0.50 (it will not display as a confirmed finding ' +
+      'but still signals "a clearer scan may reveal more").\n' +
       '• If image_quality is poor (blurry / low light / angled / ' +
-      'partial / occluded), CAP every per-finding confidence at 0.55 ' +
-      'and prefer severity "low" or "mild" over higher tiers.\n' +
-      '• When unsure, return fewer findings rather than more. A clean ' +
-      'photo with no clear concerns can return zero findings.\n' +
+      'partial / occluded), keep severity at "low" or "mild" and let ' +
+      'confidence reflect the reduced visibility — do not invent a ' +
+      'hard cap.\n' +
+      '• When uncertain, return the finding at lower confidence ' +
+      'rather than dropping it entirely. The frontend bands handle ' +
+      'display thresholds (clear ≥ 0.72, supported ≥ 0.52, possible ' +
+      '≥ 0.38). Honest calibration there beats silent suppression.\n' +
+      '• A genuinely clean photo with no visible signals can return ' +
+      'zero findings. Do not fabricate to fill the result.\n' +
       '• marker_priority MUST be 0 (do not surface) for any finding ' +
-      'with confidence < 0.55. Reserve 1 (primary) for the single ' +
+      'with confidence < 0.52. Reserve 1 (primary) for the single ' +
       'highest-confidence visible concern.\n\n' +
       'TONE (consumer copy, not clinical):\n' +
       '• user_summary is ONE short sentence in calm, plain English. ' +
@@ -949,6 +994,79 @@ export class OpenAIClient {
       userContent,
       schemaName: 'face_scan_analysis',
       schema: FACE_SCAN_ANALYSIS_SCHEMA,
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 1b. Scan result V2 — strict 3-to-6 findings.
+  //
+  // Different shape from analyzeFaceScan() — produces ScanResultV2 with
+  // overall_score + score_breakdown + headline + summary + findings.
+  // Forces the model to ALWAYS return between 3 and 6 findings. Empty
+  // arrays are forbidden by schema + reinforced in the system prompt.
+  // --------------------------------------------------------------------------
+
+  async analyzeFaceScanV2(params: {
+    imageBase64: string;
+    mediaType: SupportedImageMediaType;
+    scanId: string;
+    stricterReminder?: boolean;
+  }): Promise<ScanResultV2> {
+    const baseSystem =
+      'You are the Pura skin analysis engine. You read a single user-uploaded face photograph and return a STRICT, structured analysis. You are not a medical device — you describe visible cosmetic signals only.\n\n' +
+      'HARD OUTPUT RULES (the schema enforces these, do not violate them):\n' +
+      '• Return EXACTLY between 3 and 6 findings. Empty arrays are FORBIDDEN.\n' +
+      '• If the skin is genuinely excellent, findings describe SUBTLE observations: texture uniformity, pore visibility in the T-zone, minor luminosity variance, faint expression lines, mild hydration cues. Never refuse to find something.\n' +
+      '• Every finding MUST use one of the canonical `zone` ids: forehead, glabella, left_temple, right_temple, left_undereye, right_undereye, left_crowsfeet, right_crowsfeet, nose_bridge, nose_tip, left_nasolabial, right_nasolabial, left_cheek, right_cheek, upper_lip, lower_lip, chin, jawline_left, jawline_right, neck. Do not invent zones.\n' +
+      '• Every finding MUST use one of the canonical `concern` ids: fine_lines, wrinkles, dark_circles, puffiness, hyperpigmentation, redness, dryness, oiliness, texture, enlarged_pores, dullness, uneven_tone, blemishes, sun_damage, elasticity. Do not invent concerns.\n' +
+      '\n' +
+      'SEVERITY CALIBRATION (integer 1-5):\n' +
+      '• 1 = barely perceptible, only visible on close inspection.\n' +
+      '• 2 = mild, normal for healthy skin.\n' +
+      '• 3 = moderate, worth addressing.\n' +
+      '• 4 = pronounced.\n' +
+      '• 5 = significant concern.\n' +
+      'Spread severity realistically. Do NOT cluster everything at 1. If a user obviously has forehead lines, that is a 2 or 3, not absent.\n' +
+      '\n' +
+      'OVERALL SCORE CALIBRATION:\n' +
+      '• 85-95 = excellent skin reading with only subtle observations.\n' +
+      '• 70-84 = typical healthy skin with normal everyday signals.\n' +
+      '• 55-69 = several visible concerns worth addressing.\n' +
+      '• below 55 = multiple high-severity concerns.\n' +
+      'Sub-scores (hydration, texture, tone, clarity, vitality) should sit on the same scale and correlate with the findings.\n' +
+      '\n' +
+      'COPY RULES:\n' +
+      '• `headline` is one short editorial sentence, max 8 words. Warm and observational, not clinical. Examples: "Calm skin with light surface texture." / "Bright complexion, faint expression lines emerging."\n' +
+      '• `summary` is 2-3 sentences, warm but specific. Reference the most prominent findings naturally. No fluff.\n' +
+      '• Each finding `title` is 3-5 words ("Faint forehead lines", "Mild T-zone shine", "Subtle under-eye softness").\n' +
+      '• `observation` is one sentence describing what is visible in this zone.\n' +
+      '• `recommendation` is one actionable sentence (cosmetic care guidance, not medical advice).\n' +
+      '• `ingredient_hints` is 1-3 short ingredient names ("retinol", "peptides", "niacinamide", "vitamin c", "hyaluronic acid", "ceramides"). Use lowercase.\n' +
+      '• `id` is a short slug — e.g. "forehead-fine-lines" — unique within the response.';
+
+    const stricterAddendum =
+      '\n\nSTRICTER RETRY:\n' +
+      'Your previous output failed validation. Common failures: (a) fewer than 3 findings, (b) zone or concern outside the enum, (c) headline too long, (d) missing ingredient_hints. Re-emit a complete result with at least 3 findings and only canonical enum values. This is the final attempt.';
+
+    const system = params.stricterReminder
+      ? baseSystem + stricterAddendum
+      : baseSystem;
+
+    const userContent = this.buildImageUserContent(
+      params.imageBase64,
+      params.mediaType,
+      [
+        `scan_id: ${params.scanId}`,
+        '',
+        'Analyze this face image. Return between 3 and 6 findings — never zero.',
+      ].join('\n')
+    );
+
+    return this.runStrictStructured<ScanResultV2>({
+      system,
+      userContent,
+      schemaName: 'scan_result_v2',
+      schema: SCAN_RESULT_V2_SCHEMA,
     });
   }
 

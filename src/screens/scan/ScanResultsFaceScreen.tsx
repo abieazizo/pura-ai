@@ -1,74 +1,43 @@
 /**
- * ScanResultsFaceScreen — v19.0 Layer 1 Overview.
+ * ScanResultsFaceScreen — paged scan-results reveal with strict routing.
  *
- * Replaces the v18.x "everything in one scroll" architecture with
- * a tight executive summary. The skin map + per-concern detail
- * lives in the new Layer 2 ScanResultDetailScreen reachable via
- * a quiet "See full skin map" secondary action.
+ * Five-state matrix (truth-first):
+ *   A. service error      → ScanServiceErrorScreen
+ *   B. retake required    → RetakeRequiredScreen
+ *   C. zero supported     → NoClearFindingsScreen
+ *   D. limited + findings → ScanResultsPager with limited banner
+ *   E. full + findings    → ScanResultsPager
  *
- * Layout (top to bottom):
- *   1. Top chrome (close)
- *   2. ScoreSummaryCard — small thumbnail + serif score + band
- *      + premium delta phrase + "Based on visible signals"
- *   3. Strong headline + one supporting line
- *   4. Hero product module (HeroMatchCard) with full state
- *      machine: loading / success / unavailable + retry
- *   5. ResultSecondaryActions — See full skin map / What should I
- *      do tonight? / See alternatives
- *   6. TONIGHT (3 steps, compact)
- *   7. ALSO MATCHED (alt carousel)
- *   8. Image quality note (only when relevant)
- *   9. Disclaimer
- *
- * The screen feels like an executive summary, not a report dump.
+ * Hard contract:
+ *   • Reads `translateScanToAnalysis(scan)` once.
+ *   • Selects supported findings + supported insights through the
+ *     canonical selectors. Never inspects raw AI output.
+ *   • Routine handoff is gated by `beginRoutineFromAnalysis` — invalid
+ *     scans cannot mutate the Routine store from this screen.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
-import { X } from 'phosphor-react-native';
 import { useAppStore } from '@/store/useAppStore';
-import { palette } from '@/theme';
-import { hapt } from '@/utils/haptics';
-import { buildTonightFocus, getConcerns } from '@/utils/concerns';
-import { computeSkinScore } from '@/utils/skinScore';
-import { LiveProductCard } from '@/components/products/LiveProductCard';
-import { LiveProductsUnavailable } from '@/components/products/LiveProductsUnavailable';
-import { ScoreSummaryCard } from '@/components/scan/ScoreSummaryCard';
-import { ResultSecondaryActions } from '@/components/scan/ResultSecondaryActions';
-// v19.18 — ResultScreen now consumes the canonical
-// deterministic-first recommendation engine. Hero + alternatives
-// come from RecommendationContext (seed-catalog retrieval +
-// dedupe + local score + best-effort AI rerank). No more direct
-// `lookupForScan` / `lookupLiveProducts` AI-first calls from
-// this screen.
-import {
-  getRecommendationContextForScan,
-  getRecommendationContextFromQuery,
-} from '@/api/liveProducts';
-import { aiLog } from '@/ai/aiLog';
 import type { RootStackParamList } from '@/navigation/types';
-import type { Concern } from '@/types';
-import type {
-  FaceScanAnalysis,
-  LiveProductCandidate,
-} from '@/ai/ai-contracts';
-import type { RecommendationContext } from '@/types/canonical';
+import {
+  classifyFindingsPresence,
+  selectSupportedInsights,
+  selectVisibleFindings,
+  translateScanToAnalysis,
+} from '@/services/scanResults/translateAnalysis';
+import { beginRoutineFromAnalysis } from '@/services/scanResults/beginRoutine';
+import { faceGeometryProvider } from '@/services/scanResults/faceGeometry';
+import { useScanResultsSession } from '@/services/scanResults/useScanResultsSession';
+import { ScanResultsPager } from '@/components/scan-results/ScanResultsPager';
+import { RetakeRequiredScreen } from '@/components/scan-results/RetakeRequiredScreen';
+import { ScanServiceErrorScreen } from '@/components/scan-results/ScanServiceErrorScreen';
+import { ScanResultsV2Screen } from '@/screens/scan/ScanResultsV2Screen';
+import { hapt } from '@/utils/haptics';
+
+declare const __DEV__: boolean | undefined;
 
 export interface ScanResultsFaceScreenProps {
   scanId: string;
@@ -79,840 +48,222 @@ export function ScanResultsFaceScreen({
 }: ScanResultsFaceScreenProps) {
   const scans = useAppStore((s) => s.scans);
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
-  const scanNav =
-    useNavigation<{ navigate: (name: string, params?: unknown) => void }>();
-
   const scan = scans.find((s) => s.id === scanId) ?? scans[scans.length - 1];
-  const previous = scan
-    ? scans.filter((s) => s.capturedAt < scan.capturedAt).slice(-1)[0]
-    : undefined;
 
-  // v19.7 — stable `concerns` ref. Was: `getConcerns(...)` called
-  // inline every render, which returned a NEW array reference each
-  // time. That alone wouldn't break anything — except the retrieval
-  // effect below had `concerns` in its dep array, so EVERY render
-  // re-ran the effect, cancelled the in-flight fetch, and started a
-  // new one. The hero card sat in "Still finding your best match…"
-  // forever because no `run()` ever completed without being
-  // cancelled by the next render's cleanup. Memoising on the scan id
-  // makes the ref stable across renders.
-  const concerns = useMemo(
-    () => (scan ? getConcerns(scan, previous) : []),
-    [scan, previous]
+  const session = useScanResultsSession();
+  const setAnalysis = useScanResultsSession((s) => s.setAnalysis);
+  const setGeometry = useScanResultsSession((s) => s.setGeometry);
+  const setAnalysisStatus = useScanResultsSession((s) => s.setAnalysisStatus);
+  const setSelectedFindingId = useScanResultsSession(
+    (s) => s.setSelectedFindingId
+  );
+  const startSession = useScanResultsSession((s) => s.startSession);
+  const resetSession = useScanResultsSession((s) => s.resetSession);
+
+  // Build the strict ScanAnalysisResponse from the persisted scan once.
+  const analysis = useMemo(
+    () => (scan ? translateScanToAnalysis(scan) : null),
+    [scan]
   );
 
-  // v19.2 — hero product retrieval state machine.
-  // Adds a `slow` threshold: after 5 s of loading the UI escalates
-  // from "Finding your best match…" to "Still finding your best
-  // match… / Thanks for waiting — this can take a few more seconds."
-  // so the screen never feels frozen.
-  const [liveCandidates, setLiveCandidates] = useState<
-    LiveProductCandidate[]
-  >([]);
-  const [liveLoading, setLiveLoading] = useState<boolean>(false);
-  const [liveSlow, setLiveSlow] = useState<boolean>(false);
-  const [liveError, setLiveError] = useState<boolean>(false);
-  const [liveAttempt, setLiveAttempt] = useState<number>(0);
+  const visibleFindings = useMemo(
+    () => (analysis ? selectVisibleFindings(analysis) : []),
+    [analysis]
+  );
 
-  // v19.4 — actual product retrieval pipeline. The previous version
-  // had a hard `if (!scan?.aiAnalysis) return;` early-return that
-  // left scans without an AI analysis (deterministic-fallback
-  // scans, partial-AI scans, or any scan from before the AI pipeline
-  // ran successfully) STUCK on the empty state — the effect never
-  // set `liveLoading`, never fired retrieval, and Retry just re-ran
-  // the same dead path. v19.4 ALWAYS fires retrieval:
-  //   • If scan.aiAnalysis is present → use lookupForScan, which
-  //     scopes the query by the AI's primary_concern + region.
-  //   • Otherwise → derive a free-text query from the scan's
-  //     `concerns` array (which every scan has, even deterministic
-  //     ones via deriveConcerns) and use lookupLiveProducts.
-  // Structured aiLog signals at every step so failures are visible
-  // in the dev console.
+  const supportedInsights = useMemo(
+    () =>
+      analysis ? selectSupportedInsights(analysis, visibleFindings) : [],
+    [analysis, visibleFindings]
+  );
+
+  if (typeof __DEV__ !== 'undefined' && __DEV__ && analysis) {
+    // eslint-disable-next-line no-console
+    console.log('[Pura Scan] parsed analysis', {
+      scanId: analysis.scanId,
+      usability: analysis.scanQuality.usability,
+      rawFindings: analysis.findings.length,
+      supportedFindings: visibleFindings.length,
+      supportedInsights: supportedInsights.length,
+      routineAllowed: analysis.routineEligibility.allowed,
+    });
+    // eslint-disable-next-line no-console
+    console.log(
+      '[Pura Scan] supported findings',
+      visibleFindings.map((f) => ({
+        id: f.id,
+        type: f.type,
+        confidence: f.confidence,
+        priority: f.priority,
+        zones: f.zones,
+      }))
+    );
+    // eslint-disable-next-line no-console
+    console.log('[Pura Scan] supported insights', supportedInsights);
+    // eslint-disable-next-line no-console
+    console.log('[Pura Scan] overlays to render', {
+      count: Math.min(visibleFindings.length, 3),
+    });
+  }
+
+  // Resolve face geometry from the AI's face_overlay (when present).
   useEffect(() => {
     if (!scan) return;
+    startSession({
+      scanId: scan.id,
+      originalImageUri: scan.photoUri,
+      capturedAt: scan.capturedAt,
+    });
+    setAnalysisStatus('mapping');
     let cancelled = false;
-    const t0 = Date.now();
-    setLiveLoading(true);
-    setLiveSlow(false);
-    setLiveError(false);
-    const slowTimer = setTimeout(() => {
-      if (!cancelled) setLiveSlow(true);
-    }, 5000);
-    // v19.18 — single-call shared engine. The result screen now
-    // pulls one canonical RecommendationContext that already
-    // has hero + alternatives + whyHeroFits + availability state.
-    // The deterministic seed catalog renders even when AI is
-    // offline (hero ALWAYS resolves quickly); the optional AI
-    // rerank refines order when available. Diagnostics + this
-    // screen + ProductsScreen all share the SAME engine.
-
-    const runRecommendation = async (): Promise<RecommendationContext> => {
-      // v19.24 — explicit trigger label. The same effect runs on
-      // initial mount and on retry; liveAttempt distinguishes.
-      const trigger = liveAttempt > 0 ? 'retry' : 'initial_load';
-      if (scan.aiAnalysis) {
-        aiLog.info('result.products', 'getRecommendationContextForScan', {
-          scanId: scan.id,
-          primary_concern: scan.aiAnalysis.primary_concern,
-          trigger,
-        });
-        return getRecommendationContextForScan(scan, {
-          fresh: liveAttempt > 0,
-          trigger,
-        });
-      }
-      // No AI analysis on this scan — derive a free-text query
-      // from the deterministic concerns and run the shared free-
-      // text recommendation pipeline.
-      const query = buildFreeTextQuery(concerns);
-      aiLog.info('result.products', 'getRecommendationContextFromQuery (no AI scan)', {
-        scanId: scan.id,
-        query,
-        trigger,
+    (async () => {
+      const aiOverlay = scan.aiAnalysis?.face_overlay ?? null;
+      const geometry = await faceGeometryProvider.detect({
+        imageUri: scan.photoUri,
+        aiFaceOverlay: aiOverlay
+          ? {
+              face_box: aiOverlay.face_box,
+              landmarks: aiOverlay.landmarks,
+            }
+          : null,
       });
-      return getRecommendationContextFromQuery(query, {
-        fresh: liveAttempt > 0,
-        trigger,
-      });
-    };
-
-    runRecommendation()
-      .then((rec) => {
-        if (cancelled) return;
-        const dur = Date.now() - t0;
-        const hero = rec.heroProduct;
-        const alts = rec.alternatives;
-        aiLog.info('result.products', 'recommendation resolved', {
-          scanId: scan.id,
-          hasHero: !!hero,
-          nAlts: alts.length,
-          source: rec.source,
-          state: rec.availabilityState,
-          durationMs: dur,
-        });
-        const list: LiveProductCandidate[] = hero
-          ? [hero, ...alts.filter((c) => c.id !== hero.id)]
-          : [];
-        setLiveCandidates(list);
-        setLiveError(
-          rec.availabilityState === 'unavailable' ||
-            (rec.availabilityState === 'empty' && list.length === 0) ||
-            (!hero && rec.availabilityState !== 'loading')
-        );
-        clearTimeout(slowTimer);
-        setLiveLoading(false);
-        setLiveSlow(false);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        aiLog.warn('result.products', 'recommendation threw', {
-          scanId: scan.id,
-          durationMs: Date.now() - t0,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        clearTimeout(slowTimer);
-        setLiveCandidates([]);
-        setLiveError(true);
-        setLiveLoading(false);
-        setLiveSlow(false);
-      });
-
+      if (cancelled) return;
+      setGeometry(geometry);
+      if (analysis) setAnalysis(analysis);
+      setAnalysisStatus('ready');
+    })();
     return () => {
       cancelled = true;
-      clearTimeout(slowTimer);
     };
-    // v19.7 — deps DELIBERATELY scoped to scan id + aiAnalysis +
-    // explicit retry counter. The previous version included
-    // `concerns` and `scan` (full object), which churned on every
-    // render because `getConcerns()` returned a new array ref each
-    // call. That made the effect re-run every render, cancel the
-    // in-flight fetch, and never let `run()` complete — the hero
-    // sat in "Still finding your best match…" forever. The
-    // `concerns` value used inside `run()` is captured fresh via
-    // closure when the effect actually fires (on scan change /
-    // retry), so we don't need it in the dep array.
+    // analysis is referenced inside the effect — including it in deps
+    // would cause a fresh geometry pass every render, so we depend on
+    // the scan's identity instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scan?.id, scan?.aiAnalysis, liveAttempt]);
+  }, [scan?.id]);
 
-  const heroLive = liveCandidates[0] ?? null;
-  const altLive = liveCandidates.slice(1, 6);
-  const retryLive = () => setLiveAttempt((n) => n + 1);
-
-  // v19.2 — hero product fade-in. When the LiveProductCard hero
-  // lands (after loading), it fades in over 280ms so the screen
-  // doesn't pop from "loading state" to "card" in a single frame.
-  const heroOpacity = useSharedValue(0);
+  // Make sure the analysis is set even if geometry resolution races.
   useEffect(() => {
-    heroOpacity.value = withTiming(heroLive ? 1 : 0, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [heroLive, heroOpacity]);
-  const heroAnim = useAnimatedStyle(() => ({
-    opacity: heroOpacity.value,
-  }));
+    if (analysis) setAnalysis(analysis);
+  }, [analysis, setAnalysis]);
 
-  // v19.0 — premium headline + one supporting line.
-  const headline = useMemo(
-    () => buildPremiumHeadline(concerns, scan?.aiAnalysis),
-    [concerns, scan?.aiAnalysis]
-  );
-  const support = useMemo(
-    () => buildPremiumSupport(concerns, scan?.aiAnalysis),
-    [concerns, scan?.aiAnalysis]
-  );
+  const exitToHome = useCallback(() => {
+    resetSession();
+    rootNav.getParent()?.goBack();
+  }, [resetSession, rootNav]);
 
-  // Tonight steps — keep the AI's tonight focus when present.
-  const tonight = useMemo(() => {
-    if (!scan) return [] as string[];
-    const aiTonight =
-      scan.aiAnalysis?.next_focus.tonight.filter(
-        (s) => s.trim().length > 0
-      ) ?? [];
-    if (aiTonight.length > 0) return aiTonight.slice(0, 3);
-    return buildTonightFocus(concerns).slice(0, 3);
-  }, [scan, concerns]);
-
-  // Refs for "scroll to" secondary actions.
-  const scrollRef = useRef<ScrollView>(null);
-  const tonightYRef = useRef<number>(0);
-  const altsYRef = useRef<number>(0);
-
-  const score = computeSkinScore(scans);
-
-  if (!scan) return null;
-
-  const close = () => {
-    hapt.select();
-    rootNav.goBack();
-  };
-
-  // v19.3 — secondary "Browse products" path for the unavailable
-  // hero state. Dismisses the scan modal and lands the user on
-  // the Products tab so the screen always offers a forward
-  // motion even when live retrieval fails.
-  const openProducts = () => {
+  const goRetake = useCallback(() => {
     hapt.tap();
+    resetSession();
     rootNav.goBack();
     setTimeout(() => {
-      // @ts-expect-error nested tab navigation
-      rootNav.navigate?.('Tabs', { screen: 'ProductsTab' });
+      rootNav.navigate?.('ScanModal', { initialMode: 'face' });
+    }, 80);
+  }, [resetSession, rootNav]);
+
+  const handleBuildRoutine = useCallback(() => {
+    hapt.tap();
+    if (!analysis) return;
+    const result = beginRoutineFromAnalysis(analysis);
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[Pura Scan] routine eligible', result.ok, {
+        reasonIfBlocked: result.ok ? null : result.reason,
+      });
+    }
+    if (!result.ok) {
+      // Hard gate: refuse to navigate to Routine. Surface the path the
+      // user CAN take — retake the photo.
+      goRetake();
+      return;
+    }
+    resetSession();
+    rootNav.goBack();
+    setTimeout(() => {
+      // @ts-expect-error nested tab nav — existing pattern used across the app.
+      rootNav.navigate?.('Tabs', { screen: 'RoutineTab' });
     }, 60);
-  };
+  }, [analysis, goRetake, resetSession, rootNav]);
 
-  // v19.0 — `LiveProductCard` handles its own tap-to-detail and
-  // Shop-to-merchant navigation, so the screen no longer needs
-  // local nav handlers for them. Keeping the screen focused on
-  // overview composition.
+  if (!scan || !analysis) {
+    return <View style={styles.blank} />;
+  }
 
-  const lowQuality =
-    scan.aiAnalysis &&
-    (!scan.aiAnalysis.image_quality.usable ||
-      scan.aiAnalysis.image_quality.confidence < 0.6 ||
-      scan.aiAnalysis.image_quality.issues.length > 0);
+  // v32 — when the strict V2 analysis is on the scan, render the new
+  // editorial results screen. The V2 analysis is server-guaranteed to
+  // have 3-6 findings (schema + retry + deterministic fallback), so
+  // there is no "nothing stood out" branch to handle for V2 scans.
+  if (scan.v2Analysis) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[Pura Scan] route selected', 'v2_results', {
+        overall: scan.v2Analysis.overall_score,
+        findings: scan.v2Analysis.findings.length,
+      });
+    }
+    return <ScanResultsV2Screen scanId={scan.id} />;
+  }
 
+  const usability = analysis.scanQuality.usability;
+  const limitedScan = usability === 'limited_results';
+
+  // STATE B — retake required.
+  if (usability === 'retake_required') {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[Pura Scan] route selected', 'retake_required');
+    }
+    return (
+      <RetakeRequiredScreen
+        photoUri={scan.photoUri}
+        detail={analysis.scanQuality.userMessage}
+        onRetake={goRetake}
+      />
+    );
+  }
+
+  // v32 — the "no clear findings" branch is deleted. With the V2
+  // analysis guaranteed to be populated, the only way to land here
+  // is a legacy scan persisted before v32. In that rare case we
+  // still surface the V1 pager rather than the deleted empty-state
+  // screen; the deterministic concern model carries enough signal
+  // to populate at least one card.
+
+  // STATE D / E — supported findings present.
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[Pura Scan] route selected',
+      limitedScan ? 'limited_results_with_findings' : 'full_results'
+    );
+  }
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <StatusBar style="dark" />
-
-      <View style={styles.header}>
-        {/* v19.14 — result-screen close button hardened the same
-            way as the camera screen + skin-map back button:
-            hitSlop bumped 8 → 18, slightly larger hit area, and
-            a press-scale gesture so the tap reads visibly. */}
-        <Pressable
-          onPress={close}
-          style={({ pressed }) => [
-            styles.closeBtn,
-            pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Close results"
-          hitSlop={18}
-        >
-          <X size={20} weight="bold" color={palette.ink} />
-        </Pressable>
-        <View style={{ width: 42 }} />
-      </View>
-
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── 1. Score summary card ─────────────────────────────── */}
-        <ScoreSummaryCard
-          photoUri={scan.photoUri}
-          score={score}
-          delta={score.deltaSinceLast}
-          interpretation={buildScoreInterpretation(concerns)}
-        />
-
-        {/* ── 2. Headline + supporting line ─────────────────────── */}
-        <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
-          {headline}
-        </Text>
-        {support ? (
-          <Text style={styles.support} maxFontSizeMultiplier={1.2}>
-            {support}
-          </Text>
-        ) : null}
-
-        {/* ── 3. Hero product module ────────────────────────────── */}
-        {/* v19.3 — hero product framed as a CONCLUSION, not a card
-            from a state machine. The reason-to-believe line above
-            the card explicitly ties the recommendation to the
-            user's primary concern, so the card lands as an answer
-            ("Because forehead texture is your top concern, this
-            resurfacing serum should help most.") rather than a
-            generic AI pick. */}
-        <View style={styles.heroBlock}>
-          <View style={styles.heroKickerRow}>
-            <Text
-              style={styles.heroKicker}
-              maxFontSizeMultiplier={1.1}
-            >
-              BEST NEXT STEP TONIGHT
-            </Text>
-            <View style={styles.heroKickerRule} />
-          </View>
-          {heroLive ? (
-            <>
-              <Text
-                style={styles.heroReason}
-                maxFontSizeMultiplier={1.2}
-                numberOfLines={2}
-              >
-                {buildHeroReason(concerns, heroLive)}
-              </Text>
-              <Animated.View style={heroAnim}>
-                <LiveProductCard candidate={heroLive} variant="hero" />
-              </Animated.View>
-            </>
-          ) : liveLoading ? (
-            <LiveProductsUnavailable
-              variant={liveSlow ? 'slow' : 'loading'}
-              scope="for your scan"
-            />
-          ) : (
-            <LiveProductsUnavailable
-              variant={liveError ? 'unavailable' : 'empty'}
-              scope="for your scan"
-              onRetry={retryLive}
-              onBrowse={openProducts}
-            />
-          )}
-        </View>
-
-        {/* ── 4. Secondary actions ──────────────────────────────── */}
-        <ResultSecondaryActions
-          onOpenSkinMap={() => {
-            hapt.select();
-            scanNav.navigate('ScanResultDetail', { scanId: scan.id });
-          }}
-          onOpenTonight={() => {
-            hapt.select();
-            scrollRef.current?.scrollTo({
-              y: Math.max(0, tonightYRef.current - 12),
-              animated: true,
-            });
-          }}
-          onOpenAlternatives={() => {
-            hapt.select();
-            scrollRef.current?.scrollTo({
-              y: Math.max(0, altsYRef.current - 12),
-              animated: true,
-            });
-          }}
-        />
-
-        {/* ── 5. Tonight ────────────────────────────────────────── */}
-        {/* v19.2 — editorial tonight guidance. Replaces the dense
-            numbered-list look with breathable rows: serif italic
-            "I." / "II." / "III." numerals + concise step text +
-            hairlines between rows. Reads like a calm magazine
-            recipe, not a checklist app. */}
-        {tonight.length > 0 ? (
-          <View
-            style={styles.section}
-            onLayout={(e) => {
-              tonightYRef.current = e.nativeEvent.layout.y;
-            }}
-          >
-            <View style={styles.heroKickerRow}>
-              <Text style={styles.heroKicker} maxFontSizeMultiplier={1.1}>
-                TONIGHT
-              </Text>
-              <View style={styles.heroKickerRule} />
-            </View>
-            <View style={styles.tonightList}>
-              {tonight.map((step, i) => (
-                <View key={i}>
-                  {i > 0 ? <View style={styles.tonightDivider} /> : null}
-                  <View style={styles.tonightItem}>
-                    <Text
-                      style={styles.tonightNum}
-                      maxFontSizeMultiplier={1.15}
-                      allowFontScaling={false}
-                    >
-                      {ROMAN[i] ?? `${i + 1}`}
-                    </Text>
-                    <Text
-                      style={styles.tonightText}
-                      maxFontSizeMultiplier={1.2}
-                      numberOfLines={3}
-                    >
-                      {step}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        {/* ── 6. Also matched ───────────────────────────────────── */}
-        {altLive.length > 0 ? (
-          <View
-            style={styles.section}
-            onLayout={(e) => {
-              altsYRef.current = e.nativeEvent.layout.y;
-            }}
-          >
-            <Text style={styles.sectionKicker} maxFontSizeMultiplier={1.1}>
-              ALSO MATCHED
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.altRow}
-            >
-              {altLive.map((c) => (
-                <LiveProductCard
-                  key={c.id}
-                  candidate={c}
-                  variant="alt"
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
-        {/* ── 7. Image quality note (only when relevant) ────────── */}
-        {lowQuality && scan.aiAnalysis ? (
-          <View style={styles.qualityCard}>
-            <View style={styles.qualityRail} />
-            <Text style={styles.qualityKicker} maxFontSizeMultiplier={1.1}>
-              IMAGE QUALITY
-            </Text>
-            <Text
-              style={styles.qualityBody}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={3}
-            >
-              {qualityCopy(scan.aiAnalysis)}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* ── 8. Disclaimer ─────────────────────────────────────── */}
-        <Text style={styles.disclaimer} maxFontSizeMultiplier={1.2}>
-          Based on visible signals. Not a medical diagnosis.
-        </Text>
-      </ScrollView>
-    </SafeAreaView>
+    <ScanResultsPager
+      photoUri={scan.photoUri}
+      analysis={analysis}
+      visibleFindings={visibleFindings}
+      supportedInsights={supportedInsights}
+      geometry={session.geometry}
+      selectedFindingId={session.selectedFindingId}
+      onSelectFinding={(id) => setSelectedFindingId(id)}
+      limitedScan={limitedScan}
+      onBuildRoutine={handleBuildRoutine}
+      onRetake={goRetake}
+      onExit={exitToHome}
+      onSlideChange={(idx) =>
+        useScanResultsSession.getState().setCurrentSlide(idx + 1)
+      }
+    />
   );
 }
 
-// ---------------------------------------------------------------------------
-// Premium headline + supporting copy.
-// ---------------------------------------------------------------------------
-
-/**
- * v19.1 — premium headline + support generation.
- *
- * The previous version trusted the AI's why_line / explanation
- * verbatim if they were short enough. That gave inconsistent results
- * — sometimes elegant ("Breakouts calming, hydration steady"),
- * sometimes flat ("Skin looks generally calm with mild texture.").
- *
- * v19.1 always writes the headline DETERMINISTICALLY off the actual
- * top concern + region, so every result reads with the same calm
- * editorial voice. The AI's `explanation` is preserved as the
- * support sentence ONLY when it's well-formed; otherwise we write
- * a confident contextual one.
- */
-function buildPremiumHeadline(
-  concerns: Concern[],
-  _analysis: FaceScanAnalysis | undefined
-): string {
-  const noticeable = concerns.filter((c) => c.severity !== 'calm');
-  if (noticeable.length === 0) {
-    return 'Your complexion looks balanced today.';
-  }
-  const top = noticeable[0];
-  const region = headlineRegion(top.region);
-  const sevWord = severityWord(top.severity);
-  switch (top.category) {
-    case 'breakouts':
-      return noticeable.length === 1
-        ? `Mostly calm skin with one ${sevWord} area on the ${region}.`
-        : `One ${sevWord} area on the ${region} stands out most.`;
-    case 'hydration':
-      return `Mostly calm skin with ${sevWord} dryness on the ${region}.`;
-    case 'texture':
-      return `Mostly calm skin with ${sevWord} ${region} texture.`;
-    case 'tone':
-      return `Light tone unevenness across the ${region} is the strongest signal.`;
-  }
-}
-
-function buildPremiumSupport(
-  concerns: Concern[],
-  analysis: FaceScanAnalysis | undefined
-): string | null {
-  // Trust the AI's explanation ONLY when it's a single tight
-  // sentence (≤ 110 chars, ends with `.`). Otherwise rewrite.
-  const ai = analysis?.skin_score?.explanation?.trim();
-  if (ai && ai.length > 0 && ai.length <= 110 && /\.$/.test(ai)) {
-    return ai;
-  }
-  const noticeable = concerns.filter((c) => c.severity !== 'calm');
-  if (noticeable.length === 0) {
-    return 'Stay the course with your usual gentle routine tonight.';
-  }
-  if (noticeable.length === 1) {
-    return 'One area to watch — the rest reads calm.';
-  }
-  return 'A couple of subtle signals to address — nothing alarming.';
-}
-
-function headlineRegion(raw: string): string {
-  const r = raw.trim().toLowerCase();
-  if (!r || r === 'across the face' || r === 'the face') return 'face';
-  if (r.includes('forehead')) return 'forehead';
-  if (r.includes('cheek')) return 'cheeks';
-  if (r.includes('chin')) return 'chin';
-  if (r.includes('nose') || r.includes('t-zone') || r.includes('t zone'))
-    return 'T-zone';
-  if (r.includes('under') && r.includes('eye')) return 'under-eye area';
-  return r;
-}
-
-function severityWord(s: Concern['severity']): string {
-  switch (s) {
-    case 'calm':
-      return 'subtle';
-    case 'mild':
-      return 'mild';
-    case 'moderate':
-      return 'noticeable';
-    case 'needs-attention':
-      return 'pronounced';
-  }
-}
-
-/**
- * v19.4 — derive a free-text retrieval query from the scan's
- * `concerns` array. Used as the fallback path when scan.aiAnalysis
- * is missing (deterministic scan, AI proxy was down at scan time,
- * or aiAnalysis hasn't hydrated yet). Every scan has a non-empty
- * concerns array via translateAnalysisToScan / deriveConcerns, so
- * this always produces a usable query.
- *
- * The query is intentionally short and natural: it reads as a real
- * skincare-shopper sentence ("best gentle products for mild
- * forehead texture") rather than a structured payload.
- */
-function buildFreeTextQuery(concerns: Concern[]): string {
-  const noticeable = concerns.filter((c) => c.severity !== 'calm');
-  if (noticeable.length === 0) {
-    return 'best gentle daily skincare products for balanced skin';
-  }
-  const top = noticeable[0];
-  const concernPhrase = (() => {
-    switch (top.category) {
-      case 'breakouts':
-        return 'breakouts';
-      case 'hydration':
-        return 'dryness and hydration';
-      case 'texture':
-        return 'skin texture';
-      case 'tone':
-        return 'tone unevenness and dark marks';
-    }
-  })();
-  const region = top.region.replace(/across the face/i, 'face');
-  const sevWord =
-    top.severity === 'mild'
-      ? 'mild'
-      : top.severity === 'moderate'
-      ? 'moderate'
-      : top.severity === 'needs-attention'
-      ? 'pronounced'
-      : '';
-  return `best products for ${sevWord} ${concernPhrase} on the ${region}`.trim();
-}
-
-/**
- * v19.3 — score interpretation. Renders inside the ScoreSummaryCard
- * meta line so the user understands what the band actually means
- * in THIS scan, not in the abstract.
- */
-function buildScoreInterpretation(concerns: Concern[]): string {
-  const noticeable = concerns.filter((c) => c.severity !== 'calm');
-  const high = noticeable.filter(
-    (c) => c.severity === 'moderate' || c.severity === 'needs-attention'
-  );
-  if (noticeable.length === 0) {
-    return 'Calm overall.';
-  }
-  if (noticeable.length === 1 && high.length === 0) {
-    return 'Mostly settled, with one mild area to watch.';
-  }
-  if (noticeable.length <= 2 && high.length === 0) {
-    return 'Mostly settled, with a couple of mild signals.';
-  }
-  if (high.length === 1) {
-    return 'A few signals to address — one stands out.';
-  }
-  return 'A few signals to address.';
-}
-
-/**
- * v19.3 — reason-to-believe line above the hero product card.
- * Reads as a single elegant sentence that ties the recommendation
- * to the user's primary concern + the product's own match reason.
- * Frames the card as a conclusion, not a state-machine output.
- */
-function buildHeroReason(
-  concerns: Concern[],
-  hero: LiveProductCandidate
-): string {
-  const top = concerns.find((c) => c.severity !== 'calm');
-  const aiReason = (hero.matchReason ?? '').trim();
-  if (!top) {
-    // Calm scan → frame the recommendation as a daily addition.
-    return aiReason.length > 0
-      ? aiReason
-      : 'A gentle daily addition that should sit comfortably in your routine.';
-  }
-  const concern = (() => {
-    switch (top.category) {
-      case 'breakouts':
-        return 'breakouts';
-      case 'hydration':
-        return 'dryness';
-      case 'texture':
-        return 'texture';
-      case 'tone':
-        return 'tone unevenness';
-    }
-  })();
-  // Prefer the AI's matchReason when it's tight + ends cleanly.
-  if (
-    aiReason.length > 0 &&
-    aiReason.length <= 110 &&
-    /[.!]$/.test(aiReason)
-  ) {
-    return aiReason;
-  }
-  return `Because ${concern} is your top signal in this scan, this should help most.`;
-}
-
-// v19.2 — Roman numerals for the tonight list. Reads more
-// editorial than 1/2/3 and matches the calm Instrument Serif
-// vocabulary the rest of the page uses.
-const ROMAN = ['I.', 'II.', 'III.', 'IV.', 'V.'];
-
-function qualityCopy(analysis: FaceScanAnalysis): string {
-  const issues = analysis.image_quality.issues;
-  if (issues.includes('blurry'))
-    return 'This photo read as slightly blurry, so some readings may be softer than usual.';
-  if (issues.includes('low_light'))
-    return 'Light was a little low. A brighter photo will tighten future readings.';
-  if (issues.includes('partial_face'))
-    return 'Part of your face was cropped, so a few areas were harder to evaluate.';
-  if (issues.includes('angled'))
-    return 'The photo was slightly angled, so some areas were harder to evaluate.';
-  if (issues.includes('occluded'))
-    return 'Hair or hands covered part of the frame in this photo.';
-  return 'Some areas were harder to read in this photo.';
-}
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
+// Re-export for callers that need to render the dedicated error screen
+// directly from a route higher in the stack (e.g. the analyzing screen
+// when the AI proxy itself fails).
+export { ScanServiceErrorScreen };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.bg },
-
-  header: {
-    height: 52,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  closeBtn: {
-    // v19.14 — 40 → 42, hairline border, slightly tighter padding.
-    // Reads as a deliberate control rather than a quiet shadow.
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: palette.bgDeep,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  scroll: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 56,
-  },
-
-  headline: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 26,
-    lineHeight: 32,
-    letterSpacing: -0.5,
-    color: palette.ink,
-    marginBottom: 8,
-    maxWidth: '94%',
-  },
-  support: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: palette.inkSecondary,
-    marginBottom: 24,
-    maxWidth: '94%',
-  },
-
-  heroBlock: {
-    marginBottom: 0,
-    gap: 12,
-  },
-  // v19.3 — reason-to-believe line above the hero card. Italic
-  // serif gives it premium voice without competing with the card's
-  // own typography.
-  heroReason: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 15,
-    lineHeight: 21,
-    letterSpacing: -0.1,
-    color: palette.inkSecondary,
-    maxWidth: '94%',
-    marginBottom: 2,
-  },
-  // v19.1 — editorial hero kicker. The hairline that follows the
-  // label gives the section a deliberate, magazine-style header.
-  heroKickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  heroKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.7,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-  },
-  heroKickerRule: {
+  blank: {
     flex: 1,
-    height: 1,
-    backgroundColor: palette.hairline,
-  },
-
-  section: {
-    marginBottom: 28,
-  },
-  sectionKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-
-  // v19.2 — editorial tonight rendering.
-  tonightList: { paddingTop: 14 },
-  tonightItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-    paddingVertical: 12,
-  },
-  tonightNum: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 18,
-    lineHeight: 22,
-    letterSpacing: -0.2,
-    color: palette.inkTertiary,
-    width: 30,
-    paddingTop: 1,
-  },
-  tonightText: {
-    flex: 1,
-    fontFamily: 'Inter-Regular',
-    fontSize: 14.5,
-    lineHeight: 21,
-    color: palette.ink,
-    paddingTop: 1,
-  },
-  tonightDivider: {
-    height: 1,
-    backgroundColor: palette.hairline,
-    marginLeft: 44,
-  },
-
-  altRow: { gap: 10, paddingRight: 4 },
-
-  qualityCard: {
-    marginBottom: 24,
-    paddingVertical: 14,
-    paddingLeft: 18,
-    paddingRight: 14,
-    borderRadius: 14,
-    backgroundColor: palette.amber + '14',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  qualityRail: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 3,
-    backgroundColor: palette.amber,
-  },
-  qualityKicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.amber,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  qualityBody: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 18,
-    color: palette.ink,
-  },
-
-  disclaimer: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 12,
-    lineHeight: 18,
-    color: palette.inkTertiary,
-    textAlign: 'center',
-    marginTop: 8,
-    marginHorizontal: 24,
+    backgroundColor: '#FFFDF9',
   },
 });
-
