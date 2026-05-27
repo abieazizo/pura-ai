@@ -8,7 +8,7 @@
 
 export const app = {
   name: 'Pura AI',
-  tagline: 'Skincare that knows what it\u2019s looking at.',
+  tagline: 'Skincare that knows what it’s looking at.',
 };
 
 export const splash = {
@@ -18,13 +18,13 @@ export const splash = {
 export const errors = {
   genericTitle: 'Something went wrong.',
   genericBody: 'Try again in a moment.',
-  rehydrateTitle: 'Couldn\u2019t load your data',
+  rehydrateTitle: 'Couldn’t load your data',
   rehydrateBody: 'We had trouble reading your saved profile. Try again.',
-  scanTitle: 'Couldn\u2019t analyze the photo',
-  scanBody: 'Give it one more try \u2014 lighting can make a big difference.',
+  scanTitle: 'Couldn’t analyze the photo',
+  scanBody: 'Give it one more try — lighting can make a big difference.',
   cameraError: 'Camera error',
-  save: 'Couldn\u2019t save',
-  send: 'Failed \u00b7 tap to retry',
+  save: 'Couldn’t save',
+  send: 'Failed · tap to retry',
 };
 
 export const camera = {
@@ -43,7 +43,7 @@ export const common = {
   back: 'Back',
   retry: 'Try again',
   seeAll: 'See all',
-  loading: 'Loading\u2026',
+  loading: 'Loading…',
   onDevice: 'On-device',
 };
 
@@ -60,26 +60,41 @@ export const common = {
  * switches it to `tabs.routine` so the tab label matches the default
  * segment.)
  */
+// v26 — bottom-nav architecture is LOCKED: HOME / PRODUCTS / SCAN /
+// ROUTINE / AI ASSIST. The v23.1 rebrand of these labels to "COACH"
+// and "SHELF" was reversed because they obscured what each tab does
+// (AI Assist is the assistant tab; Products is the product surface)
+// and contradicted the central spec for the v26 home rebuild.
+// Route names in `RootStackParamList` / `MainTabsParamList` are
+// UNCHANGED so navigation flows are not affected.
+// v29 — Floating-dock rebuild for the Pura Shop visual rebuild.
+// Labels are now title-case to match the approved storefront screenshot
+// ("Home / Shop / Scan / Routine / Me"). AI Assist remains reachable via
+// the Me tab — its label is preserved here so any surface still wiring
+// to the AssistantTab (Home command center, Routine helper, etc.) keeps
+// reading from a single source. "Products" is retained for back-compat
+// with telemetry/strings consumers but the visible tab now reads "Shop".
 export const tabs = {
-  home: 'HOME',
-  scan: 'SCAN',
-  routine: 'ROUTINE',
+  home: 'Home',
+  scan: 'Scan',
+  routine: 'Routine',
   progress: 'PROGRESS',
-  assist: 'AI ASSIST',
-  products: 'PRODUCTS',
+  assist: 'AI Assist',
+  products: 'Shop',
+  me: 'Me',
 };
 
 export const onboarding = {
   slides: [
     {
       eyebrow: 'MEET PURA',
-      title: 'Skincare that knows what it\u2019s looking at.',
+      title: 'Skincare that knows what it’s looking at.',
       body: 'Not guessing. Not quizzing. Seeing.',
     },
     {
-      eyebrow: 'WE SEE, WE DON\u2019T GUESS',
+      eyebrow: 'WE SEE, WE DON’T GUESS',
       title: 'A thirty-second reading of your skin.',
-      body: 'Pura reads the zones of your skin \u2014 without ever asking fifteen questions.',
+      body: 'Pura reads the zones of your skin — without ever asking fifteen questions.',
     },
     {
       eyebrow: 'WATCH IT WORK',
@@ -103,20 +118,20 @@ export const home = {
 
   // Empty state
   emptyHero: 'Welcome.',
-  emptySub: 'Let\u2019s see what your skin is telling us.',
+  emptySub: 'Let’s see what your skin is telling us.',
   emptyCta: 'Begin first scan',
   whyPuraLabel: 'How this works',
   whyPura: [
     {
-      title: 'We see, we don\u2019t guess.',
-      body: 'Computer vision reads your skin directly \u2014 no fifteen-question quiz.',
+      title: 'We see, we don’t guess.',
+      body: 'Computer vision reads your skin directly — no fifteen-question quiz.',
     },
     {
       title: 'On-device privacy.',
       body: 'Scans are processed on your phone. Photos stay yours.',
     },
     {
-      title: 'Tracks what\u2019s changing.',
+      title: 'Tracks what’s changing.',
       body: 'Compare week to week. See progress you can actually point at.',
     },
   ],
@@ -135,12 +150,12 @@ export const home = {
   progressDay1Label: 'Day 1',
   progressLatestLabel: (day: number) => `Day ${day}`,
   progressSuccessLine: (label: string, percent: number, days: number) =>
-    `${label} clarity \u2191 ${percent}% \u00b7 ${days} days`,
+    `${label} clarity ↑ ${percent}% · ${days} days`,
 };
 
 export const products = {
   title: 'Products',
-  searchPlaceholder: 'Search cleansers, serums\u2026',
+  searchPlaceholder: 'Search cleansers, serums…',
   wishlist: 'Wishlist',
   allCategory: 'All',
   categoryLabels: {
@@ -156,11 +171,11 @@ export const products = {
   unlockBody: 'Take a quick skin scan for recommendations made for your skin.',
   unlockCta: 'Start a scan',
   forYouLabel: 'FOR YOU',
-  forYouEmptyPreScan: 'Scan first. I\u2019ll match from there.',
+  forYouEmptyPreScan: 'Scan first. I’ll match from there.',
   allLabel: 'ALL PRODUCTS',
-  emptySearch: (q: string) => `No products match \u201C${q}\u201D.`,
+  emptySearch: (q: string) => `No products match “${q}”.`,
 
-  // §4.5 — editorial empty state for the wishlist view
+  // editorial empty state for the wishlist view
   wishlistEmptyTitle: 'Nothing saved yet.',
   wishlistEmptyBody: 'Tap the heart on any product to keep it here.',
 };
@@ -177,7 +192,7 @@ export const productDetail = {
   findToBuy: 'Find where to buy',
   matchLabel: (n: number) => `${n}% match`,
   matchGoodStatus: 'Great match for your skin.',
-  matchOkStatus: 'Worth considering \u2014 watch how your skin reacts.',
+  matchOkStatus: 'Worth considering — watch how your skin reacts.',
   matchLowStatus: 'Probably not for you right now.',
   keyIngredients: 'Key ingredients',
   howToUseMock: [
@@ -193,32 +208,24 @@ export const scan = {
   modeProduct: 'Product',
   closeLabel: 'Close scan',
   shutterLabel: 'Capture scan',
-  // v11.7 — honest face-mode hint. The Caption component owns the
-  // rotating in-camera tips; this short line is reserved for any
-  // ambient surface (e.g. tutorials) that needs a single one-liner.
   hintFace: 'Center your full face. We’ll check the photo before analyzing.',
   hintProduct: 'Frame the label or barcode.',
   analyzing: {
-    // §4.6 — a single quiet line during analysis. The Mark's pulse does the
-    // "something is happening" work. No cycling progress captions.
     singleFaceLine: 'Reading your skin.',
     singleProductLine: 'Reading the ingredients.',
-    // Retained so older flows still compile; first entry is the canonical one.
     faceSteps: [
       'Reading your skin.',
-      'Measuring clarity\u2026',
-      'Comparing to your Day 1\u2026',
+      'Measuring clarity…',
+      'Comparing to your Day 1…',
     ],
     productSteps: [
       'Reading the ingredients.',
-      'Checking flags\u2026',
+      'Checking flags…',
     ],
   },
-  resultsFaceTitle: 'Here\u2019s what I see.',
+  resultsFaceTitle: 'Here’s what I see.',
   resultsFaceCompare: 'Compare to Day 1',
   resultsProductTitle: 'Match for your skin.',
-  // Italicized portion appears in HeroHeadline — the serif italic rendering
-  // picks the trailing word(s) automatically, no need to mark it up here.
   whyMatches: 'Why this matches',
   headsUp: 'Heads up',
   addWishlist: 'Add to wishlist',
@@ -230,50 +237,33 @@ export const scan = {
 };
 
 export const assistant = {
-  title: 'Ask',
-  // v10 — subtitles retuned. "I've been watching" was too vague and
-  // verging on uncanny. Each subtitle now points at the evidence base
-  // (the scan) so the assistant reads as grounded, not voyeuristic.
-  // v11.3 — chrome trimmed. Title + (former) subtitle were stacked
-  // even on first open; now only the warm empty-body greeting remains.
-  subtitle: '',
-  emptyTitle: 'Hey \u2014 what do you need?',
-  emptyBody: 'Ask about your scan, your routine, or any product.',
-  // v11.3 \u2014 attach hint removed; the "+" icon in the composer
-  // already communicates the affordance.
+  title: 'AI Assist',
+  subtitle: 'Ask about your scan, routine, or products.',
+  emptyTitle: 'Tonight, keep it simple.',
+  emptyBody: 'Ask about your scan, routine, or products.',
   attachHint: '',
-  composerPlaceholder: 'Ask anything\u2026',
+  composerPlaceholder: 'Ask Pura about your skin…',
   forYouLabel: 'FOR YOU',
-  // v10.3 — expanded rotating pool. The UI picks 4 at a time (shuffled
-  // per mount, plus a slow rotation) so the assistant feels alive without
-  // demanding attention. Lead prompts are scan-aware when a zone is
-  // known; the always-on pool covers score/plan/product/progress angles.
   promptsEmpty: [
-    'How does the Skin Score work?',
-    'What should I expect in the first two weeks?',
-    'Show natural product options.',
-    'What\u2019s the difference between a serum and a toner?',
-    'Which ingredients calm irritation?',
-    'What would an evening routine look like for me?',
-  ],
-  promptsFor: (zone: string) => [
-    'Why did my Skin Score move?',
-    `What helps my ${zone} breakout?`,
-    'Compare my last two scans.',
-    'Show natural product options.',
     'What should I do tonight?',
-    `What\u2019s causing my ${zone} to flare?`,
-    'Which ingredient should I avoid right now?',
-    'What would a gentler routine look like?',
-    'Show fragrance-free alternatives.',
-    'What\u2019s the one product I should add?',
+    'Why did my score change?',
+    'What should I avoid?',
+    'Which product comes first?',
+    'Is my skin improving?',
+    'Can I exfoliate tonight?',
   ],
-  // v10.3 — active brand-status labels. Live pulse under "Ready" reads
-  // as attentive, not idle; "Thinking" reads as engaged.
-  statusReady: 'Ready',
-  statusThinking: 'Thinking',
-  typing: 'Reading\u2026',
-  mockResponseIntro: 'Looking at your most recent scan\u2014',
+  promptsFor: (_zone: string) => [
+    'What should I do tonight?',
+    'Why did my score change?',
+    'What should I avoid?',
+    'Which product comes first?',
+    'Is my skin improving?',
+    'Can I exfoliate tonight?',
+  ],
+  statusReady: 'Based on today’s scan',
+  statusThinking: 'Reading your scan…',
+  typing: 'Reading…',
+  mockResponseIntro: 'Based on your latest scan—',
 };
 
 export const progress = {
@@ -288,7 +278,7 @@ export const progress = {
   oneScanBody: 'Two scans is all it takes to see real change.',
   oneScanCta: 'Scan again',
   compareLabel: 'DRAG TO COMPARE',
-  changesHeading: 'What\u2019s changed since Day 1',
+  changesHeading: 'What’s changed since Day 1',
 };
 
 export const profileSheet = {

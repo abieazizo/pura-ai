@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
-import { LogBox, StyleSheet, View } from 'react-native';
+import { LogBox, StyleSheet, View, Platform, Text } from 'react-native';
 
 // v11.11 — silence known-safe non-critical noise from optional AI
 // surfaces (search suggestions, etc.). These calls fail gracefully
@@ -21,7 +21,11 @@ LogBox.ignoreLogs([
   // when our timeout fires for non-critical methods
   /Aborted.*buildSearchSuggestions/,
 ]);
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DefaultTheme,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -35,6 +39,18 @@ import { colors, palette } from '@/theme';
 import { installDevConsole } from '@/utils/devConsole';
 import { ContextualProvider } from '@/components/contextual/ContextualProvider';
 import { probeProxyHealthz } from '@/ai/aiHealthProbe';
+
+// Dev-only navigation ref. Exposed on `window.__pura_nav__` in dev
+// builds so the preview harness can navigate to dev-only routes
+// (e.g. ScanResultsStatesDev) without touching production navigation.
+const navigationRef = createNavigationContainerRef();
+
+declare const __DEV__: boolean | undefined;
+if (typeof __DEV__ !== 'undefined' && __DEV__ && typeof globalThis !== 'undefined') {
+  (globalThis as unknown as {
+    __pura_nav__?: typeof navigationRef;
+  }).__pura_nav__ = navigationRef;
+}
 
 const navTheme = {
   ...DefaultTheme,
@@ -84,6 +100,7 @@ export default function App() {
   // its own minimum hold has elapsed AND systemReady is true (hydration +
   // fonts resolved). Once it dismisses, we never show it again this session.
   const systemReady = hydrated && (fontsLoaded || fontsLoaded === undefined);
+  const webBypassSplash = Platform.OS === 'web';
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -91,8 +108,8 @@ export default function App() {
         <ThemeProvider>
           <View style={styles.fill}>
             <StatusBar style="dark" />
-            {introDone ? (
-              <NavigationContainer theme={navTheme}>
+            {(introDone || webBypassSplash) ? (
+              <NavigationContainer ref={navigationRef} theme={navTheme}>
                 <BottomSheetModalProvider>
                   <ContextualProvider>
                     <RootNavigator />
@@ -116,3 +133,4 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   fill: { flex: 1, backgroundColor: colors.bg },
 });
+

@@ -14,9 +14,13 @@ export interface QuestionHeadlineProps {
 }
 
 /**
- * Editorial onboarding headline (§2.4). Instrument Serif 40pt, left-aligned,
- * 24pt horizontal margin, 32pt top margin from the progress bar. Entrance:
- * opacity 0 → 1 + translateY 12 → 0 over 400ms ease-out, 100ms delay.
+ * v20.0 — onboarding headline. Instrument Serif 32pt, two-line cap, left-
+ * aligned, animates in over 400ms ease-out (100ms delay).
+ *
+ * Dropped from 36 → 32pt vs v7.5: the new flow uses richer subheads and
+ * has more questions per screen, so the headline + subhead block must
+ * stay short enough to leave room for option cards on iPhone 13 mini /
+ * iPhone SE.
  */
 export function QuestionHeadline({ children }: QuestionHeadlineProps) {
   const opacity = useSharedValue(0);
@@ -43,7 +47,7 @@ export function QuestionHeadline({ children }: QuestionHeadlineProps) {
       style={[styles.text, style]}
       maxFontSizeMultiplier={1.15}
       accessibilityRole="header"
-      numberOfLines={2}
+      numberOfLines={3}
     >
       {children}
     </Animated.Text>
@@ -55,8 +59,10 @@ export interface QuestionSubheadProps {
 }
 
 /**
- * Onboarding subhead. Instrument Serif italic 17pt @ 70% ink. 12pt below
- * the headline. Entrance staggered 180ms.
+ * v20.0 — onboarding subhead. Sans-serif 15pt @ inkSecondary so the
+ * functional helper text doesn't read as low-contrast italic. Editorial
+ * italic is reserved for the emotional brand moments (Welcome,
+ * PlanReveal, Paywall headline).
  */
 export function QuestionSubhead({ children }: QuestionSubheadProps) {
   const opacity = useSharedValue(0);
@@ -79,7 +85,10 @@ export function QuestionSubhead({ children }: QuestionSubheadProps) {
   }));
 
   return (
-    <Animated.Text style={[subStyles.text, style]} maxFontSizeMultiplier={1.2}>
+    <Animated.Text
+      style={[subStyles.text, style]}
+      maxFontSizeMultiplier={1.25}
+    >
       {children}
     </Animated.Text>
   );
@@ -87,24 +96,23 @@ export function QuestionSubhead({ children }: QuestionSubheadProps) {
 
 const styles = StyleSheet.create({
   text: {
-    // v7.5 — 36pt headline, max 2 lines. Dropped from 40.
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 36,
-    lineHeight: 36 * 1.05,
-    letterSpacing: -0.7,
+    fontSize: 32,
+    lineHeight: 36,
+    letterSpacing: -0.6,
     color: palette.ink,
     marginHorizontal: 24,
-    marginTop: 32,
+    marginTop: 28,
   },
 });
 
 const subStyles = StyleSheet.create({
   text: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 17,
-    lineHeight: 17 * 1.35,
-    color: 'rgba(26,22,20,0.7)',
+    fontFamily: 'Inter-Regular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: palette.inkSecondary,
     marginHorizontal: 24,
-    marginTop: 12,
+    marginTop: 10,
   },
 });

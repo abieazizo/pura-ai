@@ -1,166 +1,216 @@
-import React, { useMemo, useRef, useState } from 'react';
-import {
-  FlatList,
-  StyleSheet,
-  Text,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
-import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
-import {
-  QuestionHeadline,
-  QuestionSubhead,
-} from '@/components/onboarding/Headline';
-import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
-import { useAppStore } from '@/store/useAppStore';
-import { hapt } from '@/utils/haptics';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { ShieldCheck } from 'phosphor-react-native';
+import { QuestionLayout } from '@/components/onboarding/QuestionLayout';
+import { ChoiceRow } from '@/components/onboarding/ChoiceRow';
+import { PlanImpactCard } from '@/components/onboarding/PlanImpactCard';
+import { useAppStore, type AppState } from '@/store/useAppStore';
+import { planImpactForPattern } from '@/state/onboardingProfile';
 import { palette } from '@/theme';
 
 export interface AskAgeProps {
   onNext: () => void;
 }
 
-const AGE_MIN = 13;
-const AGE_MAX = 80;
-const ITEM_HEIGHT = 60;
-const VISIBLE_ITEMS = 4; // snapper must have even visible rows for clean symmetry
+const AGE_RANGES: ReadonlyArray<{
+  value: NonNullable<AppState['ageRange']>;
+  label: string;
+}> = [
+  { value: 'under_18', label: 'Under 18' },
+  { value: '18-24', label: '18–24' },
+  { value: '25-34', label: '25–34' },
+  { value: '35-44', label: '35–44' },
+  { value: '45-54', label: '45–54' },
+  { value: '55+', label: '55+' },
+  { value: null as never, label: 'Prefer not to say' },
+];
 
-const AGES: number[] = Array.from(
-  { length: AGE_MAX - AGE_MIN + 1 },
-  (_, i) => AGE_MIN + i
-);
+const PATTERN_OPTIONS: ReadonlyArray<{
+  value: NonNullable<AppState['patternContext']>;
+  label: string;
+}> = [
+  { value: 'none', label: 'No / not sure' },
+  { value: 'cycle', label: 'Breakouts change around my cycle' },
+  { value: 'sensitivity_flares', label: 'Skin gets more sensitive sometimes' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+];
 
 /**
- * AskAge (§3.3). Custom scroll-wheel picker built from FlatList with
- * snap-to-interval. Center item is large clay tabular serif; neighbours fade
- * back in opacity and size.
+ * v21.0 — Screen 6: optional context.
+ *
+ * Two short sections (age range + pattern context) plus a privacy
+ * card. Everything is optional; the user can skip the whole screen
+ * with the top-right Skip or by tapping Continue with nothing set.
+ *
+ * Replaces the v20.0 hormone-context question with the spec's calmer
+ * "pattern context" framing.
  */
 export function AskAge({ onNext }: AskAgeProps) {
-  const insets = useSafeAreaInsets();
-  const storedAge = useAppStore((s) => s.age);
-  const setAge = useAppStore((s) => s.setAge);
-  const listRef = useRef<FlatList<number>>(null);
+  const ageRange = useAppStore((s) => s.ageRange);
+  const setAgeRange = useAppStore((s) => s.setAgeRange);
+  const patternContext = useAppStore((s) => s.patternContext);
+  const setPatternContext = useAppStore((s) => s.setPatternContext);
 
-  const [current, setCurrent] = useState<number>(storedAge ?? 25);
-  const initialIndex = useMemo(
-    () => AGES.indexOf(storedAge ?? 25),
-    [storedAge]
-  );
+  // Local-only flag so "Prefer not to say" only appears selected after the
+  // user actively taps it. Without this, the null-default ageRange would
+  // make the row look pre-selected on first render.
+  const [agePreferNot, setAgePreferNot] = useState(false);
 
-  const onMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
-    const idx = Math.round(y / ITEM_HEIGHT);
-    const clamped = Math.max(0, Math.min(AGES.length - 1, idx));
-    const nextAge = AGES[clamped];
-    if (nextAge !== current) {
-      setCurrent(nextAge);
-      hapt.select();
-    }
-  };
-
-  const submit = () => {
-    setAge(current);
-    onNext();
-  };
+  const planImpactMessage = planImpactForPattern(patternContext);
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <StatusBar style="dark" />
-      <OnboardingHeader currentStep={2} totalSteps={11} />
+    <QuestionLayout
+      step={6}
+      totalSteps={7}
+      sectionLabel="Context"
+      headline="A little context can improve your plan."
+      subhead="Optional — used only to tune skin patterns like oil, breakouts, sensitivity, and recovery. You can skip this."
+      showSkip
+      onSkip={onNext}
+      ctaLabel="Continue"
+      ctaDisabled={false}
+      onCta={onNext}
+      planImpact={<PlanImpactCard message={planImpactMessage} />}
+    >
+      <View style={styles.privacyCard} accessible accessibilityRole="text">
+        <View style={styles.privacyIconWrap}>
+          <ShieldCheck size={16} color={SOFT_BLUE_ICON} weight="duotone" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.privacyTitle} maxFontSizeMultiplier={1.2}>
+            Private by design
+          </Text>
+          <Text style={styles.privacyBody} maxFontSizeMultiplier={1.25}>
+            You control what gets saved and can edit this later.
+          </Text>
+        </View>
+      </View>
 
-      <QuestionHeadline>How old are you?</QuestionHeadline>
-      <QuestionSubhead>
-        Hormonal context matters. Skin at 17 is different from skin at 47.
-      </QuestionSubhead>
-
-      <View style={styles.pickerWrap}>
-        <View style={styles.highlight} pointerEvents="none" />
-        <FlatList
-          ref={listRef}
-          data={AGES}
-          keyExtractor={(n) => String(n)}
-          getItemLayout={(_, i) => ({
-            length: ITEM_HEIGHT,
-            offset: ITEM_HEIGHT * i,
-            index: i,
+      <View style={styles.section}>
+        <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
+          AGE RANGE
+        </Text>
+        <View style={styles.grid}>
+          {AGE_RANGES.map((r) => {
+            const isPreferNot = r.label === 'Prefer not to say';
+            const selected = isPreferNot
+              ? agePreferNot
+              : ageRange === r.value;
+            return (
+              <View key={r.label} style={styles.gridItem}>
+                <ChoiceRow
+                  Icon={null}
+                  label={r.label}
+                  selected={selected}
+                  onToggle={() => {
+                    if (isPreferNot) {
+                      setAgePreferNot(true);
+                      setAgeRange(null);
+                    } else {
+                      setAgePreferNot(false);
+                      setAgeRange(r.value);
+                    }
+                  }}
+                />
+              </View>
+            );
           })}
-          initialScrollIndex={Math.max(0, initialIndex)}
-          showsVerticalScrollIndicator={false}
-          snapToInterval={ITEM_HEIGHT}
-          decelerationRate="fast"
-          onMomentumScrollEnd={onMomentumScrollEnd}
-          contentContainerStyle={{
-            paddingVertical: ((VISIBLE_ITEMS - 1) / 2) * ITEM_HEIGHT,
-          }}
-          renderItem={({ item }) => <AgeRow age={item} current={current} />}
-        />
+        </View>
       </View>
 
-      <View style={styles.spacer} />
-
-      <View style={{ paddingBottom: insets.bottom + 40 }}>
-        <OnboardingPrimaryButton label="Continue" onPress={submit} />
+      <View style={styles.section}>
+        <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
+          PATTERN CONTEXT
+        </Text>
+        <View style={styles.list}>
+          {PATTERN_OPTIONS.map((r) => (
+            <ChoiceRow
+              key={r.value}
+              Icon={null}
+              label={r.label}
+              selected={patternContext === r.value}
+              onToggle={() =>
+                setPatternContext(patternContext === r.value ? null : r.value)
+              }
+            />
+          ))}
+        </View>
+        <Text style={styles.helperText} maxFontSizeMultiplier={1.2}>
+          You can leave this blank.
+        </Text>
       </View>
-    </SafeAreaView>
+    </QuestionLayout>
   );
 }
 
-function AgeRow({ age, current }: { age: number; current: number }) {
-  const delta = Math.abs(age - current);
-  const { size, opacity, color } =
-    delta === 0
-      ? { size: 44, opacity: 1, color: palette.clay }
-      : delta === 1
-      ? { size: 32, opacity: 0.4, color: palette.ink }
-      : { size: 28, opacity: 0.15, color: palette.ink };
-
-  return (
-    <View style={styles.row}>
-      <Text
-        style={{
-          fontFamily: 'InstrumentSerif-Regular',
-          fontSize: size,
-          color,
-          opacity,
-          fontVariant: ['tabular-nums'],
-        }}
-        maxFontSizeMultiplier={1.1}
-      >
-        {age}
-      </Text>
-    </View>
-  );
-}
+const SOFT_BLUE_ICON = '#3B82F6';
+const SOFT_BLUE_SURFACE = '#F3F7FF';
+const BLUE_BORDER = '#D6E4FF';
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.bg },
-  pickerWrap: {
-    height: ITEM_HEIGHT * VISIBLE_ITEMS,
+  privacyCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginHorizontal: 24,
+    marginTop: 22,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: SOFT_BLUE_SURFACE,
+    borderWidth: 1,
+    borderColor: BLUE_BORDER,
+  },
+  privacyIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: '#E6EEFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  privacyTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.ink,
+  },
+  privacyBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkSecondary,
+    marginTop: 2,
+  },
+  section: {
+    marginHorizontal: 24,
     marginTop: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  // v10.7 — picker highlight moved from v5 terracotta rgba to the cool
-  // palette. Uses clayPaper (near-white azure tint) with palette.clay
-  // borders to echo the v9+ selected-row visual language.
-  highlight: {
-    position: 'absolute',
-    top: (ITEM_HEIGHT * (VISIBLE_ITEMS - 1)) / 2,
-    left: 0,
-    right: 0,
-    height: ITEM_HEIGHT,
-    backgroundColor: palette.clayPaper,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: palette.clay,
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 1.4,
+    color: palette.inkTertiary,
+    marginBottom: 12,
   },
-  row: {
-    height: ITEM_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
   },
-  spacer: { flex: 1 },
+  gridItem: {
+    width: '50%',
+    paddingHorizontal: 6,
+    paddingBottom: 12,
+  },
+  list: {
+    gap: 10,
+  },
+  helperText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: palette.inkTertiary,
+    marginTop: 10,
+  },
 });

@@ -67,11 +67,30 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
 
   const pages: PageIndex[] = [0, 1, 2, 3];
 
+  // Programmatic `scrollToIndex` does not reliably fire
+  // `onMomentumScrollEnd` on every platform (especially web and some
+  // Android devices), so we never blocked page-state updates on the
+  // scroll event. The Next button now advances state directly; the
+  // scroll listener still updates state when the user swipes
+  // horizontally with their finger.
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const next = Math.round(e.nativeEvent.contentOffset.x / width) as PageIndex;
-    if (next !== page) {
-      setPage(next);
+    if (width <= 0) return;
+    const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+    const clamped = Math.max(0, Math.min(3, idx)) as PageIndex;
+    if (clamped !== page) {
+      setPage(clamped);
       hapt.select();
+    }
+  };
+
+  const advanceTo = (target: PageIndex) => {
+    setPage(target);
+    // Try the animated scroll; some platforms throw if the list
+    // hasn't measured yet, so fall back to a non-animated jump.
+    try {
+      listRef.current?.scrollToIndex({ index: target, animated: true });
+    } catch {
+      listRef.current?.scrollToIndex({ index: target, animated: false });
     }
   };
 
@@ -81,8 +100,8 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
       onComplete();
       return;
     }
-    const target = (page + 1) as PageIndex;
-    listRef.current?.scrollToIndex({ index: target, animated: true });
+    hapt.select();
+    advanceTo((page + 1) as PageIndex);
   };
 
   const renderItem = ({ item }: { item: PageIndex }) => (
@@ -91,12 +110,35 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
     </View>
   );
 
+  const skipToScan = () => {
+    hapt.select();
+    onComplete();
+  };
+
   return (
     <View style={styles.root}>
       <StatusBar style="dark" />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        {/* Top-right × — dismisses WITHOUT setting the seen flag (§3.1). */}
+        {/* Top bar — Skip on the left jumps the user straight to the camera
+            (marks the tutorial seen). × on the right closes the whole
+            scan modal without marking seen (§3.1). Both have to be
+            obvious; users reported getting trapped here when only the
+            Next-paged path was offered. */}
         <View style={styles.topBar}>
+          <Pressable
+            onPress={skipToScan}
+            accessibilityRole="button"
+            accessibilityLabel="Skip tutorial and start scanning"
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.skipBtn,
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <Text style={styles.skipText} maxFontSizeMultiplier={1.2}>
+              Skip
+            </Text>
+          </Pressable>
           <Pressable
             onPress={() => {
               hapt.select();
@@ -111,32 +153,51 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
           </Pressable>
         </View>
 
-        <FlatList
-          ref={listRef}
-          data={pages}
-          keyExtractor={(p) => `tut-${p}`}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={handleScroll}
-          scrollEventThrottle={16}
-          renderItem={renderItem}
-          style={styles.pager}
-        />
+        <View style={styles.pagerWrap}>
+          <FlatList
+            ref={listRef}
+            data={pages}
+            keyExtractor={(p) => `tut-${p}`}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={handleScroll}
+            scrollEventThrottle={16}
+            renderItem={renderItem}
+            getItemLayout={(_data, index) => ({
+              length: width,
+              offset: width * index,
+              index,
+            })}
+            onScrollToIndexFailed={(info) => {
+              const wait = new Promise<void>((resolve) => setTimeout(resolve, 50));
+              wait.then(() => {
+                listRef.current?.scrollToIndex({
+                  index: info.index,
+                  animated: true,
+                });
+              });
+            }}
+            style={styles.pager}
+          />
+        </View>
 
         <View
           style={[
             styles.footer,
-            { paddingBottom: Math.max(40, insets.bottom + 16) },
+            { paddingBottom: Math.max(24, insets.bottom + 12) },
           ]}
         >
           <Dots page={page} />
-          <View style={{ height: 20 }} />
+          <View style={{ height: 16 }} />
           <PrimaryButton
             label={page === 3 ? 'Start scanning.' : 'Next'}
             onPress={next}
             serif={page === 3}
             tone="accent"
+            accessibilityLabel={
+              page === 3 ? 'Start scanning' : `Next, page ${page + 2} of 4`
+            }
           />
         </View>
       </SafeAreaView>
@@ -425,7 +486,22 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  skipBtn: {
+    minWidth: 44,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: palette.ink,
+    letterSpacing: -0.1,
   },
   closeBtn: {
     width: 44,
@@ -434,6 +510,13 @@ const styles = StyleSheet.create({
     backgroundColor: palette.bgDeep,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // pagerWrap takes the leftover vertical space; its `flex: 1` plus
+  // `minHeight: 0` lets the FlatList shrink on short phones so the
+  // footer (Next / Start scanning) never gets pushed off screen.
+  pagerWrap: {
+    flex: 1,
+    minHeight: 0,
   },
   pager: { flex: 1 },
   page: {
@@ -447,6 +530,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 20,
+    paddingTop: 4,
+    backgroundColor: palette.bg,
   },
   lighting: {
     aspectRatio: 1,

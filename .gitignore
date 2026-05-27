@@ -11,4 +11,37 @@ npm-debug.*
 web-build/
 .env
 .env.local
+.env.*.local
 .DS_Store
+
+# Local recovery snapshots — never committed.
+*.bak
+App.*.bak
+App.native.tsx
+App.real.tsx
+FIX_*.txt
+FIX_*.md
+ROUTINE_*.txt
+ROUTINE_*.tsx
+RoutineScreen.before_exact_fix_*.tsx
+_fix_backups_*/
+_routine_progress_*/
+_routine_exact_*/
+_routine_surgical_*/
+_routine_progress_fix_*/
+
+# TypeScript scratch logs.
+tsc-*.txt
+tsc-*.log
+
+# Local IDE / agent state.
+.vscode/
+.idea/
+.claude/
+
+# Per-incident QA artifacts.
+verification/
+pura-loop/
+
+# Local-only design references — kept on disk, never deployed.
+design-reference/

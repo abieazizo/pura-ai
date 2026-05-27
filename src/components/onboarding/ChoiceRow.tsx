@@ -23,32 +23,61 @@ const PRESS_SPRING = { damping: 15, stiffness: 300, mass: 1 };
 export interface ChoiceRowProps {
   /**
    * Phosphor icon component. Pass `null` to render an iconless row (used on
-   * questions where an icon would feel reductive, e.g. AskGender).
+   * questions where an icon would feel reductive, e.g. AskGender). Typed
+   * as `ComponentType` to accept both Phosphor's `ForwardRefExoticComponent`
+   * icons and any local FC wrappers.
    */
-  Icon: React.FC<PhosphorIconProps> | null;
+  Icon: React.ComponentType<PhosphorIconProps> | null;
   label: string;
   /** Optional secondary helper line under the label. */
   helper?: string;
   selected: boolean;
+  /** When true the row is interactive but locked out (e.g. multi-select cap reached). */
+  disabled?: boolean;
   onToggle: () => void;
   /** Taller row height when a helper is shown. */
   tall?: boolean;
+  /**
+   * v20.0 — when true, the trailing affordance is rendered as a multi-
+   * select checkbox (a small filled square with a checkmark when selected)
+   * instead of a single-select tick. Accessibility role flips to
+   * `checkbox` accordingly.
+   */
+  multiSelect?: boolean;
+  /** Explicit accessibility label override. Defaults to `label`. */
+  accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
+  /**
+   * v21.0 — optional small pill rendered next to the label, e.g.
+   * "Recommended" on the Routine Style screen. Kept short so the row
+   * doesn't wrap on small devices.
+   */
+  badge?: string;
 }
 
 /**
- * Onboarding choice row (§2.4). 64pt default, 76pt with helper. Sand @ 40%
- * idle → sand @ 100% + clay border when selected. Icon · label · (helper) ·
- * Check on the right when selected.
+ * v20.0 — onboarding choice row.
+ *
+ * Default = single-select radio with a tick on the right when selected.
+ * `multiSelect` swaps the affordance to a left-aligned-feeling checkbox
+ * tile so users immediately understand they can pick more than one.
+ *
+ * Idle: paper tile with hairline border. Selected: clayPaper tile with
+ * 1.5pt clay border. Disabled (e.g. cap hit): 50% opacity, no press
+ * interaction.
  */
 export function ChoiceRow({
   Icon,
   label,
   helper,
   selected,
+  disabled = false,
   onToggle,
   tall,
+  multiSelect = false,
+  accessibilityLabel,
   style,
+  badge,
 }: ChoiceRowProps) {
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({
@@ -56,8 +85,9 @@ export function ChoiceRow({
   }));
 
   const handle = () => {
+    if (disabled) return;
     hapt.select();
-    scale.value = withSpring(0.98, PRESS_SPRING, () => {
+    scale.value = withSpring(0.985, PRESS_SPRING, () => {
       scale.value = withSpring(1, PRESS_SPRING);
     });
     onToggle();
@@ -66,13 +96,18 @@ export function ChoiceRow({
   return (
     <AnimatedPressable
       onPress={handle}
-      accessibilityRole="radio"
-      accessibilityLabel={label}
-      accessibilityState={{ selected }}
+      disabled={disabled}
+      accessibilityRole={multiSelect ? 'checkbox' : 'radio'}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ selected, disabled }}
+      accessibilityHint={
+        helper ? helper : undefined
+      }
       style={[
         styles.row,
         tall ? styles.tall : styles.standard,
         selected ? styles.selected : styles.idle,
+        disabled && styles.disabled,
         animated,
         style,
       ]}
@@ -86,42 +121,70 @@ export function ChoiceRow({
         />
       ) : null}
       <View style={styles.textCol}>
-        <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-          {label}
-        </Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+            {label}
+          </Text>
+          {badge ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText} maxFontSizeMultiplier={1.1}>
+                {badge}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         {helper ? (
           <Text
             style={styles.helper}
-            numberOfLines={1}
+            numberOfLines={2}
             maxFontSizeMultiplier={1.2}
           >
             {helper}
           </Text>
         ) : null}
       </View>
-      {selected ? (
-        <Check size={20} color={palette.clay} weight="duotone" />
-      ) : (
-        <View style={styles.checkSpacer} />
-      )}
+      <Affordance multiSelect={multiSelect} selected={selected} />
     </AnimatedPressable>
   );
 }
 
-// v9.9 — choice row aligned with v9 surface language. Idle state is a
-// paper tile with 1pt hairline border (same as Home concern cards); the
-// hardcoded warm sand @ 40% is gone. Selected state lifts to
-// clayPaper (near-white blue tint) with a 1.5pt clay border — signals
-// selection through tone, not saturation.
+function Affordance({
+  multiSelect,
+  selected,
+}: {
+  multiSelect: boolean;
+  selected: boolean;
+}) {
+  if (multiSelect) {
+    return (
+      <View
+        style={[
+          styles.checkbox,
+          selected ? styles.checkboxOn : styles.checkboxOff,
+        ]}
+      >
+        {selected ? (
+          <Check size={14} color={palette.bg} weight="bold" />
+        ) : null}
+      </View>
+    );
+  }
+  return selected ? (
+    <Check size={20} color={palette.clay} weight="bold" />
+  ) : (
+    <View style={styles.tickSpacer} />
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 18,
   },
-  standard: { height: 60 },
-  tall: { height: 74 },
+  standard: { height: 64 },
+  tall: { height: 80 },
   idle: {
     backgroundColor: palette.bg,
     borderWidth: 1,
@@ -132,20 +195,58 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: palette.clay,
   },
+  disabled: {
+    opacity: 0.45,
+  },
   textCol: {
     flex: 1,
+    paddingRight: 8,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   label: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
+    fontSize: 16,
     letterSpacing: -0.1,
     color: palette.ink,
   },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: palette.clayPaper,
+  },
+  badgeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 0.3,
+    color: palette.clayDeep,
+  },
   helper: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: palette.inkTertiary,
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkSecondary,
     marginTop: 2,
   },
-  checkSpacer: { width: 20 },
+  tickSpacer: { width: 20 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOff: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: palette.inkTertiary,
+  },
+  checkboxOn: {
+    backgroundColor: palette.clay,
+    borderWidth: 0,
+  },
 });

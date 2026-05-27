@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+﻿import React, { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, {
   Circle,
@@ -33,13 +33,13 @@ import type { Scan } from '@/types';
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 /**
- * SkinScoreHero — v9.3 Progress page hero.
+ * SkinScoreHero â€” v9.3 Progress page hero.
  *
  * Leads the Progress screen with two dominant objects stacked:
  *
- *   1. <SkinScoreDial> at hero size — the score as an iconic ring gauge
+ *   1. <SkinScoreDial> at hero size â€” the score as an iconic ring gauge
  *      (shared with Home so the score reads the same across the app)
- *   2. An area chart below — every scan's score plotted as a line +
+ *   2. An area chart below â€” every scan's score plotted as a line +
  *      area fill, with gridlines at 40/60/80, the endpoint marked with
  *      a dot, and day labels below
  *
@@ -50,6 +50,16 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 export interface SkinScoreHeroProps {
   score: SkinScore;
   scans: Scan[];
+  /**
+   * Canonical why-line from `ProgressRoutineInsight.heroReason`. When
+   * supplied, the hero renders THIS string as the why-line and skips
+   * its internal `buildSkinScoreWhy(scans)` call. Single source of
+   * truth — Progress and Routine cannot show a different score story.
+   *
+   * Optional so the legacy standalone `ProgressScreen.tsx` keeps
+   * compiling without threading the canonical insight through.
+   */
+  heroReason?: string;
 }
 
 const CHART_H = 160;
@@ -58,7 +68,11 @@ const Y_MIN = 0;
 const Y_MAX = 100;
 const GRID_VALUES = [40, 60, 80];
 
-export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
+export function SkinScoreHero({
+  score,
+  scans,
+  heroReason,
+}: SkinScoreHeroProps) {
   const deltaLast = score.deltaSinceLast ?? 0;
   const deltaFirst = score.deltaSinceFirst ?? 0;
 
@@ -77,7 +91,7 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
       ? palette.rust
       : palette.inkSecondary;
 
-  // v10.4 — celebration banner. When the journey-since-day-1 delta is
+  // v10.4 â€” celebration banner. When the journey-since-day-1 delta is
   // positive, the page now leads with the win itself: a big moss-tinted
   // card showing "+12" in giant serif with "POINTS SINCE DAY 1" kicker
   // and a "14-day journey" caption. The dial moves below as supporting
@@ -87,8 +101,8 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
 
   return (
     <View style={styles.wrap}>
-      {/* v10.19 — 1pt clay top rail. Tiny detail, but it claims the
-          card as the page's hero object — the score block is the
+      {/* v10.19 â€” 1pt clay top rail. Tiny detail, but it claims the
+          card as the page's hero object â€” the score block is the
           protagonist of the Progress sub-tab, and the rail lets the
           eye land there without needing larger chrome. */}
       <View style={styles.heroRail} pointerEvents="none" />
@@ -102,9 +116,9 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
         />
       ) : null}
 
-      {/* ── Dial hero ───────────────────────────────────────────── */}
+      {/* â”€â”€ Dial hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <View style={styles.dialWrap}>
-        {/* v10.19 — tier word now appears inside the dial alongside the
+        {/* v10.19 â€” tier word now appears inside the dial alongside the
             value (matching HomeScreen). The user reads "Good · 73"
             in one glance, closing the abstraction gap that the brief
             kept flagging: a number with no anchor for "is 73 good?"
@@ -128,13 +142,13 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
         />
       </View>
 
-      {/* v10.18 — score block label + delta + headline + why-line all
+      {/* v10.18 â€” score block label + delta + headline + why-line all
           composed into one module so the score reads as label / value
           / delta / why in obvious vertical hierarchy. The previous
           tracked-caps "SKIN SCORE" kicker was visually subordinate to
           everything else; replaced with a serif label that holds its
           own next to the dial, then a delta chip, then the score
-          headline, then the why-line — all part of the hero card. */}
+          headline, then the why-line â€” all part of the hero card. */}
       <View style={styles.scoreLabelRow}>
         <Text style={styles.scoreLabel} maxFontSizeMultiplier={1.15}>
           Skin Score
@@ -162,7 +176,19 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
         {score.headline}
       </Text>
 
-      {scans.length >= 2 ? (
+      {/* Canonical why-line. Prefer the adapter's `insight.heroReason`
+          when threaded in; fall back to the legacy
+          `buildSkinScoreWhy(scans)` only for callers that haven't
+          migrated yet (e.g. the legacy ProgressScreen file). */}
+      {heroReason && heroReason.trim().length > 0 ? (
+        <Text
+          style={styles.whyLine}
+          maxFontSizeMultiplier={1.2}
+          numberOfLines={2}
+        >
+          {heroReason}
+        </Text>
+      ) : scans.length >= 2 ? (
         <Text
           style={styles.whyLine}
           maxFontSizeMultiplier={1.2}
@@ -172,13 +198,13 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
         </Text>
       ) : null}
 
-      {/* v10.26 — when the AI gateway has produced a structured
+      {/* v10.26 â€” when the AI gateway has produced a structured
           SkinScoreExplanation (via buildProgressBundle), surface its
           coach_line as a small actionable line under the why-line.
           Visible only when the AI ran. */}
       <CoachLine />
 
-      {/* v10.20 — the area chart used to live inside this hero card,
+      {/* v10.20 â€” the area chart used to live inside this hero card,
           which made the score block stuffed (dial + label + delta +
           headline + why-line + chart in one module). Spun out into a
           dedicated `SkinScoreTrendCard` rendered below this component
@@ -189,7 +215,7 @@ export function SkinScoreHero({ score, scans }: SkinScoreHeroProps) {
 }
 
 // ============================================================================
-// v10.26 — CoachLine
+// v10.26 â€” CoachLine
 // ============================================================================
 //
 // Pulls the AI's `coach_line` (an actionable one-liner) from
@@ -241,7 +267,7 @@ const coachStyles = StyleSheet.create({
 });
 
 // ============================================================================
-// SkinScoreTrendCard — v10.20
+// SkinScoreTrendCard â€” v10.20
 // ============================================================================
 //
 // Standalone trend card that sits below SkinScoreHero on the Progress
@@ -281,7 +307,7 @@ export function SkinScoreTrendCard({ scans }: SkinScoreTrendCardProps) {
       320,
       withTiming(1, { duration: 1100, easing: Easing.out(Easing.cubic) })
     );
-  }, [scans.length, reveal]);
+  }, [scans.length]);
 
   if (!hasTrend) return null;
 
@@ -340,13 +366,13 @@ function formatShortDate(iso: string): string {
 }
 
 // ============================================================================
-// CelebrationHero — v10.4
+// CelebrationHero â€” v10.4
 //
 // Promotes a positive day-1 delta from a chart footer caption to a real
 // moment. Moss-tinted card with a 3pt left rail, "POINTS SINCE DAY 1"
 // kicker, a giant serif "+N" in moss-deep, and a journey caption that
 // names the duration. Only renders when deltaFirst > 0 and at least two
-// scans exist — otherwise the dial leads, as before.
+// scans exist â€” otherwise the dial leads, as before.
 // ============================================================================
 
 function CelebrationHero({
@@ -430,7 +456,7 @@ function ScoreAreaChart({
 
   const points = pts.map((v, i) => xyFor(v, i));
 
-  // Smoothed line path — cubic bezier between each pair of points using a
+  // Smoothed line path â€” cubic bezier between each pair of points using a
   // simple control-point rule (horizontal control points) so the chart
   // reads organic but not wild.
   const linePath = useMemo(
@@ -442,7 +468,7 @@ function ScoreAreaChart({
   const baselineY = H - CHART_V_PAD;
   const areaPath = `${linePath} L ${points[points.length - 1].x} ${baselineY} L ${points[0].x} ${baselineY} Z`;
 
-  // Animated reveal — each path's visible length is interpolated by `reveal`
+  // Animated reveal â€” each path's visible length is interpolated by `reveal`
   // via stroke-dasharray. Area fills opacity with the same curve.
   // Approximate total path length for dash math.
   const approxLen = useMemo(() => {
@@ -484,7 +510,7 @@ function ScoreAreaChart({
           </LinearGradient>
         </Defs>
 
-        {/* Tier-zone backdrop bands — very translucent rectangles showing
+        {/* Tier-zone backdrop bands â€” very translucent rectangles showing
             the four tier regions (0-55 / 55-70 / 70-85 / 85-100). Reads
             as "where am I in the tier landscape" at a glance. */}
         {[
@@ -547,14 +573,14 @@ function ScoreAreaChart({
           strokeWidth={1}
         />
 
-        {/* Area fill — animated opacity */}
+        {/* Area fill â€” animated opacity */}
         <AnimatedPath
           d={areaPath}
           fill="url(#chartArea)"
           animatedProps={areaAnimatedProps}
         />
 
-        {/* Line — animated stroke reveal */}
+        {/* Line â€” animated stroke reveal */}
         <AnimatedPath
           d={linePath}
           stroke={palette.clay}
@@ -566,7 +592,7 @@ function ScoreAreaChart({
           animatedProps={lineAnimatedProps}
         />
 
-        {/* Peak annotation — small label above the peak scan point. */}
+        {/* Peak annotation â€” small label above the peak scan point. */}
         {peak &&
         peak.index !== pts.length - 1 &&
         peak.index !== 0 ? (
@@ -598,7 +624,7 @@ function ScoreAreaChart({
           </>
         ) : null}
 
-        {/* Endpoint dot — pulses in at the end */}
+        {/* Endpoint dot â€” pulses in at the end */}
         <AnimatedCircleWrap
           cx={end.x}
           cy={end.y}
@@ -724,7 +750,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
   },
-  // v10.18 — replaced the small tracked-caps "SKIN SCORE" kicker with
+  // v10.18 â€” replaced the small tracked-caps "SKIN SCORE" kicker with
   // a proper serif label paired with the delta chip on a single line.
   // The label finally has the visual weight to match the dial above.
   scoreLabelRow: {
@@ -759,7 +785,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.2,
   },
-  // v10.18 — score "headline" is the emotional verdict ("Highest Skin
+  // v10.18 â€” score "headline" is the emotional verdict ("Highest Skin
   // Score yet."). Held in serif at 17pt so it reads as the score's
   // status, distinct from the smaller italic why-line below.
   headline: {
@@ -770,7 +796,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: palette.ink,
   },
-  // v10.18 — why-line now lives inside the hero so the score block
+  // v10.18 â€” why-line now lives inside the hero so the score block
   // reads as one composed module: dial / label · delta / headline /
   // why. Plain italic serif treatment matches Home and ScanResult.
   whyLine: {
@@ -782,7 +808,7 @@ const styles = StyleSheet.create({
   },
 });
 
-// v10.4 — celebration hero styles. Moss-tinted card (palette.mossLight) +
+// v10.4 â€” celebration hero styles. Moss-tinted card (palette.mossLight) +
 // 3pt moss rail + giant serif delta in palette.mossDeep. Lives above the
 // dial when deltaFirst > 0.
 const celebration = StyleSheet.create({
@@ -884,3 +910,6 @@ const chart = StyleSheet.create({
     paddingHorizontal: 8,
   },
 });
+
+
+

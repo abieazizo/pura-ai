@@ -64,12 +64,21 @@ export function installDevConsole() {
     },
     whoami: () => {
       const s = useAppStore.getState();
+      // v22.11 — the dayNumber/streakDays/progressPercent selectors
+      // were removed from the store at some point. Read them via
+      // safe optional-call lookups so this dev utility doesn't
+      // hard-error and the TypeScript compiler stays clean.
+      const sAny = s as unknown as {
+        dayNumber?: () => number;
+        streakDays?: () => number;
+        progressPercent?: () => number;
+      };
       console.log('[pura]', {
         user: s.user?.name ?? '(none)',
         scans: s.scans.length,
-        dayNumber: s.dayNumber(),
-        streakDays: s.streakDays(),
-        progressPercent: s.progressPercent(),
+        dayNumber: sAny.dayNumber?.() ?? null,
+        streakDays: sAny.streakDays?.() ?? null,
+        progressPercent: sAny.progressPercent?.() ?? null,
       });
     },
   };

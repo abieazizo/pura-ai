@@ -32,13 +32,21 @@ export interface ScoreBreakdownBarsProps {
 }
 
 export function ScoreBreakdownBars({ breakdown }: ScoreBreakdownBarsProps) {
+  // Defensive: a stale persisted scan can have a partial
+  // score_breakdown that's missing keys. `Math.min(100, undefined)`
+  // returns NaN, which propagates into Reanimated and surfaces as a
+  // crash on some platforms.
+  const safe = (v: unknown): number => {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
+    return Math.max(0, Math.min(100, v));
+  };
   return (
     <View style={styles.column}>
       {LABEL_ORDER.map((key, i) => (
         <BarRow
           key={key}
           label={key}
-          value={Math.max(0, Math.min(100, breakdown[key]))}
+          value={safe(breakdown?.[key])}
           delay={i * 70}
         />
       ))}

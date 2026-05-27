@@ -1,14 +1,20 @@
 /**
- * Assistant API — v10.22.
+ * Assistant API — v20.0.
  *
  * Builds a grounded `AssistantContext` from the live store + latest
- * scan and routes the question through `aiGateway.answerAssistant`.
- * Falls back to the deterministic `buildAssistantReply` mock only
- * when the gateway has no transport configured (or when a call fails).
+ * scan and routes the question through `aiGateway.answerAssistant`
+ * for an *enriched summary*. The structured answer (title, badge,
+ * steps, avoid, why, CTAs, follow-ups) is ALWAYS produced locally
+ * by the template engine in `@/utils/assistantTemplates`, so the
+ * UI rhythm stays consistent regardless of AI availability.
+ *
+ * Hard rule: never expose implementation details to the user. No
+ * "demo fallback", no "AI didn't respond", no "not live". On gateway
+ * failure or unavailability, the response is built from saved skin
+ * context and rendered as a polished structured answer.
  */
 
 import type { AssistantMessage, Scan } from '@/types';
-import { buildAssistantReply } from '@/utils/assistantMock';
 import { aiGateway, tryAi } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
 import { aiTelemetry } from '@/ai/aiTelemetry';
@@ -26,6 +32,11 @@ import { seedProducts } from '@/data/seed';
 // UserProfileContext selector instead of inlining the same
 // composition logic. Single source of truth for user data.
 import { selectUserProfileContext } from '@/state/canonical';
+import { buildAiSkinContextFromStore } from '@/utils/aiSkinContext';
+import {
+  buildLocalAnswerFor,
+  type AiStructuredAnswer,
+} from '@/utils/assistantTemplates';
 
 // ---------------------------------------------------------------------------
 // Context builder.
@@ -250,149 +261,173 @@ export async function askAssistant(args: {
   latestScan?: Scan;
   messageId: string;
 }): Promise<AssistantMessage> {
+  // Build the structured answer skeleton from the local template engine.
+  // This is the source of truth for the UI rhythm — the AI gateway only
+  // supplies an *enriched summary* when available.
+  const skinCtx = buildAiSkinContextFromStore();
+  let enrichedSummary: string | null = null;
+  let aiSucceeded = false;
+  let context: AssistantContext | null = null;
+
   if (args.text.trim().length === 0) {
     // Empty-question guard — never burn an AI call.
-    return {
-      id: args.messageId,
-      role: 'assistant',
-      text: 'Ask me anything about your scan, your routine, or a product — I’ll ground the answer in your actual data.',
-      attachedProductIds: args.attachedProductIds,
-      createdAt: new Date().toISOString(),
+    const structured = buildLocalAnswerFor(' ', skinCtx);
+    return toAssistantMessage(args.messageId, structured, args.attachedProductIds);
+  }
+
+  // ---- Try to enrich via AI when available ----
+  if (aiGateway.isAvailable()) {
+    context = buildAssistantContext(args.latestScan);
+    attachActiveProductIdentity(context, args.attachedProductIds);
+    try {
+      enrichedSummary = await tryAi(() =>
+        aiGateway.answerAssistant({ context: context!, userQuestion: args.text })
+      );
+      aiSucceeded = enrichedSummary !== null && enrichedSummary.trim().length > 0;
+    } catch {
+      enrichedSummary = null;
+      aiSucceeded = false;
+    }
+    if (!aiSucceeded) {
+      aiLog.warn(
+        'askAssistant',
+        'AI enrichment unavailable; local structured answer carries the response'
+      );
+    }
+  }
+
+  // ---- Build the structured answer (always succeeds) ----
+  const structured = buildLocalAnswerFor(args.text, skinCtx, enrichedSummary);
+
+  // ---- Telemetry (internal only — never user-facing) ----
+  if (aiSucceeded) {
+    aiTelemetry.setFeatureSource(
+      'assistant',
+      'ai',
+      `enriched via proxy (latest scan ${
+        context?.latest_scan ? 'attached' : 'absent'
+      }, ${context?.top_matches.length ?? 0} matches in context)`
+    );
+  } else {
+    aiTelemetry.countFallback('answerAssistant');
+    aiTelemetry.setFeatureSource(
+      'assistant',
+      'fallback',
+      aiGateway.isAvailable()
+        ? 'AI enrichment failed; structured answer served from saved skin context'
+        : 'No proxy configured; structured answer served from saved skin context'
+    );
+  }
+
+  // ---- Build grounding stamp (still useful for UI attribution) ----
+  const groundedFrom: string[] = [];
+  if (aiSucceeded && context) {
+    if (context.latest_scan) groundedFrom.push('latest scan');
+    if (context.latest_score) groundedFrom.push('Skin Score');
+    if (
+      context.routine_snapshot.morning_product_ids.length > 0 ||
+      context.routine_snapshot.evening_product_ids.length > 0
+    ) {
+      groundedFrom.push('routine');
+    }
+    if (context.top_matches.length > 0) {
+      groundedFrom.push(`${context.top_matches.length} matches`);
+    }
+    if (context.progress_snapshot) groundedFrom.push('progress');
+    if (context.active_product_identity) groundedFrom.push('active product');
+  } else if (skinCtx.hasScan) {
+    groundedFrom.push('saved scan');
+  }
+
+  return toAssistantMessage(
+    args.messageId,
+    structured,
+    args.attachedProductIds,
+    groundedFrom
+  );
+}
+
+function toAssistantMessage(
+  id: string,
+  structured: AiStructuredAnswer,
+  attachedProductIds?: string[],
+  groundedFrom?: string[]
+): AssistantMessage {
+  return {
+    id,
+    role: 'assistant',
+    text: flattenStructuredToText(structured),
+    structured,
+    attachedProductIds,
+    createdAt: new Date().toISOString(),
+    groundedFrom: groundedFrom && groundedFrom.length > 0 ? groundedFrom : undefined,
+  };
+}
+
+function flattenStructuredToText(s: AiStructuredAnswer): string {
+  const parts = [s.title, s.summary];
+  if (s.steps?.length) parts.push(s.steps.map((x) => `• ${x}`).join('\n'));
+  if (s.avoid?.length) {
+    parts.push(`Avoid: ${s.avoid.join(' · ')}`);
+  }
+  if (s.why) parts.push(s.why);
+  return parts.filter(Boolean).join('\n\n');
+}
+
+function attachActiveProductIdentity(
+  context: AssistantContext,
+  attachedProductIds?: string[]
+) {
+  if (
+    context.active_product_identity ||
+    !attachedProductIds ||
+    attachedProductIds.length === 0
+  ) {
+    return;
+  }
+  const attachedId = attachedProductIds[0];
+  const liveById = useAppStore.getState().liveProductsById;
+  const live = liveById[attachedId];
+  if (live) {
+    context.active_product_identity = {
+      source: 'image',
+      confidence: 0.95,
+      resolved: true,
+      brand: live.brand,
+      product_name: live.name,
+      canonical_title: `${live.brand} ${live.name}`,
+      product_category: live.category,
+      likely_concerns_supported: live.concernTags,
+      key_claims: live.ingredientsHighlights,
+      barcode_value: null,
+      catalog_lookup_key: live.id,
+      packaging_notes: live.shortDescription,
+    };
+    return;
+  }
+  const p = seedProducts.find((sp) => sp.id === attachedId);
+  if (p) {
+    context.active_product_identity = {
+      source: 'image',
+      confidence: 0.95,
+      resolved: true,
+      brand: p.brand,
+      product_name: p.name,
+      canonical_title: `${p.brand} ${p.name}`,
+      product_category:
+        (p.category as
+          | 'cleanser'
+          | 'serum'
+          | 'moisturizer'
+          | 'spot_treatment'
+          | 'toner'
+          | 'spf'
+          | 'mask') ?? 'unknown',
+      likely_concerns_supported: [],
+      key_claims: p.keyIngredients ?? [],
+      barcode_value: null,
+      catalog_lookup_key: p.id,
+      packaging_notes: '',
     };
   }
-
-  if (aiGateway.isAvailable()) {
-    const context = buildAssistantContext(args.latestScan);
-    if (
-      !context.active_product_identity &&
-      args.attachedProductIds &&
-      args.attachedProductIds.length > 0
-    ) {
-      // v18.3 — resolve the attached product from the live cache
-      // FIRST so AI-retrieved products attached to a chat question
-      // ground the assistant correctly. Falls back to seed only when
-      // the cache misses (legacy attachments).
-      const attachedId = args.attachedProductIds[0];
-      const liveById = useAppStore.getState().liveProductsById;
-      const live = liveById[attachedId];
-      if (live) {
-        context.active_product_identity = {
-          source: 'image',
-          confidence: 0.95,
-          resolved: true,
-          brand: live.brand,
-          product_name: live.name,
-          canonical_title: `${live.brand} ${live.name}`,
-          product_category: live.category,
-          likely_concerns_supported: live.concernTags,
-          key_claims: live.ingredientsHighlights,
-          barcode_value: null,
-          catalog_lookup_key: live.id,
-          packaging_notes: live.shortDescription,
-        };
-      } else {
-        const p = seedProducts.find((sp) => sp.id === attachedId);
-        if (p) {
-          context.active_product_identity = {
-            source: 'image',
-            confidence: 0.95,
-            resolved: true,
-            brand: p.brand,
-            product_name: p.name,
-            canonical_title: `${p.brand} ${p.name}`,
-            product_category:
-              (p.category as
-                | 'cleanser'
-                | 'serum'
-                | 'moisturizer'
-                | 'spot_treatment'
-                | 'toner'
-                | 'spf'
-                | 'mask') ?? 'unknown',
-            likely_concerns_supported: [],
-            key_claims: p.keyIngredients ?? [],
-            barcode_value: null,
-            catalog_lookup_key: p.id,
-            packaging_notes: '',
-          };
-        }
-      }
-    }
-    const text = await tryAi(() =>
-      aiGateway.answerAssistant({ context, userQuestion: args.text })
-    );
-    if (text !== null) {
-      aiTelemetry.setFeatureSource(
-        'assistant',
-        'ai',
-        `answered question via proxy (latest scan ${
-          context.latest_scan ? 'attached' : 'absent'
-        }, ${context.top_matches.length} matches in context)`
-      );
-      // v10.26 — record exactly which grounding surfaces the assistant
-      // had access to. The chat UI renders these as a small "Grounded
-      // in:" line below the bubble so the user can feel the answer is
-      // tied to their actual data.
-      const groundedFrom: string[] = [];
-      if (context.latest_scan) groundedFrom.push('latest scan');
-      if (context.latest_score) groundedFrom.push('Skin Score');
-      if (
-        context.routine_snapshot.morning_product_ids.length > 0 ||
-        context.routine_snapshot.evening_product_ids.length > 0
-      ) {
-        groundedFrom.push('routine');
-      }
-      if (context.top_matches.length > 0) {
-        groundedFrom.push(`${context.top_matches.length} matches`);
-      }
-      if (context.progress_snapshot) groundedFrom.push('progress');
-      if (context.active_product_identity) {
-        groundedFrom.push('active product');
-      }
-      return {
-        id: args.messageId,
-        role: 'assistant',
-        text:
-          text.length > 0
-            ? text
-            : 'I couldn’t produce an answer for that one — try rephrasing?',
-        attachedProductIds: args.attachedProductIds,
-        createdAt: new Date().toISOString(),
-        groundedFrom: groundedFrom.length > 0 ? groundedFrom : undefined,
-      };
-    }
-    aiLog.warn(
-      'askAssistant',
-      'AI path failed (gateway/validation), using deterministic fallback'
-    );
-  }
-
-  aiTelemetry.countFallback('answerAssistant');
-  aiTelemetry.setFeatureSource(
-    'assistant',
-    'fallback',
-    aiGateway.isAvailable()
-      ? 'AI assistant call failed; honest demo response served'
-      : 'no AI proxy configured; honest demo response served'
-  );
-
-  // v10.28 — when the live AI path can't serve this question, do NOT
-  // pretend it did. The previous behaviour was to dress up the
-  // pattern-matching mock in a tone that looked exactly like Claude's
-  // grounded answers — which made the assistant feel "broken in a
-  // way I can't tell." Now we honestly mark the response as a demo
-  // fallback. The mock body still ships as the second paragraph so
-  // the user gets *something* relevant from their state, but they
-  // can no longer mistake it for live AI.
-  const honestPreamble = aiGateway.isAvailable()
-    ? 'AI didn’t respond just now, so this answer is a demo fallback rather than a live read of your skin data.'
-    : 'Live AI isn’t connected on this device — this answer is a demo response, not a personalised AI reply. Connect the proxy (see SETUP.md) to get real grounded answers.';
-
-  const mockReply = await buildAssistantReply(args);
-  return {
-    ...mockReply,
-    text: `${honestPreamble}\n\n${mockReply.text}`,
-    // Explicitly NO groundedFrom — this is not grounded.
-    groundedFrom: undefined,
-  };
 }

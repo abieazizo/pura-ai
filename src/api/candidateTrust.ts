@@ -39,7 +39,39 @@ export interface CandidateTrustScore {
   probeSupport: number;       // 0..15
   metadataCompleteness: number; // 0..10
   imageCompleteness: number;  // 0..15
+  /**
+   * v22.7 — positive ingredient match boost (0..15). Fires when the
+   * query named an ingredient AND the candidate has it tagged or in
+   * its name. Distinct from safetyFit (which biases against
+   * avoidance tokens).
+   */
+  ingredientFit: number;
   noisePenalty: number;       // negative; subtracted from total
+  /**
+   * v22.4 — strict-mode multiplicative format-mismatch penalty. When
+   * the query is strict ("redness-reducing serum") and this
+   * candidate is the wrong format ("redness toner"), this is set to
+   * a value > 0 and applied to `total` as a multiplier (1 - x).
+   * Recorded so the dev panel can show *why* the score dropped.
+   */
+  strictMismatchPenalty: number; // 0..1
+  /**
+   * v22.4 — UI-facing fit band derived from `total` after
+   * `strictMismatchPenalty`.
+   *   • `exact`   — total ≥ 80, no strict mismatch
+   *   • `strong`  — total ≥ 65
+   *   • `related` — total ≥ 50
+   *   • `broad`   — total ≥ 35
+   *   • `weak`    — below 35; should NOT be shown to the user
+   * Drives the card label.
+   */
+  fitBand: 'exact' | 'strong' | 'related' | 'broad' | 'weak';
+  /**
+   * v22.4 — relevance % to display on the card. Compressed onto a
+   * believable range so a strong-but-not-perfect fit doesn't read
+   * 95%. Formula: round(total) capped at 96 for non-exact bands.
+   */
+  relevancePercent: number;
 }
 
 export interface ScoredCandidate {
@@ -271,10 +303,24 @@ function scoreConcernFit(
   ) {
     s += 12;
   }
+  // v22.6 — modulate scan-top-concern weight by intent strictness.
+  // For loose / concern-mode queries, the user's scan concerns
+  // become the primary ranking signal: top concern adds +8 instead
+  // of the previous +4. For strict / format-mode queries (explicit
+  // category like "moisturizer"), the bonus stays at +4 so format
+  // match wins. This is the deterministic personalization merge —
+  // scan refines explicit queries; scan drives vague ones.
+  const strictness = intent.strictness ?? 'loose';
+  const topConcernBonus =
+    strictness === 'loose' || strictness === 'concern' ? 8 : 4;
+  const secondConcernBonus =
+    strictness === 'loose' || strictness === 'concern' ? 5 : 3;
   if (skinState?.topConcerns) {
     for (let i = 0; i < skinState.topConcerns.length; i++) {
       if (concernTags.includes(skinState.topConcerns[i].concern as ConcernType)) {
-        s += Math.max(2, 4 - i);
+        if (i === 0) s += topConcernBonus;
+        else if (i === 1) s += secondConcernBonus;
+        else s += 2;
       }
     }
   }
@@ -282,6 +328,40 @@ function scoreConcernFit(
   // with concern tags + concern-in-play still scores something
   // when the specific concerns happen to differ.
   return Math.min(20, Math.max(s, 4));
+}
+
+/**
+ * v22.7 — Ingredient fit. 0..15. POSITIVE boost when the candidate's
+ * tagged ingredients or name corpus contains an ingredient the user
+ * explicitly named in the query. Distinct from the avoidance signal
+ * in `scoreSafetyFit` (which is negative). When the query doesn't
+ * name an ingredient, returns 0 (neutral; no additional boost).
+ *
+ * Rules:
+ *   • exact tag match (candidate.ingredientsHighlights contains the
+ *     desired ingredient) → +15
+ *   • soft name match (name/description contains the ingredient
+ *     token) → +10
+ *   • multiple ingredient hits → still capped at 15
+ */
+function scoreIngredientFit(
+  c: LiveProductCandidate,
+  intent: InterpretedIntent
+): number {
+  const desired = intent.desiredIngredients ?? [];
+  if (desired.length === 0) return 0;
+  const tagged = (c.ingredientsHighlights ?? []).map((t) => t.toLowerCase());
+  const corpus = `${c.name ?? ''} ${c.shortDescription ?? ''}`.toLowerCase();
+  let s = 0;
+  for (const want of desired) {
+    const wantNorm = want.toLowerCase();
+    if (tagged.some((t) => t.includes(wantNorm))) {
+      s = Math.max(s, 15); // hard tag match — strongest signal
+    } else if (corpus.includes(wantNorm)) {
+      s = Math.max(s, 10); // soft name/description mention
+    }
+  }
+  return s;
 }
 
 /**
@@ -561,21 +641,49 @@ export function scoreTrustForCandidate(args: {
   const probeSupport = scoreProbeSupport(matchedProbes);
   const metadataCompleteness = scoreMetadataCompleteness(candidate);
   const imageCompleteness = scoreImageCompleteness(candidate);
+  // v22.7 — positive ingredient-match boost. Fires only when the
+  // query named an ingredient (interpretedIntent.desiredIngredients);
+  // otherwise 0. Caps at 15.
+  const ingredientFit = scoreIngredientFit(candidate, intent);
   const noisePenalty = scoreNoisePenalty(candidate, intent, skinFit);
+
+  const rawTotal =
+    productTypeFit +
+    concernFit +
+    safetyFit +
+    probeSupport +
+    metadataCompleteness +
+    imageCompleteness +
+    ingredientFit -
+    noisePenalty;
+
+  // v22.4 — STRICT-MODE FORMAT MULTIPLIER. When the query has an
+  // explicit product type ('strict' / 'format' strictness), a
+  // candidate whose category doesn't match the requested format
+  // takes a multiplicative penalty on top of the additive
+  // productTypeFit deficit. This is what makes "best for
+  // moisturizer" actually surface moisturizers — a cleanser that
+  // would have scored 60 via concern + image + metadata drops to
+  // ~30 here so it falls below related-fit threshold.
+  const strictMismatchPenalty = computeStrictMismatchPenalty(
+    candidate,
+    intent
+  );
 
   const total = Math.max(
     0,
-    Math.min(
-      100,
-      productTypeFit +
-        concernFit +
-        safetyFit +
-        probeSupport +
-        metadataCompleteness +
-        imageCompleteness -
-        noisePenalty
-    )
+    Math.min(100, rawTotal * (1 - strictMismatchPenalty))
   );
+
+  const fitBand: CandidateTrustScore['fitBand'] = deriveFitBand(
+    total,
+    strictMismatchPenalty
+  );
+
+  // v22.4 — compressed relevance % for display. Exact bands can
+  // reach 96; otherwise capped progressively so the user never sees
+  // a 92% on a weak fit.
+  const relevancePercent = compressRelevance(total, fitBand);
 
   const hasImage =
     !!candidate.imageUrl &&
@@ -592,11 +700,312 @@ export function scoreTrustForCandidate(args: {
       probeSupport,
       metadataCompleteness,
       imageCompleteness,
+      ingredientFit,
       noisePenalty,
+      strictMismatchPenalty,
+      fitBand,
+      relevancePercent,
     },
     hasImage,
     matchedProbes,
   };
+}
+
+/**
+ * v22.6 — build a deterministic, concise why-it-fits reason from the
+ * scoring breakdown + intent. Renders on every card so the user
+ * understands the ranking. Examples:
+ *   "Serum — calms redness"
+ *   "Gentle exfoliant — smooths texture"
+ *   "Ceramide moisturizer — barrier support"
+ *   "Closest match for this search"
+ *
+ * Never returns empty. Prefers concrete signal (ingredient or concern
+ * match) over generic format.
+ */
+export function buildWhyItFits(args: {
+  candidate: LiveProductCandidate;
+  intent: InterpretedIntent;
+  score: CandidateTrustScore;
+  skinFit: InferredSkinProfile | null;
+}): string {
+  const { candidate, intent, score, skinFit } = args;
+  const parts: string[] = [];
+
+  // Format anchor — only when format match is real (not a strict
+  // mismatch).
+  if (score.strictMismatchPenalty < 0.2 && intent.interpretedProductType) {
+    const fmt = intent.interpretedProductType.replace(/_/g, ' ');
+    parts.push(capitalize(fmt));
+  } else if (candidate.category && candidate.category !== 'unknown') {
+    parts.push(capitalize(candidate.category));
+  }
+
+  // Concern anchor — what this product addresses.
+  const concernCopy = primaryConcernCopy(candidate, intent);
+  if (concernCopy) parts.push(concernCopy);
+
+  // v22.7 — ingredient anchor when the user explicitly named one
+  // AND the candidate has it. Surfaces ahead of generic modifier
+  // copy because an ingredient name is a much sharper signal than
+  // a vague modifier like "gentle".
+  if (score.ingredientFit >= 10 && parts.length < 2) {
+    const ingCopy = primaryIngredientCopy(candidate, intent);
+    if (ingCopy) parts.push(ingCopy);
+  }
+
+  // Modifier anchor — only when the candidate visibly aligns.
+  const modifierCopy = primaryModifierCopy(candidate, intent);
+  if (modifierCopy && parts.length < 2) parts.push(modifierCopy);
+
+  // Skin-fit anchor — only when there's no concern hit AND the
+  // safety boost was material.
+  if (parts.length < 2 && skinFit && score.safetyFit >= 11) {
+    if (skinFit.isSensitive) parts.push('calm + gentle');
+    else if (skinFit.isAcneProne || skinFit.isOily) parts.push('non-comedogenic');
+    else if (skinFit.isDry || skinFit.isBarrier) parts.push('barrier support');
+  }
+
+  if (parts.length === 0) {
+    return score.fitBand === 'broad'
+      ? 'Closest match we verified'
+      : 'Matches your search';
+  }
+  return parts.slice(0, 2).join(' — ');
+}
+
+function primaryConcernCopy(
+  c: LiveProductCandidate,
+  intent: InterpretedIntent
+): string | null {
+  const wantedConcern = intent.interpretedConcern;
+  if (wantedConcern && (c.concernTags ?? []).includes(wantedConcern)) {
+    return concernCopyMap(wantedConcern);
+  }
+  // Fall back to the candidate's strongest tagged concern.
+  const tags = c.concernTags ?? [];
+  if (tags.length > 0) return concernCopyMap(tags[0] as string);
+  return null;
+}
+
+function concernCopyMap(concern: string): string {
+  switch (concern) {
+    case 'breakouts':
+      return 'targets breakouts';
+    case 'redness':
+      return 'calms redness';
+    case 'hydration':
+      return 'hydrates';
+    case 'texture':
+      return 'smooths texture';
+    case 'dark_marks':
+      return 'evens dark marks';
+    case 'oiliness':
+      return 'controls shine';
+    case 'sensitivity':
+      return 'gentle for sensitive skin';
+    case 'pores':
+      return 'refines pores';
+    default:
+      return concern.replace(/_/g, ' ');
+  }
+}
+
+function primaryIngredientCopy(
+  c: LiveProductCandidate,
+  intent: InterpretedIntent
+): string | null {
+  const desired = intent.desiredIngredients ?? [];
+  if (desired.length === 0) return null;
+  const tagged = (c.ingredientsHighlights ?? []).map((t) => t.toLowerCase());
+  const corpus = `${c.name ?? ''} ${c.shortDescription ?? ''}`.toLowerCase();
+  for (const want of desired) {
+    const wantNorm = want.toLowerCase();
+    if (tagged.some((t) => t.includes(wantNorm)) || corpus.includes(wantNorm)) {
+      return `with ${want}`;
+    }
+  }
+  return null;
+}
+
+function primaryModifierCopy(
+  c: LiveProductCandidate,
+  intent: InterpretedIntent
+): string | null {
+  const corpus = `${c.name ?? ''} ${c.shortDescription ?? ''}`.toLowerCase();
+  const modifiers = intent.modifiers ?? [];
+  if (modifiers.includes('gentle') && /\bgentle|mild\b/.test(corpus)) {
+    return 'gentle';
+  }
+  if (modifiers.includes('chemical') && /\b(aha|bha|pha|acid)\b/.test(corpus)) {
+    return 'chemical formula';
+  }
+  if (modifiers.includes('oil-free') && /\b(oil[- ]?free|non[- ]?comedogenic)\b/.test(corpus)) {
+    return 'oil-free';
+  }
+  if (modifiers.includes('barrier') && /\b(ceramide|barrier|panthenol)\b/.test(corpus)) {
+    return 'barrier support';
+  }
+  return null;
+}
+
+function capitalize(s: string): string {
+  if (!s) return s;
+  return s[0].toUpperCase() + s.slice(1);
+}
+
+/**
+ * v22.4 — multiplicative penalty for category/format mismatches
+ * when the query is strict or format-mode. Range 0..1.
+ *   • intent has no productType → 0 (no penalty applicable)
+ *   • intent strictness === 'loose' or 'concern' → 0
+ *   • category matches wanted directly → 0
+ *   • family-synonym soft match → 0.10
+ *   • completely different known category → 0.55
+ *   • category unknown but name contains wanted token → 0.05
+ *   • category unknown AND name has no wanted token → 0.35
+ *
+ * Modifiers add small extra penalty when the candidate visibly
+ * contradicts the modifier ("gentle" query, "high strength" name).
+ */
+function computeStrictMismatchPenalty(
+  c: LiveProductCandidate,
+  intent: InterpretedIntent
+): number {
+  const wanted = intent.interpretedProductType;
+  if (!wanted) return 0;
+  if (intent.strictness !== 'strict' && intent.strictness !== 'format') {
+    return 0;
+  }
+  const wantedNorm = wanted.toLowerCase();
+  const corpus = `${c.name ?? ''} ${c.shortDescription ?? ''}`.toLowerCase();
+  const category = (c.category ?? '').toLowerCase();
+
+  let base: number;
+  if (category === wantedNorm) {
+    base = 0;
+  } else {
+    const FAMILY_SYNONYMS: Record<string, RegExp> = {
+      moisturizer: /\b(moisturi[sz]er|cream|lotion|emulsion|gel cream)\b/i,
+      cleanser: /\b(cleanser|wash|foam|gel cleanser|micellar)\b/i,
+      serum: /\b(serum|essence|ampoule|booster|concentrate)\b/i,
+      toner: /\b(toner|tonique|astringent)\b/i,
+      spf: /\b(sunscreen|spf|sunblock|sun cream|uv)\b/i,
+      mask: /\b(mask|masque|sheet mask)\b/i,
+      spot_treatment: /\b(spot treatment|patch|pimple patch)\b/i,
+      exfoliant:
+        /\b(exfoli|aha|bha|pha|peel|glycolic|lactic|salicylic|mandelic)\b/i,
+      eye_cream: /\b(eye cream|eye serum|under ?eye)\b/i,
+    };
+    // v22.5 — explicit category anti-patterns. When the wanted
+    // category has a known anti-format, hit it harder. For
+    // moisturizer queries: a candidate whose NAME contains 'serum',
+    // 'cleanser', 'toner', etc. must NOT survive on a 0.55 penalty
+    // alone (it can still scrape through with full points elsewhere).
+    // Anti-pattern adds a hard 0.85 ceiling so the multiplier
+    // (1 - 0.85) = 0.15 collapses any rawTotal regardless of
+    // metadata richness.
+    const FAMILY_ANTI_PATTERNS: Record<string, RegExp> = {
+      moisturizer:
+        /\b(serum|essence|ampoule|toner|cleanser|wash|exfoliant|peel|sunscreen|spf|mask|spot treatment)\b/i,
+      cleanser:
+        /\b(moisturi[sz]er|serum|cream|lotion|toner|sunscreen|spf|mask|exfoliant|peel)\b/i,
+      serum:
+        /\b(cleanser|wash|foam|sunscreen|spf|mask|moisturi[sz]er body|body lotion|toner)\b/i,
+      toner:
+        /\b(moisturi[sz]er|cream|lotion|serum|cleanser|wash|sunscreen|spf|mask)\b/i,
+      spf:
+        /\b(serum|cleanser|toner|exfoliant|mask|moisturi[sz]er(?! .* spf)|peel)\b/i,
+      mask: /\b(cleanser|moisturi[sz]er|serum|toner|sunscreen|spf)\b/i,
+      spot_treatment: /\b(cleanser|moisturi[sz]er|toner|mask|sunscreen|spf)\b/i,
+      exfoliant:
+        /\b(moisturi[sz]er|cleanser body|sunscreen|spf|mask hydrat|toner hydrat)\b/i,
+      eye_cream:
+        /\b(face cleanser|face wash|body lotion|sunscreen|spf|toner|mask)\b/i,
+    };
+
+    const syn = FAMILY_SYNONYMS[wantedNorm];
+    const anti = FAMILY_ANTI_PATTERNS[wantedNorm];
+    const nameContainsWanted = corpus.includes(wantedNorm);
+    const hitsAntiPattern = !!anti && anti.test(corpus);
+
+    if (syn && syn.test(corpus) && !hitsAntiPattern) {
+      base = 0.1; // soft synonym match — light multiplicative tap
+    } else if (hitsAntiPattern) {
+      // The name contains a known wrong format for this category
+      // (e.g. "Hyaluronic SERUM" for a moisturizer query). This is
+      // the strongest signal the candidate is the wrong format. Hit
+      // it hard so it collapses below the weak band.
+      base = 0.85;
+    } else if (category && category !== 'unknown') {
+      base = 0.55; // hard cross-category mismatch
+    } else if (nameContainsWanted) {
+      base = 0.05; // category unknown but name has the wanted token
+    } else {
+      // v22.5 — was 0.35; raised to 0.5 because an unknown-category
+      // candidate that doesn't carry the wanted token has almost
+      // nothing recommending it for a strict query.
+      base = 0.5;
+    }
+  }
+
+  // Modifier contradictions add a small additional penalty.
+  const modifiers = intent.modifiers ?? [];
+  if (modifiers.includes('gentle') && /\bstrong|high[- ]?strength\b/i.test(corpus)) {
+    base = Math.min(0.85, base + 0.15);
+  }
+  if (modifiers.includes('chemical') && /\b(scrub|granule|grit)\b/i.test(corpus)) {
+    base = Math.min(0.85, base + 0.2);
+  }
+  if (modifiers.includes('physical') && /\b(acid|aha|bha|pha)\b/i.test(corpus)) {
+    base = Math.min(0.85, base + 0.2);
+  }
+  if (modifiers.includes('oil-free') && /\boil\b(?![- ]?free)/i.test(corpus)) {
+    base = Math.min(0.85, base + 0.1);
+  }
+
+  return base;
+}
+
+/**
+ * v22.4 — UI-facing fit band. Strict mismatch disqualifies the
+ * `exact` band even when the residual `total` is high.
+ */
+function deriveFitBand(
+  total: number,
+  strictMismatchPenalty: number
+): CandidateTrustScore['fitBand'] {
+  if (total >= 80 && strictMismatchPenalty < 0.05) return 'exact';
+  if (total >= 65) return 'strong';
+  if (total >= 50) return 'related';
+  if (total >= 35) return 'broad';
+  return 'weak';
+}
+
+/**
+ * v22.4 — compress total → relevance % so the UI never shows an
+ * untruthfully high percentage. Compression caps per band:
+ *   exact   → up to 96
+ *   strong  → up to 84
+ *   related → up to 72
+ *   broad   → up to 58
+ *   weak    → up to 40
+ */
+function compressRelevance(
+  total: number,
+  band: CandidateTrustScore['fitBand']
+): number {
+  const cap =
+    band === 'exact'
+      ? 96
+      : band === 'strong'
+      ? 84
+      : band === 'related'
+      ? 72
+      : band === 'broad'
+      ? 58
+      : 40;
+  return Math.min(cap, Math.round(total));
 }
 
 /**

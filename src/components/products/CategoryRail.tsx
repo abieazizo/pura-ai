@@ -11,6 +11,7 @@ import {
   Heart,
   Leaf,
   Moon,
+  Shield,
   Sparkle,
   Target,
   type IconProps as PhosphorIconProps,
@@ -49,6 +50,7 @@ export type GoalKey =
   | 'texture'
   | 'dark-marks'
   | 'sensitive'
+  | 'barrier'
   | 'natural';
 
 interface GoalMeta {
@@ -65,6 +67,11 @@ const GOALS: GoalMeta[] = [
   { key: 'texture', label: 'Texture', Icon: GridNine as React.FC<PhosphorIconProps>, accent: palette.amber },
   { key: 'dark-marks', label: 'Dark marks', Icon: Moon as React.FC<PhosphorIconProps>, accent: palette.clayDeep },
   { key: 'sensitive', label: 'Sensitive', Icon: Heart as React.FC<PhosphorIconProps>, accent: palette.moss },
+  // v22.9 — explicit Barrier goal. Barrier support is a distinct
+  // concern from generic sensitivity (e.g. compromised barrier from
+  // over-exfoliation, post-procedure recovery, eczema-adjacent dryness).
+  // Mapped to the curated "barrier repair" category in CategoryFeed.
+  { key: 'barrier', label: 'Barrier', Icon: Shield as React.FC<PhosphorIconProps>, accent: palette.clay },
   { key: 'natural', label: 'Natural', Icon: Leaf as React.FC<PhosphorIconProps>, accent: palette.mossDeep },
 ];
 

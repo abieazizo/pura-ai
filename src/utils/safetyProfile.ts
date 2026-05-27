@@ -63,7 +63,16 @@ export type AvoidCategory =
   | 'high_strength_vitamin_c';
 
 interface BuildSafetyProfileInput {
-  skinType?: 'oily' | 'dry' | 'combination' | 'sensitive' | null;
+  // v20.0 — `balanced` and `not_sure` added to match the rebuilt skin-type
+  // question; `sensitive` retained for back-compat with older profiles.
+  skinType?:
+    | 'oily'
+    | 'dry'
+    | 'combination'
+    | 'balanced'
+    | 'not_sure'
+    | 'sensitive'
+    | null;
   sensitivity?: 'very' | 'somewhat' | 'not' | 'unsure' | null;
   skinConditions?: SkinCondition[];
   prescriptionFlag?: 'yes' | 'no' | 'prefer-not-to-say' | null;

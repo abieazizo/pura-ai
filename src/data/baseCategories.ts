@@ -54,6 +54,12 @@ export const BASE_CATEGORIES: readonly BaseCategory[] = [
     id: 'hydration',
     label: 'Hydration',
     description: 'Plumping serums + lightweight hydrators',
+    // v22.5 — 'moisturizer' removed from hydration aliases. Hydration
+    // is a CONCERN (a goal: "I want plumper skin"). Moisturizer is a
+    // CATEGORY (a product format: "I want a cream-format product").
+    // Conflating the two caused `best for moisturizer` to resolve to
+    // the hydration category, which then surfaced hyaluronic SERUMS
+    // as top picks for a moisturizer query.
     aliases: [
       'hydration',
       'hydrating',
@@ -61,7 +67,6 @@ export const BASE_CATEGORIES: readonly BaseCategory[] = [
       'dehydrated',
       'hydrating serum',
       'plump skin',
-      'moisturizer',
     ],
     concernTags: ['hydration'],
     ingredientBoosts: [
@@ -300,32 +305,66 @@ export function getBaseCategory(id: string): BaseCategory | undefined {
 export function resolveCategoryFromQuery(rawQuery: string): BaseCategory | null {
   const q = rawQuery.trim().toLowerCase();
   if (q.length === 0) return null;
-  // Exact alias match wins first.
+
+  // v22.5 — Priority 1: EXACT category-id match wins ahead of any
+  // alias/substring match. A query of "moisturizer" or "best for
+  // moisturizer" resolves to the moisturizer category directly, not
+  // to hydration (which used to win on alias collision).
+  for (const cat of BASE_CATEGORIES) {
+    if (cat.id === 'best-for-you') continue;
+    if (q === cat.id) return cat;
+    // "best for {category-id}" pattern.
+    if (q === `best for ${cat.id}`) return cat;
+    if (q === `best ${cat.id}`) return cat;
+  }
+  // Priority 2: category-id appears as a whole-token substring in
+  // the query. Whole-token check prevents accidental alias mining
+  // (e.g. "redness" shouldn't pull in "best dryness" via the "ness"
+  // suffix).
+  for (const cat of BASE_CATEGORIES) {
+    if (cat.id === 'best-for-you') continue;
+    const idTokenRe = new RegExp(`\\b${escapeRegex(cat.id)}\\b`, 'i');
+    if (idTokenRe.test(q)) return cat;
+  }
+  // Priority 3: exact alias match.
   for (const cat of BASE_CATEGORIES) {
     if (cat.id === 'best-for-you') continue;
     for (const alias of cat.aliases) {
       if (q === alias) return cat;
     }
   }
-  // Then substring match — score by token overlap.
+  // Priority 4: substring/alias match — score by alias length so a
+  // longer (more specific) alias outranks a short one.
   let best: { cat: BaseCategory; score: number } | null = null;
   for (const cat of BASE_CATEGORIES) {
     if (cat.id === 'best-for-you') continue;
     for (const alias of cat.aliases) {
-      if (q.includes(alias) || alias.includes(q)) {
+      // Token-aware match: require alias as a word boundary in q OR
+      // q as a word boundary in alias. Plain `includes` could match
+      // "moisturi" inside "moisturizing" — wanted — but also "red"
+      // inside "credentials" — not wanted. Word boundaries fix it.
+      const aliasRe = new RegExp(`\\b${escapeRegex(alias)}\\b`, 'i');
+      if (aliasRe.test(q) || q.split(/\s+/).some((tok) => alias.includes(tok))) {
         const score = alias.length;
         if (!best || score > best.score) best = { cat, score };
       }
     }
-    // Ingredient match also resolves the category.
+    // Ingredient match also resolves the category, weighted by
+    // ingredient name length so "salicylic acid" beats "acid".
     for (const ing of cat.ingredientBoosts) {
-      if (q.includes(ing.toLowerCase())) {
-        const score = ing.length;
+      const ingLower = ing.toLowerCase();
+      const ingRe = new RegExp(`\\b${escapeRegex(ingLower)}\\b`, 'i');
+      if (ingRe.test(q)) {
+        const score = ingLower.length;
         if (!best || score > best.score) best = { cat, score };
       }
     }
   }
   return best?.cat ?? null;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 void CURATED_PRODUCTS;

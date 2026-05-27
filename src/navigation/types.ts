@@ -8,34 +8,58 @@ export type ProductsRowKind =
   | 'new'
   | 'essentials';
 
+/**
+ * v25 — scan-first onboarding. The questionnaire-first arc is gone.
+ * The active stack carries only the routes the new flow needs.
+ * Legacy routes (`Splash`, `AskGoal`, etc.) are listed here for
+ * back-compat with deep-link callers; they are not reachable from the
+ * navigator. New code should target the v25 routes.
+ */
 export type OnboardingStackParamList = {
-  Splash: undefined;
-  /** v10.6 — new-user path: Apple / Google / Email + returning-user tail. */
-  AuthChoice: undefined;
-  /** v10.8 — returning-user path: provider sign-in + email/password entry. */
+  // ---- v25 scan-first arc ----
+  WelcomeV2: undefined;
+  /** Legacy goal-before-scan route. v29 moves goal selection into
+   *  BaselineRevealV2 (after the scan). Kept in the param list so old
+   *  navigation calls compile, but unreachable from the navigator. */
+  PrimaryGoalV2: undefined;
+  CameraTrustV2: undefined;
+  GuidedFirstScanV2: undefined;
+  /** v29 — capture review (rejected vs approved). */
+  ScanReviewV2: undefined;
+  /** v29 — superseded by ScanReviewV2 + BaselineRevealV2; kept for
+   *  back-compat type-checking, no longer mounted. */
+  ProcessingV2: undefined;
+  BaselineRevealV2: undefined;
+  /** v29 — collapsed into TonightRoutineV2's inline sensitivity row.
+   *  Routes kept for type back-compat only. */
+  SafetyCalibrationV2: undefined;
+  RoutineSimplicityV2: undefined;
+  PlanRevealV2: undefined;
+  /** v29 — single climax screen replacing Safety + Simplicity + Plan. */
+  TonightRoutineV2: undefined;
+  SaveProgressV2: undefined;
+  /** Returning-user provider sign-in. Reused from v20.0. */
   SignIn: undefined;
-  // v10.11 — CameraPrimer / CameraPermission removed from the stack.
-  // Camera permission is now requested contextually inside
-  // ScanCaptureScreen at the first capture attempt.
-  AskName: undefined;
-  AskAge: undefined;
-  AskGender: undefined;
-  AskSkinType: undefined;
-  AskConcerns: undefined;
-  AskSensitivity: undefined;
-  AskSunExposure: undefined;
-  AskEffort: undefined;
+
+  // ---- Legacy routes (preserved for back-compat type-checking only;
+  //      unreachable in the new navigator). DO NOT navigate to these
+  //      from new code — they are scheduled for removal. ----
+  Splash: undefined;
+  AuthChoice: undefined;
   AskGoal: undefined;
-  AskAttribution: undefined;
+  AskConcerns: undefined;
+  AskSkinBehavior: undefined;
+  AskSkinType: undefined;
+  AskSensitivity: undefined;
+  AskEffort: undefined;
+  AskLifestyle: undefined;
+  AskSunExposure: undefined;
+  AskAge: undefined;
   Processing: undefined;
+  FirstScanInvitation: undefined;
+  PlanReveal: undefined;
   ProfileSummary: undefined;
-  // v10.11 — NotificationPrimer / NotificationPermission removed.
-  // Notification permission is requested from AddToRoutineSheet the
-  // first time a user schedules a routine step.
-  ReviewAsk: undefined;
   Paywall: undefined;
-  /** v10.7 — 3-page product walkthrough. Final onboarding step; its
-   *  completion routes directly into the Scan modal, not Home. */
   Tutorial: undefined;
 };
 
@@ -48,7 +72,17 @@ export type TabParamList = {
    *  center (morning / evening / saved) and long-term trajectory live
    *  in one destination. */
   RoutineTab: undefined;
+  /**
+   * v29 — AI Assist no longer occupies a visible slot in the floating
+   * dock; it lives behind the Me tab (the MeScreen surfaces a
+   * prominent AI Assist row). The route stays registered here so
+   * every existing `navigate('Tabs', { screen: 'AssistantTab' })`
+   * call (Home command center, Routine helper, scan result follow-ups)
+   * keeps working — the dock just doesn't render a tile for it.
+   */
   AssistantTab: undefined;
+  /** v29 — Me tab. Profile, AI Assist entry point, saved, settings. */
+  MeTab: undefined;
 };
 
 export type HomeStackParamList = {
@@ -138,4 +172,7 @@ export type RootStackParamList = {
    *  is registered unconditionally; in production no UI surfaces a
    *  link to it. */
   AIDiagnostics: undefined;
+  /** Dev-only gallery rendering each scan-result state with fixtures.
+   *  Reachable from AIDiagnostics; never linked from user surfaces. */
+  ScanResultsStatesDev: undefined;
 };

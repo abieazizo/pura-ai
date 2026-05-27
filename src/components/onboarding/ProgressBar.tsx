@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -11,20 +11,31 @@ export interface OnboardingProgressBarProps {
   current: number;
   total: number;
   visible: boolean;
+  /**
+   * v20.0 — short section label rendered above the bar, e.g.
+   * "Skin profile". Combined with current/total it renders as
+   * "Step 3 of 8 · Skin profile".
+   */
+  sectionLabel?: string;
 }
 
 const SPRING = { damping: 22, stiffness: 140, mass: 1 };
 
 /**
- * v7 onboarding progress bar (§2.4). 4pt tall, 40pt horizontal margin, clay
- * track @ 15% + clay fill animating via spring. Hidden on splash, permission
- * primers, review ask, paywall, welcome — parent passes `visible={false}`
- * on those.
+ * v20.0 onboarding progress.
+ *
+ * Two-line indicator:
+ *   STEP 3 OF 8 · SKIN PROFILE
+ *   ━━━━━━━━━━━━━━━━━━━━ ░░░░░░░░░░
+ *
+ * Track + fill render at 4pt with rounded ends. When `sectionLabel` is
+ * omitted the bar shows alone (legacy behavior preserved).
  */
 export function OnboardingProgressBar({
   current,
   total,
   visible,
+  sectionLabel,
 }: OnboardingProgressBarProps) {
   const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0;
   const progress = useSharedValue(ratio);
@@ -40,23 +51,55 @@ export function OnboardingProgressBar({
   if (!visible) return null;
 
   return (
-    <View style={styles.wrap} accessible={false}>
-      <View style={styles.track} />
-      <Animated.View style={[styles.fill, fillStyle]} />
+    <View
+      style={styles.wrap}
+      accessible
+      accessibilityLabel={
+        sectionLabel
+          ? `Step ${current} of ${total}, ${sectionLabel}`
+          : `Step ${current} of ${total}`
+      }
+    >
+      {sectionLabel ? (
+        <Text
+          style={styles.label}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.1}
+        >
+          {`Step ${current} of ${total}  ·  ${sectionLabel}`}
+        </Text>
+      ) : null}
+      <View style={styles.bar}>
+        <View style={styles.track} />
+        <Animated.View style={[styles.fill, fillStyle]} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    marginHorizontal: 40,
+    alignSelf: 'stretch',
+  },
+  label: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: palette.inkTertiary,
+    marginBottom: 8,
+    textAlign: 'left',
+  },
+  bar: {
     height: 4,
     borderRadius: 2,
     overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   track: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(198,93,72,0.15)', // clay @ 15%
+    backgroundColor: palette.hairline,
     borderRadius: 2,
   },
   fill: {

@@ -181,7 +181,10 @@ export function formatDelta(delta: number | null): string {
  */
 export function deltaPhrase(delta: number | null): string {
   if (delta === null) return 'First scan';
-  if (Math.abs(delta) <= 1) return 'Same as last scan';
+  // v23 — "Stable since last scan" reads as a calmer, trust-first
+  // statement of fact. "Same as last scan" undersold the meaning
+  // of small steady movement.
+  if (Math.abs(delta) <= 1) return 'Stable since last scan';
   if (delta > 0) return `Up ${delta} since last scan`;
   return `Down ${Math.abs(delta)} since last scan`;
 }

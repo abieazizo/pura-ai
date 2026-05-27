@@ -1,0 +1,45 @@
+# Vercel build excludes — keep the deploy lean and prevent secrets / bak files from being uploaded.
+
+# Local dev state
+.expo/
+.metro-cache/
+node_modules/.cache/
+
+# TypeScript scratch logs
+tsc-*.txt
+tsc-*.log
+tsc-baseline.txt
+tsc-final*.txt
+tsc-out*.txt
+tsc-output.txt
+tsc-results.txt
+tsc-recheck.txt
+tsc-pura27.txt
+tsc-v26*.log
+
+# Recovery snapshots and per-incident prompt dumps
+*.bak
+App.tsx.*.bak
+App.native.tsx.*.bak
+App.real.tsx.*.bak
+App.web.tsx.*.bak
+FIX_*.txt
+ROUTINE_*.txt
+ROUTINE_*.tsx
+_fix_backups_*
+_routine_*
+
+# Local-only env
+.env
+.env.local
+.env.*.local
+
+# Editor/CI noise
+.vscode/
+.idea/
+.claude/
+
+# Asset sources we don't need at deploy
+verification/
+pura-loop/
+design-reference/

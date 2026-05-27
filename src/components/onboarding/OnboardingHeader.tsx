@@ -9,8 +9,10 @@ import { OnboardingSkipButton } from './SkipButton';
 export interface OnboardingHeaderProps {
   /** 1-based current step. `null` hides the progress bar. */
   currentStep: number | null;
-  /** Total steps for the bar. Defaults to 10 (the question + summary arc). */
+  /** Total steps for the bar. Defaults to 8 (the rebuilt question arc). */
   totalSteps?: number;
+  /** Short section label rendered above the bar, e.g. "Skin profile". */
+  sectionLabel?: string;
   /** Show the back button. Defaults to true. */
   showBack?: boolean;
   /** Show a Skip button at top-right. Defaults to false. */
@@ -19,13 +21,19 @@ export interface OnboardingHeaderProps {
 }
 
 /**
- * Header band for onboarding screens (§2.4). BackButton top-left, ProgressBar
- * top-center between the two side slots, optional SkipButton top-right. All
- * positioned above the content — never overlapping.
+ * v20.0 onboarding header band.
+ *
+ * Layout:
+ *   [back 44x44]   ┌ progress block (label + bar) ┐   [skip / spacer 44x44]
+ *
+ * The progress block expands to fill — bar and step label render together
+ * (or the bar renders alone when `sectionLabel` is omitted, preserving
+ * legacy behavior).
  */
 export function OnboardingHeader({
   currentStep,
-  totalSteps = 10,
+  totalSteps = 8,
+  sectionLabel,
   showBack = true,
   showSkip = false,
   onSkip,
@@ -34,7 +42,7 @@ export function OnboardingHeader({
   const nav = useNavigation();
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + 16 }]}>
+    <View style={[styles.wrap, { paddingTop: insets.top + 12 }]}>
       <View style={styles.sideSlot}>
         <OnboardingBackButton
           visible={showBack}
@@ -47,6 +55,7 @@ export function OnboardingHeader({
           current={currentStep ?? 0}
           total={totalSteps}
           visible={currentStep !== null}
+          sectionLabel={sectionLabel}
         />
       </View>
 
@@ -65,7 +74,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 18,
+    gap: 12,
   },
   sideSlot: {
     width: 44,

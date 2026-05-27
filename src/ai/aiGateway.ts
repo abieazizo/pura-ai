@@ -17,6 +17,11 @@
  *      the SDK server-side, validates the structured output, and
  *      returns it. The client adds an `Authorization: Bearer <token>`
  *      header from `EXPO_PUBLIC_PURA_AI_PROXY_TOKEN` when present.
+ *      NOTE: this variable is browser-visible by design — it is NOT
+ *      a security boundary on web. Useful only as low-effort bot
+ *      deterrent on a local LAN proxy. Real abuse protection lives
+ *      server-side (method allowlist, body cap, rate limit) in the
+ *      Vercel function and `server/aiProxy.ts`.
  *
  *   2. NONE (resilience fallback only)
  *      No transport configured. The gateway reports
@@ -309,6 +314,25 @@ function listProxyCandidates(): ProxyCandidate[] {
     !/\/\/(localhost|127\.0\.0\.1)\b/.test(override)
   ) {
     out.push({ url: override, source: 'override' });
+  }
+
+  // v33 — Web/Vercel branch. When the bundle runs in a browser (the
+  // Vercel-hosted mobile-web build), the same origin serves a
+  // serverless function at `/__pura_ai__/*` (see vercel.json rewrite
+  // → api/__pura_ai__/[method].ts). Prefer that over LAN candidates
+  // so a deployed iPhone Safari session never tries to reach a
+  // developer's Metro on the local network.
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.location !== 'undefined' &&
+    typeof window.location.origin === 'string' &&
+    window.location.origin.length > 0 &&
+    !/^http:\/\/(localhost|127\.0\.0\.1)\b/.test(window.location.origin)
+  ) {
+    out.push({
+      url: `${window.location.origin}/__pura_ai__`,
+      source: 'override',
+    });
   }
 
   // Bundle host comes from Expo Constants. Different SDK versions

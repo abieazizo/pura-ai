@@ -52,6 +52,51 @@ export type ResultStateMode =
   | 'result_with_products_unavailable';
 
 /**
+ * v22.3 — explicit product result state. Replaces the older 4-value
+ * `productState` field with the 6-value contract every UI consumer
+ * now reads. This is the single state every product surface on the
+ * result screen branches on — hero card, alternatives carousel,
+ * empty/loading/retry states all derive from one value here.
+ *
+ *   loading         — engine is in-flight; show skeleton.
+ *   live_ready      — products came from AI-planned + live retrieval
+ *                     (productSourceMode = 'ai_first' with live
+ *                     retrievalSource).
+ *   fallback_ready  — products came from the curated deterministic
+ *                     catalog (productSourceMode = 'ai_failed_fallback'
+ *                     OR 'deterministic_only' OR retrievalSource =
+ *                     'fallback'). UI should NOT pretend these are
+ *                     live AI shopping results.
+ *   unavailable     — engine produced no trustworthy products and no
+ *                     curated fallback applied. Honest empty state.
+ *   retrying        — caller has initiated a retry; preserve good
+ *                     state, disable duplicate taps.
+ *   low_confidence  — scan quality forced soft confidence; products
+ *                     may still render but with a subtle note.
+ */
+export type ProductResultState =
+  | 'loading'
+  | 'live_ready'
+  | 'fallback_ready'
+  | 'unavailable'
+  | 'retrying'
+  | 'low_confidence';
+
+/**
+ * v22.3 — honest source label for the hero card subtext. UI consumers
+ * read `productSourceLabel` from the view model instead of inventing
+ * their own copy. Empty when no label should be shown.
+ */
+const PRODUCT_SOURCE_LABEL: Record<ProductResultState, string> = {
+  loading: '',
+  live_ready: '',
+  fallback_ready: 'Curated for this scan',
+  unavailable: '',
+  retrying: 'Retrying…',
+  low_confidence: 'Curated for partial scan',
+};
+
+/**
  * UI-ready view-model. Every result/scan/map screen should read
  * from this rather than re-deriving thresholds or copy.
  */
@@ -81,6 +126,21 @@ export interface ResultViewModel {
   /** Whether the result screen has any actionable content (= NOT
    *  blocked AND NOT (product unavailable + summary missing)). */
   hasUsableResult: boolean;
+  /**
+   * v22.3 — explicit product-result state. UI consumers should
+   * branch on this single value instead of inferring from a mix of
+   * `availabilityState` / `productSourceMode` / `retrievalSource`.
+   * See the `ProductResultState` doc-comment for the full state
+   * machine.
+   */
+  productResultState: ProductResultState;
+  /**
+   * v22.3 — honest source label for the hero card subtext. Empty
+   * when no label should be shown. Drives copy like
+   * "Curated for this scan" so we never pretend a fallback product
+   * is a live AI shopping result.
+   */
+  productSourceLabel: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +199,8 @@ export function resolveScanResultState(args: {
       skinMapPrecision: 'suppressed',
       productState: 'unavailable',
       hasUsableResult: false,
+      productResultState: 'unavailable',
+      productSourceLabel: '',
     };
   }
 
@@ -161,11 +223,19 @@ export function resolveScanResultState(args: {
       skinMapPrecision: 'suppressed',
       productState: 'unavailable',
       hasUsableResult: false,
+      productResultState: 'unavailable',
+      productSourceLabel: '',
     };
   }
 
   // Resolve product state from the recommendation context.
   const productState = resolveProductState(recommendation);
+  const productResultState = resolveProductResultState(
+    recommendation,
+    productState,
+    conf < QUALITY_THRESHOLD_WARN
+  );
+  const productSourceLabel = PRODUCT_SOURCE_LABEL[productResultState];
 
   // Branch B — Soft warning.
   if (conf < QUALITY_THRESHOLD_WARN) {
@@ -181,6 +251,8 @@ export function resolveScanResultState(args: {
       skinMapPrecision: 'soft',
       productState,
       hasUsableResult: true,
+      productResultState,
+      productSourceLabel,
     };
   }
 
@@ -197,7 +269,62 @@ export function resolveScanResultState(args: {
     skinMapPrecision: 'precise',
     productState,
     hasUsableResult: true,
+    productResultState,
+    productSourceLabel,
   };
+}
+
+/**
+ * v22.3 — derive the explicit `ProductResultState` from the
+ * recommendation context. Single source of truth for "what is the
+ * product surface doing right now" — UI consumers branch on this
+ * one value instead of the older 3-way `productState` + ad-hoc
+ * `productSourceMode` peek.
+ *
+ * Rules (in priority order):
+ *   1. No recommendation yet            → 'loading'
+ *   2. availabilityState='loading'      → 'loading'
+ *   3. availabilityState='unavailable'  AND no hero AND no alts → 'unavailable'
+ *   4. Soft-confidence scan branch      → 'low_confidence'
+ *   5. productSourceMode='ai_first'     AND retrievalSource='live' AND hero → 'live_ready'
+ *   6. Anything else with a hero        → 'fallback_ready' (curated catalog
+ *                                          or AI plan with no live retrieval)
+ *   7. Default                          → 'unavailable'
+ *
+ * 'retrying' is set transiently by callers when a retry tap is in
+ * flight; the resolver itself doesn't synthesize it.
+ */
+function resolveProductResultState(
+  recommendation: RecommendationContext | null | undefined,
+  productState: 'loading' | 'ready' | 'unavailable' | 'empty',
+  isLowConfidence: boolean
+): ProductResultState {
+  if (!recommendation) return 'loading';
+  if (productState === 'loading') return 'loading';
+
+  const hero = recommendation.heroProduct;
+  const hasHero = !!hero;
+  const hasAlts =
+    Array.isArray(recommendation.alternatives) &&
+    recommendation.alternatives.length > 0;
+
+  // Honest empty state when there's no hero and no alts and the
+  // engine has settled.
+  if (!hasHero && !hasAlts) return 'unavailable';
+
+  if (isLowConfidence && hasHero) return 'low_confidence';
+
+  const mode = recommendation.recommendationStatus?.productSourceMode;
+  const retrieval = recommendation.retrievalSource;
+
+  if (mode === 'ai_first' && retrieval === 'live' && hasHero) {
+    return 'live_ready';
+  }
+  // ai_failed_fallback, deterministic_only, or retrievalSource='fallback'
+  // all surface as the honest "curated" label.
+  if (hasHero) return 'fallback_ready';
+
+  return 'unavailable';
 }
 
 function resolveProductState(

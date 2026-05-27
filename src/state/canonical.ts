@@ -397,9 +397,14 @@ export function selectSkinState(
 // ============================================================================
 
 const GOAL_PHRASE: Record<NonNullable<AppState['goal']>, string> = {
+  // v20.0 — goal expanded from 3 → 6. New phrases tuned to read well in
+  // the assistant grounding sentence ("Your goal is to ___").
   clear: 'clear breakouts',
   calm: 'calm sensitivity',
   bright: 'brighten dark marks',
+  smoother: 'smooth surface texture',
+  barrier: 'strengthen your barrier',
+  simpler: 'simplify your routine',
 };
 
 function mapSensitivityToTags(s: AppState['sensitivity']): string[] {
@@ -453,18 +458,20 @@ export function selectUserProfileContext(
 
   const goals = state.goal ? [GOAL_PHRASE[state.goal]] : [];
 
+  // Defensive: persisted state from an older app version may be missing
+  // one of these arrays (zustand persist replaces, doesn't deep-merge).
+  // Coerce to [] so the spread can never throw "not iterable".
   const knownProducts = Array.from(
     new Set([
-      ...state.userRoutineMorning,
-      ...state.userRoutineEvening,
-      ...state.wishlist,
+      ...(Array.isArray(state.userRoutineMorning) ? state.userRoutineMorning : []),
+      ...(Array.isArray(state.userRoutineEvening) ? state.userRoutineEvening : []),
+      ...(Array.isArray(state.wishlist) ? state.wishlist : []),
     ])
   );
 
+  const scansArr = Array.isArray(state.scans) ? state.scans : [];
   const latestScan: Scan | undefined =
-    state.scans.length > 0
-      ? state.scans[state.scans.length - 1]
-      : undefined;
+    scansArr.length > 0 ? scansArr[scansArr.length - 1] : undefined;
   const latestScanSummary = latestScan
     ? `${latestScan.summaryHeadline}${
         latestScan.summaryBody ? ` ${latestScan.summaryBody}` : ''

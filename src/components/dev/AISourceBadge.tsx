@@ -42,8 +42,11 @@ export interface AISourceBadgeProps {
   anchor?: 'top-right' | 'top-left';
 }
 
+// v22.4 — tighter gate: requires BOTH __DEV__ build AND the
+// explicit env var. A production build can never render this badge
+// regardless of leftover env values.
 const DEV_BADGE_ENABLED =
-  (process.env.EXPO_PUBLIC_PURA_AI_DEV_BADGE ?? '').trim() === '1';
+  __DEV__ && (process.env.EXPO_PUBLIC_PURA_AI_DEV_BADGE ?? '').trim() === '1';
 
 export function AISourceBadge({
   feature,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,8 @@ import { palette } from '@/theme';
 export interface QuestionLayoutProps {
   step: number | null;
   totalSteps?: number;
+  /** Short section label rendered above the progress bar, e.g. "Goal". */
+  sectionLabel?: string;
   headline: string;
   subhead: string;
   showSkip?: boolean;
@@ -21,41 +23,46 @@ export interface QuestionLayoutProps {
   onCta: () => void;
   ctaDisabled?: boolean;
   /**
+   * v20.0 — short explanation rendered above the disabled CTA so the user
+   * always knows what's needed to advance, e.g. "Choose one to continue".
+   * Only shown when `ctaDisabled` is true.
+   */
+  disabledReason?: string;
+  /**
    * Opt out of scrolling for screens with a single custom input (e.g. AskAge
    * with a picker that owns its own gesture). Defaults to `true` so every
    * multi-row question is reachable on small screens.
    */
   scrollable?: boolean;
+  /**
+   * v21.0 — optional Plan Impact slot rendered between `children` and
+   * the sticky CTA. Lets every question explain *why* it asked. Stays
+   * inside the scrollable region so a long option list doesn't push
+   * the impact line off-screen on small devices.
+   */
+  planImpact?: React.ReactNode;
 }
 
-// CTA block is ~56 (button height) + 40 (bottom padding) + safe-area inset.
-// The scrollView keeps enough bottom padding so the last answer clears the
-// pinned CTA without getting hidden behind it.
 const CTA_BLOCK_HEIGHT = 56 + 40;
 const CTA_FADE_HEIGHT = 48;
 
 /**
- * Standard question-screen shell (§3.1 / v10.6).
+ * v20.0 — standard question-screen shell.
  *
  * Layout:
- *   Header (back + progress)
- *   → ScrollView {
- *       QuestionHeadline
- *       QuestionSubhead
- *       children (ChoiceList or custom input)
- *     }
- *   → Fade-gradient mask (bg → transparent, fades into the CTA block)
- *   → Primary CTA floating above safe-area
+ *   Header (back · progress + section label)
+ *   → ScrollView { headline · subhead · children }
+ *   → Soft fade above CTA
+ *   → Sticky bottom: optional helper text + primary CTA
  *
- * v10.6 — scrolling is now the default. Prior default (`scrollable: false`)
- * clipped the last 1–3 answers on any screen with 5+ rows on an iPhone SE
- * or iPhone 13 mini — the CTA would overlap the final answer and users
- * had no way to reach or toggle it. The gradient above the CTA fades the
- * scroll content under it so long answer lists read cleanly.
+ * The CTA always carries either an action verb (when enabled) or a
+ * disabled-reason hint (when disabled) so the user is never staring at a
+ * dead gray bar with no explanation.
  */
 export function QuestionLayout({
   step,
-  totalSteps = 10,
+  totalSteps = 8,
+  sectionLabel,
   headline,
   subhead,
   showSkip = false,
@@ -64,7 +71,9 @@ export function QuestionLayout({
   ctaLabel = 'Continue',
   onCta,
   ctaDisabled = false,
+  disabledReason,
   scrollable = true,
+  planImpact,
 }: QuestionLayoutProps) {
   const insets = useSafeAreaInsets();
 
@@ -73,10 +82,12 @@ export function QuestionLayout({
       <QuestionHeadline>{headline}</QuestionHeadline>
       <QuestionSubhead>{subhead}</QuestionSubhead>
       {children}
+      {planImpact}
     </>
   );
 
-  const scrollBottomPad = CTA_BLOCK_HEIGHT + insets.bottom + 24;
+  const scrollBottomPad = CTA_BLOCK_HEIGHT + insets.bottom + 32;
+  const showHint = ctaDisabled && !!disabledReason;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -84,6 +95,7 @@ export function QuestionLayout({
       <OnboardingHeader
         currentStep={step}
         totalSteps={totalSteps}
+        sectionLabel={sectionLabel}
         showSkip={showSkip}
         onSkip={onSkip}
       />
@@ -101,10 +113,6 @@ export function QuestionLayout({
         <View style={styles.flex}>{bodyContent}</View>
       )}
 
-      {/* Gradient mask fades scroll content into the floating CTA so the
-          edge between scroll and pinned action reads as a soft gradient,
-          not a hard overlap. Height scales with the CTA block so the
-          mask always stays continuous with the button backdrop. */}
       <LinearGradient
         pointerEvents="none"
         colors={['rgba(248,250,252,0)', palette.bg]}
@@ -117,7 +125,16 @@ export function QuestionLayout({
         ]}
       />
 
-      <View style={[styles.ctaWrap, { paddingBottom: insets.bottom + 40 }]}>
+      <View style={[styles.ctaWrap, { paddingBottom: insets.bottom + 28 }]}>
+        {showHint ? (
+          <Text
+            style={styles.disabledHint}
+            accessibilityLiveRegion="polite"
+            maxFontSizeMultiplier={1.2}
+          >
+            {disabledReason}
+          </Text>
+        ) : null}
         <OnboardingPrimaryButton
           label={ctaLabel}
           onPress={onCta}
@@ -140,7 +157,16 @@ const styles = StyleSheet.create({
     right: 0,
   },
   ctaWrap: {
-    paddingTop: 12,
+    paddingTop: 8,
     backgroundColor: palette.bg,
+  },
+  disabledHint: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: palette.inkTertiary,
+    textAlign: 'center',
+    marginBottom: 10,
+    marginHorizontal: 32,
   },
 });

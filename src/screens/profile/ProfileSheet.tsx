@@ -37,6 +37,7 @@ export function ProfileSheet() {
   const devLoadPopulated = useAppStore((s) => s.devLoadPopulated);
   const devResetToNewUser = useAppStore((s) => s.devResetToNewUser);
   const devWipeAll = useAppStore((s) => s.devWipeAll);
+  const signOut = useAppStore((s) => s.signOut);
 
   const snapPoints = useMemo(() => ['90%'], []);
   const close = useCallback(() => sheetRef.current?.close(), []);
@@ -156,7 +157,11 @@ export function ProfileSheet() {
           ) : null}
 
           <Pressable
-            onPress={close}
+            onPress={() => {
+              hapt.tap();
+              nav.goBack();
+              signOut();
+            }}
             accessibilityRole="button"
             accessibilityLabel={profileSheet.signOut}
             style={styles.signOutRow}
@@ -268,11 +273,14 @@ const styles = StyleSheet.create({
     gap: space.sm,
     padding: space.md,
     borderRadius: radius.md,
-    backgroundColor: palette.warningLight,
+    // v22.11 — warningLight/warningDark live on the semantic `colors`
+    // export, not the raw `palette`. Use `colors` for both so the
+    // type system is honest about where the token comes from.
+    backgroundColor: colors.warningLight,
   },
   devLabel: {
     ...typography.micro,
-    color: palette.warningDark,
+    color: colors.warningDark,
   },
 
   signOutRow: {

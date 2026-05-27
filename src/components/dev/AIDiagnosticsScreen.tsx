@@ -71,6 +71,7 @@ const FEATURE_LABEL: Record<AIFeatureKey, string> = {
 const METHOD_LABEL: Record<AIMethodKey, string> = {
   validateScanPreflight: 'validateScanPreflight',
   analyzeFaceScan: 'analyzeFaceScan',
+  analyzeFaceScanV2: 'analyzeFaceScanV2',
   identifyProductFromImage: 'identifyProductFromImage',
   normalizeBarcodeResolution: 'normalizeBarcodeResolution',
   matchProductsForUser: 'matchProductsForUser',
@@ -889,11 +890,73 @@ export function AIDiagnosticsScreen() {
           )}
         </View>
 
+        <DevToolsCard />
+
         <View style={{ height: 60 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+function DevToolsCard() {
+  const navigation = useNavigation();
+  return (
+    <View style={styles.card}>
+      <Text style={devToolStyles.title} maxFontSizeMultiplier={1.1}>
+        Dev tools
+      </Text>
+      <Pressable
+        onPress={() => {
+          // @ts-expect-error — dev route present in __DEV__ builds only.
+          navigation.navigate('ScanResultsStatesDev');
+        }}
+        style={({ pressed }) => [
+          devToolStyles.row,
+          pressed && { opacity: 0.7 },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Open Scan Results states gallery"
+        nativeID="dev-open-scan-states"
+      >
+        <Text style={devToolStyles.label} maxFontSizeMultiplier={1.15}>
+          Scan Results · state gallery
+        </Text>
+        <Text style={devToolStyles.hint} maxFontSizeMultiplier={1.15}>
+          Renders fixtures for every truth-first state
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const devToolStyles = StyleSheet.create({
+  title: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: palette.ink,
+    marginBottom: 6,
+  },
+  row: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: palette.bgDeep,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+    marginTop: 8,
+  },
+  label: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: palette.ink,
+  },
+  hint: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: palette.inkSecondary,
+    marginTop: 2,
+  },
+});
 
 // ---------------------------------------------------------------------------
 // v19.34 — device verification kit. The content below is the canonical

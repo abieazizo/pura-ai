@@ -6,6 +6,7 @@ import { ScanModalStack } from './ScanModalStack';
 import { ProfileSheet } from '@/screens/profile/ProfileSheet';
 import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen';
 import { AIDiagnosticsScreen } from '@/components/dev/AIDiagnosticsScreen';
+import { ScanResultsStatesGallery } from '@/components/dev/ScanResultsStatesGallery';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { RootStackParamList } from './types';
@@ -73,6 +74,18 @@ export function RootNavigator() {
       <Stack.Screen
         name="AIDiagnostics"
         component={AIDiagnosticsScreen}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
+          animationDuration: 280,
+        }}
+      />
+
+      {/* Dev-only scan-result state gallery. Reachable from
+          AIDiagnostics in dev builds. No user-facing entry point. */}
+      <Stack.Screen
+        name="ScanResultsStatesDev"
+        component={ScanResultsStatesGallery}
         options={{
           presentation: 'modal',
           animation: 'slide_from_bottom',

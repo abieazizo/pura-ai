@@ -137,12 +137,57 @@ export function buildSearchUrl(candidate: LiveProductCandidate): string {
 }
 
 /**
- * v19.13 — defensive dedup. The AI's lean schema doesn't enforce
- * id uniqueness across candidates, and brand/name collisions in
- * its corpus do happen on rare occasions. We dedup by:
+ * v22.5 — aggressive normalization helpers used by both dedupe and
+ * the same-brand cluster cap. Two product names that differ only by
+ * volume ("30 ml"), packaging suffix ("Refill"), or trailing
+ * punctuation must collapse to the same canonical slug so the
+ * visible grid never shows the same item twice.
+ */
+function normalizeBrandToken(brand: string): string {
+  return brand
+    .toLowerCase()
+    .replace(/[‘’']/g, '') // smart + straight apostrophes
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
+function normalizeNameToken(name: string): string {
+  let s = name.toLowerCase();
+  // Strip volume / weight suffixes and any standalone units.
+  s = s.replace(
+    /\b\d+(?:[\.,]\d+)?\s?(?:ml|milliliters?|oz|ounces?|fl\s?oz|g|grams?|gm|kg|l|pcs|count|ct|x|pack|packs)\b/gi,
+    ''
+  );
+  // Strip percentage values when they read like packaging info, NOT
+  // when they're part of a real product spec ("2% BHA" — keep).
+  // We keep `%` tokens because they often DO carry meaning ("2% BHA").
+  // Strip parenthetical suffixes.
+  s = s.replace(/\([^)]*\)/g, '');
+  s = s.replace(/\[[^\]]*\]/g, '');
+  // Strip common packaging / format suffixes that vary across OBF
+  // entries for the same product.
+  s = s.replace(
+    /\b(refill|jar|tube|bottle|pump|airless|sample|tester|travel size|trial size|mini|new formula|new packaging|limited edition)\b/gi,
+    ''
+  );
+  // Collapse punctuation + whitespace.
+  s = s.replace(/[‘’'`"]/g, '');
+  s = s.replace(/[^a-z0-9%+]+/g, ' ');
+  s = s.trim().replace(/\s+/g, ' ');
+  return s;
+}
+
+function visibleDedupeKey(c: LiveProductCandidate): string {
+  return `${normalizeBrandToken(c.brand ?? '')}::${normalizeNameToken(c.name ?? '')}`;
+}
+
+/**
+ * v22.5 — defensive dedup. Catches:
  *   1. Exact id match (canonical case).
- *   2. Brand+name slug fallback (catches the case where the AI
- *      returns the same product under two slightly different ids).
+ *   2. Brand+normalized-name slug fallback (catches OBF returning
+ *      the same product under different ids / volume suffixes /
+ *      packaging variants).
+ *   3. Same canonical productUrl (when present and trusted).
  * Preserves order — the first occurrence wins, which is what the
  * matchScore sort already guarantees.
  */
@@ -150,22 +195,62 @@ function dedupCandidates(
   candidates: LiveProductCandidate[]
 ): LiveProductCandidate[] {
   const seenIds = new Set<string>();
-  const seenBrandName = new Set<string>();
+  const seenSlugs = new Set<string>();
+  const seenUrls = new Set<string>();
   const out: LiveProductCandidate[] = [];
   for (const c of candidates) {
     const id = (c.id ?? '').trim().toLowerCase();
-    const brandName = `${(c.brand ?? '').trim().toLowerCase()}::${(
-      c.name ?? ''
-    )
-      .trim()
-      .toLowerCase()}`;
+    const slug = visibleDedupeKey(c);
+    const url = canonicalUrlKey(c.productUrl);
     if (id.length > 0 && seenIds.has(id)) continue;
-    if (brandName !== '::' && seenBrandName.has(brandName)) continue;
+    if (slug !== '::' && seenSlugs.has(slug)) continue;
+    if (url && seenUrls.has(url)) continue;
     if (id.length > 0) seenIds.add(id);
-    if (brandName !== '::') seenBrandName.add(brandName);
+    if (slug !== '::') seenSlugs.add(slug);
+    if (url) seenUrls.add(url);
     out.push(c);
   }
   return out;
+}
+
+/**
+ * v22.10 / v22.11 — sanitize user-need summaries returned by the
+ * AI planner or the deterministic catalog. Two-stage:
+ *
+ *   1. SANITIZE   — strip known legacy internal-summary prefixes
+ *                   (third-person planner phrasing, leading
+ *                   articles), truncate to 110 chars (down from 140
+ *                   — keeps the caption tight and prevents 2-line
+ *                   overflow).
+ *   2. VALIDATE   — reject candidates that still contain forbidden
+ *                   diagnosis/medical/engineering phrasing after
+ *                   sanitization. Rejected → return null so the UI
+ *                   falls through to its deterministic builder.
+ *
+ * The deterministic builder lives in the UI layer and produces a
+ * clean user-facing caption from the active query/goal, so we never
+ * depend on the AI planner getting the tone right.
+ */
+// v26.2 — moved to `./summaryGuards.ts` so RN-free consumers (the
+// verify script) can import the canonical pattern list + sanitizer
+// without dragging in `useAppStore` and the rest of the RN tree.
+// Re-exported here so existing call sites keep working unchanged.
+export { FORBIDDEN_SUMMARY_PATTERNS, sanitizeUserNeedSummary } from './summaryGuards';
+import { sanitizeUserNeedSummary } from './summaryGuards';
+
+function canonicalUrlKey(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    // Normalize host (drop www), pathname (drop trailing slash), and
+    // strip tracking query params so the same product page under
+    // different referral URLs deduplicates.
+    const host = u.host.replace(/^www\./, '').toLowerCase();
+    const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+    return `${host}${path}`;
+  } catch {
+    return url.toLowerCase().trim();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -522,6 +607,7 @@ import {
   partitionByTrust,
   scoreTrustForCandidate,
   inferSkinProfile,
+  buildWhyItFits,
   type InferredSkinProfile,
   type CandidateTrustScore,
   type ScoredCandidate,
@@ -1341,7 +1427,7 @@ async function tryAiFirstRecommendation(args: {
       aiSelectReturned,
       aiSelectApplied,
       aiSelectReason,
-      userNeedSummary: plan.userNeedSummary,
+      userNeedSummary: sanitizeUserNeedSummary(plan.userNeedSummary),
       whyTheseProducts: heroSelection?.whyPicked ?? plan.slots[0]?.whyThisSlotMatters ?? '',
       productSourceMode: 'ai_first',
       slotCount: plan.slots.length,
@@ -1420,14 +1506,28 @@ function buildDeterministicTypedSearchOutcome(
     productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
     `${aiReason} — falling back to curated catalog (${det.category.label})`
   );
+  // v22.4 — dedupe by brand+name slug (defensive — curated catalog
+  // should already be clean, but the live engine reuses this code
+  // path indirectly).
+  const detDeduped = dedupCandidates(det.candidates);
+  // v22.4 — stamp UI-facing fields. Curated entries are honest
+  // `related` fit by default with a compressed % cap — they are NOT
+  // exact live matches even if they're well-targeted.
+  const detStamped: LiveProductCandidate[] = detDeduped.map((c) => ({
+    ...c,
+    matchScore: Math.min(c.matchScore ?? 70, 72),
+    fitBand: 'related' as const,
+    relevancePercent: Math.min(c.matchScore ?? 70, 72),
+    visibleSource: 'curated' as const,
+  }));
   // Cache into the store so ProductDetail can resolve taps.
   try {
-    useAppStore.getState().cacheLiveProducts(det.candidates);
+    useAppStore.getState().cacheLiveProducts(detStamped);
   } catch {
     /* never block on cache write */
   }
   const matchedProbesById = new Map<string, string[]>();
-  for (const c of det.candidates) {
+  for (const c of detStamped) {
     matchedProbesById.set(c.id, [det.category.id]);
   }
   return {
@@ -1443,7 +1543,7 @@ function buildDeterministicTypedSearchOutcome(
       aiSelectApplied: false,
       aiSelectReason:
         'deterministic typed-search planner: AI not used for this fetch',
-      userNeedSummary: det.userNeedSummary,
+      userNeedSummary: sanitizeUserNeedSummary(det.userNeedSummary),
       whyTheseProducts: det.searchIntentLabel,
       productSourceMode,
       slotCount: 0,
@@ -1452,15 +1552,13 @@ function buildDeterministicTypedSearchOutcome(
       selectorVersion: null,
       resultMode: 'typed_search_flat',
       dominantSearchFamily: det.dominantProductFamily,
-      resultCountTotal: det.candidates.length,
+      resultCountTotal: detStamped.length,
       badgeMode: productSourceMode === 'ai_failed_fallback' ? 'fallback' : 'idle',
     },
-    candidates: det.candidates,
+    candidates: detStamped,
     matchedProbesById,
-    heroId: det.candidates[0]?.id ?? null,
-    alternativeIds: det.candidates
-      .slice(1, 5)
-      .map((c) => c.id),
+    heroId: detStamped[0]?.id ?? null,
+    alternativeIds: detStamped.slice(1, 5).map((c) => c.id),
   };
 }
 
@@ -1523,6 +1621,21 @@ async function tryTypedSearch(args: {
     return buildEmptyTypedSearchOutcome(
       false,
       "trigger='background' (cache prewarm; typed-search planner skipped)",
+      'deterministic_only'
+    );
+  }
+  // v22.13 — UNRECOGNIZED-QUERY EMPTY GUARD. When the parsed intent
+  // has zero recognized signals (no productType, no concern, no
+  // modifier, no ingredient, and the query isn't "best for me"),
+  // we must NOT route through scan-fallback or curated default.
+  // That produced misleading results for noise queries like
+  // "asdfghjkl" (which used to surface Paula's BHA via scan top
+  // concern). Now we return an empty outcome and the UI shows the
+  // honest empty state.
+  if (!interpretedIntent.recognized) {
+    return buildEmptyTypedSearchOutcome(
+      false,
+      'query has no recognized product/concern/ingredient/modifier signal',
       'deterministic_only'
     );
   }
@@ -1699,27 +1812,77 @@ async function tryTypedSearch(args: {
         matchedProbesById.get(c.id) ?? plan.searchQueries.slice(0, 2),
     })
   );
+  // v22.4 — drop `weak` band before ranking. A weak fit should never
+  // surface to the user; the topup will fill the gap.
+  const eligible = scored.filter((s) => s.score.fitBand !== 'weak');
   // Final flat ranking:
-  //   primary: trust score total
+  //   primary: trust score total (already includes strict-mismatch multiplier)
   //   secondary: image tier (high > medium > low)
-  scored.sort((a, b) => {
+  eligible.sort((a, b) => {
     if (b.score.total !== a.score.total) return b.score.total - a.score.total;
     const imgRank = (c: LiveProductCandidate): number =>
       c.imageQuality === 'high' ? 3 : c.imageQuality === 'medium' ? 2 : c.imageQuality === 'low' ? 1 : 0;
     return imgRank(b.candidate) - imgRank(a.candidate);
   });
-  // Cap at 18 (visibleCount 6 + 2 reveal batches with headroom).
-  const rankedLive = scored.slice(0, 18).map((s) => s.candidate);
+  // v22.5 — SAME-BRAND CLUSTER CAP. Walk the sorted list once and
+  // push any 3rd+ occurrence of the same brand to the back of the
+  // list. The visible grid never has 3+ same-brand cards stacked
+  // together; same-brand picks are still allowed but as later
+  // entries so a strong runner-up from a different brand surfaces
+  // first. Brand normalization is the same shape used by dedupe.
+  function brandKey(c: LiveProductCandidate): string {
+    return normalizeBrandToken(c.brand ?? '');
+  }
+  const brandCount = new Map<string, number>();
+  const promoted: typeof eligible = [];
+  const demoted: typeof eligible = [];
+  for (const s of eligible) {
+    const b = brandKey(s.candidate);
+    const n = (brandCount.get(b) ?? 0) + 1;
+    brandCount.set(b, n);
+    if (n <= 2) promoted.push(s);
+    else demoted.push(s);
+  }
+  const reclustered = [...promoted, ...demoted];
+
+  // v22.6 — stamp UI-facing fit fields onto every live candidate,
+  // and build a deterministic why-it-fits reason from the scoring
+  // breakdown so every card explains itself. The skin-fit profile
+  // is recomputed once here and threaded into buildWhyItFits.
+  const skinFitForReason = inferSkinProfile(profile, skinState);
+  const rankedLive: LiveProductCandidate[] = reclustered.slice(0, 18).map((s) => {
+    const reason = buildWhyItFits({
+      candidate: s.candidate,
+      intent: intentForRetrieval,
+      score: s.score,
+      skinFit: skinFitForReason,
+    });
+    return {
+      ...s.candidate,
+      // Only overwrite when the original is empty — preserves any
+      // AI-supplied matchReason from the planner.
+      matchReason: s.candidate.matchReason && s.candidate.matchReason.trim().length > 0
+        ? s.candidate.matchReason
+        : reason,
+      matchScore: s.score.relevancePercent,
+      fitBand:
+        s.score.fitBand === 'weak'
+          ? 'broad'
+          : (s.score.fitBand as 'exact' | 'strong' | 'related' | 'broad'),
+      relevancePercent: s.score.relevancePercent,
+      visibleSource: 'live',
+    };
+  });
 
   // v22.2 — MINIMUM-6 ENFORCEMENT. If live retrieval returned fewer
   // than 6 strong candidates, top up from the curated catalog for
   // the resolved category. Users never see "1 picks" or a thin
   // 2-item shelf for a typed search.
+  // v22.4 — also dedupe topups by brand+name slug so OBF + curated
+  // duplicates of the SAME product never both render.
   const resolvedCategory = resolveCategoryFromQuery(rawQuery);
-  const minResults =
-    resolvedCategory?.minResults ??
-    6;
-  const flatCandidates = resolvedCategory
+  const minResults = resolvedCategory?.minResults ?? 6;
+  const flatCandidatesRaw = resolvedCategory
     ? ensureMinimumResults(
         rankedLive,
         resolvedCategory,
@@ -1728,6 +1891,20 @@ async function tryTypedSearch(args: {
         minResults
       )
     : rankedLive;
+  // v22.4 — final brand+name dedupe pass. `ensureMinimumResults`
+  // dedupes by id only; OBF id ≠ curated id even when brand+name
+  // are identical. Run the same shared dedupe used for live results.
+  const flatCandidates = dedupCandidates(flatCandidatesRaw).map((c) => {
+    if (c.fitBand) return c;
+    // Topup-source curated entry — stamp fitBand and a believable
+    // relevancePercent so the card shows an honest label.
+    return {
+      ...c,
+      fitBand: 'related' as const,
+      relevancePercent: Math.min(c.matchScore ?? 70, 72),
+      visibleSource: 'curated' as const,
+    };
+  });
 
   const heroId = flatCandidates[0]?.id ?? null;
   const alternativeIds = flatCandidates
@@ -1772,7 +1949,7 @@ async function tryTypedSearch(args: {
       aiSelectReturned: false,
       aiSelectApplied: false,
       aiSelectReason: 'typed_search path: slot selector intentionally not used',
-      userNeedSummary: plan.userNeedSummary,
+      userNeedSummary: sanitizeUserNeedSummary(plan.userNeedSummary),
       whyTheseProducts: plan.searchIntentLabel,
       productSourceMode: 'ai_first',
       slotCount: 0,

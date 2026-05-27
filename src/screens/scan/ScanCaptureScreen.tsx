@@ -21,6 +21,17 @@ import { common, scan } from '@/copy/strings';
 import type { ScanModalMode } from '@/navigation/types';
 import { useAppStore } from '@/store/useAppStore';
 import { useContextual } from '@/components/contextual/ContextualProvider';
+import {
+  useScanReadiness,
+  type LightingSignal,
+} from '@/screens/scan/scanReadiness';
+import {
+  resolveScanInstruction,
+  type FaceReadiness,
+  type ProductReadiness,
+  type BarcodeReadiness,
+  type ScanControllerInput,
+} from '@/screens/scan/scanController';
 
 export interface ScanCaptureScreenProps {
   onClose: () => void;
@@ -130,6 +141,11 @@ export function ScanCaptureScreen({
     (s) => s.lightingAssistEnabled
   );
   const [autoDark, setAutoDark] = useState<boolean>(false);
+  // v23 — same probe now also drives the readiness machine's
+  // lighting signal. 'pending' until the probe lands; 'low' when
+  // the probe says dim; 'good' otherwise. We never claim 'harsh'
+  // without a real glare-detection signal.
+  const [lightingSignal, setLightingSignal] = useState<LightingSignal>('pending');
   const probedRef = useRef(false);
 
   // Run the luminance probe once when the camera is ready in face
@@ -151,6 +167,7 @@ export function ScanCaptureScreen({
           // than not. Common case is the camera initialised after
           // the timeout fired.
           setAutoDark(true);
+          setLightingSignal('low');
           return;
         }
         const photo = await cam.takePictureAsync({
@@ -164,16 +181,149 @@ export function ScanCaptureScreen({
         // > 80 KB => clearly bright => assist off.
         // Between => borderline; default off to avoid washing
         // out an already-bright preview.
-        setAutoDark(bytes < 32_000);
+        const isDim = bytes < 32_000;
+        setAutoDark(isDim);
+        setLightingSignal(isDim ? 'low' : 'good');
       } catch {
         // Probe failed; default ON in face mode — the perimeter
         // ring is restrained enough that being on by mistake is
         // not visually disruptive.
         setAutoDark(true);
+        setLightingSignal('low');
       }
     }, 900);
     return () => clearTimeout(t);
   }, [mode, permission?.granted]);
+
+  // v23 — reset the lighting signal when the mode changes so the
+  // probe re-runs on the next entry to face mode.
+  useEffect(() => {
+    if (mode !== 'face') {
+      probedRef.current = false;
+      setLightingSignal('pending');
+    }
+  }, [mode]);
+
+  // v23 — drive the new readiness machine. Kept around for the
+  // FaceModeOverlay's chip vocabulary (face/light/stable/clear)
+  // which we still surface when nothing has been resolved yet.
+  const readiness = useScanReadiness({
+    cameraReady: !!permission?.granted,
+    lighting: lightingSignal,
+    preparing: frameState === 'preparing',
+    captured: capturing,
+    mode,
+  });
+
+  // v24 — derive a FaceReadiness model from the honest signals we
+  // currently have: lighting probe + elapsed time since camera
+  // mount + frame state. Until a real face detector lands, we DO
+  // NOT claim faceDetected/centered/coverage from thin air. We
+  // promote them only after the lighting probe has settled, which
+  // is the user's de-facto signal that they've framed.
+  // TODO(face-detection): when a vision-camera / ML Kit detector
+  // lands, swap the elapsed-time proxy for a real bounding-box.
+  const [elapsedSinceLight, setElapsedSinceLight] = useState(0);
+  const lightSettledAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (lightingSignal === 'pending') {
+      lightSettledAtRef.current = null;
+      setElapsedSinceLight(0);
+      return;
+    }
+    if (lightSettledAtRef.current === null) {
+      lightSettledAtRef.current = Date.now();
+    }
+    const id = setInterval(() => {
+      const t0 = lightSettledAtRef.current;
+      if (t0 !== null) setElapsedSinceLight(Date.now() - t0);
+    }, 200);
+    return () => clearInterval(id);
+  }, [lightingSignal]);
+
+  const faceReadiness: FaceReadiness = (() => {
+    const lightOk = lightingSignal === 'good';
+    const lightPending = lightingSignal === 'pending';
+    const settled = elapsedSinceLight >= 1500;
+    // Without real face detection we can only promote framing
+    // claims AFTER lighting is good AND we've waited long enough
+    // for the user to compose. We never promote inside `pending`.
+    const inferredDetected = lightOk && elapsedSinceLight >= 500;
+    return {
+      faceDetected: inferredDetected,
+      faceCentered: inferredDetected && settled,
+      faceCoverage: inferredDetected ? 0.62 : 0,
+      foreheadVisible: inferredDetected,
+      chinVisible: inferredDetected,
+      bothCheeksVisible: inferredDetected,
+      lightingQuality: lightOk ? 0.78 : lightPending ? 0 : 0.25,
+      backlightRisk: 0,
+      motionStability: inferredDetected ? 0.7 : 0,
+      sharpness: inferredDetected ? 0.7 : 0,
+      occlusionRisk: 0,
+      overallReadiness:
+        inferredDetected && settled ? (lightOk ? 0.78 : 0.4) : 0,
+    };
+  })();
+
+  // Honest baselines for product / barcode modes — we don't pretend
+  // we have label OCR or barcode detection until the runtime signals.
+  // expo-camera's `onBarcodeScanned` flips barcode.detected via the
+  // existing barcode capture path; until then the bracket animates
+  // in "looking" mode.
+  const productReadiness: ProductReadiness = {
+    productInFrame: mode === 'product' && elapsedSinceLight >= 400,
+    labelDetected: false,
+    textSharp: mode === 'product' && elapsedSinceLight >= 1500,
+    glareRisk: 0,
+    lightingQuality: lightingSignal === 'good' ? 0.7 : 0,
+    motionStability: mode === 'product' ? 0.6 : 0,
+  };
+  const barcodeReadiness: BarcodeReadiness = {
+    detected: false,
+    barcodeInFrame: mode === 'barcode' && elapsedSinceLight >= 400,
+    motionStability: mode === 'barcode' ? 0.55 : 0,
+    lightingQuality: lightingSignal === 'good' ? 0.6 : 0,
+  };
+
+  // Permission state — honest mapping for the controller.
+  const permissionState: ScanControllerInput['permission'] = !permission
+    ? 'unknown'
+    : permission.granted
+    ? 'granted'
+    : permission.canAskAgain
+    ? 'requesting'
+    : 'denied';
+
+  const scanInstruction = resolveScanInstruction({
+    mode,
+    permission: permissionState,
+    cameraReady: !!permission?.granted,
+    preparing: frameState === 'preparing',
+    capturing,
+    analyzing: false,
+    face: mode === 'face' ? faceReadiness : undefined,
+    product: mode === 'product' ? productReadiness : undefined,
+    barcode: mode === 'barcode' ? barcodeReadiness : undefined,
+  });
+
+  // Light haptic when the controller crosses into ready for the
+  // first time per lock.
+  const readyHapticFiredRef = useRef(false);
+  useEffect(() => {
+    if (scanInstruction.phase === 'ready' && !readyHapticFiredRef.current) {
+      readyHapticFiredRef.current = true;
+      hapt.select();
+    }
+    if (
+      scanInstruction.phase !== 'ready' &&
+      scanInstruction.phase !== 'capturing' &&
+      scanInstruction.phase !== 'analyzing'
+    ) {
+      readyHapticFiredRef.current = false;
+    }
+  }, [scanInstruction.phase]);
+  void readiness; // legacy readiness retained for potential future fallback paths
   void lightingAssistForceOn; // silenced; passed below as `forceOn`
 
   // §3.2 — Trigger 1 check-in sheet. Fires only when:
@@ -237,9 +387,63 @@ export function ScanCaptureScreen({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOverlay.value }));
 
+  // v26.3 — the shutter gate is now ADVISORY, not blocking.
+  //
+  // Background: in Expo Go we have no real face detector. The
+  // pre-capture `canCapture` gate was inferring readiness from
+  // elapsed time + a luminance probe. In a slightly dim room the
+  // probe reports 'low' → `inferredDetected` stays false → the
+  // gate NEVER unlocks → the user taps the shutter and nothing
+  // happens. The post-capture preflight in ScanAnalyzing already
+  // inspects the actual captured frame and routes to an honest
+  // retry if it's unusable, so the pre-capture inference gate is
+  // double duty — and the wrong duty: it stops capture on a guess.
+  //
+  // We keep the controller's `canCapture` as a visual hint
+  // (InstructionCard severity, ShutterButton appearance) but DO
+  // NOT block the actual capture. The only pre-capture gates are
+  // the ones we can prove: camera mounted, not already firing,
+  // not in countdown, and a tiny composition settle window so an
+  // accidental shutter tap during the screen's mount transition
+  // doesn't fire a blurry first frame.
+  const COMPOSE_SETTLE_MS = 600;
+  const screenMountedAtRef = useRef(Date.now());
+  useEffect(() => {
+    if (permission?.granted) {
+      screenMountedAtRef.current = Date.now();
+    }
+  }, [permission?.granted]);
+
+  const phaseRef = useRef(scanInstruction.phase);
+  useEffect(() => {
+    phaseRef.current = scanInstruction.phase;
+  }, [scanInstruction.phase]);
+
   const onCapture = useCallback(async () => {
     if (!cameraRef.current || capturing) return;
     if (frameState === 'preparing') return; // already counting down
+
+    // Hard non-capture phases — the camera or analyzer is doing
+    // something we genuinely cannot interrupt.
+    const phase = phaseRef.current;
+    if (
+      phase === 'permissionRequired' ||
+      phase === 'permissionDenied' ||
+      phase === 'initializing' ||
+      phase === 'capturing' ||
+      phase === 'analyzing'
+    ) {
+      hapt.select();
+      return;
+    }
+
+    // Tiny composition settle so a tap that lands during the
+    // mount transition doesn't fire a blurry first frame.
+    const elapsedSinceMount = Date.now() - screenMountedAtRef.current;
+    if (elapsedSinceMount < COMPOSE_SETTLE_MS) {
+      hapt.select();
+      return;
+    }
 
     if (mode !== 'face') {
       // Product / barcode skip the prepare ceremony — the user is
@@ -418,8 +622,8 @@ export function ScanCaptureScreen({
           onExit={onClose}
           onHelp={onOpenHelp}
           analyzing={capturing}
-          frameState={frameState}
           countdown={countdownValue}
+          instruction={scanInstruction}
         />
       </Animated.View>
 

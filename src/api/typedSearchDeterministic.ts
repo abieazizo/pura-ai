@@ -11,13 +11,14 @@
  * promo / shelf-photo / non-product junk before any AI sees it.
  */
 
-import type { LiveProductCandidate } from '@/ai/ai-contracts';
+import type { ConcernType, LiveProductCandidate } from '@/ai/ai-contracts';
 import type { UserProfileContext, SkinState } from '@/types/canonical';
 import {
   BASE_CATEGORIES,
   resolveCategoryFromQuery,
   type BaseCategory,
 } from '@/data/baseCategories';
+import { interpretSearchIntent } from './queryIntent';
 import {
   CURATED_PRODUCTS,
   CURATED_BY_ID,
@@ -34,7 +35,13 @@ function scoreCurated(
   p: CuratedProduct,
   category: BaseCategory,
   profile: UserProfileContext,
-  skinState: SkinState | null
+  skinState: SkinState | null,
+  // v22.12 — optional explicit ingredient signals from the parsed
+  // query intent. When the user typed an ingredient (e.g.
+  // "niacinamide serum"), products tagged with that ingredient get
+  // a large boost so the hero is actually the niacinamide product,
+  // not the generic top-trusted product in the resolved category.
+  desiredIngredients?: readonly string[]
 ): number {
   let score = p.trustedScore;
 
@@ -50,6 +57,18 @@ function scoreCurated(
   const ingLower = p.ingredientTags.map((i) => i.toLowerCase());
   for (const boost of category.ingredientBoosts) {
     if (ingLower.some((i) => i.includes(boost.toLowerCase()))) score += 4;
+  }
+
+  // v22.12 — explicit-ingredient boost. Higher weight than category
+  // ingredient boosts because this came from the USER QUERY, not
+  // from the category's generic ingredient list.
+  if (desiredIngredients && desiredIngredients.length > 0) {
+    for (const want of desiredIngredients) {
+      const wantNorm = want.toLowerCase();
+      if (ingLower.some((i) => i.includes(wantNorm))) {
+        score += 24; // dominant signal — pushes ingredient products to top
+      }
+    }
   }
 
   // Skin profile alignment.
@@ -107,17 +126,51 @@ export function planTypedSearchDeterministic(
   profile: UserProfileContext,
   skinState: SkinState | null
 ): DeterministicSearchOutcome {
-  // Resolve category. If the query is vague ("best for me"), default
-  // to hydration (universally relevant, sensitivity-safe).
-  const resolved = resolveCategoryFromQuery(rawQuery);
+  // v22.12 — INTENT-FIRST RESOLUTION. The previous version only ran
+  // `resolveCategoryFromQuery(rawQuery)`, which used substring matching
+  // on raw text. That mis-routed queries like:
+  //   "niacinamide serum"  → Hydration (because 'niacinamide' is a
+  //                           hydration ingredient boost)
+  //   "hydrating cleanser" → Hydration (because 'hydrating' beat
+  //                           'cleanser' on substring score)
+  // We now parse the query into structured intent and prefer the
+  // explicit product-type signal over substring matches. The raw
+  // alias resolver is still the fallback when no productType is
+  // extracted.
+  const intent = interpretSearchIntent(rawQuery, profile, skinState);
+  // v22.12 — full intent-aware resolution. We try, in order:
+  //   1. Modifier override (e.g. 'barrier' modifier → barrier repair
+  //      category) for vague queries that lack a productType.
+  //   2. Combined productType + concern map (categoryFromIntent).
+  //   3. Raw substring alias resolver (last resort for queries that
+  //      neither extract a productType nor a recognized modifier).
+  const modifierCategory = categoryFromModifiers(
+    intent.modifiers,
+    intent.interpretedProductType
+  );
+  const intentCategory = categoryFromIntent(
+    intent.interpretedProductType,
+    intent.interpretedConcern
+  );
+  const resolved =
+    modifierCategory ?? intentCategory ?? resolveCategoryFromQuery(rawQuery);
+  // v22.6 — when the query is vague AND the user has a scan, route
+  // to the category that matches the user's TOP scan concern. Previous
+  // behavior defaulted to 'hydration' regardless of the user's actual
+  // need, so a user with breakouts typing "best for me" got hydration
+  // products. Personalization now drives the vague-query fallback.
   const category =
     resolved ??
+    categoryFromTopConcern(skinState) ??
+    categoryFromProfileSkinType(profile) ??
     BASE_CATEGORIES.find((c) => c.id === 'hydration')!;
 
-  // Score every curated product, sort desc, take top 18.
+  // v22.12 — pass parsed desiredIngredients into the scorer so
+  // ingredient-named queries surface the right product as hero.
+  const desiredIngredients = intent.desiredIngredients ?? [];
   const scored = CURATED_PRODUCTS.map((p) => ({
     p,
-    score: scoreCurated(p, category, profile, skinState),
+    score: scoreCurated(p, category, profile, skinState, desiredIngredients),
   })).sort((a, b) => b.score - a.score);
 
   // Hard-filter to candidates matching this category. If too few,
@@ -157,6 +210,196 @@ export function planTypedSearchDeterministic(
     }`,
     ranked,
   };
+}
+
+/**
+ * v22.12 — intent-aware category resolver. Combines the parsed
+ * productType + concern signals to pick a category that matches
+ * the user's full intent.
+ *
+ *   productType=serum + concern=dark_marks  → dark spots
+ *   productType=serum + concern=redness     → redness
+ *   productType=serum + concern=hydration   → hydration
+ *   productType=cleanser                    → gentle cleansers
+ *   productType=moisturizer                 → moisturizer
+ *   productType=exfoliant                   → exfoliation
+ *   productType=spf                         → sunscreen
+ *
+ * Returns null when neither productType nor concern is usable —
+ * caller falls through to the alias-substring resolver.
+ */
+function categoryFromIntent(
+  productType: string | null,
+  concern: string | null
+): BaseCategory | null {
+  // v22.12 — Authority order:
+  //   1. Format-decisive product types keep their category map even
+  //      if a concern is present. ("acne-safe moisturizer" stays in
+  //      moisturizer category; "gentle chemical exfoliant" stays in
+  //      exfoliation.)
+  //   2. `serum` is a format-only signal — concern decides which
+  //      shelf (dark spots / redness / breakouts / etc).
+  //   3. No productType → concern decides directly.
+  const FORMAT_DECISIVE = new Set([
+    'moisturizer',
+    'cleanser',
+    'spf',
+    'exfoliant',
+    'mask',
+    'spot_treatment',
+    'toner',
+    'eye_cream',
+  ]);
+  if (productType && FORMAT_DECISIVE.has(productType)) {
+    return categoryFromProductType(productType);
+  }
+  if (concern) {
+    // v26.2 — typed concern map. Keying on `ConcernType` instead of
+    // a loose string lets TypeScript catch typos in the call sites
+    // (e.g. `dark_mark` vs `dark_marks`) at build time.
+    const concernMap: Partial<Record<ConcernType, string>> = {
+      dark_marks: 'dark spots',
+      redness: 'redness',
+      breakouts: 'breakouts',
+      texture: 'texture',
+      hydration: 'hydration',
+      pores: 'breakouts',
+      sensitivity: 'redness',
+      oiliness: 'breakouts',
+    };
+    const concernCatId = concernMap[concern as ConcernType];
+    if (concernCatId) {
+      return BASE_CATEGORIES.find((c) => c.id === concernCatId) ?? null;
+    }
+  }
+  return categoryFromProductType(productType);
+}
+
+/**
+ * v22.12 — modifier-driven category override. Used for vague queries
+ * that don't extract a productType but carry a strong modifier
+ * (e.g. "barrier repair" → barrier repair category). Runs BEFORE
+ * the productType+concern map so the modifier wins even when the
+ * concern map would route elsewhere.
+ *
+ * v26.2 — expanded to the full modifier vocabulary. `barrier` always
+ * wins because barrier repair isn't a productType so the modifier is
+ * the only categorical hint. The remaining modifiers only override
+ * when no productType was extracted (the modifier is the user's
+ * strongest signal). Otherwise they fall through to bias scoring
+ * downstream without changing the shelf.
+ */
+function categoryFromModifiers(
+  modifiers: readonly string[],
+  productType: string | null
+): BaseCategory | null {
+  if (modifiers.includes('barrier')) {
+    return BASE_CATEGORIES.find((c) => c.id === 'barrier repair') ?? null;
+  }
+  // Once we have a productType, the format decides the shelf — the
+  // modifier merely biases ranking (e.g. "oil-free moisturizer"
+  // stays in moisturizer; oil-free preference is handled in scoring).
+  if (productType) return null;
+  if (modifiers.includes('oil-free')) {
+    return BASE_CATEGORIES.find((c) => c.id === 'breakouts') ?? null;
+  }
+  if (modifiers.includes('chemical') || modifiers.includes('physical')) {
+    return BASE_CATEGORIES.find((c) => c.id === 'exfoliation') ?? null;
+  }
+  if (modifiers.includes('gentle')) {
+    // Solo "gentle" with no productType → calming/sensitivity shelf.
+    return BASE_CATEGORIES.find((c) => c.id === 'redness') ?? null;
+  }
+  return null;
+}
+
+/**
+ * v22.12 — map an explicit `interpretedProductType` to a base
+ * category. The mapping reflects the CATEGORY shelf the user
+ * actually wants when they type a format-shaped query:
+ *
+ *   "niacinamide serum"  → productType=serum → breakouts shelf
+ *   "hydrating cleanser" → productType=cleanser → gentle cleansers
+ *   "best moisturizer"   → productType=moisturizer → moisturizer
+ *   "gentle exfoliant"   → productType=exfoliant → exfoliation
+ *
+ * Returns null when the product type is unknown — the caller falls
+ * through to the alias-substring resolver.
+ *
+ * Note: serum maps to `breakouts` because the curated catalog tags
+ * its strongest serums (BHA, niacinamide, retinol, AHA) under
+ * breakouts/texture, not under hydration. If you want a hydration-
+ * specific serum, type "hydrating serum" — that triggers the
+ * substring resolver, which finds 'hydrating serum' as a hydration
+ * alias.
+ */
+function categoryFromProductType(
+  productType: string | null
+): BaseCategory | null {
+  if (!productType) return null;
+  const mapping: Record<string, string> = {
+    moisturizer: 'moisturizer',
+    cleanser: 'gentle cleansers',
+    serum: 'breakouts',
+    toner: 'exfoliation',
+    spf: 'sunscreen',
+    mask: 'breakouts',
+    spot_treatment: 'breakouts',
+    exfoliant: 'exfoliation',
+    eye_cream: 'hydration',
+  };
+  const catId = mapping[productType];
+  if (!catId) return null;
+  return BASE_CATEGORIES.find((c) => c.id === catId) ?? null;
+}
+
+/**
+ * v22.6 — vague-query category fallback driven by the user's top
+ * scan concern. Returns null when no scan or no recognizable
+ * concern; caller falls through to other defaults.
+ */
+function categoryFromTopConcern(
+  skinState: SkinState | null
+): BaseCategory | null {
+  const top = skinState?.topConcerns?.[0]?.concern as ConcernType | undefined;
+  if (!top) return null;
+  // v26.2 — typed concern → category map (matches the Browse-by-goal
+  // rail). `Partial<Record<ConcernType, …>>` catches typos at build
+  // time and stays in sync with the canonical concern union.
+  const CONCERN_TO_CATEGORY: Partial<Record<ConcernType, string>> = {
+    breakouts: 'breakouts',
+    redness: 'redness',
+    hydration: 'hydration',
+    texture: 'texture',
+    dark_marks: 'dark spots',
+    oiliness: 'breakouts', // oily/acne-prone share the breakouts shelf
+    sensitivity: 'redness',
+    pores: 'breakouts',
+  };
+  const catId = CONCERN_TO_CATEGORY[top];
+  if (!catId) return null;
+  return BASE_CATEGORIES.find((c) => c.id === catId) ?? null;
+}
+
+/**
+ * v22.6 — last-resort fallback: profile skin type → category. Used
+ * only when there's no scan concern and the query is vague.
+ */
+function categoryFromProfileSkinType(
+  profile: UserProfileContext
+): BaseCategory | null {
+  if (!profile.skinType) return null;
+  switch (profile.skinType) {
+    case 'dry':
+      return BASE_CATEGORIES.find((c) => c.id === 'hydration') ?? null;
+    case 'oily':
+    case 'combination':
+      return BASE_CATEGORIES.find((c) => c.id === 'breakouts') ?? null;
+    case 'sensitive':
+      return BASE_CATEGORIES.find((c) => c.id === 'redness') ?? null;
+    default:
+      return null;
+  }
 }
 
 function buildUserNeedSummary(

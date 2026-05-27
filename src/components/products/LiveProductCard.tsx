@@ -81,7 +81,7 @@ function _traceImageRender(candidateId: string, loaded: boolean): void {
 }
 import { buildSearchUrl } from '@/api/liveProducts';
 
-export type LiveProductCardVariant = 'hero' | 'alt';
+export type LiveProductCardVariant = 'hero' | 'alt' | 'list';
 
 export interface LiveProductCardProps {
   candidate: LiveProductCandidate;
@@ -180,6 +180,9 @@ export function LiveProductCard({
   if (variant === 'hero') {
     return <HeroCard candidate={candidate} onOpen={handleOpen} />;
   }
+  if (variant === 'list') {
+    return <ListCard candidate={candidate} onOpen={handleOpen} />;
+  }
   return <AltCard candidate={candidate} onOpen={handleOpen} />;
 }
 
@@ -194,11 +197,16 @@ function HeroCard({
   candidate: LiveProductCandidate;
   onOpen: () => void;
 }) {
+  // v22.4 — use the deterministic fitBand from the trust scorer to
+  // label the card honestly. Falls back to a `related` label for
+  // any legacy candidates that haven't been scored yet.
+  const band = candidate.fitBand ?? 'related';
+  const bandCopy = fitBandLabel(band, candidate);
   return (
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`${candidate.brand} ${candidate.name}, ${candidate.matchScore} percent match`}
+      accessibilityLabel={`${candidate.brand} ${candidate.name}, ${bandCopy.label}`}
       style={({ pressed }) => [
         heroStyles.card,
         pressed && { opacity: 0.96 },
@@ -210,12 +218,17 @@ function HeroCard({
           radius={14}
           showWordmark
         />
-        <View style={heroStyles.matchPill}>
+        <View
+          style={[
+            heroStyles.matchPill,
+            { backgroundColor: bandCopy.bg },
+          ]}
+        >
           <Text style={heroStyles.matchPillNum} maxFontSizeMultiplier={1.1}>
-            {`${candidate.matchScore}%`}
+            {bandCopy.label}
           </Text>
           <Text style={heroStyles.matchPillLabel} maxFontSizeMultiplier={1.1}>
-            MATCH
+            {bandCopy.kicker}
           </Text>
         </View>
       </View>
@@ -273,6 +286,161 @@ function HeroCard({
 }
 
 // ---------------------------------------------------------------------------
+// List variant — v23.0 compact vertical row.
+//
+// Used as the PRIMARY alternative-card layout under the hero on the
+// Products tab. Replaces the previous two-column grid that read like
+// a cheap ecommerce catalog. The row puts a 72×72 image tile on the
+// left, all card text on the right (brand kicker, sans-serif name,
+// sans-serif reason 2-3 lines, fit-band label, price). Premium,
+// readable, and clearly subordinate to the hero card above it.
+// ---------------------------------------------------------------------------
+
+function ListCard({
+  candidate,
+  onOpen,
+}: {
+  candidate: LiveProductCandidate;
+  onOpen: () => void;
+}) {
+  const band = candidate.fitBand ?? 'related';
+  const bandCopy = fitBandLabel(band, candidate);
+  return (
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`${candidate.brand} ${candidate.name}, ${bandCopy.label}`}
+      style={({ pressed }) => [
+        listStyles.card,
+        pressed && { opacity: 0.96 },
+      ]}
+    >
+      <View style={listStyles.imageWrap}>
+        <PackshotOrPlaceholder candidate={candidate} radius={12} />
+      </View>
+      <View style={listStyles.text}>
+        <View style={listStyles.topRow}>
+          <Text style={listStyles.brand} maxFontSizeMultiplier={1.1}>
+            {candidate.brand.toUpperCase()}
+          </Text>
+          <View
+            style={[
+              listStyles.bandPill,
+              { backgroundColor: bandCopy.compactBg },
+            ]}
+          >
+            <Text
+              style={listStyles.bandPillText}
+              maxFontSizeMultiplier={1.1}
+              numberOfLines={1}
+            >
+              {bandCopy.label}
+            </Text>
+          </View>
+        </View>
+        <Text
+          style={listStyles.name}
+          numberOfLines={2}
+          maxFontSizeMultiplier={1.15}
+        >
+          {candidate.name}
+        </Text>
+        {candidate.matchReason && candidate.matchReason.trim().length > 0 ? (
+          <Text
+            style={listStyles.reason}
+            numberOfLines={3}
+            maxFontSizeMultiplier={1.2}
+          >
+            {candidate.matchReason}
+          </Text>
+        ) : null}
+        {candidate.price !== null && candidate.price > 0 ? (
+          <Text style={listStyles.price} maxFontSizeMultiplier={1.1}>
+            {formatPrice(candidate.price, candidate.currency)}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+const listStyles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    gap: 14,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
+  },
+  imageWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: palette.bgDeep,
+    position: 'relative',
+  },
+  text: {
+    flex: 1,
+    gap: 2,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 2,
+  },
+  brand: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: palette.inkTertiary,
+    flex: 1,
+  },
+  bandPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  bandPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 0.2,
+    color: palette.inkInverse,
+  },
+  // v23.0 — sans-serif name for utility readability. The hero card
+  // keeps a serif name for editorial weight; the list-row name is
+  // utility-grade.
+  name: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.1,
+    color: palette.ink,
+  },
+  // v23.0 — REASON IS SANS-SERIF + READABLE. The old italic-serif
+  // reason was decorative; this is the most important content of the
+  // card and now reads as such.
+  reason: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: palette.inkSecondary,
+    marginTop: 4,
+  },
+  price: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: palette.inkSecondary,
+    marginTop: 6,
+    fontVariant: ['tabular-nums'],
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Alt variant — compact, used in carousels and assistant inline cards.
 // ---------------------------------------------------------------------------
 
@@ -283,11 +451,17 @@ function AltCard({
   candidate: LiveProductCandidate;
   onOpen: () => void;
 }) {
+  // v22.4 — fitBand replaces the raw %. The compact badge shows
+  // the band label only; the % subtext sits below for transparency
+  // when the user wants it. Curated-source cards still surface the
+  // band but with the honest fallback fit cap.
+  const band = candidate.fitBand ?? 'related';
+  const bandCopy = fitBandLabel(band, candidate);
   return (
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`${candidate.brand} ${candidate.name}, ${candidate.matchScore} percent match`}
+      accessibilityLabel={`${candidate.brand} ${candidate.name}, ${bandCopy.label}`}
       style={({ pressed }) => [
         altStyles.card,
         pressed && { opacity: 0.94 },
@@ -295,9 +469,14 @@ function AltCard({
     >
       <View style={altStyles.imageWrap}>
         <PackshotOrPlaceholder candidate={candidate} radius={12} />
-        <View style={altStyles.matchBadge}>
+        <View
+          style={[
+            altStyles.matchBadge,
+            { backgroundColor: bandCopy.compactBg },
+          ]}
+        >
           <Text style={altStyles.matchBadgeText} maxFontSizeMultiplier={1.1}>
-            {`${candidate.matchScore}%`}
+            {bandCopy.label}
           </Text>
         </View>
       </View>
@@ -311,6 +490,19 @@ function AltCard({
       >
         {candidate.name}
       </Text>
+      {/* v22.6 — concise why-it-fits line. Built deterministically
+          from the scoring breakdown (or supplied by the AI planner
+          when available). Reads as a short editorial caption rather
+          than a marketing claim. */}
+      {candidate.matchReason && candidate.matchReason.trim().length > 0 ? (
+        <Text
+          style={altStyles.reason}
+          numberOfLines={2}
+          maxFontSizeMultiplier={1.2}
+        >
+          {candidate.matchReason}
+        </Text>
+      ) : null}
       {candidate.price !== null && candidate.price > 0 ? (
         <Text style={altStyles.price} maxFontSizeMultiplier={1.1}>
           {formatPrice(candidate.price, candidate.currency)}
@@ -318,6 +510,114 @@ function AltCard({
       ) : null}
     </Pressable>
   );
+}
+
+/**
+ * v22.9 — context-aware match label. The previous v22.4 labels
+ * ("Exact fit / Strong fit / Related / Broad") were honest about
+ * ranking but generic about what the product DOES. This map now
+ * inspects the candidate to pick a label that reads as a real
+ * skincare recommendation:
+ *
+ *   • "Best match"        — exact-band, no strong concern signal
+ *   • "Good for breakouts" — concernTags includes 'breakouts'
+ *   • "Hydration pick"     — concernTags includes 'hydration'
+ *   • "Barrier support"    — name/desc mentions ceramides/barrier/repair
+ *   • "Gentle option"      — skinTypeTags includes 'sensitive' OR
+ *                            strength=='gentle' OR name has 'gentle'
+ *   • "Dark mark support"  — concernTags includes 'dark_marks'
+ *   • "Texture support"    — concernTags includes 'texture'
+ *   • "Sensitive-skin pick"— skinTypeTags includes 'sensitive'
+ *   • "Similar match"      — related band with no specific signal
+ *   • "Curated pick"       — broad band
+ *
+ * The pill BG colour still encodes the fit band so the visual
+ * hierarchy is preserved (exact = moss/green-ish; related = clay;
+ * broad = neutral) while the label text becomes useful.
+ */
+function fitBandLabel(
+  band: 'exact' | 'strong' | 'related' | 'broad',
+  candidate?: LiveProductCandidate
+): {
+  label: string;
+  kicker: string;
+  bg: string;
+  compactBg: string;
+} {
+  // Visual band BG — preserved from v22.4 so users still read fit
+  // intensity at a glance via colour.
+  const bandViz = (() => {
+    switch (band) {
+      case 'exact':
+        return { bg: palette.moss, compactBg: 'rgba(11,18,32,0.78)' };
+      case 'strong':
+        return {
+          bg: palette.mossDeep ?? palette.moss,
+          compactBg: 'rgba(11,18,32,0.72)',
+        };
+      case 'related':
+        return { bg: palette.clay, compactBg: 'rgba(89,55,30,0.78)' };
+      case 'broad':
+      default:
+        return { bg: palette.inkTertiary, compactBg: 'rgba(11,18,32,0.55)' };
+    }
+  })();
+
+  const contextLabel = deriveContextLabel(band, candidate);
+
+  return {
+    label: contextLabel,
+    kicker: band === 'exact' || band === 'strong' ? 'MATCH' : 'PICK',
+    ...bandViz,
+  };
+}
+
+function deriveContextLabel(
+  band: 'exact' | 'strong' | 'related' | 'broad',
+  candidate?: LiveProductCandidate
+): string {
+  if (!candidate) {
+    if (band === 'exact' || band === 'strong') return 'Best match';
+    if (band === 'related') return 'Similar match';
+    return 'Curated pick';
+  }
+  const tags = (candidate.concernTags ?? []) as string[];
+  const skinTypes = (candidate.skinTypeTags ?? []).map((t) =>
+    t.toLowerCase()
+  );
+  const corpus = `${candidate.name ?? ''} ${candidate.shortDescription ?? ''}`.toLowerCase();
+  // Exact + strong bands: prefer a "Best/Top" framing.
+  if (band === 'exact' || band === 'strong') {
+    if (tags.includes('breakouts')) return 'For active-looking areas';
+    if (tags.includes('hydration')) return 'Hydration pick';
+    if (tags.includes('dark_marks')) return 'Dark mark support';
+    if (tags.includes('texture')) return 'Texture support';
+    if (tags.includes('redness') || tags.includes('sensitivity')) {
+      return 'Sensitive-skin pick';
+    }
+    if (/cerami[de]+|barrier|repair/i.test(corpus)) return 'Barrier support';
+    if (skinTypes.includes('sensitive') || /gentle\b/.test(corpus)) {
+      return 'Gentle option';
+    }
+    return 'Best match';
+  }
+  // Related band: framing softer ("good for", "support") still works.
+  if (band === 'related') {
+    if (tags.includes('breakouts')) return 'For active-looking areas';
+    if (tags.includes('hydration')) return 'Hydration pick';
+    if (tags.includes('dark_marks')) return 'Dark mark support';
+    if (tags.includes('texture')) return 'Texture support';
+    if (tags.includes('redness') || tags.includes('sensitivity')) {
+      return 'Sensitive-skin pick';
+    }
+    if (/cerami[de]+|barrier|repair/i.test(corpus)) return 'Barrier support';
+    if (skinTypes.includes('sensitive') || /gentle\b/.test(corpus)) {
+      return 'Gentle option';
+    }
+    return 'Similar match';
+  }
+  // Broad band: honest "Curated pick" framing.
+  return 'Curated pick';
 }
 
 // ---------------------------------------------------------------------------
@@ -334,57 +634,78 @@ function PackshotOrPlaceholder({
   radius: number;
   showWordmark?: boolean;
 }) {
-  if (candidate.imageUrl && /^https?:\/\//i.test(candidate.imageUrl)) {
+  // v22.5 — track per-card image error so we can swap to the
+  // branded placeholder when expo-image's onError fires. Without
+  // this state, an imageUrl that 404s leaves the card with a
+  // visible empty box.
+  const [imageErrored, setImageErrored] = React.useState(false);
+  const hasUrl =
+    !!candidate.imageUrl && /^https?:\/\//i.test(candidate.imageUrl);
+  if (hasUrl && !imageErrored) {
     return (
       <Image
-        source={{ uri: candidate.imageUrl }}
+        source={{ uri: candidate.imageUrl as string }}
         style={[StyleSheet.absoluteFillObject, { borderRadius: radius }]}
         contentFit="cover"
         transition={180}
-        // v19.32 — report decode success/failure to the trace
-        // store so diagnostics + the user can verify whether
-        // the bitmap actually rendered (vs payload had URL but
-        // expo-image errored). The card receives `onLoad` /
-        // `onError` props from the parent below.
         onLoad={() => {
-          // forwarded by the wrapping card via globalLoad shim
-          // (see `_traceImageRender` below).
           _traceImageRender(candidate.id, true);
         }}
         onError={() => {
+          // Swap to the branded placeholder on decode failure.
+          setImageErrored(true);
           _traceImageRender(candidate.id, false);
         }}
       />
     );
   }
-  // Minimal brand-wordmark placeholder. Reads as "image not yet
-  // resolved" — quiet, never as "demo product".
+  // v23.0 — premium MISSING-IMAGE placeholder. The old treatment
+  // showed a giant brand wordmark inside the image area, which made
+  // the placeholder dominate the card and duplicate the brand kicker
+  // rendered below the image. This version is the opposite:
+  //   • soft brand-blue surface (clayPaper)
+  //   • small droplet glyph (Pura motif)
+  //   • brand INITIALS only (e.g. "TO" for The Ordinary), never the
+  //     full wordmark
+  //   • on the hero variant, no product wordmark — the hero's own
+  //     name text already lives outside the image
+  // Reads as an intentional brand fallback, not a fake product tile.
+  const initials = brandInitials(candidate.brand);
   return (
     <View
       style={[
         placeholderStyles.box,
         { borderRadius: radius },
-        showWordmark && placeholderStyles.tall,
       ]}
     >
+      <View style={placeholderStyles.dropletWrap} pointerEvents="none">
+        <View style={placeholderStyles.dropletTail} />
+        <View style={placeholderStyles.dropletBody} />
+      </View>
       <Text
-        style={placeholderStyles.brand}
+        style={placeholderStyles.initials}
         maxFontSizeMultiplier={1.1}
         numberOfLines={1}
       >
-        {candidate.brand.toUpperCase()}
+        {initials}
       </Text>
-      {showWordmark ? (
-        <Text
-          style={placeholderStyles.product}
-          maxFontSizeMultiplier={1.15}
-          numberOfLines={2}
-        >
-          {candidate.name}
-        </Text>
-      ) : null}
+      {/* v23.0 — `showWordmark` retained for API compatibility but
+          no longer used. The hero card renders the product name in
+          its own text column, outside the image area. */}
+      {showWordmark ? null : null}
     </View>
   );
+}
+
+function brandInitials(brand: string): string {
+  if (!brand) return '·';
+  const tokens = brand
+    .replace(/[^A-Za-z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return brand.slice(0, 2).toUpperCase();
+  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
+  return (tokens[0][0] + tokens[1][0]).toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -525,20 +846,35 @@ const altStyles = StyleSheet.create({
   },
   brand: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
+    // v22.6 — was 9; raised to 10 for legibility. Still reads as a
+    // kicker because of the letterSpacing + tertiary color.
+    fontSize: 10,
     letterSpacing: 1.2,
     color: palette.inkTertiary,
     marginBottom: 2,
   },
+  // v23.0 — sans-serif title for product utility. Serif reads as
+  // editorial decoration on a dense product card; sans-serif reads
+  // as a real product name a shopper would scan.
   name: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 13,
-    lineHeight: 16,
-    letterSpacing: -0.2,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.1,
     color: palette.ink,
   },
+  // v23.0 — REASON IS SANS-SERIF + READABLE. The old italic-serif
+  // reason rendered as decorative italic that read like a caption
+  // for the brand, not the most important content on the card.
+  reason: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: palette.inkSecondary,
+    marginTop: 4,
+  },
   price: {
-    fontFamily: 'InstrumentSerif-SemiBold',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 12,
     color: palette.inkSecondary,
     marginTop: 4,
@@ -547,30 +883,49 @@ const altStyles = StyleSheet.create({
 });
 
 const placeholderStyles = StyleSheet.create({
+  // v23.0 — compact premium placeholder. Soft brand-blue surface
+  // with a small Pura-style droplet motif + brand initials. No
+  // giant brand wordmark inside — the brand kicker rendered next
+  // to the placeholder (outside this component) is the brand
+  // identity surface; this is just the image stand-in.
   box: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
-    backgroundColor: palette.bgDeep,
+    backgroundColor: palette.clayPaper,
+    gap: 6,
   },
-  tall: {
-    paddingTop: 16,
-    paddingBottom: 16,
-    justifyContent: 'space-between',
+  // Droplet motif — tail (small triangle dot) on top, body (rounded
+  // circle) below. Reads as a calm Pura mark rather than a fake
+  // bottle silhouette.
+  dropletWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.55,
+    marginBottom: 2,
   },
-  brand: {
+  dropletTail: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderBottomWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: palette.clayDeep,
+    marginBottom: -1,
+  },
+  dropletBody: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: palette.clayDeep,
+  },
+  initials: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-    textAlign: 'center',
-  },
-  product: {
-    fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 13,
-    lineHeight: 16,
-    color: palette.inkSecondary,
+    letterSpacing: 0.8,
+    color: palette.clayDeep,
     textAlign: 'center',
   },
 });

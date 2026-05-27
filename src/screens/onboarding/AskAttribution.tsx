@@ -25,7 +25,9 @@ export interface AskAttributionProps {
 const GlyphWrapper =
   (Draw: React.FC<{ size: number; color: string }>): React.FC<PhosphorIconProps> =>
   ({ size = 24, color = palette.ink, style }) =>
-    <View style={style as any}><Draw size={size} color={color as string} /></View>;
+    // v22.11 — Phosphor's IconProps.size is `string | number`. Our
+    // local Draw wrapper requires `number`, so coerce here.
+    <View style={style as any}><Draw size={typeof size === 'number' ? size : Number(size) || 24} color={color as string} /></View>;
 
 const GoogleG = GlyphWrapper(({ size, color }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">

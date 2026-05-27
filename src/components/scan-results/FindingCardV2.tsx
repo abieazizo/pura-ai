@@ -27,10 +27,19 @@ export interface FindingCardV2Props {
   onPress(): void;
 }
 
-function withAlpha(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
+// Defensive hex parser. A stale persisted finding can carry a severity
+// outside 1-5 which makes SEVERITY_COLOR[finding.severity] return
+// undefined; without this guard the slice() chain throws and the whole
+// results screen white-screens.
+const FALLBACK_HEX = '#7FA8C4';
+function withAlpha(hex: string | undefined, alpha: number): string {
+  const safe =
+    typeof hex === 'string' && /^#[0-9a-fA-F]{6}$/.test(hex)
+      ? hex
+      : FALLBACK_HEX;
+  const r = parseInt(safe.slice(1, 3), 16);
+  const g = parseInt(safe.slice(3, 5), 16);
+  const b = parseInt(safe.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
@@ -40,8 +49,16 @@ export function FindingCardV2({
   selected,
   onPress,
 }: FindingCardV2Props) {
-  const sevColor = SEVERITY_COLOR[finding.severity];
-  const sevLabel = SEVERITY_LABEL[finding.severity];
+  // Clamp severity into the 1-5 range so all downstream lookups
+  // (color, label, alpha math) are guaranteed to resolve.
+  const sevLevel: 1 | 2 | 3 | 4 | 5 =
+    typeof finding.severity === 'number' &&
+    finding.severity >= 1 &&
+    finding.severity <= 5
+      ? (Math.round(finding.severity) as 1 | 2 | 3 | 4 | 5)
+      : 2;
+  const sevColor = SEVERITY_COLOR[sevLevel] ?? FALLBACK_HEX;
+  const sevLabel = SEVERITY_LABEL[sevLevel];
 
   const expand = useSharedValue(0);
   useEffect(() => {

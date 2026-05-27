@@ -15,7 +15,6 @@
  */
 
 import { useMemo } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
 import { selectSkinState, selectUserProfileContext } from '@/state/canonical';
 import {
@@ -32,34 +31,79 @@ import type {
  * Subscribe to UserProfileContext. Re-renders when any field that
  * feeds into the canonical object changes (name, skinType, goal,
  * sensitivity tags, safety profile inputs, latest scan, routine).
+ *
+ * v22.6 — the previous `useShallow((s) => ({ user, name, ...17
+ * fields }))` selector was identified as a contributor to React 19's
+ * `getSnapshot should be cached` warning, because every render
+ * recomputed the slice object even when the underlying fields had
+ * not changed. The fix splits the subscription into primitive
+ * selectors (Object.is comparison stops the re-render at the source)
+ * and reassembles the slice inside `useMemo` so
+ * `selectUserProfileContext` only runs when one of its real inputs
+ * changed.
  */
 export function useUserProfileContext(): UserProfileContext {
-  const slice = useAppStore(
-    useShallow((s) => ({
-      user: s.user,
-      name: s.name,
-      skinType: s.skinType,
-      sensitivity: s.sensitivity,
-      goal: s.goal,
-      effort: s.effort,
-      priceTier: s.priceTier,
-      skinConditions: s.skinConditions,
-      prescriptionFlag: s.prescriptionFlag,
-      fragranceSensitive: s.fragranceSensitive,
-      activeIrritation: s.activeIrritation,
-      pregnancyCaution: s.pregnancyCaution,
-      avoidIngredients: s.avoidIngredients,
-      userRoutineMorning: s.userRoutineMorning,
-      userRoutineEvening: s.userRoutineEvening,
-      wishlist: s.wishlist,
-      scans: s.scans,
-    }))
-  );
-  // selectUserProfileContext takes the full AppState shape but only
-  // touches the fields above; cast is safe.
+  const user = useAppStore((s) => s.user);
+  const name = useAppStore((s) => s.name);
+  const skinType = useAppStore((s) => s.skinType);
+  const sensitivity = useAppStore((s) => s.sensitivity);
+  const goal = useAppStore((s) => s.goal);
+  const effort = useAppStore((s) => s.effort);
+  const priceTier = useAppStore((s) => s.priceTier);
+  const skinConditions = useAppStore((s) => s.skinConditions);
+  const prescriptionFlag = useAppStore((s) => s.prescriptionFlag);
+  const fragranceSensitive = useAppStore((s) => s.fragranceSensitive);
+  const activeIrritation = useAppStore((s) => s.activeIrritation);
+  const pregnancyCaution = useAppStore((s) => s.pregnancyCaution);
+  const avoidIngredients = useAppStore((s) => s.avoidIngredients);
+  const userRoutineMorning = useAppStore((s) => s.userRoutineMorning);
+  const userRoutineEvening = useAppStore((s) => s.userRoutineEvening);
+  const wishlist = useAppStore((s) => s.wishlist);
+  const scans = useAppStore((s) => s.scans);
+  const onboardingComplete = useAppStore((s) => s.onboardingComplete);
+
   return useMemo(
-    () => selectUserProfileContext(slice as never),
-    [slice]
+    () =>
+      selectUserProfileContext({
+        user,
+        name,
+        skinType,
+        sensitivity,
+        goal,
+        effort,
+        priceTier,
+        skinConditions,
+        prescriptionFlag,
+        fragranceSensitive,
+        activeIrritation,
+        pregnancyCaution,
+        avoidIngredients,
+        userRoutineMorning,
+        userRoutineEvening,
+        wishlist,
+        scans,
+        onboardingComplete,
+      } as never),
+    [
+      user,
+      name,
+      skinType,
+      sensitivity,
+      goal,
+      effort,
+      priceTier,
+      skinConditions,
+      prescriptionFlag,
+      fragranceSensitive,
+      activeIrritation,
+      pregnancyCaution,
+      avoidIngredients,
+      userRoutineMorning,
+      userRoutineEvening,
+      wishlist,
+      scans,
+      onboardingComplete,
+    ]
   );
 }
 

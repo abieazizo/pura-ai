@@ -13,40 +13,50 @@ const ROWS = [
   {
     value: 'rarely',
     Icon: HouseLine,
-    label: 'Rarely',
-    helper: 'Mostly indoors \u2014 under an hour outside',
+    label: 'Mostly indoors',
+    helper: 'Less than 1 hour outside',
   },
   {
     value: 'sometimes',
     Icon: Sun,
-    label: 'Sometimes',
-    helper: 'One to three hours on an average day',
+    label: 'Mixed',
+    helper: '1–3 hours outside',
   },
   {
     value: 'often',
     Icon: SunHorizon,
-    label: 'Often',
-    helper: 'Three or more hours outdoors daily',
+    label: 'Outdoors often',
+    helper: '3+ hours outside',
   },
   {
     value: 'unsure',
     Icon: Question,
-    label: 'Not sure',
-    helper: 'It varies a lot',
+    label: 'It changes',
+    helper: 'My schedule varies',
   },
 ] as const;
 
+/**
+ * v20.0 — Screen 7: sun / lifestyle.
+ *
+ * Honest copy: SPF guidance is real, the local UV index integration
+ * isn't. The subhead avoids over-promising "we'll use your local UV"
+ * because that path doesn't exist yet.
+ */
 export function AskSunExposure({ onNext }: AskSunExposureProps) {
   const sunExposure = useAppStore((s) => s.sunExposure);
   const setSunExposure = useAppStore((s) => s.setSunExposure);
 
   return (
     <QuestionLayout
-      step={7}
-      totalSteps={11}
-      headline="How much sun do you get?"
-      subhead="Sun is the biggest aging variable. I'll scale SPF guidance to your life."
+      step={6}
+      totalSteps={8}
+      sectionLabel="Lifestyle"
+      headline="How much direct sun do you usually get?"
+      subhead="This tunes SPF guidance around your lifestyle."
+      ctaLabel="Continue"
       ctaDisabled={!sunExposure}
+      disabledReason="Choose one to continue"
       onCta={() => sunExposure && onNext()}
     >
       <ChoiceList>

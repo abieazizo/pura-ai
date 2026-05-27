@@ -1,19 +1,19 @@
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withRepeat,
   withTiming,
-  cancelAnimation,
 } from 'react-native-reanimated';
+import { ShieldCheck } from 'phosphor-react-native';
 import { PuraMark } from '@/components/PuraMark';
-import { DeviceFrame } from '@/components/scan/DeviceFrame';
 import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
+import { ValuePreviewCard } from '@/components/onboarding/ValuePreviewCard';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { palette } from '@/theme';
 
 export interface SplashProps {
@@ -22,145 +22,164 @@ export interface SplashProps {
 }
 
 /**
- * Splash (§2.5). No header, no progress bar. Editorial stack: small Mark,
- * huge serif headline, italic subhead, DeviceFrame with a looping demo
- * video (or animated placeholder), primary CTA, sign-in tail.
+ * v20.0 — Welcome.
  *
- * The video asset `assets/videos/splash-demo.mp4` isn't shipped in this
- * build — the DeviceFrame renders the pulsing-Mark placeholder per §2.5.
- * When the asset is added, swap the `StageFallback` for an `expo-video`
- * `<VideoView>` bound to a `useVideoPlayer` hook.
+ * The promise screen. Editorial serif headline, sans-serif sub, a real
+ * value-preview card (skin score · trending down · tonight focus ·
+ * 84-day plan badge — not an empty droplet), trust row, primary CTA
+ * "Start my skin profile", "I already have an account" tail.
+ *
+ * Goal: the user should immediately understand "this is a private skin
+ * intelligence system, not a questionnaire". The preview card sets
+ * expectations for what they'll see after their first scan.
  */
 export function Splash({ onGetStarted, onSignIn }: SplashProps) {
-  // Entrance timeline per §2.5
+  const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
+
   const markOpacity = useSharedValue(0);
   const headlineOpacity = useSharedValue(0);
-  const headlineY = useSharedValue(12);
-  const subheadOpacity = useSharedValue(0);
-  const subheadY = useSharedValue(12);
-  const frameOpacity = useSharedValue(0);
+  const headlineY = useSharedValue(reduceMotion ? 0 : 10);
+  const subOpacity = useSharedValue(0);
+  const cardOpacity = useSharedValue(0);
+  const cardY = useSharedValue(reduceMotion ? 0 : 14);
+  const trustOpacity = useSharedValue(0);
+  const ctaOpacity = useSharedValue(0);
 
   useEffect(() => {
-    markOpacity.value = withTiming(1, {
-      duration: 200,
-      easing: Easing.out(Easing.cubic),
-    });
+    const easeOut = Easing.out(Easing.cubic);
+    markOpacity.value = withTiming(1, { duration: 240, easing: easeOut });
     headlineOpacity.value = withDelay(
-      100,
-      withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) })
+      80,
+      withTiming(1, { duration: 360, easing: easeOut })
     );
     headlineY.value = withDelay(
-      100,
-      withTiming(0, { duration: 400, easing: Easing.out(Easing.cubic) })
+      80,
+      withTiming(0, { duration: 360, easing: easeOut })
     );
-    subheadOpacity.value = withDelay(
+    subOpacity.value = withDelay(
       200,
-      withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) })
+      withTiming(1, { duration: 360, easing: easeOut })
     );
-    subheadY.value = withDelay(
-      200,
-      withTiming(0, { duration: 400, easing: Easing.out(Easing.cubic) })
-    );
-    frameOpacity.value = withDelay(
+    cardOpacity.value = withDelay(
       300,
-      withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) })
+      withTiming(1, { duration: 420, easing: easeOut })
     );
-  }, [markOpacity, headlineOpacity, headlineY, subheadOpacity, subheadY, frameOpacity]);
+    cardY.value = withDelay(
+      300,
+      withTiming(0, { duration: 420, easing: easeOut })
+    );
+    trustOpacity.value = withDelay(
+      520,
+      withTiming(1, { duration: 360, easing: easeOut })
+    );
+    ctaOpacity.value = withDelay(
+      400,
+      withTiming(1, { duration: 360, easing: easeOut })
+    );
+  }, [
+    markOpacity,
+    headlineOpacity,
+    headlineY,
+    subOpacity,
+    cardOpacity,
+    cardY,
+    trustOpacity,
+    ctaOpacity,
+  ]);
 
-  const markStyle = useAnimatedStyle(() => ({ opacity: markOpacity.value }));
+  const markStyle = useAnimatedStyle(() => ({
+    opacity: markOpacity.value,
+  }));
   const headlineStyle = useAnimatedStyle(() => ({
     opacity: headlineOpacity.value,
     transform: [{ translateY: headlineY.value }],
   }));
-  const subheadStyle = useAnimatedStyle(() => ({
-    opacity: subheadOpacity.value,
-    transform: [{ translateY: subheadY.value }],
+  const subStyle = useAnimatedStyle(() => ({
+    opacity: subOpacity.value,
   }));
-  const frameStyle = useAnimatedStyle(() => ({
-    opacity: frameOpacity.value,
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: cardOpacity.value,
+    transform: [{ translateY: cardY.value }],
+  }));
+  const trustStyle = useAnimatedStyle(() => ({
+    opacity: trustOpacity.value,
+  }));
+  const ctaStyle = useAnimatedStyle(() => ({
+    opacity: ctaOpacity.value,
   }));
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
 
-      <View style={styles.content}>
-        <View style={{ height: 40 }} />
+      <View style={styles.topRow}>
         <Animated.View style={markStyle}>
-          <PuraMark variant="idle" size="md" />
+          <PuraMark variant="idle" size="sm" />
         </Animated.View>
+        <Text style={styles.wordmark}>PURA</Text>
+      </View>
 
-        <View style={{ height: 24 }} />
+      <View style={styles.body}>
         <Animated.Text
           style={[styles.headline, headlineStyle]}
           maxFontSizeMultiplier={1.15}
           accessibilityRole="header"
         >
-          Read your skin. Every day.
+          {'Your skin changes daily.\nPura tells you why.'}
         </Animated.Text>
 
-        <View style={{ height: 12 }} />
-        <Animated.Text style={[styles.subhead, subheadStyle]} maxFontSizeMultiplier={1.2}>
-          Thirty seconds a day. I{"\u2019"}ll track what{"\u2019"}s changing and tell you what to do.
+        <Animated.Text
+          style={[styles.sub, subStyle]}
+          maxFontSizeMultiplier={1.25}
+        >
+          Scan once, then get a routine that adapts to breakouts, dryness,
+          texture, and sensitivity.
         </Animated.Text>
 
-        <View style={styles.spacer} />
+        <View style={{ flex: 1 }} />
 
-        <Animated.View style={[styles.frameWrap, frameStyle]}>
-          <DeviceFrame width={260} height={480}>
-            <StageFallback />
-          </DeviceFrame>
+        <Animated.View style={cardStyle}>
+          <ValuePreviewCard />
         </Animated.View>
 
-        <View style={styles.spacer} />
+        <View style={{ flex: 1 }} />
+
+        <Animated.View
+          style={[styles.trustRow, trustStyle]}
+          accessible
+          accessibilityLabel="Private scans, gentle adjustments, 84-day plan"
+        >
+          <ShieldCheck size={13} color={palette.inkTertiary} weight="duotone" />
+          <Text style={styles.trustText} maxFontSizeMultiplier={1.1}>
+            Private scans  ·  Gentle adjustments  ·  84-day plan
+          </Text>
+        </Animated.View>
       </View>
 
-      <OnboardingPrimaryButton label="Get started." onPress={onGetStarted} />
-
-      <View style={{ height: 16 }} />
-      <Pressable
-        onPress={onSignIn}
-        accessibilityRole="button"
-        accessibilityLabel="Sign in to an existing account"
-        style={styles.signInWrap}
-        hitSlop={6}
-      >
-        <Text style={styles.signInLead}>
-          Already have an account?{' '}
-          <Text style={styles.signInAction}>Sign in.</Text>
-        </Text>
-      </Pressable>
-      <View style={{ height: 24 }} />
-    </SafeAreaView>
-  );
-}
-
-/**
- * The inside-of-phone placeholder. Sand bg with the Mark pulsing (§2.5
- * fallback — video asset pending).
- */
-function StageFallback() {
-  const pulse = useSharedValue(0);
-  useEffect(() => {
-    pulse.value = withRepeat(
-      withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true
-    );
-    return () => cancelAnimation(pulse);
-  }, [pulse]);
-
-  const markStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 0.96 + 0.08 * pulse.value }],
-    opacity: 0.7 + 0.3 * pulse.value,
-  }));
-
-  return (
-    <View style={stageStyles.root}>
-      <Animated.View style={markStyle}>
-        <PuraMark variant="idle" size="lg" glow />
+      <Animated.View style={[styles.ctaWrap, ctaStyle]}>
+        <OnboardingPrimaryButton
+          label="Start my skin plan"
+          onPress={onGetStarted}
+        />
+        <Pressable
+          onPress={onSignIn}
+          accessibilityRole="button"
+          accessibilityLabel="I already have an account, sign in"
+          style={({ pressed }) => [
+            styles.signInRow,
+            pressed && { opacity: 0.7 },
+          ]}
+          hitSlop={8}
+        >
+          <Text style={styles.signInLead} maxFontSizeMultiplier={1.15}>
+            I already have an account.{' '}
+            <Text style={styles.signInAction}>Sign in.</Text>
+          </Text>
+        </Pressable>
+        <View style={{ height: insets.bottom > 0 ? insets.bottom : 16 }} />
       </Animated.View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -169,55 +188,70 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.bg,
   },
-  content: {
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  wordmark: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 2.4,
+    color: palette.inkTertiary,
+  },
+  body: {
     flex: 1,
     paddingHorizontal: 24,
+    paddingTop: 8,
   },
-  // v10.6 — lineHeight widened from 57pt → 62pt so "Read your skin. Every
-  // day." doesn't clip descenders on "y" / "p". Subhead color moved from
-  // warm v5 rgba to palette.inkSecondary (cool ink). Sign-in footer now
-  // routes to AuthChoice for real; color polished to palette tokens.
   headline: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 56,
-    lineHeight: 62,
-    letterSpacing: -1.2,
+    fontSize: 38,
+    lineHeight: 42,
+    letterSpacing: -0.8,
     color: palette.ink,
   },
-  subhead: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 18,
-    lineHeight: 24,
+  sub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 15,
+    lineHeight: 22,
     color: palette.inkSecondary,
+    marginTop: 14,
+    maxWidth: 360,
   },
-  spacer: { flex: 1 },
-  frameWrap: {
+  trustRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    marginBottom: 12,
+    marginTop: 16,
   },
-  signInWrap: {
+  trustText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: palette.inkTertiary,
+    letterSpacing: 0.1,
+  },
+  ctaWrap: {
+    paddingTop: 8,
+  },
+  signInRow: {
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 14,
+    paddingVertical: 6,
   },
   signInLead: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    color: palette.inkTertiary,
+    color: palette.inkSecondary,
   },
   signInAction: {
     fontFamily: 'Inter-SemiBold',
     color: palette.ink,
-  },
-});
-
-// v10.8 — stage bg moved from v5 sandPaper to cool bgDeep so the
-// Splash device-frame preview matches the rest of the cool palette
-// instead of rendering as a warm sepia square on a cool page.
-const stageStyles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: palette.bgDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

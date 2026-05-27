@@ -79,13 +79,84 @@ export interface AppState {
   onboardingComplete: boolean;
   name: string;
   age: number | null;
+  /**
+   * v20.0 — onboarding rebuild adds age range (preferred over exact age).
+   * The legacy `age: number` field is preserved for back-compat with any
+   * surface that still reads it, but new onboarding writes only
+   * `ageRange`.
+   */
+  ageRange:
+    | 'under_18'
+    | '18-24'
+    | '25-34'
+    | '35-44'
+    | '45-54'
+    | '55+'
+    | null;
   gender: 'male' | 'female' | 'other' | 'prefer-not-to-say' | null;
-  skinType: 'oily' | 'dry' | 'combination' | 'sensitive' | null;
+  /**
+   * v20.0 — optional hormone context. Replaces the blunt "gender" question
+   * for new users. Existing users keep `gender`; new users land here.
+   */
+  hormoneContext:
+    | 'none'
+    | 'cycle'
+    | 'pregnancy_postpartum'
+    | 'menopause'
+    | 'hrt'
+    | 'prefer_not_to_say'
+    | null;
+  /**
+   * v20.0 — `skinType` expanded: removes 'sensitive' (now a separate
+   * sensitivity screen) and adds 'balanced' + 'not_sure'. Legacy
+   * 'sensitive' value retained in the type union so previously persisted
+   * profiles still validate; UI maps it to "Combination" + flags
+   * sensitivity.
+   */
+  skinType:
+    | 'oily'
+    | 'dry'
+    | 'combination'
+    | 'balanced'
+    | 'not_sure'
+    | 'sensitive' /* legacy */
+    | null;
   concerns: string[];
   sensitivity: 'very' | 'somewhat' | 'not' | 'unsure' | null;
   sunExposure: 'rarely' | 'sometimes' | 'often' | 'unsure' | null;
   effort: 'minimal' | 'moderate' | 'enthusiast' | 'decide-for-me' | null;
-  goal: 'clear' | 'calm' | 'bright' | null;
+  /**
+   * v20.0 — goal expanded from 3 → 6 options to match the spec's
+   * "what do you want your skin to look like in 84 days" set. Old values
+   * ('clear' | 'calm' | 'bright') still resolve.
+   *
+   * v21.0 — 'simpler' deprecated from the onboarding flow (the rebuilt
+   * spec has 5 outcome-focused goals). The union retains it for
+   * back-compat with already-persisted profiles.
+   */
+  goal:
+    | 'clear'
+    | 'calm'
+    | 'bright'
+    | 'smoother'
+    | 'barrier'
+    | 'simpler'
+    | null;
+  /**
+   * v21.0 — when the user does their routine. Independent of sun
+   * exposure so the Lifestyle screen can read it alongside.
+   */
+  routineTiming: 'am_pm' | 'pm' | 'am' | 'inconsistent' | null;
+  /**
+   * v21.0 — optional pattern context replacing the hormone-context
+   * question. Honest framing: cycle / sensitivity-flares / nothing.
+   */
+  patternContext:
+    | 'none'
+    | 'cycle'
+    | 'sensitivity_flares'
+    | 'prefer_not_to_say'
+    | null;
   attribution: string | null;
   subscriptionStatus: 'trial' | 'active' | 'none';
   hasAskedForReview: boolean;
@@ -126,6 +197,37 @@ export interface AppState {
   avoidIngredients: string[];
 
   hasSeenProductsScrollHint: boolean;
+
+  /**
+   * v26 — Tonight's routine completion timestamp (ISO). Set by the
+   * Routine screen the moment all required steps are marked complete.
+   * The home screen reads this to detect "tonight is closed" and shifts
+   * into the quiet completion variant ("That is enough for tonight.").
+   * Persisted so a user who finishes routine and re-opens the app sees
+   * the closing state, not the pre-scan invitation, until the day rolls
+   * over.
+   */
+  tonightCompleteAt: string | null;
+
+  /**
+   * v26 — Persisted routine session for the calendar date `date`.
+   *
+   * A user who taps Start, completes one or two steps, then leaves
+   * Pura should return to the same step. A user who completes the
+   * full routine should still see the completion hero on re-open
+   * until the day rolls over. The view-model reads this and writes
+   * it via `setRoutineSessionV26`.
+   *
+   * Cleared on day rollover by the view-model (the date no longer
+   * matches `todayDateKey()`).
+   */
+  routineSessionV26: {
+    date: string;
+    status: 'notStarted' | 'active' | 'complete';
+    currentStepIndex: number;
+    completedStepIds: string[];
+    completedAt: string | null;
+  } | null;
 
   /**
    * v19.11 — Lighting Assist preference for the front-camera face
@@ -184,6 +286,34 @@ export interface AppState {
   aiProgress: ProgressExplanation | null;
   aiScoreExplanation: SkinScoreExplanation | null;
 
+  /**
+   * AI Assist Decision Room state (v27).
+   *
+   * `tonightDecisionApplied`: true once the user taps "Apply changes to
+   *   tonight". Scoped to the current night — `clearTonightDecisionState`
+   *   resets this each calendar day.
+   * `tonightDecisionAppliedAt`: ISO timestamp of the apply tap. Used by
+   *   the morning-after feedback window.
+   * `tonightUserSensation`: result of the in-sheet "How does your skin
+   *   feel?" control. Drives RESET escalation when STINGS_OR_BURNS.
+   * `tonightDecisionOverride`: forces a specific DecisionState (only
+   *   `RESET_NIGHT` is currently writable, set when the user picks
+   *   "Stings or burns"). Cleared by `clearTonightDecisionState`.
+   * `morningAfterFeedback`: response to "How does your skin feel this
+   *   morning?" — drives the next-night decision tone.
+   */
+  tonightDecisionApplied: boolean;
+  tonightDecisionAppliedAt: string | null;
+  tonightUserSensation: 'NORMAL' | 'TIGHT_OR_DRY' | 'STINGS_OR_BURNS' | null;
+  tonightDecisionOverride:
+    | 'RESET_NIGHT'
+    | 'RECOVERY_NIGHT'
+    | 'STANDARD_NIGHT'
+    | 'TREATMENT_NIGHT'
+    | 'CHECK_IN_REQUIRED'
+    | null;
+  morningAfterFeedback: 'BETTER' | 'SAME' | 'WORSE' | null;
+
   assistantTyping: boolean;
 
   hasOnboarded: () => boolean;
@@ -205,13 +335,17 @@ export interface AppState {
 
   setName: (name: string) => void;
   setAge: (age: number | null) => void;
+  setAgeRange: (a: AppState['ageRange']) => void;
   setGender: (g: AppState['gender']) => void;
+  setHormoneContext: (h: AppState['hormoneContext']) => void;
   setSkinType: (t: AppState['skinType']) => void;
   setConcerns: (c: string[]) => void;
   setSensitivity: (s: AppState['sensitivity']) => void;
   setSunExposure: (s: AppState['sunExposure']) => void;
   setEffort: (e: AppState['effort']) => void;
   setGoal: (g: AppState['goal']) => void;
+  setRoutineTiming: (t: AppState['routineTiming']) => void;
+  setPatternContext: (p: AppState['patternContext']) => void;
   setAttribution: (a: string | null) => void;
   setSubscriptionStatus: (s: AppState['subscriptionStatus']) => void;
   setHasAskedForReview: (seen: boolean) => void;
@@ -226,6 +360,17 @@ export interface AppState {
   setHasSeenProductsScrollHint: (seen: boolean) => void;
   /** v19.11 — front-camera lighting assist toggle. */
   setLightingAssistEnabled: (enabled: boolean) => void;
+  /**
+   * v26 — Set / clear the tonight completion timestamp. Passing
+   * `null` reopens the nightly loop (e.g. user un-checks a step and
+   * the routine is no longer fully done).
+   */
+  setTonightCompleteAt: (iso: string | null) => void;
+
+  /** v26 — Replace the routine session snapshot. */
+  setRoutineSessionV26: (
+    session: AppState['routineSessionV26'],
+  ) => void;
 
   // v7.7 scan analyzing
   startScan: (photoUri: string) => void;
@@ -263,6 +408,37 @@ export interface AppState {
   setAvoidIngredients: (next: string[]) => void;
 
   finishOnboarding: () => void;
+  signOut: () => void;
+
+  /**
+   * AI Assist Decision Room actions (v27).
+   *
+   * `applyTonightDecision`: marks the decision applied and stamps the
+   *   apply time so the morning-after window can open.
+   * `undoTonightDecision`: clears the applied flag and timestamp.
+   * `setUserSensation`: writes the in-sheet sensation report; passing
+   *   STINGS_OR_BURNS also sets the override to RESET_NIGHT so the
+   *   classification updates immediately.
+   * `setMorningAfterFeedback`: stores the morning report.
+   * `clearTonightDecisionState`: resets applied/override/sensation —
+   *   intended to be called at start-of-day or after a new scan.
+   */
+  applyTonightDecision: () => void;
+  undoTonightDecision: () => void;
+  setUserSensation: (
+    s: 'NORMAL' | 'TIGHT_OR_DRY' | 'STINGS_OR_BURNS' | null,
+  ) => void;
+  setTonightDecisionOverride: (
+    s:
+      | 'RESET_NIGHT'
+      | 'RECOVERY_NIGHT'
+      | 'STANDARD_NIGHT'
+      | 'TREATMENT_NIGHT'
+      | 'CHECK_IN_REQUIRED'
+      | null,
+  ) => void;
+  setMorningAfterFeedback: (f: 'BETTER' | 'SAME' | 'WORSE' | null) => void;
+  clearTonightDecisionState: () => void;
 
   devLoadPopulated: () => void;
   devResetToNewUser: () => void;
@@ -286,13 +462,17 @@ const blankState = {
   onboardingComplete: false,
   name: '',
   age: null as number | null,
+  ageRange: null as AppState['ageRange'],
   gender: null as AppState['gender'],
+  hormoneContext: null as AppState['hormoneContext'],
   skinType: null as AppState['skinType'],
   concerns: [] as string[],
   sensitivity: null as AppState['sensitivity'],
   sunExposure: null as AppState['sunExposure'],
   effort: null as AppState['effort'],
   goal: null as AppState['goal'],
+  routineTiming: null as AppState['routineTiming'],
+  patternContext: null as AppState['patternContext'],
   attribution: null as string | null,
   subscriptionStatus: 'none' as AppState['subscriptionStatus'],
   hasAskedForReview: false,
@@ -304,6 +484,12 @@ const blankState = {
   hasAnsweredPriceTier: false,
   hasAnsweredRoutineFitback: false,
   hasSeenProductsScrollHint: false,
+
+  // v26 — completion timestamp for tonight's routine.
+  tonightCompleteAt: null as string | null,
+
+  // v26 — persisted routine session snapshot.
+  routineSessionV26: null as AppState['routineSessionV26'],
 
   // v19.11 — Lighting Assist defaults to OFF. The user opts in
   // explicitly from the scan UI; the preference persists from
@@ -336,6 +522,25 @@ const blankState = {
   // v10.26 AI progress hydration
   aiProgress: null as ProgressExplanation | null,
   aiScoreExplanation: null as SkinScoreExplanation | null,
+
+  // v27 AI Assist Decision Room state. Persisted so applied decisions
+  // survive a tab switch (and so the morning-after window can resolve
+  // even if the app was killed overnight).
+  tonightDecisionApplied: false,
+  tonightDecisionAppliedAt: null as string | null,
+  tonightUserSensation: null as
+    | 'NORMAL'
+    | 'TIGHT_OR_DRY'
+    | 'STINGS_OR_BURNS'
+    | null,
+  tonightDecisionOverride: null as
+    | 'RESET_NIGHT'
+    | 'RECOVERY_NIGHT'
+    | 'STANDARD_NIGHT'
+    | 'TREATMENT_NIGHT'
+    | 'CHECK_IN_REQUIRED'
+    | null,
+  morningAfterFeedback: null as 'BETTER' | 'SAME' | 'WORSE' | null,
 };
 
 export const useAppStore = create<AppState>()(
@@ -529,13 +734,17 @@ export const useAppStore = create<AppState>()(
 
       setName: (name) => set({ name }),
       setAge: (age) => set({ age }),
+      setAgeRange: (ageRange) => set({ ageRange }),
       setGender: (gender) => set({ gender }),
+      setHormoneContext: (hormoneContext) => set({ hormoneContext }),
       setSkinType: (skinType) => set({ skinType }),
       setConcerns: (concerns) => set({ concerns }),
       setSensitivity: (sensitivity) => set({ sensitivity }),
       setSunExposure: (sunExposure) => set({ sunExposure }),
       setEffort: (effort) => set({ effort }),
       setGoal: (goal) => set({ goal }),
+      setRoutineTiming: (routineTiming) => set({ routineTiming }),
+      setPatternContext: (patternContext) => set({ patternContext }),
       setAttribution: (attribution) => set({ attribution }),
       setSubscriptionStatus: (subscriptionStatus) => set({ subscriptionStatus }),
       setHasAskedForReview: (hasAskedForReview) => set({ hasAskedForReview }),
@@ -551,6 +760,10 @@ export const useAppStore = create<AppState>()(
       // v19.11 — Lighting Assist setter.
       setLightingAssistEnabled: (lightingAssistEnabled) =>
         set({ lightingAssistEnabled }),
+      // v26 — Tonight completion setter.
+      setTonightCompleteAt: (tonightCompleteAt) => set({ tonightCompleteAt }),
+      setRoutineSessionV26: (routineSessionV26) =>
+        set({ routineSessionV26 }),
 
       // ---------- v7.7 scan analyzing actions ----------
       startScan: (photoUri) =>
@@ -597,6 +810,42 @@ export const useAppStore = create<AppState>()(
             next[c.id] = c;
           }
           return { liveProductsById: next };
+        }),
+
+      // v27 — AI Assist Decision Room actions.
+      applyTonightDecision: () =>
+        set({
+          tonightDecisionApplied: true,
+          tonightDecisionAppliedAt: new Date().toISOString(),
+        }),
+      undoTonightDecision: () =>
+        set({
+          tonightDecisionApplied: false,
+          tonightDecisionAppliedAt: null,
+        }),
+      setUserSensation: (s) =>
+        set((state) => {
+          if (s === 'STINGS_OR_BURNS') {
+            return {
+              ...state,
+              tonightUserSensation: s,
+              tonightDecisionOverride: 'RESET_NIGHT',
+            };
+          }
+          // Selecting NORMAL or TIGHT_OR_DRY does not lift an
+          // explicit RESET_NIGHT override — only the user can step
+          // back to Recovery via `setTonightDecisionOverride(null)`.
+          return { ...state, tonightUserSensation: s };
+        }),
+      setTonightDecisionOverride: (o) => set({ tonightDecisionOverride: o }),
+      setMorningAfterFeedback: (f) => set({ morningAfterFeedback: f }),
+      clearTonightDecisionState: () =>
+        set({
+          tonightDecisionApplied: false,
+          tonightDecisionAppliedAt: null,
+          tonightUserSensation: null,
+          tonightDecisionOverride: null,
+          morningAfterFeedback: null,
         }),
 
       // v18.9 — safety profile setters.
@@ -649,6 +898,8 @@ export const useAppStore = create<AppState>()(
         }),
 
       devWipeAll: () => set({ ...blankState }),
+
+      signOut: () => set({ ...blankState }),
     }),
     {
       name: 'pura-app-state-v1',
@@ -666,13 +917,17 @@ export const useAppStore = create<AppState>()(
         onboardingComplete: state.onboardingComplete,
         name: state.name,
         age: state.age,
+        ageRange: state.ageRange,
         gender: state.gender,
+        hormoneContext: state.hormoneContext,
         skinType: state.skinType,
         concerns: state.concerns,
         sensitivity: state.sensitivity,
         sunExposure: state.sunExposure,
         effort: state.effort,
         goal: state.goal,
+        routineTiming: state.routineTiming,
+        patternContext: state.patternContext,
         attribution: state.attribution,
         subscriptionStatus: state.subscriptionStatus,
         hasAskedForReview: state.hasAskedForReview,
@@ -684,6 +939,9 @@ export const useAppStore = create<AppState>()(
         hasAnsweredPriceTier: state.hasAnsweredPriceTier,
         hasAnsweredRoutineFitback: state.hasAnsweredRoutineFitback,
         hasSeenProductsScrollHint: state.hasSeenProductsScrollHint,
+        // v26 — persist the closing state across cold starts.
+        tonightCompleteAt: state.tonightCompleteAt,
+        routineSessionV26: state.routineSessionV26,
         // v19.11 — persist Lighting Assist so opting in once
         // carries across sessions.
         lightingAssistEnabled: state.lightingAssistEnabled,
@@ -720,6 +978,16 @@ export const useAppStore = create<AppState>()(
         // over a session; a future pass can prune entries older
         // than 30 days.
         liveProductsById: state.liveProductsById,
+
+        // v27 — Decision Room. Apply-state and the morning-after
+        // window must survive an app kill so a user who applied
+        // the recovery routine doesn't lose the consequence panel
+        // by alt-tabbing or being on iOS-aggressive memory devices.
+        tonightDecisionApplied: state.tonightDecisionApplied,
+        tonightDecisionAppliedAt: state.tonightDecisionAppliedAt,
+        tonightUserSensation: state.tonightUserSensation,
+        tonightDecisionOverride: state.tonightDecisionOverride,
+        morningAfterFeedback: state.morningAfterFeedback,
       }),
     }
   )

@@ -290,7 +290,7 @@ function buildConcernsFromAI(analysis: FaceScanAnalysis): Concern[] {
         nextStep:
           analysis.next_focus.tonight[
             APP_CATEGORIES.indexOf(category) % Math.max(1, analysis.next_focus.tonight.length)
-          ] ?? 'Stay the course tonight.',
+          ] ?? calmNextStepFor(category),
         trend: aiTrendToConcernTrend(finding.direction_vs_previous),
       };
     }
@@ -305,7 +305,12 @@ function buildConcernsFromAI(analysis: FaceScanAnalysis): Concern[] {
       // calm copy reads cleanly now.
       finding: calmCopyFor(category),
       interpretation: 'No work needed here today.',
-      nextStep: 'Stay the course tonight.',
+      // v23.0 — concrete supporting instruction instead of the vague
+      // "Stay the course tonight." line. Per-category copy gives the
+      // user something to actually do tonight even when the category
+      // reads calm — that is the difference between a tracker app
+      // and a coach.
+      nextStep: calmNextStepFor(category),
       trend: 'unchanged' as ConcernTrend,
     };
   });
@@ -334,6 +339,25 @@ function calmCopyFor(category: ConcernCategory): string {
       return 'Skin texture reads as smooth in this photo.';
     case 'tone':
       return 'Skin tone reads as even in this photo.';
+  }
+}
+
+/**
+ * v23.0 — concrete supporting instruction for calm categories.
+ * Replaces the vague "Stay the course tonight." line so every
+ * Routine surface gives the user a real, actionable step grounded
+ * in the category — not just a pat on the back.
+ */
+function calmNextStepFor(category: ConcernCategory): string {
+  switch (category) {
+    case 'breakouts':
+      return 'Keep tonight light: gentle cleanser + a lightweight moisturizer. Skip new actives.';
+    case 'hydration':
+      return 'Lock in tonight’s hydration: apply a humectant on damp skin, then your moisturizer.';
+    case 'texture':
+      return 'Hold a gentle PM routine tonight. Save exfoliating actives for tomorrow if texture stays smooth.';
+    case 'tone':
+      return 'Keep wearing SPF in the AM. Tonight, layer a brightening serum (vitamin C or niacinamide) under moisturizer.';
   }
 }
 

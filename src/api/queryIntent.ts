@@ -69,6 +69,66 @@ export interface InterpretedIntent {
    * "Gentle cleanser"). Never empty.
    */
   intentLabel: string;
+  /**
+   * v22.4 — strictness level for ranking.
+   *   • `strict`  — query carries an explicit product type AND an
+   *                 explicit concern (e.g. "redness-reducing serum",
+   *                 "gentle chemical exfoliant"). Ranking applies a
+   *                 multiplicative penalty for category/format
+   *                 mismatch. Off-format products may still appear
+   *                 but only as low-ranked alternatives.
+   *   • `format`  — query carries an explicit product type but no
+   *                 explicit concern (e.g. "moisturizer", "best for
+   *                 moisturizer"). Format match is required; concern
+   *                 match is a tie-breaker.
+   *   • `concern` — query carries a concern but no explicit product
+   *                 type (e.g. "redness", "hydration"). Concern is
+   *                 the primary signal; format is open.
+   *   • `loose`   — vague queries or `best_for_my_skin`. No
+   *                 multiplicative penalty; rely on profile/scan.
+   */
+  strictness: 'strict' | 'format' | 'concern' | 'loose';
+  /**
+   * v22.7 — explicit ingredient signals from the query. Tokens the
+   * ranking layer should POSITIVELY boost when a candidate's
+   * ingredientsHighlights or concernTags contain them. Distinct
+   * from `avoidanceConstraints` (which biases against). Empty when
+   * the query doesn't name an ingredient.
+   *   Examples:
+   *     "niacinamide serum"   → ['niacinamide']
+   *     "ceramide moisturizer"→ ['ceramides']
+   *     "azelaic acid"        → ['azelaic acid']
+   *     "hyaluronic acid serum"→ ['hyaluronic acid']
+   */
+  desiredIngredients: ReadonlyArray<string>;
+  /**
+   * v22.4 — modifier tokens that materially affect ranking.
+   *   • `gentle`     — bias toward gentler actives, demote `strong`
+   *                    products even if the format matches.
+   *   • `strong`     — bias toward stronger actives.
+   *   • `oil-free`   — bias toward oil-free / non-comedogenic.
+   *   • `barrier`    — bias toward barrier-supporting formulations.
+   *   • `chemical`   — for exfoliants, bias toward AHA/BHA/PHA over
+   *                    physical scrubs.
+   *   • `physical`   — opposite of `chemical`.
+   * Drawn from the query wording, not the profile.
+   */
+  modifiers: ReadonlyArray<
+    'gentle' | 'strong' | 'oil-free' | 'barrier' | 'chemical' | 'physical'
+  >;
+  /**
+   * v22.13 — true when the parser found AT LEAST ONE concrete signal
+   * (productType, concern, ingredient, modifier, or matched "best for
+   * me" / vague-with-scan branch). False when the query is pure
+   * noise — used by the deterministic planner to return EMPTY
+   * instead of routing to a scan-fallback shelf.
+   *
+   * Note: `mode === 'best_for_my_skin'` and `mode === 'vague_query'
+   * with a real top-concern from the scan` ARE recognized — they
+   * carry semantic meaning (the user is asking for help from their
+   * skin state). Only truly empty noise queries flip this to false.
+   */
+  recognized: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -258,24 +318,46 @@ function normalize(s: string): string {
 
 function inferConcern(text: string): ConcernType | null {
   const norm = normalize(text);
+  // v22.12 — LONGEST-MATCH-WINS. The previous version returned the
+  // first concern with any matching keyword, which let short tokens
+  // claim ambiguous queries. Example:
+  //   "dark spot serum" → matched 'spot' in breakouts vocab BEFORE
+  //                       'dark spot' in dark_marks vocab.
+  // Now we scan every concern's vocab, track the longest matching
+  // keyword, and return the concern that owns it. This makes "dark
+  // spot" beat "spot", "blemish spot" beat "spot", etc.
+  let best: { concern: ConcernType; length: number } | null = null;
   for (const concern of Object.keys(CONCERN_VOCAB) as ConcernType[]) {
     for (const kw of CONCERN_VOCAB[concern]) {
-      if (norm.includes(kw)) return concern;
+      if (norm.includes(kw)) {
+        if (!best || kw.length > best.length) {
+          best = { concern, length: kw.length };
+        }
+      }
     }
   }
-  return null;
+  return best?.concern ?? null;
 }
 
 function inferProductType(text: string): ProductTypeIntent {
   const norm = normalize(text);
+  // v22.12 — longest-match-wins. Same rationale as inferConcern:
+  // a shorter keyword (e.g. 'mask' in spot_treatment vocab) shouldn't
+  // beat a more specific phrase elsewhere.
+  let best: { ptype: NonNullable<ProductTypeIntent>; length: number } | null =
+    null;
   for (const ptype of Object.keys(
     PRODUCT_TYPE_VOCAB
   ) as NonNullable<ProductTypeIntent>[]) {
     for (const kw of PRODUCT_TYPE_VOCAB[ptype]) {
-      if (norm.includes(kw)) return ptype;
+      if (norm.includes(kw)) {
+        if (!best || kw.length > best.length) {
+          best = { ptype, length: kw.length };
+        }
+      }
     }
   }
-  return null;
+  return best?.ptype ?? null;
 }
 
 function deriveAvoidanceFromQuery(query: string): string[] {
@@ -337,6 +419,125 @@ function exfoliantSafetyAdjustment(
     return ['high_strength_acid'];
   }
   return [];
+}
+
+/**
+ * v22.7 — extract explicit ingredient signals from the raw query.
+ * Returns a canonical, deduped, lowercase list. The list is small
+ * and bounded; we look for ingredients that materially change
+ * ranking when matched against a candidate's tagged ingredients.
+ */
+const INGREDIENT_VOCAB: Array<{ canonical: string; patterns: RegExp[] }> = [
+  {
+    canonical: 'niacinamide',
+    patterns: [/\bniacinamide\b/i, /\bnicotinamide\b/i, /\bvitamin b3\b/i],
+  },
+  {
+    canonical: 'hyaluronic acid',
+    patterns: [/\bhyaluronic\b/i, /\bsodium hyaluronate\b/i, /\bha\b/i],
+  },
+  { canonical: 'ceramides', patterns: [/\bcerami[de]+s?\b/i] },
+  { canonical: 'panthenol', patterns: [/\bpanthenol\b/i, /\bvitamin b5\b/i] },
+  {
+    canonical: 'azelaic acid',
+    patterns: [/\bazelaic\b/i, /\bazelaic acid\b/i],
+  },
+  {
+    canonical: 'salicylic acid',
+    patterns: [/\bsalicylic\b/i, /\bsalicylic acid\b/i, /\bbha\b/i],
+  },
+  { canonical: 'glycolic acid', patterns: [/\bglycolic\b/i, /\bglycolic acid\b/i] },
+  { canonical: 'lactic acid', patterns: [/\blactic\b/i, /\blactic acid\b/i] },
+  {
+    canonical: 'mandelic acid',
+    patterns: [/\bmandelic\b/i, /\bmandelic acid\b/i],
+  },
+  {
+    canonical: 'vitamin c',
+    patterns: [
+      /\bvitamin c\b/i,
+      /\bascorbic\b/i,
+      /\bl[- ]ascorbic\b/i,
+      /\btetrahexyldecyl ascorbate\b/i,
+    ],
+  },
+  {
+    canonical: 'retinol',
+    patterns: [/\bretinol\b/i, /\bretinal\b/i, /\bretinoid\b/i, /\bbakuchiol\b/i],
+  },
+  { canonical: 'centella', patterns: [/\bcentella\b/i, /\bcica\b/i] },
+  { canonical: 'squalane', patterns: [/\bsqualane\b/i] },
+  { canonical: 'glycerin', patterns: [/\bglycerin\b/i] },
+  { canonical: 'peptide', patterns: [/\bpeptide\b/i, /\bpeptides\b/i] },
+  {
+    canonical: 'zinc oxide',
+    patterns: [/\bzinc oxide\b/i, /\bzno\b/i, /\bmineral spf\b/i],
+  },
+  { canonical: 'tranexamic acid', patterns: [/\btranexamic\b/i] },
+  { canonical: 'alpha arbutin', patterns: [/\balpha arbutin\b/i, /\barbutin\b/i] },
+];
+
+function deriveDesiredIngredients(query: string): string[] {
+  const out = new Set<string>();
+  for (const ing of INGREDIENT_VOCAB) {
+    if (ing.patterns.some((re) => re.test(query))) {
+      out.add(ing.canonical);
+    }
+  }
+  return Array.from(out);
+}
+
+/**
+ * v22.4 — extract modifier tokens from the raw query. These are
+ * adjectives that change ranking even when format/concern stay the
+ * same. Modifiers are deduped and order-independent.
+ */
+function deriveModifiers(
+  query: string
+): ReadonlyArray<
+  'gentle' | 'strong' | 'oil-free' | 'barrier' | 'chemical' | 'physical'
+> {
+  const norm = query.toLowerCase();
+  const out = new Set<
+    'gentle' | 'strong' | 'oil-free' | 'barrier' | 'chemical' | 'physical'
+  >();
+  if (/\bgentle\b|\bmild\b|\blow[- ]?strength\b|\bgentlest\b/.test(norm)) {
+    out.add('gentle');
+  }
+  if (
+    /\bstrong\b|\bhigh[- ]?strength\b|\bpotent\b|\bmax(?:imum)?\b|\bclinical\b/.test(
+      norm
+    )
+  ) {
+    out.add('strong');
+  }
+  if (/\boil[- ]?free\b|\bnon[- ]?comedogenic\b/.test(norm)) out.add('oil-free');
+  if (/\bbarrier\b|\bcerami[de]+\b|\brepair\b/.test(norm)) out.add('barrier');
+  if (/\bchemical\b|\baha\b|\bbha\b|\bpha\b|\bacid\b/.test(norm)) {
+    out.add('chemical');
+  }
+  if (/\bphysical\b|\bscrub\b|\bgrit\b|\bgranule\b/.test(norm)) {
+    out.add('physical');
+  }
+  return Array.from(out);
+}
+
+/**
+ * v22.4 — derive strictness from what we extracted. The mode-side
+ * (`best_for_my_skin`, `vague`) is set by the caller; this helper
+ * only chooses between strict/format/concern based on which signals
+ * fired.
+ */
+function deriveStrictness(args: {
+  productType: ProductTypeIntent;
+  concern: ConcernType | null;
+  isVague: boolean;
+}): 'strict' | 'format' | 'concern' | 'loose' {
+  if (args.isVague) return 'loose';
+  if (args.productType && args.concern) return 'strict';
+  if (args.productType) return 'format';
+  if (args.concern) return 'concern';
+  return 'loose';
 }
 
 function buildIntentLabel(args: {
@@ -405,6 +606,14 @@ export function interpretSearchIntent(
         productType,
         query: interpretSrc,
       }),
+      // v22.4 — "best for me" with an explicit product type ("best for
+      // moisturizer") is still format-strict: the user named a format.
+      strictness: productType ? 'format' : 'loose',
+      modifiers: deriveModifiers(interpretSrc),
+      desiredIngredients: deriveDesiredIngredients(interpretSrc),
+      // "best for me" is always recognized — the user explicitly
+      // asked for a personalized result.
+      recognized: true,
     };
   }
 
@@ -436,6 +645,16 @@ export function interpretSearchIntent(
         productType,
         query: interpretSrc,
       }),
+      // v22.4 — both fired → strict; product-type only → format.
+      strictness: deriveStrictness({
+        productType,
+        concern,
+        isVague: false,
+      }),
+      modifiers: deriveModifiers(interpretSrc),
+      desiredIngredients: deriveDesiredIngredients(interpretSrc),
+      // productType-mode queries always carry a real signal.
+      recognized: true,
     };
   }
 
@@ -453,6 +672,10 @@ export function interpretSearchIntent(
         productType: null,
         query: interpretSrc,
       }),
+      strictness: 'concern',
+      modifiers: deriveModifiers(interpretSrc),
+      desiredIngredients: deriveDesiredIngredients(interpretSrc),
+      recognized: true,
     };
   }
 
@@ -471,6 +694,18 @@ export function interpretSearchIntent(
       productType: null,
       query: interpretSrc,
     }),
+    strictness: 'loose',
+    modifiers: deriveModifiers(interpretSrc),
+    desiredIngredients: deriveDesiredIngredients(interpretSrc),
+    // v22.13 — vague branch is recognized only when SOMETHING fired:
+    // a modifier, a desired ingredient, OR the scan supplied a top
+    // concern that we'd be honest to surface. Pure noise → empty.
+    recognized:
+      deriveModifiers(interpretSrc).length > 0 ||
+      deriveDesiredIngredients(interpretSrc).length > 0 ||
+      (skinState?.topConcerns && skinState.topConcerns.length > 0 && norm.length === 0)
+        ? true
+        : false,
   };
 }
 

@@ -23,9 +23,11 @@
   },
   "include": [
     "./**/*.ts",
+    "../api/**/*.ts",
     "../src/ai/ai-contracts.ts",
     "../src/ai/aiLog.ts",
-    "../src/ai/validation.ts"
+    "../src/ai/validation.ts",
+    "../src/lib/commerceEnrichment.ts"
   ],
   "exclude": ["node_modules"]
 }

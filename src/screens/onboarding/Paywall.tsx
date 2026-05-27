@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,16 +9,22 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import {
-  LockOpen,
-  Bell,
-  Crown,
-  Check,
-  type IconProps as PhosphorIconProps,
+  Camera,
+  ListChecks,
+  ShoppingBag,
+  ChartLineUp,
+  Drop,
+  Sun,
+  CheckCircle,
 } from 'phosphor-react-native';
 import { OnboardingBackButton } from '@/components/onboarding/BackButton';
+import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
+import { FeatureUnlockList } from '@/components/onboarding/FeatureUnlockList';
+import { TrialTimeline } from '@/components/onboarding/TrialTimeline';
+import { PaywallPlanCard } from '@/components/onboarding/PaywallPlanCard';
 import { useAppStore } from '@/store/useAppStore';
+import { paywallPersonalSentence } from './labelMaps';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 
@@ -29,21 +36,77 @@ export interface PaywallProps {
 
 type Plan = 'monthly' | 'yearly';
 
+const YEARLY_PRICE = '$49.99';
+const MONTHLY_PRICE = '$14.99';
+const YEARLY_MONTHLY_EQUIV = '$4.17';
+
+const FEATURES = [
+  {
+    Icon: Camera,
+    title: 'Daily AI skin scans',
+    body:
+      'Track breakouts, texture, redness, dullness, and visible changes in under 30 seconds.',
+  },
+  {
+    Icon: ListChecks,
+    title: 'Adaptive AM/PM routine',
+    body:
+      'Know exactly what to do morning and night — with steps that adjust as your skin changes.',
+  },
+  {
+    Icon: ShoppingBag,
+    title: 'Product matches',
+    body:
+      'Find products that fit your skin type, goals, sensitivity, and routine style.',
+  },
+  {
+    Icon: ChartLineUp,
+    title: 'Progress timeline',
+    body: 'Compare your skin over time and see what is actually improving.',
+  },
+  {
+    Icon: Drop,
+    title: 'Ingredient guidance',
+    body:
+      'Avoid harsh combinations and get smarter recommendations when your skin feels reactive.',
+  },
+  {
+    Icon: Sun,
+    title: 'SPF guidance',
+    body: 'Adjust your sun protection habits around your lifestyle.',
+  },
+];
+
 /**
- * Paywall (§3.13) — Cal-AI-style structure. Headline, timeline, PlanRow
- * with `7 DAYS FREE` tag floating over the yearly card, reassurance,
- * primary CTA, restore row, fine print, legal footer.
+ * v20.0 — Paywall.
  *
- * IAP integration is stubbed — tapping CTA just sets `subscriptionStatus`
- * to 'trial' and advances. Stripe/StoreKit wire-up can land later without
- * touching this layout.
+ * Rebuilt from "Start your 7-day free trial." into "Unlock your 84-day
+ * skin plan." The headline now sells the transformation, not the
+ * trial. Personalized card uses the user's actual goal · skin type ·
+ * concerns to compose a single-sentence promise. Six feature unlocks,
+ * three-row trial timeline, two plan cards (yearly default with BEST
+ * VALUE pill), no-payment-today reassurance, CTA that names the plan,
+ * restore + legal + terms/privacy footer.
+ *
+ * Safe area: header sits inside top inset, scroll content reserves
+ * bottom inset + sticky CTA height, sticky CTA reserves bottom inset.
+ * Headline never clips on iPhone SE / 13 mini / 15 Pro Max.
  */
 export function Paywall({ onStartTrial, onRestore, onBack }: PaywallProps) {
   const insets = useSafeAreaInsets();
   const [plan, setPlan] = useState<Plan>('yearly');
   const setSubscriptionStatus = useAppStore((s) => s.setSubscriptionStatus);
+  const skinType = useAppStore((s) => s.skinType);
+  const concerns = useAppStore((s) => s.concerns);
+  const effort = useAppStore((s) => s.effort);
+  const goal = useAppStore((s) => s.goal);
 
-  const billingDate = useMemo(() => formatBillingDate(7), []);
+  const personalSentence = paywallPersonalSentence({
+    effort,
+    goal,
+    skinType,
+    concerns,
+  });
 
   const handleStart = () => {
     hapt.select();
@@ -53,329 +116,306 @@ export function Paywall({ onStartTrial, onRestore, onBack }: PaywallProps) {
     onStartTrial();
   };
 
+  const handleRestore = () => {
+    hapt.select();
+    // eslint-disable-next-line no-console
+    console.log('[paywall] TODO: restore purchases');
+    onRestore();
+  };
+
+  const ctaLabel =
+    plan === 'yearly'
+      ? 'Start my plan — free for 7 days'
+      : 'Start monthly — free for 7 days';
+
+  const ctaA11y =
+    plan === 'yearly'
+      ? `Start my free 7-day trial. ${YEARLY_PRICE} per year after trial unless canceled.`
+      : `Start my free 7-day trial. ${MONTHLY_PRICE} per month after trial unless canceled.`;
+
+  const legalCopy =
+    plan === 'yearly'
+      ? `7 days free, then ${YEARLY_PRICE} per year. Plan auto-renews unless canceled at least 24 hours before the trial ends. Cancel anytime in the App Store.`
+      : `7 days free, then ${MONTHLY_PRICE} per month. Plan auto-renews unless canceled at least 24 hours before the trial ends. Cancel anytime in the App Store.`;
+
+  // CTA + helper block height — used to keep the last scroll content
+  // off the sticky CTA on small phones (iPhone SE: 568pt × 320pt).
+  const stickyBlockHeight = 56 /* CTA */ + 64 /* restore + spacing */;
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
 
-      <View style={[styles.topBar, { paddingTop: 16 }]}>
+      <View style={styles.topBar}>
         <OnboardingBackButton visible onPress={onBack} />
+        <View style={{ flex: 1 }} />
+        <Pressable
+          onPress={handleRestore}
+          hitSlop={8}
+          accessibilityRole="link"
+          accessibilityLabel="Restore previous purchase"
+          style={({ pressed }) => [
+            styles.topRestoreBtn,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.topRestoreLabel}>Restore</Text>
+        </Pressable>
       </View>
 
       <ScrollView
         style={styles.flex}
         contentContainerStyle={{
-          paddingBottom: insets.bottom + 32,
+          paddingBottom: stickyBlockHeight + insets.bottom + 40,
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
-          Start your 7-day free trial.
-        </Text>
-
-        <Timeline billingDate={billingDate} />
-
-        <PlanRow plan={plan} onChange={setPlan} />
-
-        <View style={styles.reassurance}>
-          <Check size={16} color={palette.clay} weight="duotone" />
-          <Text style={styles.reassuranceText}>No payment due now</Text>
+        {/* Hero */}
+        <View style={styles.heroBlock}>
+          <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
+            YOUR PLAN IS READY
+          </Text>
+          <Text
+            style={styles.headline}
+            maxFontSizeMultiplier={1.15}
+            accessibilityRole="header"
+          >
+            Unlock your 84-day skin plan.
+          </Text>
+          <Text style={styles.sub} maxFontSizeMultiplier={1.25}>
+            Pura adapts your routine as your skin changes — with daily scans,
+            progress tracking, and product guidance built around your profile.
+          </Text>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Start my 7-day free trial"
-          onPress={handleStart}
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && { opacity: 0.92 },
-          ]}
-        >
-          <Text style={styles.ctaLabel}>Start my 7-day free trial.</Text>
-        </Pressable>
+        {/* Personalized card */}
+        <View style={styles.personalCard}>
+          <Text style={styles.personalKicker}>BUILT FOR YOU</Text>
+          <Text
+            style={styles.personalTitle}
+            maxFontSizeMultiplier={1.15}
+          >
+            Clearer skin, without guessing.
+          </Text>
+          <Text
+            style={styles.personalBody}
+            maxFontSizeMultiplier={1.25}
+          >
+            {personalSentence}
+          </Text>
+        </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Restore previous purchase"
-          onPress={() => {
-            hapt.select();
-            // eslint-disable-next-line no-console
-            console.log('[paywall] TODO: restore purchases');
-            onRestore();
-          }}
-          hitSlop={6}
-          style={styles.restoreWrap}
-        >
-          <Text style={styles.restore}>Already purchased?</Text>
-        </Pressable>
+        {/* Feature unlocks */}
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.15}>
+            What you unlock
+          </Text>
+        </View>
+        <FeatureUnlockList items={FEATURES} />
 
-        <Text style={styles.fine} maxFontSizeMultiplier={1.2}>
-          7 days free, then $49.99 per year. Billed yearly. Plan auto-renews
-          unless you cancel. Cancel in the App Store.
+        {/* Trial timeline */}
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.15}>
+            How your free trial works
+          </Text>
+        </View>
+        <TrialTimeline />
+
+        {/* Plan selector */}
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.15}>
+            Choose your plan
+          </Text>
+        </View>
+        <View style={styles.planList}>
+          <PaywallPlanCard
+            selected={plan === 'yearly'}
+            badge="BEST VALUE"
+            planName="Yearly"
+            price={`${YEARLY_PRICE} / year`}
+            secondary={`${YEARLY_MONTHLY_EQUIV} / month`}
+            savings="Save 72% vs monthly"
+            accessibilityLabel={`Yearly plan${
+              plan === 'yearly' ? ', selected' : ''
+            }. ${YEARLY_PRICE} per year after 7-day free trial.`}
+            onPress={() => setPlan('yearly')}
+          />
+          <PaywallPlanCard
+            selected={plan === 'monthly'}
+            planName="Monthly"
+            price={`${MONTHLY_PRICE} / month`}
+            secondary="Flexible monthly access"
+            accessibilityLabel={`Monthly plan${
+              plan === 'monthly' ? ', selected' : ''
+            }. ${MONTHLY_PRICE} per month after 7-day free trial.`}
+            onPress={() => setPlan('monthly')}
+          />
+        </View>
+
+        {/* Legal */}
+        <Text style={styles.fine} maxFontSizeMultiplier={1.25}>
+          {legalCopy}
         </Text>
 
         <View style={styles.legalRow}>
-          <LegalLink label="Terms" onPress={() => {}} />
-          <Text style={styles.legalDot}> {'\u00B7'} </Text>
-          <LegalLink label="Privacy" onPress={() => {}} />
-          <Text style={styles.legalDot}> {'\u00B7'} </Text>
-          <LegalLink label="Restore" onPress={onRestore} />
+          <LegalLink
+            label="Terms"
+            onPress={() =>
+              Linking.openURL('https://pura.ai/terms').catch(() => {})
+            }
+          />
+          <Text style={styles.legalDot}>{'·'}</Text>
+          <LegalLink
+            label="Privacy"
+            onPress={() =>
+              Linking.openURL('https://pura.ai/privacy').catch(() => {})
+            }
+          />
         </View>
       </ScrollView>
+
+      {/* Sticky CTA stack */}
+      <View
+        style={[
+          styles.stickyWrap,
+          { paddingBottom: insets.bottom + 14 },
+        ]}
+      >
+        <View style={styles.reassuranceRow}>
+          <CheckCircle size={14} color={palette.moss} weight="duotone" />
+          <Text style={styles.reassuranceText} maxFontSizeMultiplier={1.15}>
+            No payment today  ·  We’ll remind you before billing starts.
+          </Text>
+        </View>
+        <OnboardingPrimaryButton
+          label={ctaLabel}
+          onPress={handleStart}
+        />
+        <Pressable
+          onPress={handleRestore}
+          hitSlop={8}
+          accessibilityRole="link"
+          accessibilityLabel="Already purchased, restore"
+          style={({ pressed }) => [
+            styles.restoreWrap,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.restore}>Already purchased? Restore</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
 
-// --- Timeline ---
-
-interface TimelineRow {
-  TitleIcon: React.FC<PhosphorIconProps>;
-  circleColor: string;
-  iconColor: string;
-  title: string;
-  body: string;
-}
-
-function Timeline({ billingDate }: { billingDate: string }) {
-  const rows: TimelineRow[] = [
-    {
-      TitleIcon: LockOpen,
-      circleColor: palette.clay,
-      iconColor: palette.bg,
-      title: 'Today',
-      body:
-        'Unlock the full 84-day program — scans, routines, product matches.',
-    },
-    {
-      TitleIcon: Bell,
-      // v10.7 — legacy v5 terracotta rgba retired; the mid-timeline
-      // node uses clayDeep for a confident brand accent that isn't a
-      // hex-coded ghost from the old palette.
-      circleColor: palette.clayDeep,
-      iconColor: palette.bg,
-      title: 'In 5 days — Reminder',
-      body: "I'll remind you before the trial ends so you can decide.",
-    },
-    {
-      TitleIcon: Crown,
-      circleColor: palette.ink,
-      iconColor: palette.bg,
-      title: 'In 7 days — Billing starts',
-      body: `You'll be charged only if you stay. Calculated from ${billingDate}`,
-    },
-  ];
-
-  return (
-    <View style={timeline.wrap}>
-      {/* The vertical gradient rail sits inside the rail column. */}
-      <Svg
-        width={2}
-        height={200}
-        style={timeline.rail}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="rail" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={palette.clay} stopOpacity={1} />
-            <Stop offset="1" stopColor={palette.clay} stopOpacity={0.2} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="2" height="200" fill="url(#rail)" />
-      </Svg>
-
-      {rows.map((r, i) => (
-        <View key={i} style={timeline.row}>
-          <View style={timeline.railSlot}>
-            <View
-              style={[
-                timeline.circle,
-                { backgroundColor: r.circleColor },
-              ]}
-            >
-              <r.TitleIcon
-                size={20}
-                color={r.iconColor}
-                weight="duotone"
-              />
-            </View>
-          </View>
-          <View style={timeline.textSlot}>
-            <Text style={timeline.title}>{r.title}</Text>
-            <Text style={timeline.body} maxFontSizeMultiplier={1.2}>
-              {r.body}
-            </Text>
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-// --- PlanRow ---
-
-function PlanRow({
-  plan,
-  onChange,
-}: {
-  plan: Plan;
-  onChange: (p: Plan) => void;
-}) {
-  const pick = (p: Plan) => {
-    if (p === plan) return;
-    hapt.select();
-    onChange(p);
-  };
-  return (
-    <View style={planRow.wrap}>
-      <PlanCard
-        label="Monthly"
-        price="$14.99"
-        per="/mo"
-        selected={plan === 'monthly'}
-        onPress={() => pick('monthly')}
-      />
-      <PlanCard
-        label="Yearly"
-        price="$49.99"
-        per="/yr"
-        selected={plan === 'yearly'}
-        onPress={() => pick('yearly')}
-        badge="7 DAYS FREE"
-      />
-    </View>
-  );
-}
-
-function PlanCard({
+function LegalLink({
   label,
-  price,
-  per,
-  selected,
   onPress,
-  badge,
 }: {
   label: string;
-  price: string;
-  per: string;
-  selected: boolean;
   onPress: () => void;
-  badge?: string;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      accessibilityLabel={`${label} plan, ${price}${per}${badge ? `, ${badge}` : ''}`}
-      style={({ pressed }) => [
-        planCard.base,
-        selected ? planCard.selected : planCard.idle,
-        pressed && { opacity: 0.96 },
-      ]}
+      hitSlop={6}
+      accessibilityRole="link"
+      accessibilityLabel={label}
     >
-      {badge ? (
-        <View style={planCard.badgeWrap} pointerEvents="none">
-          <View style={planCard.badgePill}>
-            <Text style={planCard.badgeText}>{badge}</Text>
-          </View>
-        </View>
-      ) : null}
-
-      <View style={planCard.headRow}>
-        <Text style={planCard.label}>{label}</Text>
-      </View>
-
-      <View style={planCard.priceRow}>
-        <Text style={planCard.price}>{price}</Text>
-        <Text style={planCard.per}>{per}</Text>
-      </View>
-
-      <View
-        style={[
-          planCard.radio,
-          selected ? planCard.radioOn : planCard.radioOff,
-        ]}
-      >
-        {selected ? (
-          <Check size={14} color={palette.bg} weight="bold" />
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
-// --- Helpers ---
-
-function LegalLink({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="link">
       <Text style={styles.legalLink}>{label}</Text>
     </Pressable>
   );
 }
-
-function formatBillingDate(daysFromNow: number) {
-  const d = new Date();
-  d.setDate(d.getDate() + daysFromNow);
-  return d.toLocaleDateString(undefined, {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-// --- Styles ---
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   flex: { flex: 1 },
   topBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  topRestoreBtn: {
+    height: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  topRestoreLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: palette.inkSecondary,
+  },
+  heroBlock: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 1.8,
+    color: palette.clay,
   },
   headline: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 40,
-    lineHeight: 40 * 1.05,
-    letterSpacing: -0.8,
+    fontSize: 36,
+    lineHeight: 40,
+    letterSpacing: -0.7,
     color: palette.ink,
-    marginHorizontal: 24,
-    marginTop: 16,
+    marginTop: 10,
   },
-  reassurance: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    gap: 8,
-    marginTop: 24,
-  },
-  reassuranceText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    color: palette.ink,
-  },
-  cta: {
-    marginTop: 20,
-    marginHorizontal: 24,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: palette.clay,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
-    color: palette.bg,
-  },
-  restoreWrap: { alignSelf: 'center', marginTop: 16 },
-  // v10.7 — footer copy (restore link, fine print, legal) moved from
-  // v5 warm-ink rgbas to palette.inkTertiary for cool-palette parity.
-  restore: {
+  sub: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    color: palette.inkTertiary,
-    textDecorationLine: 'underline',
+    lineHeight: 21,
+    color: palette.inkSecondary,
+    marginTop: 12,
+  },
+  personalCard: {
+    marginHorizontal: 24,
+    marginTop: 22,
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.clayLight,
+    backgroundColor: palette.clayPaper,
+  },
+  personalKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 1.4,
+    color: palette.clay,
+  },
+  personalTitle: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+    color: palette.ink,
+    marginTop: 8,
+  },
+  personalBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: palette.inkSecondary,
+    marginTop: 8,
+  },
+  sectionBlock: {
+    marginTop: 28,
+    marginBottom: 4,
+    paddingHorizontal: 24,
+  },
+  sectionTitle: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.3,
+    color: palette.ink,
+  },
+  planList: {
+    marginHorizontal: 24,
   },
   fine: {
     fontFamily: 'Inter-Regular',
@@ -383,176 +423,60 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: palette.inkTertiary,
     textAlign: 'center',
-    marginHorizontal: 32,
-    marginTop: 20,
+    marginHorizontal: 24,
+    marginTop: 24,
   },
   legalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 12,
+    gap: 8,
   },
   legalLink: {
-    fontFamily: 'Inter-Regular',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 12,
-    color: palette.inkTertiary,
+    color: palette.inkSecondary,
+    textDecorationLine: 'underline',
   },
   legalDot: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     color: palette.inkTertiary,
   },
-});
-
-const timeline = StyleSheet.create({
-  wrap: {
-    marginHorizontal: 24,
-    marginTop: 40,
-    position: 'relative',
-  },
-  rail: {
+  stickyWrap: {
     position: 'absolute',
-    top: 20,
-    left: 19, // 48/2 − 2/2 (half of rail width)
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    minHeight: 100,
-  },
-  railSlot: {
-    width: 48,
-    alignItems: 'center',
-    paddingTop: 0,
-  },
-  circle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textSlot: {
-    flex: 1,
-    paddingLeft: 12,
-    paddingTop: 6,
-  },
-  title: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 17,
-    lineHeight: 22,
-    color: palette.ink,
-    marginBottom: 4,
-  },
-  body: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: palette.inkSecondary,
-  },
-});
-
-const planRow = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    gap: 12,
-    marginHorizontal: 24,
-    marginTop: 40,
-  },
-});
-
-const planCard = StyleSheet.create({
-  base: {
-    flex: 1,
-    height: 120,
-    borderRadius: 16,
-    padding: 16,
-    position: 'relative',
-  },
-  // v10.7 — plan-card states aligned to v9+ selected-row language:
-  // idle = transparent with hairline border; selected = clayPaper
-  // (near-white azure tint) with clay border. The prior selected state
-  // was v5 warm sand @ 60% — an orange pill on a cool-palette page.
-  idle: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: palette.hairline,
-  },
-  selected: {
-    backgroundColor: palette.clayPaper,
-    borderWidth: 2,
-    borderColor: palette.clay,
-  },
-  // Centering wrapper — absolute row spanning the card's top edge so the
-  // pill child can sit dead-center.
-  badgeWrap: {
-    position: 'absolute',
-    top: -12,
     left: 0,
     right: 0,
-    alignItems: 'center',
+    bottom: 0,
+    paddingTop: 10,
+    backgroundColor: palette.bg,
+    borderTopWidth: 1,
+    borderTopColor: palette.divider,
   },
-  // The actual pill — clay-filled, paper label, paddings wrap the Text.
-  badgePill: {
-    backgroundColor: palette.clay,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headRow: {},
-  label: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    color: palette.ink,
-  },
-  priceRow: {
+  reassuranceRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-  },
-  price: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 24,
-    color: palette.ink,
-    letterSpacing: -0.5,
-  },
-  per: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: palette.inkTertiary,
-    marginLeft: 4,
-    marginBottom: 3,
-  },
-  radio: {
-    position: 'absolute',
-    right: 16,
-    top: '50%',
-    marginTop: -11,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 24,
+    paddingBottom: 10,
   },
-  radioOn: {
-    backgroundColor: palette.clay,
-    borderWidth: 0,
+  reassuranceText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: palette.inkSecondary,
+    textAlign: 'center',
   },
-  radioOff: {
-    borderWidth: 1.5,
-    borderColor: palette.inkTertiary,
-    backgroundColor: 'transparent',
+  restoreWrap: {
+    alignSelf: 'center',
+    marginTop: 8,
+    paddingVertical: 4,
   },
-  badgeText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    color: palette.bg,
+  restore: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: palette.inkTertiary,
+    textDecorationLine: 'underline',
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { DropHalf, Shield, Question, Sparkle } from 'phosphor-react-native';
+import { Sparkle, DropHalf, Shield, Question } from 'phosphor-react-native';
 import { QuestionLayout } from '@/components/onboarding/QuestionLayout';
 import { ChoiceList } from '@/components/onboarding/ChoiceList';
 import { ChoiceRow } from '@/components/onboarding/ChoiceRow';
@@ -9,46 +9,56 @@ export interface AskSensitivityProps {
   onNext: () => void;
 }
 
-// Phosphor ships `Sparkle` but not `Spark` — they're visually interchangeable
-// for this meaning (a small bright mark). Logged as a tiny substitution.
 const ROWS = [
   {
     value: 'very',
     Icon: Sparkle,
-    label: 'Very sensitive',
-    helper: 'New products often cause redness or breakouts',
+    label: 'Very reactive',
+    helper: 'New products often cause redness, stinging, or breakouts',
   },
   {
     value: 'somewhat',
     Icon: DropHalf,
-    label: 'Somewhat sensitive',
-    helper: 'Occasional reactions to actives',
+    label: 'Somewhat reactive',
+    helper: 'I occasionally react to actives',
   },
   {
     value: 'not',
     Icon: Shield,
-    label: 'Not sensitive',
-    helper: 'My skin takes most products in stride',
+    label: 'Not very reactive',
+    helper: 'My skin usually handles new products well',
   },
   {
     value: 'unsure',
     Icon: Question,
     label: 'Not sure',
-    helper: 'Figure it out as we go',
+    helper: 'Help me figure it out',
   },
 ] as const;
 
+/**
+ * v20.0 — Screen 5: reactivity.
+ *
+ * Reframed from "How sensitive is your skin?" → "How reactive is your
+ * skin?" to align with how dermatology actually thinks about this
+ * (reactivity is observable; sensitivity is a self-label). Avoids
+ * over-promising "no ingredients your skin will fight" — the
+ * ingredient engine isn't authoritative yet.
+ */
 export function AskSensitivity({ onNext }: AskSensitivityProps) {
   const sensitivity = useAppStore((s) => s.sensitivity);
   const setSensitivity = useAppStore((s) => s.setSensitivity);
 
   return (
     <QuestionLayout
-      step={6}
-      totalSteps={11}
-      headline="How sensitive is your skin?"
-      subhead="I'll avoid surprises — no ingredients your skin will fight."
+      step={4}
+      totalSteps={8}
+      sectionLabel="Skin profile"
+      headline="How reactive is your skin?"
+      subhead="This helps Pura avoid aggressive actives and introduce changes slowly."
+      ctaLabel={sensitivity ? 'Set sensitivity' : 'Choose one to continue'}
       ctaDisabled={!sensitivity}
+      disabledReason="Choose one to continue"
       onCta={() => sensitivity && onNext()}
     >
       <ChoiceList>

@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(26,22,20,0.8)', // warm charcoal @ 80%
     padding: 6,
     alignItems: 'stretch',
-    justifyContent: 'stretch',
+    justifyContent: 'flex-start',
     // Android shadow fallback
     elevation: 14,
   },

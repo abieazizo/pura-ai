@@ -35,6 +35,7 @@ import { ScanResultsPager } from '@/components/scan-results/ScanResultsPager';
 import { RetakeRequiredScreen } from '@/components/scan-results/RetakeRequiredScreen';
 import { ScanServiceErrorScreen } from '@/components/scan-results/ScanServiceErrorScreen';
 import { ScanResultsV2Screen } from '@/screens/scan/ScanResultsV2Screen';
+import { ScanResultsErrorBoundary } from '@/components/scan-results/ScanResultsErrorBoundary';
 import { hapt } from '@/utils/haptics';
 
 declare const __DEV__: boolean | undefined;
@@ -200,7 +201,11 @@ export function ScanResultsFaceScreen({
         findings: scan.v2Analysis.findings.length,
       });
     }
-    return <ScanResultsV2Screen scanId={scan.id} />;
+    return (
+      <ScanResultsErrorBoundary onRetake={goRetake} onClose={exitToHome}>
+        <ScanResultsV2Screen scanId={scan.id} />
+      </ScanResultsErrorBoundary>
+    );
   }
 
   const usability = analysis.scanQuality.usability;

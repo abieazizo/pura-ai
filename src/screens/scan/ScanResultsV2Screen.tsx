@@ -36,6 +36,8 @@ import type { ScanFindingV2, ScanResultV2 } from '@/types/scanResultV2';
 import { useRoutineStore } from '@/state/routine/routineStore';
 import { hapt } from '@/utils/haptics';
 
+declare const __DEV__: boolean | undefined;
+
 export interface ScanResultsV2ScreenProps {
   scanId: string;
 }
@@ -88,6 +90,29 @@ export function ScanResultsV2Screen({ scanId }: ScanResultsV2ScreenProps) {
   }, [scan?.id, rootNav]);
 
   if (!scan || !v2) {
+    return <View style={styles.blank} />;
+  }
+
+  // Defensive: a stale persisted scan from before v32 may have a
+  // partial v2 shape. Treat any missing-required-field as "no v2 yet"
+  // and fall back to the blank canvas instead of letting a child
+  // component crash on `undefined.cx` or `undefined.slice`.
+  if (
+    typeof v2.overall_score !== 'number' ||
+    !v2.score_breakdown ||
+    !Array.isArray(v2.findings) ||
+    v2.findings.length === 0 ||
+    typeof v2.headline !== 'string' ||
+    typeof v2.summary !== 'string'
+  ) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[Pura Scan V2] malformed v2Analysis on scan',
+        scan.id,
+        '— rendering blank fallback',
+      );
+    }
     return <View style={styles.blank} />;
   }
 

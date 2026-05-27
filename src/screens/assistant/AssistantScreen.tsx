@@ -1,1584 +1,881 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+/**
+ * AssistantScreen — v27 Decision Room.
+ *
+ * The AI Assist tab is no longer a chat-first surface. It opens on a
+ * single Tonight's Decision card and answers exactly one question:
+ *
+ *   "Given what Pura knows about my skin today, what should I do
+ *    differently tonight?"
+ *
+ * Two modes coexist inside the screen:
+ *
+ *   DECISION MODE     default. Decision card + evidence tiles +
+ *                     adjustments + suggested prompts.
+ *   CONVERSATION MODE entered when the user taps a prompt or sends a
+ *                     message. The compressed decision anchor stays
+ *                     pinned at the top of the thread so the active
+ *                     decision never disappears into stale chat.
+ *
+ * Reads canonical state from useTonightDecision() — never recomputes
+ * the decision inline. Apply / sensation / morning-after writes go
+ * through the store actions so state survives a tab switch.
+ */
+
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
-  Linking,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// v11.11 — useBottomTabBarHeight removed: keyboardVerticalOffset is
-// now 0 (the correct value with tabBarHideOnKeyboard:true). See the
-// inline comment above the KeyboardAvoidingView for the geometry.
 import { StatusBar } from 'expo-status-bar';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
-import {
-  Plus,
-  Camera,
-  ArrowUp,
-  X,
-  CaretRight,
-  Sparkle,
-  ChartLineUp,
-  MoonStars,
-  Leaf,
-  ShieldCheck,
-  type IconProps as PhosphorIconProps,
-} from 'phosphor-react-native';
-import { PuraMark } from '@/components/PuraMark';
-import { TypingDots } from '@/components/TypingDots';
-import { ProductCard } from '@/components/ProductCard';
-import { AISourceBadge } from '@/components/dev/AISourceBadge';
 import { useAppStore } from '@/store/useAppStore';
-import { useShallow } from 'zustand/react/shallow';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import { seedProducts } from '@/data/seed';
-import { LiveProductCard } from '@/components/products/LiveProductCard';
-// v19.18 — Assistant inline product cards now flow through the
-// canonical deterministic-first recommendation engine, not the
-// AI-first lookup. Same path as ResultScreen + ProductsScreen +
-// Diagnostics so all four surfaces share one engine.
-import { getRecommendationContextFromQuery } from '@/api/liveProducts';
-import type { LiveProductCandidate } from '@/ai/ai-contracts';
-import { colors, palette, radius, space, type as typography } from '@/theme';
-import { assistant as strings } from '@/copy/strings';
 import { hapt } from '@/utils/haptics';
-import type { AssistantMessage, Product } from '@/types';
 import type { RootStackParamList } from '@/navigation/types';
 import {
-  shapeAssistantText,
-  type ShapedTextBlock,
-} from '@/utils/shapeAssistantText';
+  useTonightDecision,
+  useMorningAfterPromptVisible,
+  type TonightDecision,
+} from '@/state/tonightDecision';
 
-/**
- * v5 Assistant. Title `Ask.` with italic lede. Assistant messages render
- * without bubbles — raw text, with the Mark `xs` to the left of each — the
- * assistant is not a character, it's Pura itself speaking. User messages
- * keep a clay bubble.
- */
+import { AssistantHeader } from './components/AssistantHeader';
+import { TonightDecisionCard } from './components/TonightDecisionCard';
+import { EvidenceTileRow } from './components/EvidenceTileRow';
+import { RoutineAdjustmentRow } from './components/RoutineAdjustmentRow';
+import { DecisionPromptList } from './components/DecisionPromptList';
+import { AppliedConfirmationPanel } from './components/AppliedConfirmationPanel';
+import { CompressedDecisionAnchor } from './components/CompressedDecisionAnchor';
+import { StickyComposer } from './components/StickyComposer';
+import { SectionEyebrow } from './components/SectionEyebrow';
+import { ChallengeResponseCard } from './components/ChallengeResponseCard';
+import { ResetNightResponseCard } from './components/ResetNightResponseCard';
+import { SubstituteResponseCard } from './components/SubstituteResponseCard';
+import { UserMessageBubble } from './components/UserMessageBubble';
+import { AssistantGroundingRow } from './components/AssistantGroundingRow';
+import { AssistantThinking } from './components/AssistantThinking';
+import { MorningAfterPrompt } from './components/MorningAfterPrompt';
+import { EmptyStateCard } from './components/EmptyStateCard';
+import { EvidenceSheet } from './components/EvidenceSheet';
+import { BasedOnLine } from './components/BasedOnLine';
+import { SecondaryActionButton } from './components/SecondaryActionButton';
+
+import { dx } from './decisionTokens';
+import {
+  ADJUSTMENTS,
+  CHALLENGE_EXFOLIATE,
+  CHALLENGE_RETINOID,
+  CHALLENGE_RESTART,
+  COMPOSER,
+  EVIDENCE,
+  PROMPTS,
+  NO_SCAN,
+  NO_PRODUCTS,
+  STABLE_STANDARD,
+  PROVENANCE,
+  INTENT_GROUNDING,
+} from './decisionCopy';
+import { classifyDecisionIntent, type DecisionIntent } from './decisionIntent';
+
+// ---------------------------------------------------------------------------
+// Local conversation model — kept in-screen so the Decision Room owns its
+// own thread without touching the legacy global `messages` array.
+// ---------------------------------------------------------------------------
+
+type ConversationEntry =
+  | { kind: 'user'; id: string; text: string }
+  | { kind: 'thinking'; id: string }
+  | {
+      kind: 'assistant';
+      id: string;
+      intent: DecisionIntent;
+      sourceText: string;
+    };
+
+// ---------------------------------------------------------------------------
+// Provenance line builder
+// ---------------------------------------------------------------------------
+
+function buildProvenanceLine(decision: TonightDecision): string {
+  const p = decision.provenance;
+  if (p.usedLatestScan && p.usedPreviousScan && p.usedRoutine && p.usedIngredientCheck) {
+    return PROVENANCE.fullData;
+  }
+  if (p.usedLatestScan && !p.usedRoutine) return PROVENANCE.limitedProducts;
+  if (p.usedLatestScan && !p.usedPreviousScan) return PROVENANCE.noPrior;
+  if (decision.basedOn.length > 0) {
+    return `Based on ${decision.basedOn.map((s) => s.toLowerCase()).join(', ')}.`;
+  }
+  return PROVENANCE.fullData;
+}
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+
+type ListItem =
+  | { kind: 'decision-card' }
+  | { kind: 'morning-after' }
+  | { kind: 'applied-confirmation' }
+  | { kind: 'evidence' }
+  | { kind: 'adjustments' }
+  | { kind: 'provenance' }
+  | { kind: 'prompts' }
+  | { kind: 'empty-no-scan' }
+  | { kind: 'empty-no-products' }
+  | { kind: 'stable-standard' }
+  | { kind: 'compressed-anchor' }
+  | { kind: 'entry'; entry: ConversationEntry; isLast: boolean }
+  | { kind: 'bottom-spacer'; height: number };
+
 export function AssistantScreen() {
   const nav = useNavigation<NavigationProp<RootStackParamList>>();
-  const user = useAppStore((s) => s.user);
-  const messages = useAppStore((s) => s.messages);
-  const typing = useAppStore((s) => s.assistantTyping);
-  const latestScan = useAppStore((s) => s.scans[s.scans.length - 1]);
-  const hasScanned = useAppStore((s) => s.scans.length > 0);
-  const sendMessage = useAppStore((s) => s.sendMessage);
-  // v11.11 — `useBottomTabBarHeight()` was previously used to set
-  // `keyboardVerticalOffset` on the KAV. That created the persistent
-  // composer gap because RN Nav reclaims the tab bar's layout when
-  // the keyboard opens (with `tabBarHideOnKeyboard: true`); the
-  // KAV then over-corrects by tabBarHeight worth of padding-debt.
+  const reduceMotion = useReduceMotion();
+  // The AssistantScreen always renders inside a Bottom Tab navigator
+  // — this hook is safe to call unconditionally here.
+  const tabBarHeight = useBottomTabBarHeight();
+  // Approximate composer height (input wrap + paddings) used by the
+  // FlatList bottom-spacer so the last content row is never hidden
+  // behind the sticky composer above the tab bar.
+  const composerClearance = 76;
+
+  const decision = useTonightDecision();
+  const morningAfterVisible = useMorningAfterPromptVisible();
+
+  const applyTonight = useAppStore((s) => s.applyTonightDecision);
+  const undoTonight = useAppStore((s) => s.undoTonightDecision);
+  const setSensation = useAppStore((s) => s.setUserSensation);
+  const setOverride = useAppStore((s) => s.setTonightDecisionOverride);
+  const setMorningAfter = useAppStore((s) => s.setMorningAfterFeedback);
+  const morningAfterFeedback = useAppStore((s) => s.morningAfterFeedback);
+  const ownedProductCount = useAppStore(
+    (s) => s.userRoutineMorning.length + s.userRoutineEvening.length,
+  );
+
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [conversation, setConversation] = useState<ConversationEntry[]>([]);
+  const [draft, setDraft] = useState('');
+  const [composerFocused, setComposerFocused] = useState(false);
 
   const listRef = useRef<FlatList<ListItem>>(null);
-  const [draft, setDraft] = useState('');
-  const [attached, setAttached] = useState<string[]>([]);
-  const [showPicker, setShowPicker] = useState(false);
 
-  const suggestedZone =
-    latestScan?.zones.find((z) => z.status === 'active')?.label.toLowerCase() ?? 'chin';
-  const suggestions = hasScanned ? strings.promptsFor(suggestedZone) : strings.promptsEmpty;
+  const conversationActive = conversation.length > 0;
 
-  // v10.4 — proactive opening. Pura speaks first whenever there's scan
-  // data to reference. Memoized against scan state so the opening line
-  // is stable across renders within a session.
-  const scansForOpening = useAppStore((s) => s.scans);
-  const openingMessage = useMemo(
-    () => buildProactiveOpening(scansForOpening, suggestedZone),
-    [scansForOpening, suggestedZone]
-  );
+  // Composer placeholder shifts with state.
+  const placeholder = useMemo(() => {
+    if (decision.applied && decision.state === 'RECOVERY_NIGHT')
+      return COMPOSER.placeholderApplied;
+    if (decision.state === 'RESET_NIGHT') return COMPOSER.placeholderReset;
+    if (decision.state === 'STANDARD_NIGHT') return COMPOSER.placeholderStandard;
+    return COMPOSER.placeholderDecision;
+  }, [decision.applied, decision.state]);
 
-  const canSend = draft.trim().length > 0 && !typing;
+  const promptsForState = useMemo(() => {
+    if (decision.state === 'RECOVERY_NIGHT') return PROMPTS.recovery;
+    if (decision.state === 'RESET_NIGHT') return PROMPTS.reset;
+    return PROMPTS.standard;
+  }, [decision.state]);
 
+  // ---- Navigation helpers ----
+  const goRoutine = useCallback(() => {
+    // @ts-expect-error nested tab navigation typing
+    nav.navigate('Tabs', { screen: 'RoutineTab' });
+  }, [nav]);
+  const goScan = useCallback(() => {
+    nav.navigate('ScanModal');
+  }, [nav]);
+  const goProducts = useCallback(() => {
+    // @ts-expect-error nested tab navigation typing
+    nav.navigate('Tabs', { screen: 'ProductsTab' });
+  }, [nav]);
+
+  // ---- Conversation actions ----
   const send = useCallback(
-    (text: string, attachedIds: string[]) => {
-      if (!text.trim()) return;
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
       hapt.tap();
-      sendMessage(text.trim(), attachedIds.length ? attachedIds : undefined);
       setDraft('');
-      setAttached([]);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+      const userId = `u-${Date.now()}`;
+      const thinkingId = `t-${Date.now()}`;
+      const intent = classifyDecisionIntent(trimmed);
+      const assistantId = `a-${Date.now()}`;
+
+      // Append the user bubble + thinking dots immediately.
+      setConversation((prev) => [
+        ...prev,
+        { kind: 'user', id: userId, text: trimmed },
+        { kind: 'thinking', id: thinkingId },
+      ]);
+      // Side-effect: reporting burning sets the sensation override.
+      if (intent === 'REPORT_BURNING') {
+        setSensation('STINGS_OR_BURNS');
+      } else if (intent === 'REPORT_TIGHT') {
+        setSensation('TIGHT_OR_DRY');
+      }
+      // Auto-scroll right after the user bubble lands.
+      setTimeout(() => {
+        try {
+          listRef.current?.scrollToEnd({ animated: !reduceMotion });
+        } catch {
+          /* not ready yet */
+        }
+      }, 80);
+      // Replace the thinking row with the assistant card after a
+      // calm 360ms — short enough to feel decisive, long enough to
+      // read intentional. Reduced motion users still see the dots
+      // for a single frame so the transition isn't jarring.
+      const revealDelay = reduceMotion ? 80 : 360;
+      setTimeout(() => {
+        setConversation((prev) =>
+          prev
+            .filter((e) => !(e.kind === 'thinking' && e.id === thinkingId))
+            .concat({
+              kind: 'assistant',
+              id: assistantId,
+              intent,
+              sourceText: trimmed,
+            }),
+        );
+        setTimeout(() => {
+          try {
+            listRef.current?.scrollToEnd({ animated: !reduceMotion });
+          } catch {
+            /* not ready yet */
+          }
+        }, 60);
+      }, revealDelay);
     },
-    [sendMessage]
+    [reduceMotion, setSensation],
   );
 
-  const attachProduct = (id: string) => {
-    setAttached((cur) => (cur.includes(id) ? cur : [...cur, id]));
-    setShowPicker(false);
-  };
+  const onPickPrompt = useCallback(
+    (prompt: string) => {
+      send(prompt);
+    },
+    [send],
+  );
 
-  const removeAttached = (id: string) =>
-    setAttached((cur) => cur.filter((x) => x !== id));
+  const onApply = useCallback(() => {
+    applyTonight();
+    hapt.success();
+  }, [applyTonight]);
 
+  const onAskWhy = useCallback(() => {
+    hapt.select();
+    setEvidenceOpen(true);
+  }, []);
+
+  const onViewDecision = useCallback(() => {
+    hapt.select();
+    setConversation([]);
+  }, []);
+
+  const onSensationFromSheet = useCallback(
+    (s: 'NORMAL' | 'TIGHT_OR_DRY' | 'STINGS_OR_BURNS') => {
+      setSensation(s);
+    },
+    [setSensation],
+  );
+
+  const onSheetApply = useCallback(() => {
+    setEvidenceOpen(false);
+    applyTonight();
+    hapt.success();
+  }, [applyTonight]);
+
+  const onMorningAfter = useCallback(
+    (a: 'BETTER' | 'SAME' | 'WORSE') => {
+      setMorningAfter(a);
+    },
+    [setMorningAfter],
+  );
+
+  const onCheckAnotherProduct = useCallback(() => {
+    goProducts();
+  }, [goProducts]);
+
+  // ---- List composition ----
   const items: ListItem[] = useMemo(() => {
-    if (messages.length === 0) {
-      return [{ kind: 'empty' }];
+    const out: ListItem[] = [];
+
+    // Empty / incomplete states get precedence over the decision card.
+    if (decision.state === 'CHECK_IN_REQUIRED' && !conversationActive) {
+      out.push({ kind: 'empty-no-scan' });
+      out.push({
+        kind: 'bottom-spacer',
+        height: composerClearance + 16,
+      });
+      return out;
     }
-    return messages.map((m) => ({ kind: 'message', message: m }));
-  }, [messages]);
 
-  if (!user) return null;
+    if (conversationActive) {
+      out.push({ kind: 'compressed-anchor' });
+      conversation.forEach((entry, i) => {
+        out.push({
+          kind: 'entry',
+          entry,
+          isLast: i === conversation.length - 1,
+        });
+      });
+      out.push({
+        kind: 'bottom-spacer',
+        height: composerClearance + 16,
+      });
+      return out;
+    }
 
-  const renderItem = ({ item }: { item: ListItem }) => {
-    if (item.kind === 'empty') {
+    // Decision Mode.
+    if (morningAfterVisible) {
+      out.push({ kind: 'morning-after' });
+    }
+
+    out.push({ kind: 'decision-card' });
+
+    if (decision.applied) {
+      out.push({ kind: 'applied-confirmation' });
+    }
+
+    // Stable-standard nights collapse the evidence section into a quieter
+    // empty-vs-decision treatment.
+    if (decision.state === 'STANDARD_NIGHT') {
+      out.push({ kind: 'stable-standard' });
+    }
+
+    // Scan exists but no products owned — surface the "add my products"
+    // affordance underneath the decision card so the user has a clear
+    // path to enriching tonight's plan.
+    if (
+      decision.scanObservation &&
+      ownedProductCount === 0 &&
+      decision.state === 'RECOVERY_NIGHT'
+    ) {
+      out.push({ kind: 'empty-no-products' });
+    }
+
+    if (decision.scanObservation && decision.state !== 'STANDARD_NIGHT') {
+      out.push({ kind: 'evidence' });
+    }
+    if (decision.adjustments.length > 0) {
+      out.push({ kind: 'adjustments' });
+    }
+    out.push({ kind: 'provenance' });
+    out.push({ kind: 'prompts' });
+    out.push({
+      kind: 'bottom-spacer',
+      height: composerClearance + 16,
+    });
+
+    return out;
+  }, [
+    decision,
+    conversationActive,
+    conversation,
+    morningAfterVisible,
+    ownedProductCount,
+    composerClearance,
+  ]);
+
+  const provenanceLine = buildProvenanceLine(decision);
+
+  // ---- Render entry ----
+  const renderEntry = (entry: ConversationEntry) => {
+    if (entry.kind === 'user') {
+      return <UserMessageBubble text={entry.text} />;
+    }
+    if (entry.kind === 'thinking') {
+      return <AssistantThinking />;
+    }
+    const intent = entry.intent;
+    const heldRow = decision.adjustments.find(
+      (a) => a.status === 'HELD_TONIGHT' || a.status === 'AVOID_UNTIL_RECHECK',
+    );
+    const useInsteadRow = decision.adjustments.find(
+      (a) => a.status === 'PRIORITIZED_TONIGHT' || a.status === 'USE_TONIGHT',
+    );
+
+    if (intent === 'REPORT_BURNING') {
       return (
-        <EmptyChatBody
-          suggestions={suggestions}
-          opening={openingMessage}
-          onPick={(t) => send(t, [])}
-          hasScanned={hasScanned}
-          onScan={() => nav.navigate('ScanModal')}
-          onOpenRoutine={() => {
-            // @ts-expect-error nested tab navigation typing
-            nav.navigate('Tabs', { screen: 'RoutineTab' });
-          }}
-          onOpenProducts={() => {
-            // @ts-expect-error nested tab navigation typing
-            nav.navigate('Tabs', { screen: 'ProductsTab' });
+        <ResetNightResponseCard
+          onPrimary={() => {
+            setOverride('RESET_NIGHT');
+            applyTonight();
+            hapt.success();
           }}
         />
       );
     }
-    // v18.0 — inline product cards now backed by LIVE retrieval.
-    // We pass the question + assistant text + scan grounding down to
-    // MessageLine; the line itself fires `lookupLiveProducts()` on
-    // mount when the question reads product-shaped, caches by query
-    // string at the module layer, and renders LiveProductCard cards
-    // with real merchant URLs + match badges. seedProducts no longer
-    // touches this path.
-    const userQuestion = findPrecedingUserQuestion(messages, item.message.id);
+
+    if (intent === 'CHALLENGE_EXFOLIATE') {
+      const held = heldRow ?? {
+        productName: 'Paula’s Choice 2% BHA Liquid',
+        category: 'Exfoliating acid',
+        status: 'HELD_TONIGHT' as const,
+      };
+      const use = useInsteadRow ?? {
+        productName: 'La Roche-Posay Cicaplast Balm B5',
+        category: 'Barrier support',
+        status: 'PRIORITIZED_TONIGHT' as const,
+      };
+      return (
+        <ChallengeResponseCard
+          groundedLabel={CHALLENGE_EXFOLIATE.groundedBadge}
+          heading={CHALLENGE_EXFOLIATE.heading}
+          body={CHALLENGE_EXFOLIATE.body}
+          heldLabel={CHALLENGE_EXFOLIATE.heldLabel}
+          heldRow={{
+            productName: held.productName,
+            status: `${held.category} · Hold tonight only`,
+          }}
+          useInsteadLabel={CHALLENGE_EXFOLIATE.useInsteadLabel}
+          useInsteadRow={{
+            productName: use.productName,
+            status: `${use.category} · Already in your routine`,
+          }}
+          whenLabel={CHALLENGE_EXFOLIATE.whenLabel}
+          whenBody={CHALLENGE_EXFOLIATE.whenBody}
+          primary={CHALLENGE_EXFOLIATE.primary}
+          secondary={CHALLENGE_EXFOLIATE.secondary}
+          onPrimary={onApply}
+          onSecondary={onCheckAnotherProduct}
+          followUps={CHALLENGE_EXFOLIATE.followUps}
+          onFollowUp={send}
+        />
+      );
+    }
+
+    if (intent === 'CHALLENGE_RETINOID') {
+      const held = heldRow ?? {
+        productName: 'Differin Gel',
+        category: 'Active treatment',
+        status: 'HELD_TONIGHT' as const,
+      };
+      const use = useInsteadRow ?? {
+        productName: 'La Roche-Posay Cicaplast Balm B5',
+        category: 'Barrier support',
+        status: 'PRIORITIZED_TONIGHT' as const,
+      };
+      return (
+        <ChallengeResponseCard
+          groundedLabel={CHALLENGE_RETINOID.groundedBadge}
+          heading={CHALLENGE_RETINOID.heading}
+          body={CHALLENGE_RETINOID.body}
+          heldLabel={CHALLENGE_RETINOID.heldLabel}
+          heldRow={{
+            productName: held.productName,
+            status: `${held.category} · Hold tonight only`,
+          }}
+          useInsteadLabel={CHALLENGE_RETINOID.useInsteadLabel}
+          useInsteadRow={{
+            productName: use.productName,
+            status: `${use.category} · Already in your routine`,
+          }}
+          whenLabel={CHALLENGE_RETINOID.whenLabel}
+          whenBody={CHALLENGE_RETINOID.whenBody}
+          primary={CHALLENGE_RETINOID.primary}
+          secondary={CHALLENGE_RETINOID.secondary}
+          onPrimary={onApply}
+          onSecondary={onCheckAnotherProduct}
+          followUps={CHALLENGE_RETINOID.followUps}
+          onFollowUp={send}
+        />
+      );
+    }
+
+    if (intent === 'CHALLENGE_RESTART') {
+      return (
+        <ChallengeResponseCard
+          groundedLabel={CHALLENGE_RESTART.groundedBadge}
+          heading={CHALLENGE_RESTART.heading}
+          body={CHALLENGE_RESTART.body}
+          heldLabel="HELD UNTIL NEXT CALM SCAN"
+          heldRow={{
+            productName:
+              heldRow?.productName ?? 'Paula’s Choice 2% BHA Liquid',
+            status: 'Exfoliating acid · Reassess after next scan',
+          }}
+          useInsteadLabel="USE TONIGHT INSTEAD"
+          useInsteadRow={{
+            productName:
+              useInsteadRow?.productName ?? 'La Roche-Posay Cicaplast Balm B5',
+            status: 'Barrier support · Already in your routine',
+          }}
+          whenLabel="WHEN PURA WILL CHECK"
+          whenBody="Scan again tomorrow evening. If your chin area no longer appears reactive, I can reassess whether an active night makes sense."
+          primary={CHALLENGE_RESTART.primary}
+          secondary={CHALLENGE_RESTART.secondary}
+          onPrimary={onApply}
+          onSecondary={onCheckAnotherProduct}
+          followUps={CHALLENGE_RESTART.followUps}
+          onFollowUp={send}
+        />
+      );
+    }
+
+    if (intent === 'SUBSTITUTE') {
+      const pick = useInsteadRow ?? {
+        productName: 'La Roche-Posay Cicaplast Balm B5',
+        category: 'Barrier support',
+        status: 'PRIORITIZED_TONIGHT' as const,
+      };
+      return (
+        <SubstituteResponseCard
+          pick={{
+            productName: pick.productName,
+            status: `${pick.category} · Best fit for a recovery night`,
+          }}
+          alsoSafe={[
+            {
+              productName: 'CeraVe PM Facial Moisturizing Lotion',
+              status: 'Barrier-support moisturizer · Already in your routine',
+            },
+          ]}
+          onPrimary={onApply}
+          onSecondary={onCheckAnotherProduct}
+          followUps={[
+            'Can I use my BHA tonight?',
+            'Why is this one safer?',
+            'When can I restart actives?',
+          ]}
+          onFollowUp={send}
+        />
+      );
+    }
+
+    if (intent === 'EXPLAIN') {
+      return (
+        <View style={styles.explainCard}>
+          <AssistantGroundingRow label={INTENT_GROUNDING.decision} />
+          <Text style={styles.explainHeading} maxFontSizeMultiplier={1.2}>
+            {decision.scanObservation
+              ? `${decision.scanObservation.keyArea} appears more reactive today.`
+              : 'Today’s scan looks slightly more reactive.'}
+          </Text>
+          <Text style={styles.explainBody} maxFontSizeMultiplier={1.3}>
+            {decision.explanation}
+          </Text>
+          <View style={{ marginTop: 12 }}>
+            <SectionEyebrow label="WANT THE FULL EVIDENCE?" />
+          </View>
+          <Text style={styles.explainBody} maxFontSizeMultiplier={1.3}>
+            Open the evidence sheet for the side-by-side comparison and the
+            routine context behind tonight’s decision.
+          </Text>
+          <View style={{ marginTop: 8 }}>
+            <SecondaryActionButton
+              label="Open evidence sheet"
+              onPress={() => setEvidenceOpen(true)}
+              underline
+            />
+          </View>
+        </View>
+      );
+    }
+
+    if (intent === 'REPORT_TIGHT') {
+      return (
+        <View style={styles.explainCard}>
+          <AssistantGroundingRow label={INTENT_GROUNDING.safety} />
+          <Text style={styles.explainHeading} maxFontSizeMultiplier={1.2}>
+            Keep tonight focused on hydration.
+          </Text>
+          <Text style={styles.explainBody} maxFontSizeMultiplier={1.3}>
+            Tightness usually means your barrier needs a quiet night.
+            Skip exfoliation and retinoids; layer a familiar gentle
+            moisturizer.
+          </Text>
+        </View>
+      );
+    }
+
+    // GENERAL — fall back to the explain shape so we never produce a
+    // shopping-style answer for a free-form question.
     return (
-      <MessageLine
-        message={item.message}
-        hasScanned={hasScanned}
-        userQuestion={userQuestion}
-        latestScan={latestScan}
-        onScan={() => nav.navigate('ScanModal')}
-        onOpenProducts={() => {
-          // @ts-expect-error nested tab navigation typing
-          nav.navigate('Tabs', { screen: 'ProductsTab' });
-        }}
-        onOpenRoutine={() => {
-          // @ts-expect-error nested tab navigation typing
-          nav.navigate('Tabs', { screen: 'RoutineTab' });
-        }}
-      />
+      <View style={styles.explainCard}>
+        <AssistantGroundingRow label={INTENT_GROUNDING.decision} />
+        <Text style={styles.explainHeading} maxFontSizeMultiplier={1.2}>
+          {decision.decisionStatement}
+        </Text>
+        <Text style={styles.explainBody} maxFontSizeMultiplier={1.3}>
+          {decision.explanation}
+        </Text>
+      </View>
     );
   };
+
+  const renderItem = ({ item }: { item: ListItem }) => {
+    switch (item.kind) {
+      case 'decision-card':
+        return (
+          <TonightDecisionCard
+            decision={decision}
+            onApply={onApply}
+            onAskWhy={onAskWhy}
+          />
+        );
+      case 'morning-after':
+        return (
+          <MorningAfterPrompt
+            onAnswer={onMorningAfter}
+            current={morningAfterFeedback}
+          />
+        );
+      case 'applied-confirmation':
+        return (
+          <AppliedConfirmationPanel
+            decision={decision}
+            onViewRoutine={goRoutine}
+            onUndo={() => undoTonight()}
+          />
+        );
+      case 'evidence': {
+        const obs = decision.scanObservation;
+        if (!obs) return null;
+        return (
+          <View style={styles.section}>
+            <SectionEyebrow label={EVIDENCE.sectionLabel} />
+            <View style={styles.spacer8} />
+            <EvidenceTileRow
+              tiles={[
+                {
+                  primary: String(obs.skinScore),
+                  label: EVIDENCE.scoreLabel,
+                  trailing: EVIDENCE.scoreDelta(obs.scoreDeltaFromPrevious),
+                },
+                {
+                  primary: obs.keyArea,
+                  label: EVIDENCE.areaObservation,
+                  trailing: obs.hasPreviousScan
+                    ? EVIDENCE.comparisonLabel
+                    : EVIDENCE.noComparisonLabel,
+                },
+              ]}
+            />
+          </View>
+        );
+      }
+      case 'adjustments': {
+        return (
+          <View style={styles.section}>
+            <SectionEyebrow label={ADJUSTMENTS.sectionLabel} />
+            <View style={styles.spacer8} />
+            <View style={styles.adjustmentsList}>
+              {decision.adjustments.map((adj, idx) => (
+                <RoutineAdjustmentRow
+                  key={`${adj.productName}-${idx}`}
+                  adjustment={adj}
+                  showDivider={idx < decision.adjustments.length - 1}
+                />
+              ))}
+            </View>
+          </View>
+        );
+      }
+      case 'provenance':
+        return (
+          <View style={styles.provenanceRow}>
+            <BasedOnLine text={provenanceLine} />
+          </View>
+        );
+      case 'prompts':
+        return (
+          <View style={styles.section}>
+            <SectionEyebrow label={PROMPTS.sectionLabel} />
+            <View style={styles.spacer10} />
+            <DecisionPromptList prompts={promptsForState} onPick={onPickPrompt} />
+          </View>
+        );
+      case 'stable-standard':
+        return (
+          <View style={styles.section}>
+            <SectionEyebrow label="TONIGHT" />
+            <View style={styles.spacer8} />
+            <EmptyStateCard
+              title={STABLE_STANDARD.title}
+              body={STABLE_STANDARD.body}
+              primary={STABLE_STANDARD.primary}
+              onPrimary={goRoutine}
+              secondary={STABLE_STANDARD.secondary}
+              onSecondary={goProducts}
+            />
+          </View>
+        );
+      case 'empty-no-scan':
+        return (
+          <EmptyStateCard
+            title={NO_SCAN.title}
+            body={NO_SCAN.body}
+            primary={NO_SCAN.primary}
+            onPrimary={goScan}
+            secondary={NO_SCAN.secondary}
+            onSecondary={() => {
+              // Free-form general question — open the composer focused.
+              setConversation([
+                {
+                  kind: 'user',
+                  id: `u-${Date.now()}`,
+                  text: 'What can you do without a scan?',
+                },
+                {
+                  kind: 'assistant',
+                  id: `a-${Date.now()}`,
+                  intent: 'GENERAL',
+                  sourceText: 'What can you do without a scan?',
+                },
+              ]);
+            }}
+            showCameraGlyph
+            eyebrowLabel="ONE DETAIL NEEDED"
+          />
+        );
+      case 'empty-no-products':
+        return (
+          <View style={styles.section}>
+            <EmptyStateCard
+              title={NO_PRODUCTS.title}
+              body={NO_PRODUCTS.body}
+              primary={NO_PRODUCTS.primary}
+              onPrimary={goProducts}
+              secondary={NO_PRODUCTS.secondary}
+              onSecondary={() => send('What can you do without my products?')}
+              provenance={NO_PRODUCTS.provenance}
+              eyebrowLabel="SAFER WITH PRODUCT DATA"
+            />
+          </View>
+        );
+      case 'compressed-anchor':
+        return (
+          <CompressedDecisionAnchor
+            decision={decision}
+            onViewDecision={onViewDecision}
+          />
+        );
+      case 'entry':
+        return reduceMotion ? (
+          renderEntry(item.entry)
+        ) : (
+          <Animated.View
+            entering={FadeInUp.duration(260).delay(40).springify()}
+          >
+            {renderEntry(item.entry)}
+          </Animated.View>
+        );
+      case 'bottom-spacer':
+        return <View style={{ height: item.height }} />;
+      default:
+        return null;
+    }
+  };
+
+  const canSend = draft.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
-      <AISourceBadge feature="assistant" />
-
-      {/* v11.3 — single calm header bar. The redundant top-right
-          status pill (READY/THINKING) is gone — the PuraMark already
-          communicates state via its `variant` prop, and a duplicate
-          status indicator was the visible-clutter problem on the
-          previous AI Assist screen. The 40pt "Ask." hero is replaced
-          with a tighter inline title that lets the empty-body opener
-          carry the warmth. */}
-      <View style={styles.brandBar}>
-        <View style={styles.brandLeft}>
-          <PuraMark
-            size={22}
-            variant={typing ? 'thinking' : 'idle'}
-          />
-          <Text style={styles.brandWord} maxFontSizeMultiplier={1.1}>
-            AI Assistant
-          </Text>
-        </View>
-      </View>
-
-      {/* v11.11 — ACTUAL composer-gap fix.
-        *
-        * Previous attempts (v11.5–v11.10) used
-        * `keyboardVerticalOffset={tabBarHeight}` because we assumed
-        * the tab bar's layout space stays even when it's hidden.
-        * Wrong assumption: with `@react-navigation/bottom-tabs` v6+
-        * AND `tabBarHideOnKeyboard: true` (set in TabNavigator), the
-        * tab bar's LAYOUT IS RECLAIMED when the keyboard opens — the
-        * screen expands to full height.
-        *
-        * That changes the geometry:
-        *   keyboard CLOSED:
-        *     - screen ends at tabBarTop (full-height − tabBar)
-        *     - KAV idle, composer flush above tab bar ✓
-        *   keyboard OPEN:
-        *     - tab bar layout removed, screen extends to full height
-        *     - KAV adds paddingBottom = (keyboardH − offset)
-        *     - For composer at keyboard top:
-        *         offset = 0 → padding = keyboardH → composer at
-        *         (fullH − keyboardH) = keyboard top ✓
-        *
-        * With offset=tabBarHeight (the WRONG value): KAV adds only
-        * (keyboardH − tabBarHeight) of padding, so the composer ends
-        * up tabBarHeight ABOVE the keyboard top — that is exactly
-        * the persistent "white gap above the composer" the user has
-        * been reporting.
-        *
-        * Correct value: 0 (the default). Note `tabBarHeight` is no
-        * longer used — kept the import to make the prior bad usage
-        * obvious in the diff. */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
       >
+        <View style={styles.headerWrap}>
+          <AssistantHeader
+            utility={conversationActive ? 'back' : undefined}
+            onUtilityPress={
+              conversationActive ? () => setConversation([]) : undefined
+            }
+            descriptor={
+              conversationActive
+                ? 'Refining tonight’s decision.'
+                : undefined
+            }
+          />
+        </View>
         <FlatList
           ref={listRef}
           data={items}
-          keyExtractor={(item, i) =>
-            item.kind === 'message' ? item.message.id : `empty-${i}`
-          }
+          keyExtractor={(item, i) => {
+            if (item.kind === 'entry') return `entry-${item.entry.id}`;
+            return `${item.kind}-${i}`;
+          }}
           renderItem={renderItem}
-          // v11.9 — explicit flex:1 so the FlatList stretches to fill
-          // the KeyboardAvoidingView height. Without this, when the
-          // message list is short, the FlatList sizes to its content
-          // and leaves vertical slack ABOVE the composer when the
-          // keyboard is closed (the visible "white gap"). With flex:1
-          // the FlatList fills the space and pins the composer flush
-          // to the keyboard top (open) or the tab bar (closed).
-          style={styles.flex}
+          style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
-          ListFooterComponent={
-            typing ? (
-              <View style={styles.typingRow}>
-                <PuraMark variant="thinking" size="xs" />
-                <View style={{ flex: 1, marginLeft: space.sm }}>
-                  <TypingDots color={palette.inkTertiary} />
-                </View>
-              </View>
-            ) : null
-          }
+          ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
         />
-
-        {attached.length > 0 ? (
-          <View style={styles.attachedRow}>
-            {/* v11.3 — slim attached pills replace the heavy
-                ProductCard chip variant. Each pill: brand caps · name,
-                tap-to-remove. Footprint dropped from ~80pt rows to a
-                28pt single line. */}
-            {attached.map((id) => {
-              // v18.3 — resolve attached pill from the live cache
-              // first so v18.x AI-retrieved products render. Seed
-              // fallback for legacy attachments only.
-              const liveById = useAppStore.getState().liveProductsById;
-              const live = liveById[id];
-              const seed = !live ? seedProducts.find((x) => x.id === id) : null;
-              const brand = live?.brand ?? seed?.brand;
-              const name = live?.name ?? seed?.name;
-              if (!brand || !name) return null;
-              return (
-                <Pressable
-                  key={id}
-                  onPress={() => removeAttached(id)}
-                  hitSlop={6}
-                  style={styles.attachedPill}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${brand} ${name}`}
-                >
-                  <Text
-                    style={styles.attachedPillText}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    {`${brand.toUpperCase()} · ${name}`}
-                  </Text>
-                  <X size={11} color={palette.inkTertiary} weight="bold" />
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-
-        <View style={styles.composer}>
-          <Pressable
-            onPress={() => setShowPicker((v) => !v)}
-            hitSlop={10}
-            accessibilityLabel="Attach a product"
-            style={({ pressed }) => [
-              styles.composerIconBtn,
-              pressed && styles.composerIconBtnPressed,
-            ]}
-          >
-            <Plus size={18} color={palette.inkSecondary} weight="bold" />
-          </Pressable>
-          <Pressable
-            onPress={() => nav.navigate('ScanModal')}
-            hitSlop={10}
-            accessibilityLabel="Scan to attach"
-            style={({ pressed }) => [
-              styles.composerIconBtn,
-              pressed && styles.composerIconBtnPressed,
-            ]}
-          >
-            <Camera size={18} color={palette.inkSecondary} weight="duotone" />
-          </Pressable>
-
-          {/* v11.9 — input wrapped in a soft pill background. The
-              previous flat input bled into the row with no visual
-              container, leaving it ambiguous where to tap. The pill
-              gives it premium messaging-app structure. */}
-          <View style={styles.inputPill}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={strings.composerPlaceholder}
-              placeholderTextColor={palette.inkTertiary}
-              style={styles.input}
-              multiline
-            />
-          </View>
-
-          <Pressable
-            onPress={() => send(draft, attached)}
-            disabled={!canSend}
-            hitSlop={10}
-            accessibilityLabel="Send"
-            style={({ pressed }) => [
-              styles.sendBtn,
-              { backgroundColor: canSend ? palette.clay : palette.bgDeep },
-              pressed && canSend && { opacity: 0.92 },
-            ]}
-          >
-            <ArrowUp
-              size={16}
-              color={canSend ? palette.inkInverse : palette.inkTertiary}
-              weight="bold"
-            />
-          </Pressable>
-        </View>
-
-        {showPicker ? (
-          <AttachPickerTray onPick={attachProduct} />
-        ) : null}
+        <StickyComposer
+          value={draft}
+          onChange={setDraft}
+          onSend={() => send(draft)}
+          placeholder={placeholder}
+          focused={composerFocused}
+          onFocusChange={setComposerFocused}
+          canSend={canSend}
+          applied={decision.applied}
+          reduceMotion={reduceMotion}
+        />
       </KeyboardAvoidingView>
+
+      <EvidenceSheet
+        visible={evidenceOpen}
+        decision={decision}
+        onClose={() => setEvidenceOpen(false)}
+        onSensation={onSensationFromSheet}
+        onApply={onSheetApply}
+      />
     </SafeAreaView>
   );
 }
 
-/**
-/**
- * v18.3 — adapter: live candidate → legacy Product shape used by
- * the chat ProductCard chip. Lets us render past attached-product
- * messages whose ids point at AI-retrieved products.
- */
-function liveCandidateToAttachedProduct(c: LiveProductCandidate): Product {
-  const adaptedCategory =
-    c.category === 'spot_treatment'
-      ? 'treatment'
-      : c.category === 'unknown'
-      ? 'serum'
-      : c.category;
-  return {
-    id: c.id,
-    brand: c.brand,
-    name: c.name,
-    category: adaptedCategory as Product['category'],
-    imageUri: c.imageUrl ?? '',
-    ingredients: c.ingredientsHighlights,
-    keyIngredients: c.ingredientsHighlights,
-    description: c.shortDescription,
-    tint: 'sand',
-    rating: 0,
-    reviewCount: 0,
-    matchScore: c.matchScore,
-    tags: [],
-    addedDate: c.sourceTimestamp,
-    price: c.price ?? 0,
-    imageUrl: c.imageUrl ?? undefined,
-    buyUrl: c.productUrl ?? undefined,
-  };
-}
-
-/**
- * v18.3 — AttachPickerTray.
- *
- * Replaces the seed-driven "attach a product" picker. Pulls
- * candidates from `useAppStore.liveProductsById` (everything the
- * live retrieval engine has surfaced this session) so users can
- * attach AI-recommended products to chat questions.
- *
- * Falls back to a tasteful "scan or browse to surface products"
- * empty state when the cache is empty — never silently shows seed
- * products as if they were live.
- */
-function AttachPickerTray({
-  onPick,
-}: {
-  onPick: (id: string) => void;
-}) {
-  const cache = useAppStore((s) => s.liveProductsById);
-  const liveItems = useMemo(() => {
-    return Object.values(cache)
-      .sort((a, b) => b.matchScore - a.matchScore)
-      .slice(0, 10);
-  }, [cache]);
-  return (
-    <View style={styles.picker}>
-      <Text style={styles.pickerLabel}>ATTACH A PRODUCT</Text>
-      {liveItems.length === 0 ? (
-        <Text style={styles.pickerEmpty} maxFontSizeMultiplier={1.2}>
-          No live picks yet — run a scan or open the Products tab,
-          then come back to attach one.
-        </Text>
-      ) : (
-        <FlatList
-          data={liveItems}
-          horizontal
-          keyExtractor={(c) => c.id}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pickerRow}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => onPick(item.id)}
-              style={styles.pickerPill}
-              accessibilityRole="button"
-              accessibilityLabel={`Attach ${item.brand} ${item.name}`}
-            >
-              <Text
-                style={styles.pickerPillBrand}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.1}
-              >
-                {item.brand.toUpperCase()}
-              </Text>
-              <Text
-                style={styles.pickerPillName}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.1}
-              >
-                {item.name}
-              </Text>
-            </Pressable>
-          )}
-        />
-      )}
-    </View>
-  );
-}
-
-/**
- * Concierge-style starter chip. A 2-column grid replaces the stacked
- * list-row treatment. Each chip leads with an icon tinted to the prompt's
- * theme (score → ChartLineUp, tonight → MoonStars, natural → Leaf, etc.)
- * so the grid reads as visual-first, not just text.
- */
-const PROMPT_ICONS: Record<string, React.FC<PhosphorIconProps>> = {
-  score: ChartLineUp as React.FC<PhosphorIconProps>,
-  tonight: MoonStars as React.FC<PhosphorIconProps>,
-  compare: Sparkle as React.FC<PhosphorIconProps>,
-  natural: Leaf as React.FC<PhosphorIconProps>,
-  how: ShieldCheck as React.FC<PhosphorIconProps>,
-  default: Sparkle as React.FC<PhosphorIconProps>,
-};
-
-function iconKeyForPrompt(p: string): keyof typeof PROMPT_ICONS {
-  const s = p.toLowerCase();
-  if (s.includes('score')) return 'score';
-  if (s.includes('tonight')) return 'tonight';
-  if (s.includes('compare') || s.includes('last two')) return 'compare';
-  if (s.includes('natural')) return 'natural';
-  if (s.includes('how') || s.includes('expect') || s.includes('work')) return 'how';
-  return 'default';
-}
-
-/**
- * v10.3 — EmptyChatBody upgraded to feel alive before the user types.
- *
- * Behavior:
- *   • Pool of 6–10 prompts (contextual when a scan exists, educational
- *     otherwise). On mount, a Fisher–Yates shuffle produces a fresh
- *     ordering so each open of the assistant feels considered, not
- *     memorized.
- *   • Render 4 chips at a time. Every 7 seconds, the oldest chip swaps
- *     out for the next in the shuffled queue via a crossfade. Slow enough
- *     to read without frustration; live enough to feel intelligent.
- *   • Reduce-motion: skip the rotation; just show the shuffled first 4.
- */
-function EmptyChatBody({
-  suggestions,
-  onPick,
-  opening,
-  hasScanned,
-  onScan,
-  onOpenRoutine,
-  onOpenProducts,
-}: {
-  suggestions: string[];
-  onPick: (text: string) => void;
-  opening: string | null;
-  hasScanned: boolean;
-  onScan: () => void;
-  onOpenRoutine: () => void;
-  onOpenProducts: () => void;
-}) {
-  const reduceMotion = useReduceMotion();
-  const visible = useRotatingPrompts(suggestions, 3, 7000, reduceMotion);
-
-  // v11.11 — no-scan state per spec:
-  //   "I don't have a recent scan yet."
-  //   "Want to start with a face scan?"
-  //   Buttons: Scan face / Build routine / View products
-  //
-  // Three CTAs sit in a clean two-row stack: primary "Scan face"
-  // (clay-filled) on its own row, then "Build routine" + "View
-  // products" as paired secondaries. The previous treatment showed
-  // a single primary CTA + 2 prompt chips — closer but not what the
-  // spec called for.
-  if (!hasScanned) {
-    return (
-      <View style={emptyStyles.root}>
-        <Text style={emptyStyles.title} maxFontSizeMultiplier={1.15}>
-          I don’t have a recent scan yet.
-        </Text>
-        <Text style={emptyStyles.body}>
-          Want to start with a face scan?
-        </Text>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Take a face scan"
-          onPress={() => {
-            hapt.tap();
-            onScan();
-          }}
-          style={({ pressed }) => [
-            emptyStyles.primaryCta,
-            pressed && { opacity: 0.92, transform: [{ scale: 0.985 }] },
-          ]}
-        >
-          <Camera size={16} color={palette.inkInverse} weight="duotone" />
-          <Text
-            style={emptyStyles.primaryCtaLabel}
-            maxFontSizeMultiplier={1.15}
-          >
-            Scan face
-          </Text>
-        </Pressable>
-
-        <View style={emptyStyles.secondaryRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Build routine"
-            onPress={() => {
-              hapt.select();
-              onOpenRoutine();
-            }}
-            style={({ pressed }) => [
-              emptyStyles.secondaryCta,
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <Text style={emptyStyles.secondaryCtaLabel}>Build routine</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="View products"
-            onPress={() => {
-              hapt.select();
-              onOpenProducts();
-            }}
-            style={({ pressed }) => [
-              emptyStyles.secondaryCta,
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <Text style={emptyStyles.secondaryCtaLabel}>View products</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={emptyStyles.root}>
-      <Text style={emptyStyles.title} maxFontSizeMultiplier={1.15}>
-        {strings.emptyTitle}
-      </Text>
-      {opening ? (
-        <Text style={emptyStyles.opening} maxFontSizeMultiplier={1.2}>
-          {opening}
-        </Text>
-      ) : (
-        <Text style={emptyStyles.body}>{strings.emptyBody}</Text>
-      )}
-
-      <View style={emptyStyles.promptGrid}>
-        {visible.map((s) => (
-          <PromptChip key={s} text={s} onPick={onPick} />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-// v11.3 — ProactiveOpening removed. The opening line now renders
-// inline inside EmptyChatBody as the body sentence, replacing the
-// generic "Ask about your scan…" copy when scan data is in hand.
-// Removing the Mark + animated bounce wrap collapsed three stacked
-// blocks (mark / opening / try-asking-rule) into one calm line.
-
-/**
- * One chip. Renders with a gentle fade-in on mount via Reanimated so the
- * rotating-prompts swap is visually continuous. No fade-out animation —
- * the replacement just fades in at the same slot.
- */
-function PromptChip({
-  text,
-  onPick,
-}: {
-  text: string;
-  onPick: (text: string) => void;
-}) {
-  const Icon = PROMPT_ICONS[iconKeyForPrompt(text)];
-  const opacity = useSharedValue(0);
-
-  React.useEffect(() => {
-    opacity.value = 0;
-    opacity.value = withTiming(1, {
-      duration: 340,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [opacity, text]);
-
-  const chipStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
-  return (
-    <Animated.View style={[{ flexGrow: 1, flexBasis: '46%' }, chipStyle]}>
-      <Pressable
-        onPress={() => onPick(text)}
-        accessibilityRole="button"
-        accessibilityLabel={text}
-        style={({ pressed }) => [
-          emptyStyles.promptChip,
-          pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
-        ]}
-      >
-        <View style={emptyStyles.promptIconWrap}>
-          <Icon size={14} color={palette.clay} weight="duotone" />
-        </View>
-        <Text
-          style={emptyStyles.promptText}
-          numberOfLines={2}
-          maxFontSizeMultiplier={1.15}
-        >
-          {text}
-        </Text>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-/**
- * Rotating-prompts hook. Shuffles the full pool on mount, then rotates the
- * oldest visible prompt out every `intervalMs` by advancing the queue by
- * one slot. Returns exactly `windowSize` distinct prompts at a time.
- *
- * If the pool is smaller than the window, it just returns the shuffled
- * pool (no rotation happens — no new prompt to rotate in).
- */
-function useRotatingPrompts(
-  pool: string[],
-  windowSize: number,
-  intervalMs: number,
-  reduceMotion: boolean
-): string[] {
-  const shuffled = React.useMemo(() => shuffleOnce(pool), [pool]);
-  const [offset, setOffset] = React.useState(0);
-
-  React.useEffect(() => {
-    if (reduceMotion) return;
-    if (shuffled.length <= windowSize) return;
-    const id = setInterval(() => {
-      setOffset((o) => (o + 1) % shuffled.length);
-    }, intervalMs);
-    return () => clearInterval(id);
-  }, [shuffled.length, windowSize, intervalMs, reduceMotion]);
-
-  if (shuffled.length <= windowSize) return shuffled;
-  // Pull `windowSize` consecutive prompts starting at offset, wrapping.
-  const out: string[] = [];
-  for (let i = 0; i < windowSize; i++) {
-    out.push(shuffled[(offset + i) % shuffled.length]);
-  }
-  return out;
-}
-
-function shuffleOnce(items: string[]): string[] {
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
-/**
- * v10.4 — proactive opening builder. Pura speaks first whenever it has
- * scan data to reference. Tone stays plain and grounded — this is the
- * AI's first line, not marketing copy.
- *
- * Branches (priority order):
- *   • Score dropped ≥3 since last scan → flag the drop + point to the
- *     top zone as the likely driver
- *   • Score up ≥3 since last scan → celebrate concisely
- *   • Fresh scan with a non-calm concern → name the focus for tonight
- *   • Calm/stable post-scan → steady language, invite a question
- *   • No scans yet → educational, invites a first scan
- */
-function buildProactiveOpening(
-  scans: ReturnType<typeof useAppStore.getState>['scans'],
-  zone: string
-): string | null {
-  if (scans.length === 0) {
-    return "I'm grounded in your skin data, not general skincare takes. Once you scan, ask me anything and I'll answer from what I actually see.";
-  }
-  const latest = scans[scans.length - 1];
-  const previous = scans.length >= 2 ? scans[scans.length - 2] : null;
-  const delta = previous ? latest.overallScore - previous.overallScore : null;
-
-  if (delta !== null && delta <= -3) {
-    return `Your Skin Score dropped ${Math.abs(delta)} since your last scan. Your ${zone} is the likely driver — want me to walk through what to do tonight?`;
-  }
-  if (delta !== null && delta >= 3) {
-    return `Skin Score up ${delta} since your last scan. Whatever you\u2019re doing is working — want to lock the routine in?`;
-  }
-  const activeZone = latest.zones.find((z) => z.status === 'active');
-  if (activeZone) {
-    return `Your ${activeZone.label.toLowerCase()} is the focus tonight. Ask me anything — I'll tailor advice to what I see in your scan.`;
-  }
-  if (delta !== null) {
-    return 'Things look steady since your last scan. Ask me what to keep doing, or where to push next.';
-  }
-  return 'Your first reading is in. Ask me anything about what you\u2019re seeing — I\u2019ll answer from your scan, not generalities.';
-}
-
-function MessageLine({
-  message,
-  hasScanned,
-  userQuestion,
-  latestScan,
-  onScan,
-  onOpenProducts,
-  onOpenRoutine,
-}: {
-  message: AssistantMessage;
-  hasScanned: boolean;
-  userQuestion: string;
-  latestScan:
-    | ReturnType<typeof useAppStore.getState>['scans'][number]
-    | undefined;
-  onScan: () => void;
-  onOpenProducts: () => void;
-  onOpenRoutine: () => void;
-}) {
-  // v18.0 — fire live product retrieval inside the message itself
-  // when the question is product-shaped. Cached by query string at
-  // the module layer in `liveProducts.ts`, so the same query across
-  // message remounts hits cache.
-  const [liveCandidates, setLiveCandidates] = React.useState<
-    LiveProductCandidate[]
-  >([]);
-  const productShaped =
-    message.role === 'assistant' &&
-    (looksLikeProductQuestion(userQuestion) ||
-      looksLikeProductQuestion(message.text));
-  React.useEffect(() => {
-    if (!productShaped) return;
-    let cancelled = false;
-    const query = buildLiveProductQuery({
-      assistantText: message.text,
-      userQuestion,
-      latestScan,
-      hasScanned,
-    });
-    if (!query) return;
-    // v19.19 — shared deterministic engine, NO AI in the critical
-    // path. The assistant's inline product cards come from the
-    // seed catalog only. AI augmentation is OFF so the assistant
-    // never blocks waiting for the proxy when it's down.
-    getRecommendationContextFromQuery(query, {
-      intent: { kind: 'assistant_query' as never, text: query } as never,
-      scanId: latestScan?.id ?? null,
-      allowAiAugmentation: false,
-      // v19.24 — assistant inline product cards are an
-      // assistant-driven retrieval; tag them so diagnostics can
-      // tell a chip-press in Products from an assistant answer.
-      trigger: 'assistant',
-    })
-      .then((rec) => {
-        if (cancelled) return;
-        const picks: typeof rec.candidateProducts = rec.heroProduct
-          ? [
-              rec.heroProduct,
-              ...rec.alternatives.filter((c) => c.id !== rec.heroProduct?.id),
-            ]
-          : rec.candidateProducts;
-        setLiveCandidates(picks.slice(0, 2));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLiveCandidates([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    productShaped,
-    message.text,
-    userQuestion,
-    latestScan?.id,
-    hasScanned,
-  ]);
-  const isUser = message.role === 'user';
-  // v18.3 — attached products in past messages resolve from the
-  // live cache first (live AI-retrieved attachments), falling back
-  // to seed only for legacy messages.
-  const liveById = useAppStore((s) => s.liveProductsById);
-  const attachedProducts: Product[] = (message.attachedProductIds ?? [])
-    .map((id) => {
-      const live = liveById[id];
-      if (live) return liveCandidateToAttachedProduct(live);
-      return seedProducts.find((p) => p.id === id);
-    })
-    .filter((p): p is Product => !!p);
-
-  if (isUser) {
-    return (
-      <View style={messageStyles.userRow}>
-        <View style={messageStyles.userBubble}>
-          {attachedProducts.length > 0 ? (
-            <View style={messageStyles.userAttached}>
-              {attachedProducts.map((p) => (
-                <ProductCard key={p.id} product={p} variant="chip" />
-              ))}
-            </View>
-          ) : null}
-          <Text style={messageStyles.userText}>{message.text}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // v11.4 — derive contextual action chips for assistant messages.
-  // We scan the response text for intent keywords and render the
-  // matching chips as tappable next steps, so the user gets an
-  // actionable thread instead of a paragraph that ends.
-  const actions = deriveActionChips({
-    text: message.text,
-    hasScanned,
-  });
-
-  // v11.5 — shape the raw model response into a lead + ordered
-  // blocks before rendering. Long paragraphs split at sentence
-  // boundaries, bullets become their own renderable kind, markdown
-  // markers stripped.
-  const shaped = shapeAssistantText(message.text);
-
-  return (
-    <View style={messageStyles.assistantRow}>
-      <View style={messageStyles.assistantMark}>
-        <PuraMark variant="idle" size="xs" />
-      </View>
-      <View style={messageStyles.assistantContent}>
-        {shaped.lead.length > 0 ? (
-          <Text style={messageStyles.assistantLead}>{shaped.lead}</Text>
-        ) : (
-          <Text style={messageStyles.assistantText}>{message.text}</Text>
-        )}
-        {shaped.blocks.map((b: ShapedTextBlock, i) =>
-          b.kind === 'bullet' ? (
-            <View key={i} style={messageStyles.bulletRow}>
-              <Text style={messageStyles.bulletDot}>•</Text>
-              <Text style={messageStyles.bulletText}>{b.text}</Text>
-            </View>
-          ) : (
-            <Text key={i} style={messageStyles.assistantText}>
-              {b.text}
-            </Text>
-          )
-        )}
-        {message.groundedFrom && message.groundedFrom.length > 0 ? (
-          <Text
-            style={messageStyles.assistantGrounding}
-            maxFontSizeMultiplier={1.1}
-            numberOfLines={1}
-          >
-            {`Grounded in: ${message.groundedFrom.join(' · ')}`}
-          </Text>
-        ) : null}
-        {/* v13.0 — inline product mini-cards. When the user asked
-            something product-shaped ("best moisturizer for dry skin",
-            "what serum should I add", etc.) the assistant now
-            surfaces 1–2 actual product cards under its short text
-            answer. Tapping the card opens the brand site directly;
-            tapping the body opens the in-app product detail. This
-            replaces the "wall of text + a chip" pattern with real
-            commerce-aware action surfaces. */}
-        {liveCandidates.length > 0 ? (
-          <View style={messageStyles.inlineProductRow}>
-            {liveCandidates.map((c) => (
-              <LiveProductCard key={c.id} candidate={c} variant="alt" />
-            ))}
-          </View>
-        ) : null}
-        {actions.length > 0 ? (
-          <View style={messageStyles.actionRow}>
-            {actions.map((a) => {
-              const onPress =
-                a === 'scan'
-                  ? onScan
-                  : a === 'products'
-                  ? onOpenProducts
-                  : onOpenRoutine;
-              const isPrimary = a === 'scan' && !hasScanned;
-              return (
-                <Pressable
-                  key={a}
-                  onPress={() => {
-                    hapt.select();
-                    onPress();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={ACTION_LABELS[a]}
-                  style={({ pressed }) => [
-                    messageStyles.actionChip,
-                    isPrimary && messageStyles.actionChipPrimary,
-                    pressed && {
-                      opacity: 0.92,
-                      transform: [{ scale: 0.985 }],
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      messageStyles.actionChipText,
-                      isPrimary && messageStyles.actionChipTextPrimary,
-                    ]}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    {ACTION_LABELS[a]}
-                  </Text>
-                  <CaretRight
-                    size={12}
-                    weight="bold"
-                    color={isPrimary ? palette.bg : palette.inkSecondary}
-                  />
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-type ActionChip = 'scan' | 'products' | 'routine';
-
-// v11.8 — drop the inline unicode arrow from each label; the chip
-// renders a proper Phosphor CaretRight on the right edge so the
-// "this is tappable, this is the next step" affordance reads as a
-// real button, not a sentence with an arrow appended.
-const ACTION_LABELS: Record<ActionChip, string> = {
-  scan: 'Take a face scan',
-  products: 'View matched products',
-  routine: 'Open routine',
-};
-
-/**
- * v11.4 — light keyword-based intent extraction. Two rules:
- *
- *   1. If the assistant said "I don't have a recent scan" (or the
- *      response is missing scan grounding and the user hasn't
- *      scanned yet), surface a Scan chip — this is the highest-value
- *      next step in that state.
- *   2. Otherwise scan the body for product/routine references and
- *      surface the matching chips. Cap at 2 so the UI doesn't read
- *      as a button menu.
- */
-function deriveActionChips({
-  text,
-  hasScanned,
-}: {
-  text: string;
-  hasScanned: boolean;
-}): ActionChip[] {
-  const lower = text.toLowerCase();
-  const out: ActionChip[] = [];
-  const noScanSignaled =
-    /don’t have a recent scan|don't have a recent scan|no recent scan|once you scan|after you scan|take a scan/i.test(
-      text
-    ) || (!hasScanned && !/scan/i.test(text));
-  if (noScanSignaled) out.push('scan');
-  if (
-    /\bproduct(s)?\b|matches|recommend|cleanser|serum|moisturizer|spf|toner/i.test(
-      text
-    )
-  ) {
-    out.push('products');
-  }
-  if (/\broutine\b|morning|evening|tonight|step/i.test(text)) {
-    out.push('routine');
-  }
-  // Dedupe and cap at 2 so the message stays scannable.
-  return Array.from(new Set(out)).slice(0, 2);
-}
-
-// v11.3 — LiveStatusDot removed. The previous design rendered
-// a redundant READY/THINKING pill in the top-right of the assistant
-// header alongside the PuraMark thinking variant. The two indicators
-// said the same thing twice; the pill is gone.
-
-// ============================================================================
-// v13.0 — inline product cards
-//
-// When the user asks a product-shaped question ("best moisturizer for
-// dry skin", "should I add a serum", "recommend a gentle cleanser"),
-// the assistant should answer with a SHORT text reply + one or two
-// real product cards — not a wall of explanation. The cards open the
-// brand site directly via Linking, so the assistant becomes a
-// commerce-aware skincare guide, not just a chatbot.
-//
-// Detection: keyword scan over the user's preceding question + the
-// assistant's response text. Conservative — only trigger when the
-// language is clearly product-shaped, otherwise leave the cards off
-// so non-product questions stay clean.
-//
-// Resolution: pull from seedProducts via concern-driven category
-// preference (same logic the result screen uses). Match only against
-// products that have a real `buyUrl` so every card carries a real
-// shop action.
-// ============================================================================
-
-const PRODUCT_INTENT_PATTERNS: ReadonlyArray<RegExp> = [
-  // v14.1 — broadened. Any of these patterns surfaces inline product
-  // cards; the assistant text becomes the lead, not the whole answer.
-  /\b(best|recommend|suggest|pick|which|what|need|should\s+i)\b.*\b(product|serum|moisturizer|moisturiser|cleanser|toner|spf|sunscreen|exfoliant|retinol|niacinamide|salicylic|vitamin\s+c|aha|bha)\b/i,
-  /\b(add|buy|shop|get|use|try)\b.*\b(serum|moisturizer|cleanser|toner|spf|sunscreen|product|exfoliant|retinol|niacinamide)\b/i,
-  /\b(serum|moisturizer|cleanser|toner|spf|sunscreen|exfoliant|cream|gel|treatment)\s+(for|to|that)\b/i,
-  /show me\b.*\b(product|serum|cleanser|moisturizer|spf)\b/i,
-  // Concern-shaped questions ("what helps redness", "what calms
-  // breakouts") — the answer naturally points at a product even
-  // when the user didn't say "product".
-  /\bwhat\s+(helps?|calms?|works?\s+for|fixes?|treats?)\b.*\b(redness|breakouts?|texture|hydration|dryness|dark\s+marks?|congestion|blackheads?|dullness|sensitivity)\b/i,
-  // Direct product-name mentions — answer with the matching card.
-  /\b(niacinamide|salicylic|retinol|vitamin\s+c|hyaluronic|ceramide|azelaic|glycolic|lactic\s+acid)\b/i,
-];
-
-function looksLikeProductQuestion(text: string): boolean {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return false;
-  return PRODUCT_INTENT_PATTERNS.some((rx) => rx.test(trimmed));
-}
-
-function findPrecedingUserQuestion(
-  messages: AssistantMessage[],
-  assistantMessageId: string
-): string {
-  const idx = messages.findIndex((m) => m.id === assistantMessageId);
-  if (idx <= 0) return '';
-  for (let i = idx - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') return messages[i].text;
-  }
-  return '';
-}
-
-/**
- * v18.0 — Build the live retrieval query string for an assistant
- * message. Used by MessageLine's useEffect to fire the live AI
- * lookup ONLY when the question reads product-shaped. Returns null
- * when there's nothing useful to ask.
- *
- * Combines:
- *   • the user question (as-is, the model is good at parsing intent)
- *   • the user's primary scan concern + region when present
- * so a vague "what should I add?" still gets scan-grounded results.
- */
-function buildLiveProductQuery({
-  assistantText,
-  userQuestion,
-  latestScan,
-  hasScanned,
-}: {
-  assistantText: string;
-  userQuestion: string;
-  latestScan:
-    | ReturnType<typeof useAppStore.getState>['scans'][number]
-    | undefined;
-  hasScanned: boolean;
-}): string | null {
-  const trimmed = userQuestion.trim();
-  if (
-    !looksLikeProductQuestion(trimmed) &&
-    !looksLikeProductQuestion(assistantText)
-  ) {
-    return null;
-  }
-  if (hasScanned && latestScan?.aiAnalysis) {
-    const ai = latestScan.aiAnalysis;
-    const concern = ai.primary_concern;
-    const region = ai.findings[0]?.regions[0];
-    const grounding = [
-      concern ? `for ${concern.replace('_', ' ')}` : null,
-      region && region !== 'across_face'
-        ? `on ${region.replace('_', ' ')}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(' ');
-    return grounding ? `${trimmed} ${grounding}` : trimmed;
-  }
-  return trimmed;
-}
-
-// v18.0 — AssistantProductCard + inlineCardStyles removed. Inline
-// product cards now render via the shared `LiveProductCard`
-// component sourced from the live retrieval engine in
-// `src/api/liveProducts.ts`. The seed catalog no longer touches
-// assistant inline products.
-
-type ListItem =
-  | { kind: 'empty' }
-  | { kind: 'message'; message: AssistantMessage };
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1, backgroundColor: dx.paper },
   flex: { flex: 1 },
-
-  // v11.3 — single calm header row. The legacy brandStatus pill +
-  // 40pt "Ask." hero + italic subtitle were replaced with a slim
-  // brand bar; the warm "Hey — what do you need?" empty body now
-  // carries the personality.
-  brandBar: {
-    height: 48,
-    paddingHorizontal: space.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerWrap: {
+    paddingHorizontal: 18,
   },
-  brandLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  brandWord: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 18,
-    letterSpacing: -0.2,
-    color: palette.ink,
-  },
+  list: { flex: 1 },
   listContent: {
-    paddingHorizontal: space.lg,
-    paddingBottom: space.md,
-    paddingTop: space.sm,
-    gap: space.md,
+    paddingHorizontal: 18,
+    paddingTop: 2,
+    paddingBottom: 4,
   },
-  typingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: space.sm,
+  section: {},
+  spacer8: { height: 6 },
+  spacer10: { height: 8 },
+  adjustmentsList: {
+    paddingHorizontal: 0,
   },
-
-  attachedRow: {
-    paddingHorizontal: space.lg,
-    paddingTop: space.sm,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+  provenanceRow: {
+    paddingHorizontal: 2,
   },
-  // v11.3 — slim attached pill. ~28pt tall, single line. Replaces
-  // the ProductCard chip variant which carried tile + brand + name +
-  // remove dot per attached product (~80pt rows).
-  attachedPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: palette.bgDeep,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    maxWidth: '100%',
-  },
-  attachedPillText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    letterSpacing: 0.2,
-    color: palette.inkSecondary,
-    flexShrink: 1,
-  },
-
-  // v11.9 — composer tightened. Padding reduced from 16/16 to 12/12.
-  // Input now lives inside a bgDeep pill (was a bare flat field).
-  // Side icons read as inkSecondary (was full ink + clay accent on
-  // plus, which over-shouted). Consistent visual weight.
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: palette.hairline,
-    backgroundColor: colors.bg,
-  },
-  composerIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  composerIconBtnPressed: {
-    backgroundColor: palette.bgDeep,
-    transform: [{ scale: 0.95 }],
-  },
-  // Soft pill wrapper — gives the input visual presence without a
-  // border. min/max heights mirror the previous flat-input clamps.
-  inputPill: {
-    flex: 1,
-    backgroundColor: palette.bgDeep,
+  explainCard: {
+    backgroundColor: dx.surfacePrimary,
     borderRadius: 20,
-    paddingHorizontal: 14,
-    minHeight: 40,
-    maxHeight: 120,
-    justifyContent: 'center',
-  },
-  input: {
-    ...typography.body,
-    color: palette.ink,
-    paddingVertical: 8,
-    // Reset platform default top inset that pushes the cursor down
-    // unevenly in multiline inputs.
-    paddingTop: 8,
-    margin: 0,
-    textAlignVertical: 'center',
-  },
-  sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  picker: {
-    paddingHorizontal: space.lg,
-    paddingBottom: space.sm,
-    backgroundColor: colors.bg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: palette.hairline,
-  },
-  pickerLabel: {
-    ...typography.micro,
-    color: palette.inkTertiary,
-    marginTop: space.sm,
-    marginBottom: 8,
-  },
-  pickerEmpty: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 13,
-    lineHeight: 18,
-    color: palette.inkTertiary,
-    marginBottom: 8,
-    paddingRight: space.lg,
-  },
-  // v11.3 — picker tray was a horizontal FlatList of full ProductCard
-  // chips (~92pt tall). Replaced with slim 2-line pills (~52pt) that
-  // show brand caps on top + product name below.
-  pickerRow: {
-    gap: 8,
-    paddingRight: space.lg,
-  },
-  pickerPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
     borderWidth: 1,
-    borderColor: palette.hairline,
-    backgroundColor: palette.bg,
-    minWidth: 140,
-    maxWidth: 200,
+    borderColor: dx.line,
+    padding: 16,
+    gap: 8,
   },
-  pickerPillBrand: {
+  explainHeading: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: palette.inkTertiary,
-    marginBottom: 2,
-  },
-  pickerPillName: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 13,
-    lineHeight: 16,
+    fontSize: 16,
+    lineHeight: 22,
+    color: dx.ink,
     letterSpacing: -0.2,
-    color: palette.ink,
   },
-});
-
-const emptyStyles = StyleSheet.create({
-  // v11.3 — empty body collapses to title + opener + 3 prompt chips.
-  // Removed: PuraMark md (redundant with the brandBar mark), the
-  // emptyTitle/emptyBody dual-text stack, "TRY ASKING" kicker rule,
-  // and the standalone "Attach a product. I'll read the label." hint
-  // (the "+" composer button already communicates that).
-  root: {
-    alignItems: 'flex-start',
-    paddingTop: space.md,
-    paddingHorizontal: 4,
-  },
-  title: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 26,
-    lineHeight: 32,
-    letterSpacing: -0.4,
-    color: palette.ink,
-    marginBottom: 8,
-  },
-  body: {
+  explainBody: {
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: palette.inkSecondary,
-    marginBottom: space.lg,
-  },
-  // v11.3 — when a scan exists, the proactive opening REPLACES the
-  // generic body line so the user sees one warm sentence grounded in
-  // their actual scan, not stacked greeting + body + grounded line.
-  opening: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: palette.inkSecondary,
-    marginBottom: space.lg,
-  },
-  promptGrid: {
-    alignSelf: 'stretch',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  // v11.3 — flatter chip shape. The previous 74pt min-height + icon
-  // wrapper made each chip a card; v11.3 chips are 48pt full-width
-  // pills that read as "tap to ask".
-  promptChip: {
-    minHeight: 48,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    backgroundColor: palette.bg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  promptIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    backgroundColor: palette.clayPaper,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  promptText: {
-    flex: 1,
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: -0.1,
-    color: palette.ink,
-  },
-  // v11.4 — primary "Take a face scan" CTA on the empty body.
-  // Replaces the prompt-only experience when no scan exists.
-  primaryCta: {
-    marginTop: space.xs,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: palette.ink,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-    alignSelf: 'flex-start',
-  },
-  primaryCtaLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    letterSpacing: 0.1,
-    color: palette.inkInverse,
-  },
-  // v11.11 — secondary CTAs for the no-scan empty state.
-  // "Build routine" + "View products" sit on a single row beneath
-  // the primary "Scan face" CTA so the user has every high-value
-  // entry point one tap away.
-  secondaryRow: {
-    marginTop: space.sm,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  secondaryCta: {
-    height: 38,
-    paddingHorizontal: 16,
-    borderRadius: 19,
-    backgroundColor: palette.bgDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryCtaLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-    letterSpacing: 0.1,
-    color: palette.ink,
-  },
-  orLine: {
-    marginTop: space.lg,
-    marginBottom: space.sm,
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.6,
-    color: palette.inkTertiary,
-  },
-});
-
-const messageStyles = StyleSheet.create({
-  userRow: {
-    alignSelf: 'flex-end',
-    maxWidth: '80%',
-  },
-  userBubble: {
-    backgroundColor: palette.clay,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm + 2,
-    borderRadius: radius.lg,
-    borderTopRightRadius: 4,
-  },
-  userAttached: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginBottom: space.sm,
-  },
-  userText: { ...typography.body, color: palette.inkInverse },
-
-  assistantRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: space.sm,
-    maxWidth: '94%',
-  },
-  assistantMark: {
-    marginTop: 4,
-  },
-  assistantContent: {
-    flex: 1,
-    gap: 8,
-  },
-  // v11.5 — lead sentence is heavier than follow-up paragraphs so
-  // the eye lands on the answer first.
-  assistantLead: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
-    lineHeight: 22,
-    letterSpacing: -0.1,
-    color: palette.ink,
-  },
-  assistantText: {
-    ...typography.body,
-    color: palette.inkSecondary,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  bulletDot: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
-    lineHeight: 22,
-    color: palette.clay,
-    marginTop: 0,
-  },
-  bulletText: {
-    flex: 1,
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: palette.ink,
-  },
-  // v10.26 — small grounding attribution under AI-driven replies.
-  assistantGrounding: {
-    marginTop: 6,
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: palette.clay,
-    textTransform: 'uppercase',
-  },
-  // v11.8 — action chips refined: paired CaretRight icon, larger
-  // tap target (38pt), clean fill instead of hairline border. The
-  // first 'scan' chip when no scan exists upgrades to a clay-filled
-  // primary variant since that's the highest-value next step.
-  // v13.0 — inline product mini-card row.
-  inlineProductRow: {
-    marginTop: 12,
-    gap: 8,
-  },
-  actionRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  actionChip: {
-    paddingHorizontal: 14,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: palette.bgDeep,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  actionChipPrimary: {
-    backgroundColor: palette.ink,
-    shadowColor: palette.ink,
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  actionChipText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-    letterSpacing: 0.1,
-    color: palette.ink,
-  },
-  actionChipTextPrimary: {
-    color: palette.bg,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: dx.inkSecondary,
   },
 });

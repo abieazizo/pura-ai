@@ -1,199 +1,147 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { CalibrationChecklist, type CalibrationItem } from '@/components/onboarding/CalibrationChecklist';
 import { PuraMark } from '@/components/PuraMark';
+import { useAppStore } from '@/store/useAppStore';
+import {
+  effortLabel,
+  effortDetailLabel,
+  goalLabel,
+  sensitivityLabel,
+  skinTypeLabel,
+  primaryConcernPhrase,
+} from './labelMaps';
 import { palette } from '@/theme';
 
 export interface ProcessingProps {
   onDone: () => void;
 }
 
-// v10.8 — three-phase narrative within the hold window. Each phrase is
-// visible for ~800ms with a ~240ms crossfade so the beat feels
-// intentional (not a single static placeholder). Total hold ≈ 2400ms:
-// concise enough to preserve momentum, rich enough to land as "the AI
-// is working."
-const PHASE_MS = 800;
-const PHASE_FADE_MS = 240;
-const HOLD_MS = PHASE_MS * 3;
-const DOT_LOOP_MS = 1800;
-
-const PHASES = [
-  'Reading your answers\u2026',
-  'Calibrating for your skin\u2026',
-  'Prepping your first scan\u2026',
-];
+const EM_DASH = '—';
 
 /**
- * Processing beat. No header. Mark centered pulsing 1.0 → 1.08 → 1.0.
- * Italic copy rotates through three phases over ~2.4s, then fires
- * `onDone`. Dots cycle underneath for ambient motion.
+ * v20.0 — Calibration Processing.
+ *
+ * Replaces the previous "three crossfading phrases" hold with an
+ * intelligent animated checklist that reads back the user's actual
+ * answers as Pura "calibrates". Each row appears every 450ms, the tick
+ * fires 180ms after, total ~3.2s. Reduced-motion path uses simple fades.
+ *
+ * The screen never holds longer than ~3.5s — the user gave us 8
+ * questions, they don't deserve to wait again.
  */
 export function Processing({ onDone }: ProcessingProps) {
-  const [phaseIndex, setPhaseIndex] = useState(0);
+  const skinType = useAppStore((s) => s.skinType);
+  const concerns = useAppStore((s) => s.concerns);
+  const effort = useAppStore((s) => s.effort);
+  const sensitivity = useAppStore((s) => s.sensitivity);
+  const goal = useAppStore((s) => s.goal);
 
-  useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(setTimeout(() => setPhaseIndex(1), PHASE_MS));
-    timers.push(setTimeout(() => setPhaseIndex(2), PHASE_MS * 2));
-    timers.push(setTimeout(onDone, HOLD_MS));
-    return () => timers.forEach(clearTimeout);
-  }, [onDone]);
+  const items: CalibrationItem[] = useMemo(() => {
+    const stLabel = skinType ? skinTypeLabel(skinType) : 'Calibrated';
+    const effortLab = effort ? effortLabel(effort) : 'Balanced';
+    const effortDetail = effort ? effortDetailLabel(effort) : '3–5 steps';
+    const focus = primaryConcernPhrase(concerns, goal);
+    const focusLabel =
+      focus.length > 0 ? focus.charAt(0).toUpperCase() + focus.slice(1) : 'Focus set';
+    const sensLab = sensitivity ? sensitivityLabel(sensitivity) : 'Calibrated';
+    const goalLab = goal ? goalLabel(goal) : 'Personalized plan';
 
-  const pulse = useSharedValue(0);
-  useEffect(() => {
-    pulse.value = withRepeat(
-      withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true
-    );
-    return () => cancelAnimation(pulse);
-  }, [pulse]);
-
-  const markStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + 0.08 * pulse.value }],
-  }));
+    return [
+      {
+        id: 'skin-type',
+        label: 'Calibrating skin type',
+        completion: stLabel === EM_DASH ? 'Calibrated' : stLabel,
+      },
+      {
+        id: 'focus',
+        label: 'Prioritizing your focus',
+        completion: focusLabel,
+      },
+      {
+        id: 'routine',
+        label: 'Setting routine length',
+        completion: `${effortLab} · ${effortDetail}`,
+      },
+      {
+        id: 'sensitivity',
+        label: 'Adjusting sensitivity',
+        completion: sensLab === EM_DASH ? 'Calibrated' : sensLab,
+      },
+      {
+        id: 'goal',
+        label: 'Creating your 84-day goal',
+        completion: goalLab === EM_DASH ? '84-day plan' : goalLab,
+      },
+      {
+        id: 'plan',
+        label: 'Preparing your first plan',
+        completion: 'Ready',
+      },
+    ];
+  }, [skinType, concerns, effort, sensitivity, goal]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <View style={styles.center}>
-        <Animated.View style={markStyle}>
-          <PuraMark variant="idle" size="lg" glow />
-        </Animated.View>
 
-        <View style={{ height: 40 }} />
-        <View style={styles.copyStack}>
-          {PHASES.map((phrase, i) => (
-            <PhrasePane
-              key={phrase}
-              phrase={phrase}
-              visible={i === phaseIndex}
-            />
-          ))}
-        </View>
-
-        <View style={{ height: 16 }} />
-        <Dots />
+      <View style={styles.headerBlock}>
+        <PuraMark variant="thinking" size="md" glow />
+        <Text
+          style={styles.headline}
+          maxFontSizeMultiplier={1.15}
+          accessibilityRole="header"
+        >
+          Building your first plan
+        </Text>
+        <Text style={styles.sub} maxFontSizeMultiplier={1.25}>
+          Using your answers to set up routine guardrails and scan
+          focus areas.
+        </Text>
       </View>
+
+      <View style={styles.listBlock}>
+        <CalibrationChecklist items={items} onComplete={onDone} />
+      </View>
+
+      <View style={{ height: 24 }} />
     </SafeAreaView>
   );
 }
 
-/**
- * One narrative phrase rendered in an absolute slot so consecutive
- * phrases crossfade in the same typographic position. `visible` flips
- * the opacity via Reanimated; the previous phrase eases out while the
- * next eases in over PHASE_FADE_MS.
- */
-function PhrasePane({
-  phrase,
-  visible,
-}: {
-  phrase: string;
-  visible: boolean;
-}) {
-  const opacity = useSharedValue(visible ? 1 : 0);
-  useEffect(() => {
-    opacity.value = withTiming(visible ? 1 : 0, {
-      duration: PHASE_FADE_MS,
-      easing: Easing.inOut(Easing.ease),
-    });
-  }, [visible, opacity]);
-  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  return (
-    <Animated.Text
-      style={[styles.copy, styles.copySlot, style]}
-      maxFontSizeMultiplier={1.2}
-    >
-      {phrase}
-    </Animated.Text>
-  );
-}
-
-function Dots() {
-  return (
-    <View style={dotStyles.row}>
-      <Dot delay={0} />
-      <Dot delay={300} />
-      <Dot delay={600} />
-    </View>
-  );
-}
-
-function Dot({ delay }: { delay: number }) {
-  const opacity = useSharedValue(0);
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withDelay(
-          delay,
-          withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) })
-        ),
-        withTiming(0, {
-          duration: DOT_LOOP_MS - 200 - delay,
-          easing: Easing.in(Easing.cubic),
-        })
-      ),
-      -1,
-      false
-    );
-    return () => cancelAnimation(opacity);
-  }, [delay, opacity]);
-
-  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  return <Animated.View style={[dotStyles.dot, style]} />;
-}
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.bg },
-  center: {
+  root: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
+    backgroundColor: palette.bg,
   },
-  // v10.7 — moved from warm v5 rgba to palette.inkSecondary.
-  copy: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 22,
-    lineHeight: 28,
-    color: palette.inkSecondary,
+  headerBlock: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+  },
+  headline: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.5,
+    color: palette.ink,
+    marginTop: 20,
     textAlign: 'center',
   },
-  // v10.8 — three phrases stack in the same slot and crossfade; the
-  // stack reserves one line of vertical room so the layout doesn't
-  // jump as phrases change length.
-  copyStack: {
-    height: 32,
-    alignSelf: 'stretch',
-    marginHorizontal: 24,
+  sub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: palette.inkSecondary,
+    marginTop: 8,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  listBlock: {
+    flex: 1,
     justifyContent: 'center',
-  },
-  copySlot: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-  },
-});
-
-const dotStyles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8 },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: palette.clay,
   },
 });

@@ -9,20 +9,26 @@ export interface OnboardingBackButtonProps {
   visible: boolean;
 }
 
+/**
+ * v20.0 — onboarding back control. The previous warm beige tile (sand
+ * @ 60% — a leftover from the v5 palette) is gone; the button is now a
+ * neutral 44x44 hit target with a faint hairline border so it reads as a
+ * proper accessible control on the cool-palette page.
+ */
 export function OnboardingBackButton({ onPress, visible }: OnboardingBackButtonProps) {
   if (!visible) return null;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Back"
+      accessibilityLabel="Go back"
       onPress={() => {
         hapt.select();
         onPress();
       }}
       hitSlop={8}
-      style={({ pressed }) => [styles.btn, pressed && { opacity: 0.8 }]}
+      style={({ pressed }) => [styles.btn, pressed && { opacity: 0.7 }]}
     >
-      <CaretLeft size={18} color={palette.ink} weight="duotone" />
+      <CaretLeft size={20} color={palette.ink} weight="bold" />
     </Pressable>
   );
 }
@@ -32,7 +38,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(212,165,116,0.6)', // sand @ 60%
+    backgroundColor: palette.bg,
+    borderWidth: 1,
+    borderColor: palette.hairline,
     alignItems: 'center',
     justifyContent: 'center',
   },

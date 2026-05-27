@@ -31,6 +31,11 @@ export interface AuthChoiceProps {
   onGoogleContinue: () => void;
   onEmailContinue: () => void;
   onSignIn: () => void;
+  /**
+   * v21.0 — optional guest path "Not now". When omitted, the link
+   * is hidden — guest mode is then explicitly disabled by the host.
+   */
+  onContinueAsGuest?: () => void;
 }
 
 /**
@@ -53,6 +58,7 @@ export function AuthChoice({
   onGoogleContinue,
   onEmailContinue,
   onSignIn,
+  onContinueAsGuest,
 }: AuthChoiceProps) {
   const insets = useSafeAreaInsets();
 
@@ -140,14 +146,14 @@ export function AuthChoice({
           maxFontSizeMultiplier={1.15}
           accessibilityRole="header"
         >
-          Create your profile.
+          Save your skin profile.
         </Animated.Text>
 
         <Animated.Text
           style={[styles.sub, headlineStyle]}
           maxFontSizeMultiplier={1.2}
         >
-          One account keeps your scans, score, and history together.
+          Your scans, routine, and progress stay private and connected to your account.
         </Animated.Text>
       </View>
 
@@ -161,7 +167,7 @@ export function AuthChoice({
         <Animated.View style={[styles.trustRow, footStyle]}>
           <ShieldCheck size={13} color={palette.inkTertiary} weight="duotone" />
           <Text style={styles.trustText} maxFontSizeMultiplier={1.1}>
-            Privacy-first. Scans stay on your device.
+            Private by design. You control what gets saved.
           </Text>
         </Animated.View>
 
@@ -181,6 +187,23 @@ export function AuthChoice({
               <Text style={styles.signInAction}>Sign in.</Text>
             </Text>
           </Pressable>
+
+          {onContinueAsGuest ? (
+            <Pressable
+              onPress={tap(onContinueAsGuest)}
+              accessibilityRole="button"
+              accessibilityLabel="Continue without an account"
+              style={({ pressed }) => [
+                styles.guestRow,
+                pressed && { opacity: 0.7 },
+              ]}
+              hitSlop={8}
+            >
+              <Text style={styles.guestLabel} maxFontSizeMultiplier={1.15}>
+                Not now
+              </Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       </View>
     </SafeAreaView>
@@ -364,5 +387,17 @@ const styles = StyleSheet.create({
   signInAction: {
     fontFamily: 'Inter-SemiBold',
     color: palette.ink,
+  },
+  guestRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingVertical: 6,
+  },
+  guestLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: palette.inkTertiary,
+    textDecorationLine: 'underline',
   },
 });

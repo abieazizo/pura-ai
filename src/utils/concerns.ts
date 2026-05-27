@@ -129,9 +129,14 @@ const COPY: Record<ConcernCategory, Record<Severity, CopyTemplate>> = {
       nextStep: 'Keep your routine simple — no changes needed tonight.',
     },
     mild: {
-      finding: (r) => `One or two small clogged bumps on the ${r}.`,
+      finding: (r) => `One or two small clogged-looking spots on the ${r}.`,
       interpretation: 'Early signs of congestion, not inflamed.',
-      nextStep: 'A gentle exfoliant tonight can help clear them before they develop.',
+      // v23 — restraint-first. The previous copy defaulted to an
+      // exfoliant, which is exactly the move that often makes mild
+      // congestion worse. Keep tonight simple and only consider an
+      // exfoliant later, never as a default.
+      nextStep:
+        'Keep tonight simple: cleanse gently, hydrate, and moisturize. Skip strong actives — only consider a low-strength exfoliant later if your skin still feels calm.',
     },
     moderate: {
       finding: (r) => `A visible inflamed breakout on the ${r}, with one or two smaller bumps nearby.`,
@@ -175,7 +180,11 @@ const COPY: Record<ConcernCategory, Record<Severity, CopyTemplate>> = {
     mild: {
       finding: (r) => `The ${r} shows mild unevenness — slightly rougher than neighboring areas.`,
       interpretation: 'Cell turnover is a little behind; common and reversible.',
-      nextStep: 'A low-strength exfoliant 2-3 nights a week should smooth this over.',
+      // v23 — texture restraint. Only suggest exfoliation when the
+      // skin is already calm and the user is NOT layering it with
+      // retinoids or other acids. Never as a default move.
+      nextStep:
+        'If this pattern continues, consider a low-strength exfoliant 1–2 nights per week — but only if your skin feels calm and you’re not layering it with retinoids or other acids.',
     },
     moderate: {
       finding: (r) => `Noticeable bumpy texture and pores that are more visible across the ${r}.`,

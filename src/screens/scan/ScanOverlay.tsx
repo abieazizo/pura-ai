@@ -1,7 +1,33 @@
+/**
+ * ScanOverlay — the single composition layer for every scan mode.
+ *
+ * All three modes go through the same pipeline now:
+ *
+ *   ┌─────────────────────────────────┐
+ *   │ ←   Mode title / subtitle    ?  │  ← TOP BAR
+ *   │                                  │
+ *   │      FACE / PRODUCT / BARCODE    │  ← per-mode guide
+ *   │              GUIDE               │
+ *   │                                  │
+ *   │       INSTRUCTION CARD           │  ← shared, state-driven
+ *   │       Quality check row          │  ← shared, mode-specific
+ *   │                                  │
+ *   ├─────────────────────────────────┤
+ *   │        MODE SELECTOR             │  ← slim segmented control
+ *   │ FLASH · SHUTTER · GALLERY        │  ← capture controls
+ *   │ Privacy / trust microcopy        │
+ *   └─────────────────────────────────┘
+ *
+ * The overlay only renders. Every decision (guide color, check
+ * status, instruction copy, shutter readiness) is resolved upstream
+ * by the scanController.
+ */
+
 import React from 'react';
 import {
   Pressable,
   StyleSheet,
+  Text,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -13,13 +39,20 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Question, X } from 'phosphor-react-native';
-import { Reticle, type ReticleMode, type FrameState } from '@/components/scan/Reticle';
-import { GuidanceCard } from '@/components/scan/GuidanceCard';
-import { ModeSelector } from '@/components/scan/ModeSelector';
-import { CaptureRow, type FlashMode } from '@/components/scan/CaptureRow';
+import { Lightning, Image as ImageIcon, Question, X } from 'phosphor-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
+import { ModeSelector } from '@/components/scan/ModeSelector';
+import { ShutterButton } from '@/components/scan/ShutterButton';
+import { FaceGuide } from '@/components/scan/FaceGuide';
+import { ProductGuide } from '@/components/scan/ProductGuide';
+import { BarcodeGuide } from '@/components/scan/BarcodeGuide';
+import { InstructionCard } from '@/components/scan/InstructionCard';
+import { QualityCheckRow } from '@/components/scan/QualityCheckRow';
+import type { ReticleMode } from '@/components/scan/Reticle';
+import type { FlashMode } from '@/components/scan/CaptureRow';
+import type { ScanInstruction } from '@/screens/scan/scanController';
 
 export interface ScanOverlayProps {
   mode: ReticleMode;
@@ -30,75 +63,51 @@ export interface ScanOverlayProps {
   onGalleryPick: (uri: string) => void;
   onExit: () => void;
   onHelp: () => void;
-  /** True while capture is in-flight; drives the analysis ring. */
+  /** True while capture is in-flight. */
   analyzing?: boolean;
-  /** v11.7+ — drives reticle halo + dim animation on secondary chrome. */
-  frameState?: FrameState;
   /** Countdown number rendered inside the shutter during preparing. */
   countdown?: number | null;
+  /** Resolved scan instruction from the controller. */
+  instruction: ScanInstruction;
 }
 
-// ── Layout constants — single source of truth for the dock zones ──
-// Tuned so every supported phone (iPhone SE class to Pro Max) gives
-// the camera region at least 240pt of vertical space without ever
-// overlapping the bottom panel.
-const TOP_BAR_HEIGHT = 56;             // close + help chip row
-const BOTTOM_SAFE_BUFFER = 22;         // gap above home-indicator
-const CAPTURE_ROW_HEIGHT = 84;         // shutter row
-const GAP_CAPTURE_TO_MODE = 18;        // gap above capture row
-const MODE_ROW_HEIGHT = 60;            // mode selector
-const GAP_MODE_TO_GUIDANCE = 10;       // gap above mode row
-const GUIDANCE_HEIGHT = 88;            // guidance card slot
-const GAP_GUIDANCE_TO_CAMERA = 14;     // breathe between camera and dock
+const TOP_BAR_HEIGHT = 64;
+const BOTTOM_SAFE_BUFFER = 22;
+const CAPTURE_ROW_HEIGHT = 84;
+const GAP_CAPTURE_TO_MODE = 16;
+const MODE_ROW_HEIGHT = 50;
+const GAP_MODE_TO_PRIVACY = 8;
+const PRIVACY_HEIGHT = 28;
+const GAP_GUIDE_TO_PANEL = 12;
 
 const BOTTOM_PANEL_INNER =
   CAPTURE_ROW_HEIGHT +
   GAP_CAPTURE_TO_MODE +
   MODE_ROW_HEIGHT +
-  GAP_MODE_TO_GUIDANCE +
-  GUIDANCE_HEIGHT;
-// = 84 + 18 + 60 + 10 + 88 = 260pt
-//
-// Total bottom panel height = BOTTOM_PANEL_INNER + GAP_GUIDANCE_TO_CAMERA
-// + insets.bottom + BOTTOM_SAFE_BUFFER. On iPhone SE (insets.bottom=0):
-// 260 + 14 + 0 + 22 = 296. With top bar 56 + status bar ~47 = 103pt
-// of top chrome. Available camera region = 667 - 103 - 296 = 268pt.
+  GAP_MODE_TO_PRIVACY +
+  PRIVACY_HEIGHT;
 
-/**
- * Scan overlay (v11.9).
- *
- * Zone-based layout. Each region has ONE clear owner — no two zones
- * compete for the same space, no element draws over another.
- *
- * ┌─────────────────────────────────┐
- * │   X                            ?│  ← TOP BAR (60pt)
- * │                                  │
- * │           CAMERA REGION          │  ← oval centers here
- * │      (face oval / product /      │     (top: insets.top + 60,
- * │        barcode reticle)          │      bottom: BOTTOM_PANEL)
- * │                                  │
- * ├─────────────────────────────────┤
- * │      GUIDANCE CARD (96pt)        │  ← BOTTOM PANEL
- * │      MODE SELECTOR (60pt)        │     starts BOTTOM_PANEL_HEIGHT
- * │  FLASH | SHUTTER | GALLERY (84) │     above bottom safe area
- * └─────────────────────────────────┘
- *
- * The face oval is centered within the CAMERA region (not the full
- * screen) so it never overlaps the bottom panel — including on the
- * smallest supported phones (iPhone SE-class).
- *
- * The bottom panel is a single frosted ink slab that contains the
- * GuidanceCard, ModeSelector, and CaptureRow. Reads as one coherent
- * dock surface, not three floating elements.
- *
- * v11.9 vs v11.8:
- *   • Bottom panel is now a single frosted slab with a soft top edge
- *     gradient — clearly demarcates "controls" from "camera"
- *   • Face oval centers in the CAMERA region, never in the dock zone
- *   • Removed the bottom 280pt SVG scrim (replaced by the panel itself)
- *   • Fixed-height layout — no more on-the-fly geometry math against
- *     window dimensions; everything is pixel-aligned
- */
+const MODE_TITLES: Record<
+  ReticleMode,
+  { title: string; subtitle: string }
+> = {
+  face: { title: 'Face Scan', subtitle: 'Skin score + routine check' },
+  product: {
+    title: 'Product Scan',
+    subtitle: 'Check ingredients and skin match',
+  },
+  barcode: {
+    title: 'Barcode Scan',
+    subtitle: 'Find product details fast',
+  },
+};
+
+const PRIVACY_LINE: Record<ReticleMode, string> = {
+  face: 'Visible skin signals only · Not a medical diagnosis',
+  product: 'Private by default · Used only for your skin insights',
+  barcode: 'Private by default · Used only for your skin insights',
+};
+
 export function ScanOverlay({
   mode,
   onChangeMode,
@@ -109,8 +118,8 @@ export function ScanOverlay({
   onExit,
   onHelp,
   analyzing,
-  frameState = 'idle',
   countdown = null,
+  instruction,
 }: ScanOverlayProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -119,153 +128,381 @@ export function ScanOverlay({
     hapt.select();
     onExit();
   };
-
   const handleHelp = () => {
     hapt.select();
     onHelp();
   };
 
-  // ── Dim animation for secondary chrome during preparing ──
+  // Dim secondary controls during the preparing/capturing beat so
+  // the eye locks onto the shutter + instruction card.
+  const isPreparing =
+    instruction.phase === 'capturing' || instruction.phase === 'analyzing';
   const dim = useSharedValue(0);
   React.useEffect(() => {
-    dim.value = withTiming(frameState === 'preparing' ? 1 : 0, {
+    dim.value = withTiming(isPreparing ? 1 : 0, {
       duration: 280,
       easing: Easing.out(Easing.cubic),
     });
-  }, [frameState, dim]);
+  }, [isPreparing, dim]);
   const dimSecondaryStyle = useAnimatedStyle(() => ({
     opacity: 1 - dim.value * 0.62,
   }));
 
-  // ── Region geometry ──
-  // No floor on the camera height — the camera region always fills
-  // exactly what's left between the top bar and the bottom panel,
-  // ensuring zero overlap with the dock chrome on every device.
+  // Region geometry.
   const topBarBottom = insets.top + TOP_BAR_HEIGHT;
   const bottomPanelTotal =
     BOTTOM_PANEL_INNER +
-    GAP_GUIDANCE_TO_CAMERA +
+    GAP_GUIDE_TO_PANEL +
     insets.bottom +
     BOTTOM_SAFE_BUFFER;
   const cameraRegionHeight = Math.max(
-    180,
+    260,
     height - topBarBottom - bottomPanelTotal
   );
 
+  // Map instruction.phase → shutter readiness vocabulary.
+  const shutterReadiness =
+    instruction.phase === 'ready' || instruction.phase === 'capturing'
+      ? 'ready'
+      : instruction.phase === 'checking' || instruction.severity === 'warning'
+      ? 'partial'
+      : 'not_ready';
+
+  // Hide chips during permission / error / initializing phases — the
+  // instruction card carries the message in those cases.
+  const hideChecks =
+    instruction.phase === 'initializing' ||
+    instruction.phase === 'permissionRequired' ||
+    instruction.phase === 'permissionDenied' ||
+    instruction.phase === 'error' ||
+    instruction.checks.length === 0;
+
+  // Mode-aware A11y for the shutter.
+  const shutterA11y =
+    mode === 'face'
+      ? instruction.canCapture
+        ? 'Start skin scan'
+        : 'Scan not ready'
+      : mode === 'product'
+      ? instruction.canCapture
+        ? 'Capture product label'
+        : 'Scan not ready'
+      : 'Barcode scans automatically';
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {/* Top scrim — fades down so the close/help chips read on any
-          background. Bottom scrim is gone in v11.9; the bottom panel
-          is its own opaque surface. */}
-      <Scrim placement="top" width={width} height={120} />
+      <Scrim placement="top" width={width} height={140} />
 
-      {/* CAMERA REGION — the face oval / product frame / barcode rect
-          centers within this absolutely-positioned wrapper, NOT on
-          screen center. */}
+      {/* CAMERA REGION — mode-specific guide */}
       <View
         pointerEvents="none"
         style={[
           styles.cameraRegion,
+          { top: topBarBottom, height: cameraRegionHeight },
+        ]}
+      >
+        {mode === 'face' ? (
+          <FaceGuide
+            severity={instruction.severity}
+            ready={instruction.phase === 'ready'}
+            width={width}
+            height={cameraRegionHeight}
+          />
+        ) : mode === 'product' ? (
+          <ProductGuide
+            severity={instruction.severity}
+            width={width}
+            height={cameraRegionHeight}
+          />
+        ) : (
+          <BarcodeGuide
+            severity={instruction.severity}
+            width={width}
+            height={cameraRegionHeight}
+          />
+        )}
+      </View>
+
+      {/* INSTRUCTION CARD + CHIP ROW — anchored below the guide */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.instructionAnchor,
           {
-            top: topBarBottom,
-            height: cameraRegionHeight,
+            top: topBarBottom + Math.round(cameraRegionHeight * 0.72),
+            width,
           },
         ]}
       >
-        <Reticle
-          mode={mode}
-          screenWidth={width}
-          screenHeight={cameraRegionHeight}
-          frameState={frameState}
+        <InstructionCard instruction={instruction} />
+        <View style={{ height: 12 }} />
+        <QualityCheckRow
+          checks={instruction.checks}
+          collapsedLabel={instruction.collapsedLabel}
+          hidden={hideChecks}
         />
       </View>
 
-      {/* TOP BAR — close (left) + help (right). v19.14 hardened
-          for tappability on every device:
-            • hitSlop bumped 8 → 16 (button size effectively
-              becomes 70x70).
-            • Larger insets.top + 16 (was +12) so the chips
-              clear the dynamic island reliably.
-            • Stronger background opacity (0.45 → 0.65) and
-              hairline border so the chips remain readable when
-              the auto Lighting Assist halo brightens the
-              perimeter behind them. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Close scanner"
-        onPress={handleExit}
-        hitSlop={16}
-        style={({ pressed }) => [
-          styles.chipBtn,
-          { top: insets.top + 16, left: 16 },
-          pressed && styles.chipBtnPressed,
+      {/* TOP BAR */}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.topBar,
+          { paddingTop: insets.top + 14 },
         ]}
       >
-        <X size={18} color={palette.bg} weight="bold" />
-      </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close scanner"
+          onPress={handleExit}
+          hitSlop={16}
+          style={({ pressed }) => [
+            styles.chipBtn,
+            pressed && styles.chipBtnPressed,
+          ]}
+        >
+          <X size={18} color="#F4F6FA" weight="bold" />
+        </Pressable>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Open scan tutorial"
-        onPress={handleHelp}
-        hitSlop={16}
-        style={({ pressed }) => [
-          styles.chipBtn,
-          { top: insets.top + 16, right: 16 },
-          pressed && styles.chipBtnPressed,
-        ]}
-      >
-        <Question size={18} color={palette.bg} weight="duotone" />
-      </Pressable>
+        <View style={styles.topBarCenter}>
+          <Text
+            style={styles.topBarTitle}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.15}
+          >
+            {MODE_TITLES[mode].title}
+          </Text>
+          <Text
+            style={styles.topBarSubtitle}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.15}
+          >
+            {MODE_TITLES[mode].subtitle}
+          </Text>
+        </View>
 
-      {/* BOTTOM PANEL — one coherent dock with frosted slab background.
-          Soft top edge gradient blends into the camera region. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open scan tips"
+          onPress={handleHelp}
+          hitSlop={16}
+          style={({ pressed }) => [
+            styles.chipBtn,
+            pressed && styles.chipBtnPressed,
+          ]}
+        >
+          <Question size={18} color="#F4F6FA" weight="duotone" />
+        </Pressable>
+      </View>
+
+      {/* BOTTOM PANEL */}
       <View
         pointerEvents="box-none"
         style={[
           styles.bottomPanel,
-          {
-            paddingBottom: insets.bottom + BOTTOM_SAFE_BUFFER,
-          },
+          { paddingBottom: insets.bottom + BOTTOM_SAFE_BUFFER },
         ]}
       >
         <PanelBackground />
 
-        <View style={styles.guidanceSlot}>
-          <GuidanceCard mode={mode} frameState={frameState} />
+        <View style={[styles.captureSlot, { height: CAPTURE_ROW_HEIGHT }]}>
+          <FaceCaptureRow
+            flashMode={flashMode}
+            onChangeFlash={onChangeFlash}
+            onCapture={onCapture}
+            onGalleryPick={onGalleryPick}
+            countdown={countdown}
+            capturing={analyzing ?? false}
+            dimSecondary={isPreparing}
+            shutterReadiness={shutterReadiness}
+            shutterA11y={shutterA11y}
+            autoBarcode={mode === 'barcode'}
+          />
         </View>
 
         <View style={[styles.modeSlot, { height: MODE_ROW_HEIGHT }]}>
           <Animated.View
-            pointerEvents={frameState === 'preparing' ? 'none' : 'box-none'}
+            pointerEvents={isPreparing ? 'none' : 'box-none'}
             style={dimSecondaryStyle}
           >
             <ModeSelector mode={mode} onChange={onChangeMode} />
           </Animated.View>
         </View>
 
-        <View style={[styles.captureSlot, { height: CAPTURE_ROW_HEIGHT }]}>
-          <CaptureRow
-            flashMode={flashMode}
-            onChangeFlash={onChangeFlash}
-            onCapture={onCapture}
-            onGalleryPick={onGalleryPick}
-            analyzing={analyzing}
-            countdown={countdown}
-            dimSecondary={frameState === 'preparing'}
-            autoMode={mode === 'barcode'}
-            autoModeLabel={analyzing ? 'Found.' : 'Scanning…'}
-          />
+        <View style={[styles.privacySlot, { height: PRIVACY_HEIGHT }]}>
+          <Text style={styles.privacyText} maxFontSizeMultiplier={1.15}>
+            {PRIVACY_LINE[mode]}
+          </Text>
         </View>
       </View>
     </View>
   );
 }
 
-/**
- * Soft fade from transparent (top) to ink @ 70% (bottom) so the panel
- * blends out of the camera region without a hard line.
- */
+// ---------------------------------------------------------------------------
+// FaceCaptureRow — shared capture controls for every mode.
+// ---------------------------------------------------------------------------
+
+function FaceCaptureRow({
+  flashMode,
+  onChangeFlash,
+  onCapture,
+  onGalleryPick,
+  countdown,
+  capturing,
+  dimSecondary,
+  shutterReadiness,
+  shutterA11y,
+  autoBarcode,
+}: {
+  flashMode: FlashMode;
+  onChangeFlash: (f: FlashMode) => void;
+  onCapture: () => void;
+  onGalleryPick: (uri: string) => void;
+  countdown: number | null;
+  capturing: boolean;
+  dimSecondary: boolean;
+  shutterReadiness: 'not_ready' | 'partial' | 'ready';
+  shutterA11y: string;
+  autoBarcode: boolean;
+}) {
+  const dim = useSharedValue(0);
+  React.useEffect(() => {
+    dim.value = withTiming(dimSecondary ? 1 : 0, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [dimSecondary, dim]);
+  const sideStyle = useAnimatedStyle(() => ({
+    opacity: 1 - dim.value * 0.62,
+  }));
+
+  return (
+    <View style={captureStyles.row}>
+      <Animated.View
+        style={sideStyle}
+        pointerEvents={dimSecondary ? 'none' : 'auto'}
+      >
+        <FlashButton mode={flashMode} onPress={onChangeFlash} />
+      </Animated.View>
+
+      {autoBarcode ? (
+        <AutoScanIndicator />
+      ) : (
+        <ShutterButton
+          readiness={shutterReadiness}
+          countdown={countdown}
+          capturing={capturing}
+          onPress={onCapture}
+          accessibilityLabel={shutterA11y}
+        />
+      )}
+
+      <Animated.View
+        style={sideStyle}
+        pointerEvents={dimSecondary ? 'none' : 'auto'}
+      >
+        <GalleryButton onPick={onGalleryPick} />
+      </Animated.View>
+    </View>
+  );
+}
+
+const FLASH_NEXT: Record<FlashMode, FlashMode> = {
+  off: 'on',
+  on: 'auto',
+  auto: 'off',
+};
+
+function FlashButton({
+  mode,
+  onPress,
+}: {
+  mode: FlashMode;
+  onPress: (next: FlashMode) => void;
+}) {
+  const iconColor = mode === 'on' ? '#F5B85C' : 'rgba(248,250,252,0.85)';
+  const handle = () => {
+    hapt.select();
+    onPress(FLASH_NEXT[mode]);
+  };
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Toggle flash"
+      accessibilityState={{ selected: mode === 'on' }}
+      onPress={handle}
+      style={({ pressed }) => [
+        captureStyles.sideBtn,
+        pressed && captureStyles.sideBtnPressed,
+      ]}
+      hitSlop={8}
+    >
+      <Lightning
+        size={18}
+        color={iconColor}
+        weight={mode === 'on' ? 'fill' : 'duotone'}
+      />
+      {mode === 'on' ? <View style={captureStyles.onDot} /> : null}
+      {mode === 'auto' ? (
+        <Text style={captureStyles.autoLabel}>A</Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function GalleryButton({ onPick }: { onPick: (uri: string) => void }) {
+  const handle = async () => {
+    hapt.select();
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: false,
+        quality: 0.85,
+      });
+      if (!res.canceled && res.assets[0]?.uri) {
+        onPick(res.assets[0].uri);
+      }
+    } catch {
+      // swallow — no toast chrome on camera overlay
+    }
+  };
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Open gallery"
+      onPress={handle}
+      style={({ pressed }) => [
+        captureStyles.sideBtn,
+        pressed && captureStyles.sideBtnPressed,
+      ]}
+      hitSlop={8}
+    >
+      <ImageIcon size={18} color="rgba(248,250,252,0.85)" weight="duotone" />
+    </Pressable>
+  );
+}
+
+function AutoScanIndicator() {
+  const pulse = useSharedValue(0);
+  React.useEffect(() => {
+    pulse.value = withTiming(1, {
+      duration: 1200,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+    });
+  }, [pulse]);
+  return (
+    <View style={captureStyles.autoWrap}>
+      <View style={captureStyles.autoChip}>
+        <View style={captureStyles.autoDot} />
+        <Text style={captureStyles.autoChipLabel} maxFontSizeMultiplier={1.1}>
+          Auto-scanning
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function PanelBackground() {
   return (
     <Svg
@@ -275,10 +512,10 @@ function PanelBackground() {
     >
       <Defs>
         <LinearGradient id="panel-bg" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={palette.ink} stopOpacity={0} />
-          <Stop offset="0.18" stopColor={palette.ink} stopOpacity={0.45} />
-          <Stop offset="0.55" stopColor={palette.ink} stopOpacity={0.78} />
-          <Stop offset="1" stopColor={palette.ink} stopOpacity={0.9} />
+          <Stop offset="0" stopColor="#0B1220" stopOpacity={0} />
+          <Stop offset="0.18" stopColor="#0B1220" stopOpacity={0.45} />
+          <Stop offset="0.55" stopColor="#0B1220" stopOpacity={0.78} />
+          <Stop offset="1" stopColor="#0B1220" stopOpacity={0.92} />
         </LinearGradient>
       </Defs>
       <Rect x="0" y="0" width="100%" height="100%" fill="url(#panel-bg)" />
@@ -311,8 +548,8 @@ function Scrim({
           x2="0"
           y2={placement === 'top' ? '1' : '0'}
         >
-          <Stop offset="0" stopColor={palette.ink} stopOpacity={0.55} />
-          <Stop offset="1" stopColor={palette.ink} stopOpacity={0} />
+          <Stop offset="0" stopColor="#0B1220" stopOpacity={0.55} />
+          <Stop offset="1" stopColor="#0B1220" stopOpacity={0} />
         </LinearGradient>
       </Defs>
       <Rect x="0" y="0" width={width} height={height} fill={`url(#${id})`} />
@@ -326,14 +563,44 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  chipBtn: {
+  cameraRegion: {
     position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  topBarCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  topBarTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14.5,
+    letterSpacing: 0.15,
+    color: '#F4F6FA',
+  },
+  topBarSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    letterSpacing: 0.1,
+    color: 'rgba(244,246,250,0.7)',
+    marginTop: 1,
+  },
+  chipBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    // v19.14 — bumped from rgba(11,18,32,0.45) to 0.65 so the
-    // button stays readable when the auto Lighting Assist
-    // brightens the perimeter behind it.
     backgroundColor: 'rgba(11,18,32,0.65)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
@@ -344,40 +611,109 @@ const styles = StyleSheet.create({
     opacity: 0.88,
     transform: [{ scale: 0.96 }],
   },
-  // CAMERA REGION — the face oval centers WITHIN this rect, not the
-  // full screen. height is computed so it never collides with the
-  // bottom panel.
-  cameraRegion: {
+  instructionAnchor: {
     position: 'absolute',
     left: 0,
-    right: 0,
+    alignItems: 'center',
   },
-  // BOTTOM PANEL — one frosted slab containing the entire dock.
   bottomPanel: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: GAP_GUIDANCE_TO_CAMERA,
+    paddingTop: GAP_GUIDE_TO_PANEL,
     alignItems: 'center',
-  },
-  guidanceSlot: {
-    width: '100%',
-    height: GUIDANCE_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  modeSlot: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: GAP_MODE_TO_GUIDANCE,
-    marginBottom: GAP_CAPTURE_TO_MODE,
   },
   captureSlot: {
     width: '100%',
     alignItems: 'stretch',
     justifyContent: 'center',
+  },
+  modeSlot: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: GAP_CAPTURE_TO_MODE,
+  },
+  privacySlot: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: GAP_MODE_TO_PRIVACY,
+  },
+  privacyText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    letterSpacing: 0.1,
+    color: 'rgba(248,250,252,0.6)',
+  },
+});
+
+const captureStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 48,
+  },
+  sideBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(11,18,32,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sideBtnPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.96 }],
+  },
+  onDot: {
+    position: 'absolute',
+    bottom: 6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#F5B85C',
+  },
+  autoLabel: {
+    position: 'absolute',
+    bottom: 4,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 8,
+    lineHeight: 10,
+    letterSpacing: 0.8,
+    color: 'rgba(248,250,252,0.85)',
+  },
+  autoWrap: {
+    width: 78,
+    height: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  autoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(11,18,32,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  autoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#68D8FF',
+  },
+  autoChipLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.3,
+    color: '#BFEAFF',
   },
 });

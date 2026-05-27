@@ -1,4 +1,20 @@
-import React, { useEffect } from 'react';
+/**
+ * v22.11 — AISearchBar rebuilt as a calm static premium search field.
+ *
+ * The previous implementation rendered a rotating LinearGradient
+ * rainbow border. That treatment read as decorative/glitchy on the
+ * Products tab and conflicted with the white/blue/gray product-
+ * discovery direction. v22.11 replaces it with a stable rounded
+ * field with three discrete visual states:
+ *   • idle      — soft gray hairline border, white fill
+ *   • focused   — soft blue border + faint blue tint
+ *   • submitted — identical to idle (no animation while results render)
+ *
+ * No animations. No gradient. No LinearGradient import. No reanimated.
+ * Native iOS-feel via plain View borders.
+ */
+
+import React, { useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -6,18 +22,8 @@ import {
   View,
   type TextInputProps,
 } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MagnifyingGlass, X } from 'phosphor-react-native';
 import { palette } from '@/theme';
-import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 export interface AISearchBarProps
   extends Omit<TextInputProps, 'style' | 'onChangeText' | 'value'> {
@@ -26,106 +32,72 @@ export interface AISearchBarProps
   onClear: () => void;
 }
 
-/**
- * Rainbow-bordered search bar (§2.6) — the signature element. Rendered as
- * an over-sized linear gradient inside a clipped pill, rotated linearly
- * over 8s infinite. The effect approximates a conic gradient without
- * shipping a canvas/Skia layer.
- *
- * Reduce-motion stops the rotation but keeps the gradient visible. Inner
- * content is absolutely filled on top of the animated gradient wrapper so
- * only 1.5pt of the spinning colour is visible as border.
- */
-const GRADIENT_COLORS = [
-  '#FFB4A2',
-  '#E5989B',
-  '#B5838D',
-  '#6D6875',
-  '#A8DADC',
-  '#FFD6A5',
-  '#FFB4A2', // loop back — ensures no visible seam
-];
-
-const ROTATION_MS = 8000;
-const BAR_HEIGHT = 52;
-const BORDER = 1.5;
+// v22.11 — soft-blue focus accents. These are local to AISearchBar
+// so we don't depend on palette tokens that may not exist; they're
+// derived from the existing ink palette and chosen to read as a
+// calm iOS-style focus state.
+const FOCUS_BORDER = '#A7C4E0'; // soft blue hairline
+const FOCUS_TINT = '#F4F8FC'; // barely-blue background
+const BAR_HEIGHT = 50;
 
 export function AISearchBar({
   value,
   onChangeText,
   onClear,
-  placeholder = "Search your skin's match\u2026",
+  placeholder = 'Search products or skin goals',
   ...rest
 }: AISearchBarProps) {
-  const rotation = useSharedValue(0);
-  const reduceMotion = useReduceMotion();
-
-  useEffect(() => {
-    if (reduceMotion) {
-      cancelAnimation(rotation);
-      rotation.value = 45;
-      return;
-    }
-    rotation.value = withRepeat(
-      withTiming(360, {
-        duration: ROTATION_MS,
-        easing: Easing.linear,
-      }),
-      -1,
-      false
-    );
-    return () => cancelAnimation(rotation);
-  }, [reduceMotion, rotation]);
-
-  const gradientStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
+  const [isFocused, setIsFocused] = useState(false);
 
   return (
     <View style={styles.outerWrap}>
-      <View style={styles.borderWrapper}>
-        <Animated.View style={[styles.gradientWrapper, gradientStyle]}>
-          <LinearGradient
-            colors={GRADIENT_COLORS as unknown as readonly [string, string, ...string[]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.gradient}
-          />
-        </Animated.View>
-
-        <View style={styles.innerContent}>
-          <MagnifyingGlass
-            size={18}
-            color={palette.inkTertiary}
-            weight="duotone"
-          />
-          <TextInput
-            {...rest}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={palette.inkTertiary}
-            style={styles.input}
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-            maxFontSizeMultiplier={1.2}
-          />
-          {value.length > 0 ? (
-            <Pressable
-              onPress={onClear}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-              style={({ pressed }) => [
-                styles.clearBtn,
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <X size={16} color={palette.inkTertiary} weight="duotone" />
-            </Pressable>
-          ) : null}
-        </View>
+      <View
+        style={[
+          styles.field,
+          isFocused ? styles.fieldFocused : styles.fieldIdle,
+        ]}
+      >
+        <MagnifyingGlass
+          size={18}
+          color={isFocused ? palette.ink : palette.inkTertiary}
+          weight="duotone"
+        />
+        <TextInput
+          {...rest}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={palette.inkTertiary}
+          style={styles.input}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          maxFontSizeMultiplier={1.2}
+          onFocus={(e) => {
+            setIsFocused(true);
+            rest.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            rest.onBlur?.(e);
+          }}
+        />
+        {/* v22.11 — clear button slot. Always reserved (transparent
+            when empty) so the input width never shifts on type. */}
+        <Pressable
+          onPress={value.length > 0 ? onClear : undefined}
+          disabled={value.length === 0}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
+          accessibilityState={{ disabled: value.length === 0 }}
+          style={({ pressed }) => [
+            styles.clearBtn,
+            { opacity: value.length === 0 ? 0 : pressed ? 0.6 : 1 },
+          ]}
+        >
+          <X size={16} color={palette.inkTertiary} weight="duotone" />
+        </Pressable>
       </View>
     </View>
   );
@@ -136,31 +108,22 @@ const styles = StyleSheet.create({
     height: BAR_HEIGHT,
     marginHorizontal: 20,
   },
-  borderWrapper: {
+  field: {
     flex: 1,
-    borderRadius: BAR_HEIGHT / 2,
-    padding: BORDER,
-    overflow: 'hidden',
-    backgroundColor: palette.bg,
-  },
-  gradientWrapper: {
-    position: 'absolute',
-    top: '-50%',
-    left: '-50%',
-    width: '200%',
-    height: '200%',
-  },
-  gradient: {
-    flex: 1,
-  },
-  innerContent: {
-    flex: 1,
-    borderRadius: BAR_HEIGHT / 2 - BORDER,
-    backgroundColor: palette.bg,
-    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingHorizontal: 16,
+    borderRadius: BAR_HEIGHT / 2,
+    borderWidth: 1,
+  },
+  fieldIdle: {
+    backgroundColor: palette.bg,
+    borderColor: palette.hairline,
+  },
+  fieldFocused: {
+    backgroundColor: FOCUS_TINT,
+    borderColor: FOCUS_BORDER,
   },
   input: {
     flex: 1,
@@ -169,8 +132,6 @@ const styles = StyleSheet.create({
     color: palette.ink,
     paddingVertical: 0,
     paddingHorizontal: 0,
-    // iOS's default caret is fine; no underlineColorAndroid inline style —
-    // Android picks up the platform default which is good enough here.
   },
   clearBtn: {
     width: 20,
