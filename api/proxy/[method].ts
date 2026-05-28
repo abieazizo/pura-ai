@@ -399,10 +399,9 @@ export default async function handler(req: VercelReq, res: VercelRes) {
   }
 }
 
-export const config = {
-  // Vercel Node runtime — needed for the OpenAI SDK.
-  runtime: 'nodejs20.x',
-  // Most AI calls finish well under 60s; cap matches the local
-  // proxy's hard timeout.
-  maxDuration: 90,
-};
+// Runtime + maxDuration are configured in vercel.json under
+// `functions: { "api/proxy/*.ts": ... }`. The legacy in-file
+// `export const config` used `nodejs20.x` here which is only valid in
+// the vercel.json schema, not the file-level config (the file-level
+// `runtime` field accepts only "nodejs" / "edge" / "experimental-edge",
+// and a deploy with `nodejs20.x` here fails the Vercel build).
