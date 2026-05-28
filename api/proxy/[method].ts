@@ -4,8 +4,15 @@
  * Mirrors the dispatcher in `server/aiProxy.ts` but as a Vercel
  * Node serverless function so the deployed web build can reach the
  * same AI methods via `<origin>/__pura_ai__/<method>` (Vercel
- * rewrites that path to `/api/__pura_ai__/<method>` per
- * vercel.json).
+ * rewrites that public path to `/api/proxy/<method>` per
+ * vercel.json — the underlying file is at `api/proxy/[method].ts`).
+ *
+ * Why the file moved out of `api/__pura_ai__/`: Vercel treats files
+ * and folders whose name starts with `_` as PRIVATE and refuses to
+ * register them as serverless functions, so the original
+ * `api/__pura_ai__/[method].ts` was never deployed. The vercel.json
+ * rewrite keeps the public URL identical (`/__pura_ai__/<method>`),
+ * so no client change is required.
  *
  * Security model:
  *   ┌─────────────────────────────────────────────────────────────┐
@@ -38,7 +45,7 @@
  *   └─────────────────────────────────────────────────────────────┘
  *
  * Why a single dynamic `[method].ts` file: Vercel routes
- * `/api/__pura_ai__/<method>` (for every method) into this handler
+ * `/api/proxy/<method>` (for every method) into this handler
  * with `req.query.method = '<method>'`. One file, one cold start to
  * warm up.
  */
@@ -387,7 +394,7 @@ export default async function handler(req: VercelReq, res: VercelRes) {
     }
     const message = err instanceof Error ? err.message : String(err);
     // eslint-disable-next-line no-console
-    console.error('[api/__pura_ai__]', method, 'internal error:', message);
+    console.error('[api/proxy]', method, 'internal error:', message);
     res.status(500).json({ error: 'Internal error' });
   }
 }

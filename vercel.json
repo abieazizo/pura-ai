@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "framework": null,
   "functions": {
-    "api/**/*.ts": {
+    "api/proxy/*.ts": {
       "memory": 1024,
       "maxDuration": 90,
       "includeFiles": "server/**"
@@ -13,12 +13,18 @@
   "rewrites": [
     {
       "source": "/__pura_ai__/:method",
-      "destination": "/api/__pura_ai__/:method"
+      "destination": "/api/proxy/:method"
     }
   ],
   "headers": [
     {
-      "source": "/api/__pura_ai__/(.*)",
+      "source": "/api/proxy/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
+      "source": "/__pura_ai__/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
