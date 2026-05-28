@@ -10,8 +10,10 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import {
   CONCERN_LABEL,
   SEVERITY_COLOR,
@@ -25,6 +27,9 @@ export interface FindingCardV2Props {
   expanded: boolean;
   selected: boolean;
   onPress(): void;
+  /** Delay in ms before the card's entrance animation begins. Pass
+   *  (baseMs + index * 60) from the parent list to stagger cards. */
+  entranceDelay?: number;
 }
 
 // Defensive hex parser. A stale persisted finding can carry a severity
@@ -48,6 +53,7 @@ export function FindingCardV2({
   expanded,
   selected,
   onPress,
+  entranceDelay = 0,
 }: FindingCardV2Props) {
   // Clamp severity into the 1-5 range so all downstream lookups
   // (color, label, alpha math) are guaranteed to resolve.
@@ -59,6 +65,24 @@ export function FindingCardV2({
       : 2;
   const sevColor = SEVERITY_COLOR[sevLevel] ?? FALLBACK_HEX;
   const sevLabel = SEVERITY_LABEL[sevLevel];
+
+  const reduceMotion = useReduceMotion();
+
+  // Entrance slide-up — each card fades in from below with a caller-controlled
+  // delay so the list staggers rather than popping all at once.
+  const enter = useSharedValue(0);
+  useEffect(() => {
+    enter.value = reduceMotion
+      ? 1
+      : withDelay(
+          entranceDelay,
+          withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) }),
+        );
+  }, [enter, entranceDelay, reduceMotion]);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enter.value,
+    transform: [{ translateY: (1 - enter.value) * 10 }],
+  }));
 
   const expand = useSharedValue(0);
   // Measured by the invisible height probe below — allows maxHeight to track
@@ -91,7 +115,7 @@ export function FindingCardV2({
   }));
 
   return (
-    <Animated.View style={[styles.card, selectStyle]}>
+    <Animated.View style={[styles.card, selectStyle, enterStyle]}>
       <Pressable
         onPress={onPress}
         accessibilityRole="button"

@@ -144,18 +144,34 @@ export function SkinMapV2({
   const dots = useMemo(() => buildDots(findings), [findings]);
   const anySelected = selectedFindingId !== null;
 
+  // The face outline materializes on mount — fades in with a slight zoom
+  // from 0.96 → 1.0 so it feels like it's emerging rather than just
+  // appearing. Dots run their own staggered entrance above this.
+  const svgFade = useSharedValue(0);
+  useEffect(() => {
+    svgFade.value = withTiming(1, {
+      duration: 480,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [svgFade]);
+  const svgStyle = useAnimatedStyle(() => ({
+    opacity: svgFade.value,
+    transform: [{ scale: 0.96 + svgFade.value * 0.04 }],
+  }));
+
   return (
     <View
       style={[styles.wrap, { width, height }]}
       accessibilityRole="image"
       accessibilityLabel="Skin map showing findings on a stylized face outline"
     >
-      {/* Static SVG — no animated attributes anywhere. */}
+      {/* Static SVG wrapped in Animated.View so the face outline
+          materializes on mount without touching animated SVG attributes. */}
+      <Animated.View style={svgStyle} pointerEvents="none">
       <Svg
         width={width}
         height={height}
         viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
-        pointerEvents="none"
       >
         <Path
           d={FACE_PATH}
@@ -210,6 +226,7 @@ export function SkinMapV2({
           />
         </G>
       </Svg>
+      </Animated.View>
 
       {/* Dots — plain Animated.View circles positioned over the SVG.
           This is the Expo-Go-safe pattern: no animated SVG props. */}

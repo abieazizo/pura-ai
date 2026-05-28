@@ -18,7 +18,7 @@
  *   7. Primary CTA — "Build my routine" (terracotta).
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -35,6 +35,15 @@ import { FindingCardV2 } from '@/components/scan-results/FindingCardV2';
 import type { ScanFindingV2, ScanResultV2 } from '@/types/scanResultV2';
 import { useRoutineStore } from '@/state/routine/routineStore';
 import { hapt } from '@/utils/haptics';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 declare const __DEV__: boolean | undefined;
 
@@ -112,6 +121,55 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
     }, 60);
   }, [scan?.id, rootNav]);
 
+  // ── Staged entrance choreography ─────────────────────────────────────────
+  // Each shared value starts at 0 (invisible) and is driven to 1 with a
+  // staggered delay. Sections arrive in the order the eye reads them:
+  // gauge → bars → headline → skin map → CTA.
+  // Finding cards manage their own stagger via the entranceDelay prop.
+  const t0 = useSharedValue(0); // gauge + bars (simultaneous)
+  const t1 = useSharedValue(0); // headline
+  const t2 = useSharedValue(0); // skin map + legend
+  const ctaIn = useSharedValue(0); // CTA slides up from the bottom
+  const ctaScale = useSharedValue(1); // tracks spring press state
+  const reduceMotion = useReduceMotion();
+
+  useEffect(() => {
+    if (reduceMotion) {
+      t0.value = 1; t1.value = 1; t2.value = 1; ctaIn.value = 1;
+      return;
+    }
+    const ease = Easing.out(Easing.cubic);
+    t0.value = withDelay(80,   withTiming(1, { duration: 340, easing: ease }));
+    t1.value = withDelay(680,  withTiming(1, { duration: 300, easing: ease }));
+    t2.value = withDelay(880,  withTiming(1, { duration: 300, easing: ease }));
+    ctaIn.value = withDelay(1200, withTiming(1, { duration: 320, easing: ease }));
+  }, [reduceMotion, t0, t1, t2, ctaIn]);
+
+  const sectionGauge = useAnimatedStyle(() => ({
+    opacity: t0.value,
+    transform: [{ translateY: (1 - t0.value) * 12 }],
+  }));
+  const sectionBars = useAnimatedStyle(() => ({
+    opacity: t0.value,
+    transform: [{ translateY: (1 - t0.value) * 8 }],
+  }));
+  const sectionHeadline = useAnimatedStyle(() => ({
+    opacity: t1.value,
+    transform: [{ translateY: (1 - t1.value) * 10 }],
+  }));
+  const sectionMap = useAnimatedStyle(() => ({
+    opacity: t2.value,
+    transform: [{ translateY: (1 - t2.value) * 10 }],
+  }));
+  const sectionCtaEntrance = useAnimatedStyle(() => ({
+    opacity: ctaIn.value,
+    transform: [{ translateY: (1 - ctaIn.value) * 16 }],
+  }));
+  const sectionCtaPress = useAnimatedStyle(() => ({
+    transform: [{ scale: ctaScale.value }],
+  }));
+  // ── End entrance choreography ─────────────────────────────────────────────
+
   if (!scan || !v2) {
     return <View style={styles.blank} />;
   }
@@ -159,55 +217,64 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
         showsVerticalScrollIndicator={false}
       >
         {/* 1. Arc gauge */}
-        <View
-          style={styles.gaugeWrap}
-          accessible
-          accessibilityLabel={`Skin score: ${v2.overall_score} out of 100`}
-        >
-          <SkinScoreDial
-            value={v2.overall_score}
-            size={200}
-            showTier
-            delay={120}
-            onRevealComplete={handleRevealComplete}
-          />
-        </View>
+        <Animated.View style={sectionGauge}>
+          <View
+            style={styles.gaugeWrap}
+            accessible
+            accessibilityLabel={`Skin score: ${v2.overall_score} out of 100`}
+          >
+            <SkinScoreDial
+              value={v2.overall_score}
+              size={200}
+              showTier
+              delay={120}
+              onRevealComplete={handleRevealComplete}
+            />
+          </View>
+        </Animated.View>
 
         {/* 2. Score breakdown bars */}
-        <View style={styles.breakdownBlock}>
-          <ScoreBreakdownBars breakdown={v2.score_breakdown} />
-        </View>
+        <Animated.View style={sectionBars}>
+          <View style={styles.breakdownBlock}>
+            <ScoreBreakdownBars breakdown={v2.score_breakdown} />
+          </View>
+        </Animated.View>
 
         {/* 3. Headline + summary */}
-        <View style={styles.headlineBlock}>
-          <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
-            {v2.headline}
-          </Text>
-          <Text style={styles.summary} maxFontSizeMultiplier={1.2}>
-            {v2.summary}
-          </Text>
-        </View>
+        <Animated.View style={sectionHeadline}>
+          <View style={styles.headlineBlock}>
+            <Text style={styles.headline} maxFontSizeMultiplier={1.15}>
+              {v2.headline}
+            </Text>
+            <Text style={styles.summary} maxFontSizeMultiplier={1.2}>
+              {v2.summary}
+            </Text>
+          </View>
+        </Animated.View>
 
         {/* 4. Skin map */}
-        <View style={styles.mapBlock}>
-          <SkinMapV2
-            findings={sortedFindings}
-            selectedFindingId={selectedId}
-            onSelect={handleSelect}
-            width={mapWidth}
-          />
-          <SkinMapLegend />
-        </View>
+        <Animated.View style={sectionMap}>
+          <View style={styles.mapBlock}>
+            <SkinMapV2
+              findings={sortedFindings}
+              selectedFindingId={selectedId}
+              onSelect={handleSelect}
+              width={mapWidth}
+            />
+            <SkinMapLegend />
+          </View>
+        </Animated.View>
 
-        {/* 5. Findings list */}
+        {/* 5. Findings list — each card staggers its own entrance */}
         <View style={styles.findingsBlock}>
-          {sortedFindings.map((f) => (
+          {sortedFindings.map((f, i) => (
             <FindingCardV2
               key={f.id}
               finding={f}
               expanded={expandedId === f.id}
               selected={selectedId === f.id}
               onPress={() => handleCardTap(f.id)}
+              entranceDelay={1080 + i * 60}
             />
           ))}
         </View>
@@ -215,22 +282,27 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
         <View style={{ height: 96 }} />
       </ScrollView>
 
-      {/* 6. CTA */}
-      <View style={styles.ctaWrap} pointerEvents="box-none">
-        <Pressable
-          onPress={handleBuildRoutine}
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && { transform: [{ scale: 0.98 }] },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Build my routine"
-        >
-          <Text style={styles.ctaLabel} maxFontSizeMultiplier={1.1}>
-            Build my routine
-          </Text>
-        </Pressable>
-      </View>
+      {/* 6. CTA — slides up on entrance, springs on press */}
+      <Animated.View style={[styles.ctaWrap, sectionCtaEntrance]} pointerEvents="box-none">
+        <Animated.View style={sectionCtaPress}>
+          <Pressable
+            onPress={handleBuildRoutine}
+            onPressIn={() => {
+              ctaScale.value = withSpring(0.965, { mass: 0.5, damping: 18, stiffness: 280 });
+            }}
+            onPressOut={() => {
+              ctaScale.value = withSpring(1, { mass: 0.5, damping: 18, stiffness: 280 });
+            }}
+            style={styles.cta}
+            accessibilityRole="button"
+            accessibilityLabel="Build my routine"
+          >
+            <Text style={styles.ctaLabel} maxFontSizeMultiplier={1.1}>
+              Build my routine
+            </Text>
+          </Pressable>
+        </Animated.View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
