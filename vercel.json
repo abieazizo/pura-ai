@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npx expo export -p web && node scripts/patch-web-index.js",
+  "buildCommand": "node scripts/bundle-functions.mjs && npx expo export -p web && node scripts/patch-web-index.js",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
