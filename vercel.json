@@ -3,12 +3,6 @@
   "buildCommand": "npx expo export -p web && node scripts/patch-web-index.js",
   "outputDirectory": "dist",
   "framework": null,
-  "functions": {
-    "api/proxy/*.ts": {
-      "memory": 1024,
-      "maxDuration": 90
-    }
-  },
   "rewrites": [
     {
       "source": "/__pura_ai__/:method",
