@@ -1057,6 +1057,21 @@ export class OpenAIClient {
       userContent,
       schemaName: 'face_scan_analysis',
       schema: FACE_SCAN_ANALYSIS_SCHEMA,
+      // v34.1 — bumped 4096 (extraction default) → 6144 to match the
+      // V2 method's budget. The analyzeFaceScan output is the LARGEST
+      // structured payload in the system: image_quality + skin_score +
+      // primary/secondary_concerns + findings[] (each with a 4-12-point
+      // region_polygon) + score_factors (8 axes) + next_focus +
+      // plan_inputs + face_overlay (face_box + 5 landmark points).
+      // Combined with gpt-5-mini's hidden reasoning tokens (which count
+      // against the same `max_completion_tokens` budget) and the system
+      // prompt's IMAGE_QUALITY calibration block, 4096 was producing
+      // finish_reason="length" → empty content → AIError('length_cap')
+      // → tryAi() → null → ScanServiceErrorScreen ("Analysis service
+      // did not return a usable result"). 6144 + the runStrictStructured
+      // retry-with-double envelope (caps at 12288) gives the worst-case
+      // full-payload response enough room to complete.
+      maxTokens: 6144,
     });
   }
 

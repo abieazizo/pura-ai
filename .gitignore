@@ -45,3 +45,5 @@ pura-loop/
 
 # Local-only design references — kept on disk, never deployed.
 design-reference/
+
+.vercel

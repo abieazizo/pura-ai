@@ -34,6 +34,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -41,8 +42,6 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
-import type { NavigationProp } from '@react-navigation/native';
 import {
   ArrowUp,
   Sparkle,
@@ -67,7 +66,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { puraColors, puraSpace, puraType, puraRadius } from '@/design/puraTokens';
+import { puraColors, puraSpace } from '@/design/puraTokens';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useTonightObservation } from '@/state/tonightObservation';
@@ -301,7 +300,6 @@ function capitalize(s: string): string {
 export function AssistantChatScreen() {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
-  const nav = useNavigation<NavigationProp<any>>();
   const observation = useTonightObservation();
   const displayName = useAppStore((s) => s.user?.name ?? (s as any).name ?? null);
 
@@ -442,6 +440,7 @@ export function AssistantChatScreen() {
             suggestions={SUGGESTIONS}
             onPick={onPickSuggestion}
             reduceMotion={reduceMotion}
+            bottomInset={insets.bottom}
           />
         )}
 
@@ -514,6 +513,7 @@ function EmptyState({
   suggestions,
   onPick,
   reduceMotion,
+  bottomInset,
 }: {
   greeting: string;
   greetingItalic: string;
@@ -521,9 +521,15 @@ function EmptyState({
   suggestions: readonly Suggestion[];
   onPick: (s: Suggestion) => void;
   reduceMotion: boolean;
+  bottomInset: number;
 }) {
   return (
-    <View style={styles.emptyWrap}>
+    <ScrollView
+      style={styles.emptyWrap}
+      contentContainerStyle={[styles.emptyScrollContent, { paddingBottom: 120 + bottomInset }]}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       <Animated.View
         entering={reduceMotion ? undefined : FadeInDown.duration(540).easing(Easing.out(Easing.cubic))}
         style={styles.emptyHeroBlock}
@@ -567,7 +573,7 @@ function EmptyState({
           ))}
         </View>
       </Animated.View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -996,7 +1002,7 @@ function Composer({
     <View
       style={[
         styles.composerWrap,
-        { paddingBottom: Math.max(bottomInset, 10) + 96 },
+        { paddingBottom: 14 + Math.max(bottomInset, 0) },
       ]}
       pointerEvents="box-none"
     >
@@ -1133,6 +1139,8 @@ const styles = StyleSheet.create({
   // ---- Empty state ----
   emptyWrap: {
     flex: 1,
+  },
+  emptyScrollContent: {
     paddingHorizontal: puraSpace.screenX,
     paddingTop: 8,
   },
@@ -1143,7 +1151,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 18,
+    marginBottom: 12,
   },
   emptyEyebrowMark: {
     width: 18,
@@ -1159,52 +1167,52 @@ const styles = StyleSheet.create({
   },
   emptyGreeting: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 40,
-    lineHeight: 44,
-    letterSpacing: -1.0,
+    fontSize: 36,
+    lineHeight: 40,
+    letterSpacing: -0.9,
     color: puraColors.ink,
   },
   emptyGreetingItalic: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 40,
-    lineHeight: 44,
-    letterSpacing: -1.0,
+    fontSize: 36,
+    lineHeight: 40,
+    letterSpacing: -0.9,
     color: puraColors.clayDeep,
     marginTop: 2,
   },
   emptySupport: {
     fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14.5,
+    lineHeight: 21,
     color: puraColors.body,
-    marginTop: 18,
+    marginTop: 14,
     maxWidth: 320,
   },
 
   // ---- Suggestions ----
   suggestionGrid: {
-    marginTop: 32,
+    marginTop: 24,
   },
   suggestionsLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10.5,
     letterSpacing: 2.2,
     color: puraColors.muted,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   suggestionsCol: {
-    gap: 8,
+    gap: 7,
   },
   suggestionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 18,
     backgroundColor: puraColors.surfaceRaised,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: puraColors.line,
-    gap: 14,
+    gap: 12,
   },
   suggestionCardPressed: {
     backgroundColor: puraColors.surfacePressed,
