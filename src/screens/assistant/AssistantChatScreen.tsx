@@ -46,11 +46,7 @@ import {
   ArrowUp,
   Sparkle,
   Camera,
-  Drop,
-  Sun,
-  Leaf,
   Plus,
-  ArrowUpRight,
 } from 'phosphor-react-native';
 import Animated, {
   cancelAnimation,
@@ -78,9 +74,10 @@ import { useAppStore } from '@/store/useAppStore';
 
 type Suggestion = {
   id: string;
-  icon: 'drop' | 'sun' | 'leaf' | 'spark';
+  numeral: 'I' | 'II' | 'III' | 'IV';
   title: string;
-  subtitle: string;
+  meta: string;
+  prompt: string;
 };
 
 type RoutineStep = {
@@ -115,27 +112,24 @@ type Message =
 const SUGGESTIONS: readonly Suggestion[] = [
   {
     id: 'barrier',
-    icon: 'drop',
-    title: 'What’s my skin barrier like tonight?',
-    subtitle: 'Read tonight’s scan + recent trend',
+    numeral: 'I',
+    title: 'Your barrier, tonight',
+    meta: 'Read the scan',
+    prompt: 'What’s my skin barrier like tonight?',
   },
   {
     id: 'pm-routine',
-    icon: 'leaf',
-    title: 'Build me a calm PM routine',
-    subtitle: 'A three-step plan for tonight',
-  },
-  {
-    id: 't-zone',
-    icon: 'sun',
-    title: 'Why is my T-zone oily?',
-    subtitle: 'What Pura noticed and what to do',
+    numeral: 'II',
+    title: 'A calm PM routine',
+    meta: 'Three steps',
+    prompt: 'Build me a calm PM routine for tonight',
   },
   {
     id: 'serum',
-    icon: 'spark',
-    title: 'Can I use my serum tonight?',
-    subtitle: 'Check one product against your scan',
+    numeral: 'III',
+    title: 'Whether your serum belongs',
+    meta: 'Check one product',
+    prompt: 'Can I use my serum tonight?',
   },
 ];
 
@@ -312,22 +306,26 @@ export function AssistantChatScreen() {
 
   const conversationActive = messages.length > 0;
 
-  const greeting = useMemo(() => {
+  const greetingName = useMemo(() => {
     const name = (displayName ?? '').trim().split(' ')[0];
-    return name ? `Hello, ${name}.` : 'Good evening.';
+    return name || 'you';
   }, [displayName]);
 
-  const greetingItalic = useMemo(() => {
-    if (!observation.scanCompleted) return 'How is your skin tonight?';
-    return 'What’s on your skin tonight?';
-  }, [observation.scanCompleted]);
+  const dateLabel = useMemo(() => {
+    const d = new Date();
+    return d
+      .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+      .toUpperCase();
+  }, []);
 
-  const supportLine = useMemo(() => {
-    if (!observation.scanCompleted)
-      return 'I can still help with products, ingredients, and what to do — or start with tonight’s check-in for skin-aware answers.';
-    if (observation.zone === 'full_face')
-      return 'I’ve read tonight’s scan. Ask about your routine, a product, or what to change.';
-    return `I’ve read tonight’s scan — activity on your ${observation.zone}. Ask me anything about your skin tonight.`;
+  const observationLine = useMemo(() => {
+    if (!observation.scanCompleted) {
+      return 'No reading tonight yet — I can still walk through products, layering, or what to ask before your next check-in.';
+    }
+    if (observation.zone === 'full_face') {
+      return 'Tonight your skin reads broadly active. The plan is fewer steps, more comfort.';
+    }
+    return `Tonight your skin reads steady, with one area on your ${observation.zone} asking for less.`;
   }, [observation]);
 
   // -------------------------------------------------------------------------
@@ -384,7 +382,7 @@ export function AssistantChatScreen() {
 
   const onPickSuggestion = useCallback(
     (s: Suggestion) => {
-      send(s.title);
+      send(s.prompt);
     },
     [send],
   );
@@ -408,10 +406,12 @@ export function AssistantChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <Header
-          conversationActive={conversationActive}
-          onReset={onReset}
-        />
+        {conversationActive ? (
+          <Header
+            conversationActive={conversationActive}
+            onReset={onReset}
+          />
+        ) : null}
 
         {conversationActive ? (
           <FlatList
@@ -434,9 +434,9 @@ export function AssistantChatScreen() {
           />
         ) : (
           <EmptyState
-            greeting={greeting}
-            greetingItalic={greetingItalic}
-            supportLine={supportLine}
+            greeting={greetingName}
+            dateLabel={dateLabel}
+            observationLine={observationLine}
             suggestions={SUGGESTIONS}
             onPick={onPickSuggestion}
             reduceMotion={reduceMotion}
@@ -508,16 +508,16 @@ function Header({
 
 function EmptyState({
   greeting,
-  greetingItalic,
-  supportLine,
+  dateLabel,
+  observationLine,
   suggestions,
   onPick,
   reduceMotion,
   bottomInset,
 }: {
   greeting: string;
-  greetingItalic: string;
-  supportLine: string;
+  dateLabel: string;
+  observationLine: string;
   suggestions: readonly Suggestion[];
   onPick: (s: Suggestion) => void;
   reduceMotion: boolean;
@@ -526,49 +526,102 @@ function EmptyState({
   return (
     <ScrollView
       style={styles.emptyWrap}
-      contentContainerStyle={[styles.emptyScrollContent, { paddingBottom: 120 + bottomInset }]}
+      contentContainerStyle={[
+        styles.emptyScrollContent,
+        { paddingBottom: 120 + bottomInset },
+      ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
       <Animated.View
-        entering={reduceMotion ? undefined : FadeInDown.duration(540).easing(Easing.out(Easing.cubic))}
+        entering={
+          reduceMotion
+            ? undefined
+            : FadeInDown.duration(580).easing(Easing.out(Easing.cubic))
+        }
+        style={styles.emptyMastheadRow}
+      >
+        <Text style={styles.emptyMastheadKicker} maxFontSizeMultiplier={1.15}>
+          PURA · NO. 12
+        </Text>
+        <Text style={styles.emptyMastheadDate} maxFontSizeMultiplier={1.15}>
+          {dateLabel}
+        </Text>
+      </Animated.View>
+
+      <View style={styles.emptyMastheadRule} />
+
+      <Animated.View
+        entering={
+          reduceMotion
+            ? undefined
+            : FadeInDown.duration(620).delay(80).easing(Easing.out(Easing.cubic))
+        }
         style={styles.emptyHeroBlock}
       >
-        <View style={styles.emptyEyebrowRow}>
-          <View style={styles.emptyEyebrowMark} />
-          <Text style={styles.emptyEyebrow} maxFontSizeMultiplier={1.15}>
-            TONIGHT · YOUR SKIN COACH
+        <Text style={styles.emptyGreetingFirst} maxFontSizeMultiplier={1.15}>
+          An evening
+        </Text>
+        <Text style={styles.emptyGreetingMid} maxFontSizeMultiplier={1.15}>
+          with your <Text style={styles.emptyGreetingMidItalic}>skin</Text>
+        </Text>
+        <View style={styles.emptyBylineRow}>
+          <View style={styles.emptyBylineRule} />
+          <Text style={styles.emptyByline} maxFontSizeMultiplier={1.15}>
+            FOR {greeting.toUpperCase()}
           </Text>
         </View>
-        <Text style={styles.emptyGreeting} maxFontSizeMultiplier={1.15}>
-          {greeting}
+      </Animated.View>
+
+      <Animated.View
+        entering={
+          reduceMotion
+            ? undefined
+            : FadeInUp.duration(480).delay(220).easing(Easing.out(Easing.cubic))
+        }
+        style={styles.emptyObservationBlock}
+      >
+        <Text style={styles.emptyObservationLabel} maxFontSizeMultiplier={1.15}>
+          TONIGHT’S OBSERVATION
         </Text>
-        <Text style={styles.emptyGreetingItalic} maxFontSizeMultiplier={1.15}>
-          {greetingItalic}
-        </Text>
-        <Text style={styles.emptySupport} maxFontSizeMultiplier={1.2}>
-          {supportLine}
+        <Text style={styles.emptyObservation} maxFontSizeMultiplier={1.2}>
+          {observationLine}
         </Text>
       </Animated.View>
 
       <Animated.View
-        entering={reduceMotion ? undefined : FadeInUp.duration(420).delay(180)}
-        style={styles.suggestionGrid}
+        entering={
+          reduceMotion
+            ? undefined
+            : FadeInUp.duration(480).delay(320).easing(Easing.out(Easing.cubic))
+        }
+        style={styles.contentsBlock}
       >
-        <Text style={styles.suggestionsLabel} maxFontSizeMultiplier={1.15}>
-          SUGGESTED
-        </Text>
-        <View style={styles.suggestionsCol}>
+        <View style={styles.contentsHeader}>
+          <Text style={styles.contentsLabel} maxFontSizeMultiplier={1.15}>
+            QUESTIONS WORTH ASKING
+          </Text>
+          <Text style={styles.contentsCount} maxFontSizeMultiplier={1.15}>
+            {String(suggestions.length).padStart(2, '0')}
+          </Text>
+        </View>
+        <View style={styles.contentsList}>
           {suggestions.map((s, i) => (
             <Animated.View
               key={s.id}
               entering={
                 reduceMotion
                   ? undefined
-                  : FadeInUp.duration(380).delay(220 + i * 60).easing(Easing.out(Easing.cubic))
+                  : FadeInUp.duration(420)
+                      .delay(360 + i * 90)
+                      .easing(Easing.out(Easing.cubic))
               }
             >
-              <SuggestionCard suggestion={s} onPress={() => onPick(s)} />
+              <ChapterRow
+                suggestion={s}
+                onPress={() => onPick(s)}
+                showTopRule={i === 0}
+              />
             </Animated.View>
           ))}
         </View>
@@ -577,44 +630,38 @@ function EmptyState({
   );
 }
 
-function SuggestionIcon({ name }: { name: Suggestion['icon'] }) {
-  const props = { size: 14, color: puraColors.clay, weight: 'duotone' as const };
-  if (name === 'drop') return <Drop {...props} />;
-  if (name === 'sun') return <Sun {...props} />;
-  if (name === 'leaf') return <Leaf {...props} />;
-  return <Sparkle {...props} />;
-}
-
-function SuggestionCard({
+function ChapterRow({
   suggestion,
   onPress,
+  showTopRule,
 }: {
   suggestion: Suggestion;
   onPress: () => void;
+  showTopRule?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${suggestion.title}. ${suggestion.subtitle}`}
+      accessibilityLabel={`${suggestion.title}. ${suggestion.meta}`}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.suggestionCard,
-        pressed && styles.suggestionCardPressed,
+        styles.chapterRow,
+        showTopRule && styles.chapterRowFirst,
+        pressed && styles.chapterRowPressed,
       ]}
     >
-      <View style={styles.suggestionIconWrap}>
-        <SuggestionIcon name={suggestion.icon} />
+      <View style={styles.chapterNumeralCol}>
+        <Text style={styles.chapterNumeral} maxFontSizeMultiplier={1.15}>
+          {suggestion.numeral}
+        </Text>
       </View>
-      <View style={styles.suggestionCopy}>
-        <Text style={styles.suggestionTitle} maxFontSizeMultiplier={1.2}>
+      <View style={styles.chapterCopyCol}>
+        <Text style={styles.chapterTitle} maxFontSizeMultiplier={1.2}>
           {suggestion.title}
         </Text>
-        <Text style={styles.suggestionSub} maxFontSizeMultiplier={1.2}>
-          {suggestion.subtitle}
+        <Text style={styles.chapterMeta} maxFontSizeMultiplier={1.2}>
+          {suggestion.meta}
         </Text>
-      </View>
-      <View style={styles.suggestionArrowWrap}>
-        <ArrowUpRight size={13} weight="regular" color={puraColors.muted} />
       </View>
     </Pressable>
   );
@@ -1147,105 +1194,164 @@ const styles = StyleSheet.create({
   emptyHeroBlock: {
     paddingTop: 12,
   },
-  emptyEyebrowRow: {
+  // ---- Masthead (editorial date line) ----
+  emptyMastheadRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingTop: 4,
   },
-  emptyEyebrowMark: {
-    width: 18,
-    height: 1,
-    backgroundColor: puraColors.clay,
-    borderRadius: 1,
-  },
-  emptyEyebrow: {
+  emptyMastheadKicker: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 10.5,
-    letterSpacing: 2.2,
+    fontSize: 10,
+    letterSpacing: 2.4,
     color: puraColors.clay,
   },
-  emptyGreeting: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 36,
-    lineHeight: 40,
-    letterSpacing: -0.9,
-    color: puraColors.ink,
+  emptyMastheadDate: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 2.4,
+    color: puraColors.muted,
   },
-  emptyGreetingItalic: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 36,
-    lineHeight: 40,
-    letterSpacing: -0.9,
-    color: puraColors.clayDeep,
-    marginTop: 2,
+  emptyMastheadRule: {
+    height: 1.5,
+    backgroundColor: puraColors.ink,
+    marginTop: 10,
+    marginBottom: 28,
   },
-  emptySupport: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14.5,
-    lineHeight: 21,
-    color: puraColors.body,
-    marginTop: 14,
-    maxWidth: 320,
+  emptyMastheadHairline: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: puraColors.ink,
+    marginTop: 4,
+    marginBottom: 28,
   },
 
-  // ---- Suggestions ----
-  suggestionGrid: {
-    marginTop: 24,
+  // ---- Hero ("An evening / with your skin" / byline) ----
+  emptyHeroBlock: {
+    paddingTop: 0,
+    paddingBottom: 8,
   },
-  suggestionsLabel: {
-    fontFamily: 'Inter-SemiBold',
+  emptyGreetingFirst: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 52,
+    lineHeight: 56,
+    letterSpacing: -1.4,
+    color: puraColors.ink,
+  },
+  emptyGreetingMid: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 52,
+    lineHeight: 56,
+    letterSpacing: -1.4,
+    color: puraColors.ink,
+    marginTop: -4,
+  },
+  emptyGreetingMidItalic: {
+    fontFamily: 'InstrumentSerif-Italic',
+    color: puraColors.clayDeep,
+  },
+  emptyBylineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 18,
+  },
+  emptyBylineRule: {
+    width: 22,
+    height: 1,
+    backgroundColor: puraColors.clayDeep,
+  },
+  emptyByline: {
+    fontFamily: 'Inter-Medium',
     fontSize: 10.5,
-    letterSpacing: 2.2,
+    letterSpacing: 2.4,
+    color: puraColors.clayDeep,
+  },
+
+  // ---- Observation block ----
+  emptyObservationBlock: {
+    marginTop: 28,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: puraColors.lineSoft,
+  },
+  emptyObservationLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 2.4,
     color: puraColors.muted,
     marginBottom: 10,
   },
-  suggestionsCol: {
-    gap: 7,
+  emptyObservation: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 18,
+    lineHeight: 25,
+    color: puraColors.inkSecondary,
+    letterSpacing: -0.2,
   },
-  suggestionCard: {
+
+  // ---- Table of contents ----
+  contentsBlock: {
+    marginTop: 28,
+  },
+  contentsHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    backgroundColor: puraColors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.line,
-    gap: 12,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  suggestionCardPressed: {
-    backgroundColor: puraColors.surfacePressed,
-    borderColor: puraColors.lineStrong,
-  },
-  suggestionIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: puraColors.clayMist,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  suggestionCopy: { flex: 1, gap: 2 },
-  suggestionArrowWrap: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  suggestionTitle: {
+  contentsLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14.5,
-    lineHeight: 20,
-    color: puraColors.ink,
-    letterSpacing: -0.1,
+    fontSize: 10,
+    letterSpacing: 2.4,
+    color: puraColors.muted,
   },
-  suggestionSub: {
+  contentsCount: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 16,
+    letterSpacing: 0.4,
+    color: puraColors.muted,
+  },
+  contentsList: {},
+  chapterRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: puraColors.line,
+  },
+  chapterRowFirst: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: puraColors.line,
+  },
+  chapterRowPressed: {
+    backgroundColor: puraColors.surfaceQuiet,
+  },
+  chapterNumeralCol: {
+    width: 48,
+  },
+  chapterNumeral: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 26,
+    lineHeight: 28,
+    letterSpacing: 0.4,
+    color: puraColors.clayDeep,
+  },
+  chapterCopyCol: { flex: 1, paddingTop: 4 },
+  chapterTitle: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 19,
+    lineHeight: 24,
+    letterSpacing: -0.3,
+    color: puraColors.ink,
+  },
+  chapterMeta: {
     fontFamily: 'Inter-Regular',
     fontSize: 12.5,
     lineHeight: 17,
     color: puraColors.muted,
+    letterSpacing: 0.1,
+    marginTop: 3,
   },
 
   // ---- Conversation list ----
