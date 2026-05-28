@@ -202,6 +202,22 @@ export default async function handler(req: VercelReq, res: VercelRes) {
     const o = req.headers['origin'];
     return Array.isArray(o) ? o[0] : o;
   })();
+  const requestedHandler = methodFromQuery(req.query);
+  const contentLengthHeader = (() => {
+    const c = req.headers['content-length'];
+    return Array.isArray(c) ? c[0] : c;
+  })();
+  // [Pura AI Production QA] — safe metadata-only log per request.
+  // NEVER logs the API key value, the photo payload, or system prompts.
+  // eslint-disable-next-line no-console
+  console.log('[Pura AI Production QA] request received', {
+    method: req.method,
+    handler: requestedHandler,
+    origin: requestOrigin ?? null,
+    contentLength: contentLengthHeader ?? null,
+    hasOpenAIKey: Boolean(process.env.OPENAI_API_KEY),
+    allowedOriginsConfigured: ALLOWED_ORIGINS.size,
+  });
   const allowed = resolveCorsOrigin(requestOrigin);
   if (allowed) {
     res.setHeader('Access-Control-Allow-Origin', allowed);
@@ -245,6 +261,13 @@ export default async function handler(req: VercelReq, res: VercelRes) {
   // ── Method allowlist ───────────────────────────────────────────
   const method = methodFromQuery(req.query);
   if (!ALLOWED_METHODS.has(method)) {
+    // [Pura AI Production QA] — record unknown method attempts so a
+    // mis-deployed client surfaces visibly in logs.
+    // eslint-disable-next-line no-console
+    console.log('[Pura AI Production QA] unknown method rejected', {
+      method,
+      allowedCount: ALLOWED_METHODS.size,
+    });
     res.status(404).json({ error: 'Unknown method' });
     return;
   }
@@ -254,37 +277,107 @@ export default async function handler(req: VercelReq, res: VercelRes) {
   let body: unknown = req.body;
   if (typeof body === 'string') {
     if (body.length > MAX_BODY_BYTES) {
+      // eslint-disable-next-line no-console
+      console.log('[Pura AI Production QA] payload too large (string)', {
+        method,
+        bytes: body.length,
+        cap: MAX_BODY_BYTES,
+      });
       res.status(413).json({ error: 'Payload too large' });
       return;
     }
     try {
       body = JSON.parse(body);
     } catch {
+      // eslint-disable-next-line no-console
+      console.log('[Pura AI Production QA] invalid JSON body', { method });
       res.status(400).json({ error: 'Invalid JSON body' });
       return;
     }
   } else if (body && typeof body === 'object') {
     if (approximateBodySize(body) > MAX_BODY_BYTES) {
+      // eslint-disable-next-line no-console
+      console.log('[Pura AI Production QA] payload too large (object)', {
+        method,
+        approxBytes: approximateBodySize(body),
+        cap: MAX_BODY_BYTES,
+      });
       res.status(413).json({ error: 'Payload too large' });
       return;
     }
   }
   if (body === undefined || body === null) body = {};
 
+  // [Pura AI Production QA] — body parsed; only metadata, never content.
+  const parsedBody = body as Record<string, unknown>;
+  const hasImagePayload =
+    typeof parsedBody.imageBase64 === 'string' &&
+    (parsedBody.imageBase64 as string).length > 0;
+  const imagePayloadApproxBytes = hasImagePayload
+    ? (parsedBody.imageBase64 as string).length
+    : 0;
+  // eslint-disable-next-line no-console
+  console.log('[Pura AI Production QA] request parsed', {
+    handler: method,
+    hasImagePayload,
+    imagePayloadApproxBytes,
+    topLevelKeys: Object.keys(parsedBody),
+  });
+
   // ── Dispatch ───────────────────────────────────────────────────
+  const dispatchStart = Date.now();
+  let openAiCompleted = false;
   try {
     const client = getClient();
-    const result = await handlerFn(client, body as Record<string, unknown>);
+    const result = await handlerFn(client, parsedBody);
+    openAiCompleted = true;
+    // eslint-disable-next-line no-console
+    console.log('[Pura AI Production QA] openai call status', {
+      handler: method,
+      started: true,
+      completed: openAiCompleted,
+      durationMs: Date.now() - dispatchStart,
+      topLevelKeysReturned:
+        result && typeof result === 'object'
+          ? Object.keys(result as Record<string, unknown>)
+          : [],
+    });
     res.status(200).json(result);
   } catch (err) {
+    const safeErrorType =
+      err instanceof HandlerError
+        ? 'handler_error'
+        : err instanceof AIError
+          ? 'ai_error'
+          : err instanceof Error
+            ? err.constructor.name
+            : 'unknown';
+    // eslint-disable-next-line no-console
+    console.log('[Pura AI Production QA] openai call status', {
+      handler: method,
+      started: true,
+      completed: openAiCompleted,
+      durationMs: Date.now() - dispatchStart,
+      errorType: safeErrorType,
+      // err.message is author-curated for HandlerError/AIError; for
+      // unknown errors it's still useful for debugging and contains
+      // no secrets (the OpenAI client strips key from messages).
+      safeErrorMessage:
+        err instanceof Error ? err.message.slice(0, 200) : null,
+    });
     if (err instanceof HandlerError) {
-      // HandlerError messages are author-curated and safe to surface.
       res.status(err.status).json({ error: err.message });
       return;
     }
     if (err instanceof AIError) {
-      // AIError carries a reason + schema name — useful for the client
-      // to retry/fall back without exposing prompts or model output.
+      // [Pura AI Production QA] — schema validation failure category.
+      // eslint-disable-next-line no-console
+      console.log('[Pura AI Production QA] response validation', {
+        handler: method,
+        valid: false,
+        reason: err.reason,
+        schemaName: err.schemaName,
+      });
       res.status(502).json({
         error: 'AI response invalid',
         reason: err.reason,
@@ -292,8 +385,6 @@ export default async function handler(req: VercelReq, res: VercelRes) {
       });
       return;
     }
-    // Everything else is an internal error. Log server-side, send a
-    // generic message to the client — no stack, no message leakage.
     const message = err instanceof Error ? err.message : String(err);
     // eslint-disable-next-line no-console
     console.error('[api/__pura_ai__]', method, 'internal error:', message);
