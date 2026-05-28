@@ -203,7 +203,7 @@ export function ScanResultsFaceScreen({
     }
     return (
       <ScanResultsErrorBoundary onRetake={goRetake} onClose={exitToHome}>
-        <ScanResultsV2Screen scanId={scan.id} />
+        <ScanResultsV2Screen scanId={scan.id} onClose={exitToHome} />
       </ScanResultsErrorBoundary>
     );
   }

@@ -301,9 +301,12 @@ function Dot({
   const coreSize = (6 + spec.severity * 1.5) * 2; // px diameter
   const haloSize = coreSize * 2.4;
 
-  // Anchor position in container pixel coordinates.
-  const cx = spec.nx * frameWidth;
-  const cy = spec.ny * frameHeight;
+  // Anchor position clamped so the core dot never overflows the frame.
+  // Cluster offsets on high-density zones can push nx/ny outside 0..1;
+  // without this clamp the dot renders partially outside the SVG bounds.
+  const coreRadius = coreSize / 2;
+  const cx = Math.max(coreRadius, Math.min(frameWidth - coreRadius, spec.nx * frameWidth));
+  const cy = Math.max(coreRadius, Math.min(frameHeight - coreRadius, spec.ny * frameHeight));
 
   // Tap target — generous, never smaller than 44pt to clear the
   // Accessibility floor.
@@ -362,6 +365,7 @@ function Dot({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={`Finding, severity ${spec.severity}`}
+        accessibilityState={{ selected }}
         hitSlop={8}
         style={[
           styles.tap,

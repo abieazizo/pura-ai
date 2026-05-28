@@ -18,7 +18,7 @@
  *   7. Primary CTA — "Build my routine" (terracotta).
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -40,9 +40,13 @@ declare const __DEV__: boolean | undefined;
 
 export interface ScanResultsV2ScreenProps {
   scanId: string;
+  /** Called when the user taps the close (✕) button. Falls back to
+   *  rootNav.goBack() when omitted — callers that need session cleanup
+   *  (ScanResultsFaceScreen) should always pass this. */
+  onClose?: () => void;
 }
 
-export function ScanResultsV2Screen({ scanId }: ScanResultsV2ScreenProps) {
+export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProps) {
   const scans = useAppStore((s) => s.scans);
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
   const scan: Scan | undefined =
@@ -54,6 +58,10 @@ export function ScanResultsV2Screen({ scanId }: ScanResultsV2ScreenProps) {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Prevents the "Build my routine" CTA from firing twice if the user
+  // double-taps before the navigation animation completes.
+  const routineBusy = useRef(false);
 
   const sortedFindings = useMemo<ScanFindingV2[]>(() => {
     if (!v2) return [];
@@ -78,8 +86,23 @@ export function ScanResultsV2Screen({ scanId }: ScanResultsV2ScreenProps) {
     [],
   );
 
+  // Fires once when the score arc settles — lands the "your result arrived"
+  // moment with a success haptic so the animation has a physical endpoint.
+  const handleRevealComplete = useCallback(() => {
+    hapt.success();
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (onClose) {
+      onClose();
+    } else {
+      rootNav.goBack();
+    }
+  }, [onClose, rootNav]);
+
   const handleBuildRoutine = useCallback(() => {
-    if (!scan?.id) return;
+    if (routineBusy.current || !scan?.id) return;
+    routineBusy.current = true;
     hapt.tap();
     useRoutineStore.getState().startBuild(scan.id);
     rootNav.goBack();
@@ -119,13 +142,35 @@ export function ScanResultsV2Screen({ scanId }: ScanResultsV2ScreenProps) {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
+      {/* Close button — always visible so users are never trapped */}
+      <View style={styles.navRow} pointerEvents="box-none">
+        <Pressable
+          onPress={handleClose}
+          style={styles.closeBtn}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Close scan results"
+        >
+          <Text style={styles.closeBtnText}>✕</Text>
+        </Pressable>
+      </View>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
         {/* 1. Arc gauge */}
-        <View style={styles.gaugeWrap}>
-          <SkinScoreDial value={v2.overall_score} size={200} showTier delay={120} />
+        <View
+          style={styles.gaugeWrap}
+          accessible
+          accessibilityLabel={`Skin score: ${v2.overall_score} out of 100`}
+        >
+          <SkinScoreDial
+            value={v2.overall_score}
+            size={200}
+            showTier
+            delay={120}
+            onRevealComplete={handleRevealComplete}
+          />
         </View>
 
         {/* 2. Score breakdown bars */}
@@ -199,9 +244,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAF7F4',
   },
+  navRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 0,
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(60,40,30,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: '#4A3D35',
+    lineHeight: 18,
+  },
   scroll: {
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 4,
   },
   gaugeWrap: {
     alignItems: 'center',

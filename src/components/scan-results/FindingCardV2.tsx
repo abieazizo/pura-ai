@@ -61,6 +61,9 @@ export function FindingCardV2({
   const sevLabel = SEVERITY_LABEL[sevLevel];
 
   const expand = useSharedValue(0);
+  // Measured by the invisible height probe below — allows maxHeight to track
+  // the real content rather than a fixed 200px cap that clips long recommendations.
+  const measuredHeight = useSharedValue(0);
   useEffect(() => {
     expand.value = withTiming(expanded ? 1 : 0, {
       duration: 240,
@@ -69,7 +72,8 @@ export function FindingCardV2({
   }, [expand, expanded]);
   const expandStyle = useAnimatedStyle(() => ({
     opacity: expand.value,
-    maxHeight: expand.value * 200,
+    // Use measured height once available; generous 500 cap until first layout fires.
+    maxHeight: expand.value * (measuredHeight.value > 0 ? measuredHeight.value + 2 : 500),
     transform: [{ translateY: (1 - expand.value) * -4 }],
   }));
 
@@ -91,7 +95,8 @@ export function FindingCardV2({
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${finding.title}, ${sevLabel} severity. Tap to read recommendation.`}
+        accessibilityLabel={`${finding.title}, ${sevLabel} severity. Tap to ${expanded ? 'collapse' : 'expand'} recommendation.`}
+        accessibilityState={{ selected, expanded }}
       >
         <View style={styles.topRow}>
           <View style={styles.zoneCluster}>
@@ -148,6 +153,26 @@ export function FindingCardV2({
           </Text>
         </Animated.View>
       </Pressable>
+      {/* Invisible height probe — rendered outside the flow-constrained
+          Animated.View so it can measure the expansion content's natural
+          height without being clipped by maxHeight. The measured value feeds
+          back into expandStyle so the animation always opens to the exact
+          correct height, never clipping long recommendations. */}
+      <View
+        style={styles.measureWrapper}
+        pointerEvents="none"
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && Math.abs(measuredHeight.value - h) > 1) {
+            measuredHeight.value = h;
+          }
+        }}
+      >
+        <View style={styles.divider} />
+        <Text style={styles.recommendation} maxFontSizeMultiplier={1.2}>
+          {finding.recommendation}
+        </Text>
+      </View>
     </Animated.View>
   );
 }
@@ -240,6 +265,15 @@ const styles = StyleSheet.create({
   },
   expansion: {
     overflow: 'hidden',
+  },
+  measureWrapper: {
+    // Absolutely positioned so it does not contribute to card flow height.
+    // left/right match the card's padding so the text wraps at the same width.
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: 0,
+    opacity: 0,
   },
   divider: {
     height: 1,
