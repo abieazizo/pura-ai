@@ -361,7 +361,13 @@ export function AssistantChatScreen() {
       ]);
       scrollToEnd();
 
-      const revealDelay = reduceMotion ? 80 : 720;
+      // Tests / design audits can hold the thinking state by setting
+      //   window.__puraStaticThinking__ = true
+      // before sending — useful for capturing the loading frame.
+      const staticThinking =
+        typeof window !== 'undefined' &&
+        (window as any).__puraStaticThinking__ === true;
+      const revealDelay = staticThinking ? 8000 : reduceMotion ? 80 : 720;
       setTimeout(() => {
         const answer = answerFor(trimmed, observation);
         setMessages((prev) =>
@@ -477,11 +483,9 @@ function Header({
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <View style={styles.headerMark}>
-          <Sparkle size={11} weight="fill" color={puraColors.clay} />
-        </View>
+        <View style={styles.headerMark} />
         <Text style={styles.headerTitle} maxFontSizeMultiplier={1.15}>
-          Pura
+          IN CONVERSATION
         </Text>
       </View>
       {conversationActive ? (
@@ -492,7 +496,6 @@ function Header({
           hitSlop={8}
           style={({ pressed }) => [styles.newBtn, pressed && { opacity: 0.7 }]}
         >
-          <Plus size={11} weight="bold" color={puraColors.inkSecondary} />
           <Text style={styles.newBtnText} maxFontSizeMultiplier={1.15}>
             New thread
           </Text>
@@ -563,12 +566,15 @@ function EmptyState({
           An evening
         </Text>
         <Text style={styles.emptyGreetingMid} maxFontSizeMultiplier={1.15}>
-          with your <Text style={styles.emptyGreetingMidItalic}>skin</Text>
+          with your
+        </Text>
+        <Text style={styles.emptyGreetingThird} maxFontSizeMultiplier={1.15}>
+          skin.
         </Text>
         <View style={styles.emptyBylineRow}>
           <View style={styles.emptyBylineRule} />
           <Text style={styles.emptyByline} maxFontSizeMultiplier={1.15}>
-            FOR {greeting.toUpperCase()}
+            FOR {greeting.toUpperCase()} · IN PRIVATE
           </Text>
         </View>
       </Animated.View>
@@ -654,6 +660,7 @@ function ChapterRow({
         <Text style={styles.chapterNumeral} maxFontSizeMultiplier={1.15}>
           {suggestion.numeral}
         </Text>
+        <View style={styles.chapterNumeralMark} />
       </View>
       <View style={styles.chapterCopyCol}>
         <Text style={styles.chapterTitle} maxFontSizeMultiplier={1.2}>
@@ -686,10 +693,16 @@ function MessageRow({
         }
         style={styles.userRow}
       >
-        <View style={styles.userBubble}>
-          <Text style={styles.userText} maxFontSizeMultiplier={1.3}>
-            {message.text}
-          </Text>
+        <View style={styles.userBlock}>
+          <View style={styles.userInner}>
+            <Text style={styles.userLabel} maxFontSizeMultiplier={1.15}>
+              YOU ASKED
+            </Text>
+            <Text style={styles.userText} maxFontSizeMultiplier={1.3}>
+              {message.text}
+            </Text>
+          </View>
+          <View style={styles.userRule} />
         </View>
       </Animated.View>
     );
@@ -725,27 +738,27 @@ function AssistantTurn({
 }) {
   return (
     <View style={styles.assistantTurn}>
-      <View style={styles.assistantHeader}>
-        <Sparkle size={11} weight="fill" color={puraColors.clay} />
+      <View style={styles.assistantRule} />
+      <View style={styles.assistantInner}>
         <Text style={styles.assistantEyebrow} maxFontSizeMultiplier={1.15}>
           {message.eyebrow}
         </Text>
-      </View>
-      <View style={styles.assistantBlocks}>
-        {message.blocks.map((b, i) => (
-          <Animated.View
-            key={i}
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeInUp.duration(420)
-                    .delay(120 + i * 140)
-                    .easing(Easing.out(Easing.cubic))
-            }
-          >
-            <BlockView block={b} />
-          </Animated.View>
-        ))}
+        <View style={styles.assistantBlocks}>
+          {message.blocks.map((b, i) => (
+            <Animated.View
+              key={i}
+              entering={
+                reduceMotion
+                  ? undefined
+                  : FadeInUp.duration(420)
+                      .delay(120 + i * 140)
+                      .easing(Easing.out(Easing.cubic))
+              }
+            >
+              <BlockView block={b} />
+            </Animated.View>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -771,73 +784,46 @@ function BlockView({ block }: { block: AssistantBlock }) {
 // ============================================================================
 
 function ThinkingState({ reduceMotion }: { reduceMotion: boolean }) {
-  const shimmer = useSharedValue(0);
-  const spark = useSharedValue(0.45);
-  const dot = useSharedValue(0);
+  const progress = useSharedValue(0);
 
   useEffect(() => {
     if (reduceMotion) {
-      shimmer.value = 0.5;
-      spark.value = 1;
-      dot.value = 1;
+      progress.value = 0.6;
       return;
     }
-    shimmer.value = withRepeat(
+    // Progress sweep: 0 → 1 over 2.4s, then quick reset. Loops indefinitely.
+    progress.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 1900, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
-        withTiming(0, { duration: 0 }),
+        withTiming(1, { duration: 2400, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
+        withTiming(0, { duration: 280, easing: Easing.bezier(0.4, 0, 1, 1) }),
       ),
       -1,
       false,
     );
-    spark.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 820, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
-        withDelay(120, withTiming(0.45, { duration: 820, easing: Easing.bezier(0.4, 0, 0.2, 1) })),
-      ),
-      -1,
-      false,
-    );
-    dot.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 900, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
-        withTiming(0, { duration: 900, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
-      ),
-      -1,
-      false,
-    );
-    return () => {
-      cancelAnimation(shimmer);
-      cancelAnimation(spark);
-      cancelAnimation(dot);
-    };
-  }, [reduceMotion, shimmer, spark, dot]);
+    return () => cancelAnimation(progress);
+  }, [reduceMotion, progress]);
 
-  const shimmerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -160 + shimmer.value * 340 }],
-    opacity: shimmer.value < 0.04 || shimmer.value > 0.96 ? 0 : 1,
+  const fillStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
   }));
-  const sparkStyle = useAnimatedStyle(() => ({
-    opacity: spark.value,
-    transform: [{ scale: 0.85 + spark.value * 0.25 }],
-  }));
-  const dotStyle = useAnimatedStyle(() => ({ opacity: 0.4 + dot.value * 0.5 }));
 
   return (
     <View
       style={styles.thinkingWrap}
-      accessibilityLabel="Pura is thinking"
+      accessibilityLabel="Pura is reading tonight’s scan"
       accessibilityRole="text"
     >
-      <Animated.View style={[styles.thinkingSparkWrap, sparkStyle]}>
-        <Sparkle size={13} weight="fill" color={puraColors.clay} />
-      </Animated.View>
-      <View style={styles.thinkingPill}>
-        <Text style={styles.thinkingText} maxFontSizeMultiplier={1.2}>
-          reading your scan
+      <View style={styles.thinkingRule} />
+      <View style={styles.thinkingInner}>
+        <Text style={styles.thinkingEyebrow} maxFontSizeMultiplier={1.15}>
+          PURA · THINKING
         </Text>
-        <Animated.Text style={[styles.thinkingDot, dotStyle]}>…</Animated.Text>
-        <Animated.View style={[styles.thinkingShimmer, shimmerStyle]} />
+        <Text style={styles.thinkingPhrase} maxFontSizeMultiplier={1.2}>
+          Reading tonight’s scan, your routine, the recent trend.
+        </Text>
+        <View style={styles.thinkingTrack}>
+          <Animated.View style={[styles.thinkingFill, fillStyle]} />
+        </View>
       </View>
     </View>
   );
@@ -863,28 +849,33 @@ function ProductPickCard({ product }: { product: ProductCard }) {
     .toUpperCase();
   return (
     <View style={styles.productCard}>
-      <View style={[styles.productSwatch, { backgroundColor: swatchColor }]}>
-        <View style={styles.productSwatchHighlight} />
-        <View style={styles.productSwatchBottle}>
-          <Text style={styles.productSwatchInitials} maxFontSizeMultiplier={1.15}>
-            {initials}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.productCopy}>
+      <View style={styles.productCardEyebrowRow}>
+        <View style={styles.productCardEyebrowMark} />
         <Text style={styles.productFit} maxFontSizeMultiplier={1.15}>
           {product.fit.toUpperCase()}
         </Text>
-        <Text style={styles.productBrand} maxFontSizeMultiplier={1.2}>
-          {product.brand}
-        </Text>
-        <Text style={styles.productName} maxFontSizeMultiplier={1.2}>
-          {product.name}
-        </Text>
-        <Text style={styles.productReason} maxFontSizeMultiplier={1.25}>
-          {product.reason}
-        </Text>
       </View>
+      <View style={styles.productCardMainRow}>
+        <View style={[styles.productSwatch, { backgroundColor: swatchColor }]}>
+          <View style={styles.productSwatchHighlight} />
+          <View style={styles.productSwatchBottle}>
+            <Text style={styles.productSwatchInitials} maxFontSizeMultiplier={1.15}>
+              {initials}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.productCopy}>
+          <Text style={styles.productBrand} maxFontSizeMultiplier={1.2}>
+            {product.brand}
+          </Text>
+          <Text style={styles.productName} maxFontSizeMultiplier={1.2}>
+            {product.name}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.productReason} maxFontSizeMultiplier={1.25}>
+        {product.reason}
+      </Text>
     </View>
   );
 }
@@ -902,35 +893,40 @@ function RoutineCard({
 }) {
   return (
     <View style={styles.routineCard}>
-      <Text style={styles.routineTitle} maxFontSizeMultiplier={1.15}>
-        {title}
-      </Text>
+      <View style={styles.routineHeader}>
+        <View style={styles.routineHeaderMark} />
+        <Text style={styles.routineEyebrow} maxFontSizeMultiplier={1.15}>
+          {String(steps.length).padStart(2, '0')} · {title.toUpperCase()}
+        </Text>
+      </View>
       <View style={styles.routineSteps}>
         {steps.map((s, i) => (
-          <View
-            key={`${s.label}-${i}`}
-            style={[styles.routineStep, i < steps.length - 1 && styles.routineStepDivider]}
-          >
+          <View key={`${s.label}-${i}`} style={styles.routineStep}>
             <View style={styles.routineNumberCol}>
               <Text
                 style={[
                   styles.routineNumber,
-                  s.focus && { color: puraColors.clayDeep },
+                  s.focus && styles.routineNumberFocus,
                 ]}
                 maxFontSizeMultiplier={1.15}
               >
                 {String(i + 1).padStart(2, '0')}
               </Text>
-              {s.focus ? (
-                <Text style={styles.routineFocusBadge} maxFontSizeMultiplier={1.15}>
-                  FOCUS
-                </Text>
+              {i < steps.length - 1 ? (
+                <View style={styles.routineConnector} />
               ) : null}
             </View>
             <View style={styles.routineCopyCol}>
-              <Text style={styles.routineLabel} maxFontSizeMultiplier={1.2}>
-                {s.label}
-              </Text>
+              <View style={styles.routineLabelRow}>
+                <Text style={styles.routineLabel} maxFontSizeMultiplier={1.2}>
+                  {s.label}
+                </Text>
+                {s.focus ? (
+                  <Text style={styles.routineFocusBadge} maxFontSizeMultiplier={1.15}>
+                    FOCUS
+                  </Text>
+                ) : null}
+              </View>
               {s.product ? (
                 <Text style={styles.routineProduct} maxFontSizeMultiplier={1.2}>
                   {s.product}
@@ -949,19 +945,26 @@ function RoutineCard({
 // ============================================================================
 
 function FollowUps({ prompts }: { prompts: string[] }) {
-  // FollowUps are rendered as plain editorial chips; tapping them is
-  // surfaced via the parent flow in a future iteration. For now they
-  // anchor the answer with concrete next steps without competing with
-  // the composer.
+  // Editorial "next questions" — rendered as a stacked list of underlined
+  // serif phrases, not gray chip pills. Reads like the footnotes section
+  // of an essay where the author suggests further reading.
   return (
     <View style={styles.followups}>
-      {prompts.map((p) => (
-        <View key={p} style={styles.followupChip}>
-          <Text style={styles.followupText} maxFontSizeMultiplier={1.15}>
-            {p}
-          </Text>
-        </View>
-      ))}
+      <Text style={styles.followupsLabel} maxFontSizeMultiplier={1.15}>
+        NEXT QUESTIONS
+      </Text>
+      <View style={styles.followupsList}>
+        {prompts.map((p) => (
+          <View key={p} style={styles.followupRow}>
+            <Text style={styles.followupArrow} maxFontSizeMultiplier={1.15}>
+              →
+            </Text>
+            <Text style={styles.followupText} maxFontSizeMultiplier={1.2}>
+              {p}
+            </Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -1136,51 +1139,33 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
   },
   headerMark: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: puraColors.clayMist,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.claySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginRight: 2,
+    width: 18,
+    height: 1.5,
+    backgroundColor: puraColors.clayDeep,
+    borderRadius: 1,
   },
   headerTitle: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    letterSpacing: -0.4,
-    color: puraColors.ink,
-    lineHeight: 26,
-  },
-  headerSub: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    color: puraColors.muted,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10.5,
+    letterSpacing: 2.4,
+    color: puraColors.clay,
   },
   newBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: puraColors.surfaceQuiet,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.line,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: puraColors.ink,
   },
   newBtnText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    letterSpacing: 0.2,
-    color: puraColors.inkSecondary,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    letterSpacing: -0.1,
+    color: puraColors.ink,
   },
 
   // ---- Empty state ----
@@ -1190,9 +1175,6 @@ const styles = StyleSheet.create({
   emptyScrollContent: {
     paddingHorizontal: puraSpace.screenX,
     paddingTop: 8,
-  },
-  emptyHeroBlock: {
-    paddingTop: 12,
   },
   // ---- Masthead (editorial date line) ----
   emptyMastheadRow: {
@@ -1217,7 +1199,7 @@ const styles = StyleSheet.create({
     height: 1.5,
     backgroundColor: puraColors.ink,
     marginTop: 10,
-    marginBottom: 28,
+    marginBottom: 18,
   },
   emptyMastheadHairline: {
     height: StyleSheet.hairlineWidth,
@@ -1233,22 +1215,28 @@ const styles = StyleSheet.create({
   },
   emptyGreetingFirst: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 52,
-    lineHeight: 56,
-    letterSpacing: -1.4,
+    fontSize: 50,
+    lineHeight: 52,
+    letterSpacing: -1.5,
     color: puraColors.ink,
   },
   emptyGreetingMid: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 52,
-    lineHeight: 56,
-    letterSpacing: -1.4,
+    fontSize: 50,
+    lineHeight: 52,
+    letterSpacing: -1.5,
     color: puraColors.ink,
-    marginTop: -4,
+    marginTop: 0,
+    paddingLeft: 12,
   },
-  emptyGreetingMidItalic: {
+  emptyGreetingThird: {
     fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 58,
+    lineHeight: 60,
+    letterSpacing: -1.6,
     color: puraColors.clayDeep,
+    marginTop: 0,
+    paddingLeft: 26,
   },
   emptyBylineRow: {
     flexDirection: 'row',
@@ -1270,8 +1258,8 @@ const styles = StyleSheet.create({
 
   // ---- Observation block ----
   emptyObservationBlock: {
-    marginTop: 28,
-    paddingTop: 16,
+    marginTop: 22,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: puraColors.lineSoft,
   },
@@ -1292,7 +1280,7 @@ const styles = StyleSheet.create({
 
   // ---- Table of contents ----
   contentsBlock: {
-    marginTop: 28,
+    marginTop: 22,
   },
   contentsHeader: {
     flexDirection: 'row',
@@ -1328,7 +1316,7 @@ const styles = StyleSheet.create({
     backgroundColor: puraColors.surfaceQuiet,
   },
   chapterNumeralCol: {
-    width: 48,
+    width: 52,
   },
   chapterNumeral: {
     fontFamily: 'InstrumentSerif-Regular',
@@ -1336,6 +1324,13 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: 0.4,
     color: puraColors.clayDeep,
+  },
+  chapterNumeralMark: {
+    width: 14,
+    height: 1,
+    backgroundColor: puraColors.clayDeep,
+    marginTop: 6,
+    opacity: 0.45,
   },
   chapterCopyCol: { flex: 1, paddingTop: 4 },
   chapterTitle: {
@@ -1361,109 +1356,139 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
 
-  // ---- User bubble ----
+  // ---- User block (right-aligned with right-side terracotta rule) ----
   userRow: {
     alignSelf: 'flex-end',
     maxWidth: '82%',
   },
-  userBubble: {
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 6,
-    backgroundColor: puraColors.clayMist,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.claySoft,
+  userBlock: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  userInner: {
+    flex: 1,
+    paddingRight: 12,
+    paddingVertical: 2,
+    alignItems: 'flex-end',
+  },
+  userLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    color: puraColors.muted,
+    marginBottom: 4,
   },
   userText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: puraColors.inkSecondary,
-    letterSpacing: -0.1,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 19,
+    lineHeight: 26,
+    color: puraColors.ink,
+    letterSpacing: -0.2,
+    textAlign: 'right',
+  },
+  userRule: {
+    width: 2,
+    backgroundColor: puraColors.clayDeep,
+    borderRadius: 1,
   },
 
-  // ---- Assistant turn ----
+  // ---- Assistant turn (left-anchored with left terracotta rule) ----
   assistantRow: { alignSelf: 'stretch' },
-  assistantTurn: { paddingRight: 4, gap: 10 },
-  assistantHeader: {
+  assistantTurn: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    alignItems: 'stretch',
+    paddingRight: 4,
+  },
+  assistantRule: {
+    width: 2,
+    backgroundColor: puraColors.clayDeep,
+    borderRadius: 1,
+    marginRight: 14,
+  },
+  assistantInner: {
+    flex: 1,
+    paddingVertical: 2,
+    gap: 12,
   },
   assistantEyebrow: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
-    letterSpacing: 2.0,
+    letterSpacing: 2.2,
     color: puraColors.clay,
   },
   assistantBlocks: { gap: 14 },
   assistantText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
-    lineHeight: 25,
+    fontSize: 15.5,
+    lineHeight: 24,
     color: puraColors.inkSecondary,
     letterSpacing: -0.1,
   },
 
-  // ---- Thinking state ----
+  // ---- Thinking state (editorial progress line) ----
   thinkingWrap: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
+    paddingRight: 4,
+    paddingVertical: 2,
+  },
+  thinkingRule: {
+    width: 2,
+    backgroundColor: puraColors.clayDeep,
+    borderRadius: 1,
+    marginRight: 14,
+  },
+  thinkingInner: {
+    flex: 1,
+    paddingVertical: 2,
     gap: 8,
-    paddingVertical: 4,
   },
-  thinkingSparkWrap: {
-    width: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+  thinkingEyebrow: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 2.2,
+    color: puraColors.clay,
   },
-  thinkingPill: {
+  thinkingPhrase: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 18,
+    lineHeight: 24,
+    color: puraColors.inkSecondary,
+    letterSpacing: -0.2,
+  },
+  thinkingTrack: {
+    height: 1,
+    backgroundColor: puraColors.lineSoft,
     overflow: 'hidden',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: puraColors.clayMist,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.claySoft,
-    position: 'relative',
+    marginTop: 4,
+    maxWidth: 240,
   },
-  thinkingText: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 16,
-    lineHeight: 18,
-    color: puraColors.clayDeep,
-    letterSpacing: -0.2,
-  },
-  thinkingDot: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 16,
-    lineHeight: 18,
-    color: puraColors.clayDeep,
-    letterSpacing: -0.2,
-    marginLeft: 1,
-  },
-  thinkingShimmer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 140,
-    height: '100%',
-    backgroundColor: 'rgba(255, 252, 248, 0.55)',
+  thinkingFill: {
+    height: 1,
+    backgroundColor: puraColors.clayDeep,
   },
 
   // ---- Product pick card ----
   productCard: {
-    flexDirection: 'row',
-    backgroundColor: puraColors.surfaceRaised,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.line,
-    padding: 14,
+    backgroundColor: puraColors.surfaceQuiet,
+    borderRadius: 18,
+    padding: 18,
     gap: 14,
+  },
+  productCardEyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  productCardEyebrowMark: {
+    width: 14,
+    height: 1,
+    backgroundColor: puraColors.clayDeep,
+  },
+  productCardMainRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'center',
   },
   productSwatch: {
     width: 70,
@@ -1499,118 +1524,154 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: puraColors.clayDeep,
   },
-  productCopy: { flex: 1, gap: 3, justifyContent: 'center' },
+  productCopy: { flex: 1, gap: 2, justifyContent: 'center' },
   productFit: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 9.5,
-    letterSpacing: 1.4,
-    color: puraColors.clay,
+    letterSpacing: 2.0,
+    color: puraColors.clayDeep,
   },
   productBrand: {
     fontFamily: 'Inter-Medium',
-    fontSize: 11.5,
-    letterSpacing: 0.4,
+    fontSize: 10.5,
+    letterSpacing: 1.8,
     color: puraColors.muted,
     textTransform: 'uppercase',
   },
   productName: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 19,
-    lineHeight: 23,
-    letterSpacing: -0.3,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.4,
     color: puraColors.ink,
-    marginTop: -1,
+    marginTop: 2,
   },
   productReason: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12.5,
-    lineHeight: 17,
-    color: puraColors.muted,
-    marginTop: 4,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    lineHeight: 21,
+    color: puraColors.inkSecondary,
+    letterSpacing: -0.2,
   },
 
   // ---- Routine card ----
   routineCard: {
-    backgroundColor: puraColors.surfaceRaised,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.line,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    backgroundColor: puraColors.surfaceQuiet,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 22,
   },
-  routineTitle: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 17,
-    lineHeight: 21,
-    letterSpacing: -0.3,
-    color: puraColors.ink,
-    marginBottom: 8,
+  routineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 18,
+  },
+  routineHeaderMark: {
+    width: 14,
+    height: 1,
+    backgroundColor: puraColors.clayDeep,
+  },
+  routineEyebrow: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 2.2,
+    color: puraColors.clayDeep,
   },
   routineSteps: {},
   routineStep: {
     flexDirection: 'row',
-    paddingVertical: 12,
-    gap: 14,
+    gap: 16,
     alignItems: 'flex-start',
   },
-  routineStepDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: puraColors.lineSoft,
-  },
   routineNumberCol: {
-    width: 52,
+    width: 48,
+    alignItems: 'center',
   },
   routineNumber: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 18,
-    lineHeight: 20,
-    letterSpacing: 0.4,
+    fontSize: 36,
+    lineHeight: 38,
+    letterSpacing: -0.6,
     color: puraColors.muted,
+  },
+  routineNumberFocus: {
+    color: puraColors.clayDeep,
+    fontFamily: 'InstrumentSerif-Italic',
+  },
+  routineConnector: {
+    width: 1,
+    flex: 1,
+    minHeight: 24,
+    backgroundColor: puraColors.lineStrong,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  routineCopyCol: { flex: 1, paddingTop: 8, paddingBottom: 18 },
+  routineLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  routineLabel: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 18,
+    lineHeight: 22,
+    color: puraColors.ink,
+    letterSpacing: -0.3,
   },
   routineFocusBadge: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.2,
+    fontSize: 9.5,
+    letterSpacing: 1.8,
     color: puraColors.clayDeep,
-    marginTop: 6,
-  },
-  routineCopyCol: { flex: 1 },
-  routineLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14.5,
-    lineHeight: 19,
-    color: puraColors.ink,
-    letterSpacing: -0.1,
   },
   routineProduct: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12.5,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
     color: puraColors.muted,
-    marginTop: 2,
+    marginTop: 4,
   },
 
-  // ---- Follow-ups ----
+  // ---- Follow-ups (editorial footnote-style list) ----
   followups: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 2,
+    marginTop: 6,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: puraColors.line,
   },
-  followupChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: puraColors.surfaceQuiet,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.line,
+  followupsLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 2.2,
+    color: puraColors.muted,
+    marginBottom: 10,
+  },
+  followupsList: {
+    gap: 10,
+  },
+  followupRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  followupArrow: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 16,
+    lineHeight: 22,
+    color: puraColors.clayDeep,
+    width: 14,
   },
   followupText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 12.5,
-    lineHeight: 16,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 16,
+    lineHeight: 22,
     color: puraColors.inkSecondary,
-    letterSpacing: -0.05,
+    letterSpacing: -0.2,
+    flex: 1,
   },
 
   // ---- Composer ----

@@ -1,43 +1,33 @@
 /**
- * ShopSearchBar — luminous white pill with a refined coral disc and
- * optional clear-text affordance.
+ * ShopSearchBar — pass 2 rebuild.
  *
- * • Real focus state — border subtly intensifies when the field is
- *   focused (no glossy oversized sphere; restrained per the brief).
- * • Clear button appears only when there's text; tapping clears the
- *   query and re-focuses the input.
- * • Sparkle leading icon hints "AI search" without overclaiming.
+ * Museum-catalog inquiry field. Hairline-bordered, no fill, lowercase
+ * MagnifyingGlass at refined weight, italic-serif placeholder. No
+ * rainbow sparkle. No CTA disc — the keyboard's return key submits.
+ *
+ * The bar lives within an editorial container with a small kicker
+ * label above ("LOOK FOR") so the search field reads as a step in the
+ * publication, not a top-of-page utility.
  */
 
 import React, { useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from 'react-native';
-import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
-import { MagnifyingGlass, Sparkle, X } from 'phosphor-react-native';
-import {
-  puraShop,
-  puraShopLayout,
-  puraShopRadius,
-  puraShopShadow,
-} from '@/theme';
+import { MagnifyingGlass, X } from 'phosphor-react-native';
+import { puraShop, puraShopLayout } from '@/theme';
 
 export interface ShopSearchBarProps {
   value: string;
   onChangeText: (s: string) => void;
   onSubmit?: () => void;
-  /** Rendered as a quiet inline clear-button when defined. */
   onClear?: () => void;
-  /** Called when the field gains / loses focus. Used by the parent to
-   *  render the suggestions panel (recent + popular). */
   onFocusChange?: (focused: boolean) => void;
 }
-
-const SEARCH_HEIGHT = 54;
-const CTA_SIZE = 34;
 
 export function ShopSearchBar({
   value,
@@ -60,20 +50,23 @@ export function ShopSearchBar({
 
   return (
     <View style={styles.outer}>
+      <View style={styles.kickerRow}>
+        <Text style={styles.kicker} maxFontSizeMultiplier={1.05}>
+          LOOK FOR
+        </Text>
+        <View style={styles.rule} />
+      </View>
+
       <View
         style={[
           styles.bar,
-          {
-            borderColor: focused
-              ? puraShop.searchBorderFocus
-              : puraShop.searchBorder,
-          },
+          focused && styles.barFocused,
         ]}
       >
-        <Sparkle
-          size={20}
-          color={puraShop.searchSparkle}
-          weight="fill"
+        <MagnifyingGlass
+          size={16}
+          color={puraShop.inkSecondary}
+          weight="regular"
           style={styles.leadingIcon}
         />
         <TextInput
@@ -83,8 +76,8 @@ export function ShopSearchBar({
           onSubmitEditing={onSubmit}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          placeholder="Search products, ingredients, brands…"
-          placeholderTextColor={puraShop.searchPlaceholder}
+          placeholder="an ingredient, a brand, a concern"
+          placeholderTextColor={puraShop.inkMuted}
           returnKeyType="search"
           style={styles.input}
           accessibilityLabel="Search products, ingredients, or brands"
@@ -106,35 +99,9 @@ export function ShopSearchBar({
               pressed && { opacity: 0.7 },
             ]}
           >
-            <X size={14} color={puraShop.inkSecondary} weight="bold" />
+            <X size={12} color={puraShop.inkMuted} weight="bold" />
           </Pressable>
         ) : null}
-        <Pressable
-          onPress={onSubmit}
-          accessibilityRole="button"
-          accessibilityLabel="Run search"
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && { opacity: 0.88, transform: [{ scale: 0.95 }] },
-          ]}
-          hitSlop={6}
-        >
-          <Svg
-            width={CTA_SIZE}
-            height={CTA_SIZE}
-            viewBox="0 0 100 100"
-            style={StyleSheet.absoluteFill}
-          >
-            <Defs>
-              <RadialGradient id="ctaGlow" cx="38%" cy="30%" rx="62%" ry="62%">
-                <Stop offset="0%" stopColor={puraShop.ink} stopOpacity={1} />
-                <Stop offset="100%" stopColor="#34302C" stopOpacity={1} />
-              </RadialGradient>
-            </Defs>
-            <Circle cx={50} cy={50} r={50} fill="url(#ctaGlow)" />
-          </Svg>
-          <MagnifyingGlass size={15} color={puraShop.white} weight="bold" />
-        </Pressable>
       </View>
     </View>
   );
@@ -143,44 +110,53 @@ export function ShopSearchBar({
 const styles = StyleSheet.create({
   outer: {
     paddingHorizontal: puraShopLayout.horizontalPadding,
-    marginBottom: 18,
+    marginBottom: 22,
   },
-  bar: {
-    height: SEARCH_HEIGHT,
-    borderRadius: puraShopRadius.search,
-    backgroundColor: puraShop.searchBg,
-    borderWidth: 1,
-    paddingLeft: 18,
-    paddingRight: 8,
+  kickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...puraShopShadow.search,
+    gap: 10,
+    marginBottom: 8,
+  },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 2.2,
+    color: puraShop.inkMuted,
+  },
+  rule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: puraShop.borderWarm,
+  },
+  bar: {
+    height: 44,
+    borderBottomWidth: 1,
+    borderBottomColor: puraShop.borderWarm,
+    paddingLeft: 0,
+    paddingRight: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  barFocused: {
+    borderBottomColor: puraShop.ink,
   },
   leadingIcon: {
-    marginRight: 10,
+    marginRight: 12,
   },
   input: {
     flex: 1,
-    fontFamily: 'Inter-Regular',
-    fontSize: 15.5,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 18,
     color: puraShop.ink,
     paddingVertical: 0,
+    letterSpacing: -0.1,
   },
   clearBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: puraShop.surfaceMuted,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
-  },
-  cta: {
-    width: CTA_SIZE,
-    height: CTA_SIZE,
-    borderRadius: CTA_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
   },
 });
