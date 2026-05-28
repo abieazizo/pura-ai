@@ -899,6 +899,55 @@ export class OpenAIClient {
       'overall skin_score.value. Default toward 70-80 for a normal ' +
       'photo with no clearly visible problem on that axis.\n' +
       '\n' +
+      'IMAGE_QUALITY FIELD CALIBRATION (critical — read carefully):\n' +
+      'You return three fields under `image_quality`. Calibrate them ' +
+      'honestly, but do NOT mistake ordinary phone-camera variance ' +
+      'for unusability. An everyday indoor selfie is the BASELINE ' +
+      'case, not the failure case. A reasonable person looking at a ' +
+      'normal phone selfie would say "yes, I can read this skin" — ' +
+      'so should you.\n' +
+      '• `image_quality.usable` — TRUE for any photo where a human ' +
+      'face is readable. The bar is "could a person interpret skin ' +
+      'from this photo?", NOT "is this studio quality?". Indoor ' +
+      'lighting, mild shadow, slight angle, soft focus, or imperfect ' +
+      'crop → still TRUE. Only return FALSE when the photo is ' +
+      'effectively black, motion-blurred beyond facial-feature ' +
+      'recognition, severely overexposed, or entirely missing a face.\n' +
+      '• `image_quality.confidence` — your trust that the ' +
+      'visible-signal inferences in THIS response are well-grounded ' +
+      'in the photo. Calibration:\n' +
+      '    0.85–0.95 = a clear well-lit selfie, full face visible.\n' +
+      '    0.65–0.85 = an ordinary phone selfie: indoor light, mild ' +
+      'shadow, slight off-angle. THIS IS THE COMMON CASE.\n' +
+      '    0.45–0.65 = noticeably soft / partially shadowed / partial ' +
+      'crop, but you can still read major facial zones.\n' +
+      '    0.25–0.45 = significant degradation, only some zones ' +
+      'readable.\n' +
+      '    < 0.20 = the photo is essentially unreadable. Reserve for ' +
+      'black frames, severe motion blur, or full-face occlusion.\n' +
+      '  DO NOT return confidence < 0.30 for a photo where you ' +
+      'successfully extracted ANY visible finding — those two facts ' +
+      'contradict each other.\n' +
+      '• `image_quality.issues` — populate ONLY for SEVERE conditions ' +
+      'a reasonable person would also flag. Calibration:\n' +
+      '    `blurry` — only for severe motion blur or full defocus, ' +
+      'NOT mild softness from a hand-held selfie.\n' +
+      '    `low_light` — only for near-black photos where skin tone ' +
+      'is unreadable, NOT for normal indoor light or mild shadow.\n' +
+      '    `partial_face` — only when a MAJOR region (entire forehead, ' +
+      'whole cheek, whole chin) is missing, NOT minor crop at the ' +
+      'forehead top or under the chin.\n' +
+      '    `angled` — only for extreme profile, NOT slight off-axis.\n' +
+      '    `occluded` — only when hair / hand / object covers a large ' +
+      'portion of the face, NOT a single stray strand.\n' +
+      '  For ordinary everyday selfies the correct value is an EMPTY ' +
+      'array. Do NOT defensively populate this field — false positives ' +
+      'force the user into a retake loop on perfectly readable photos. ' +
+      'When in doubt, return [].\n' +
+      'CONSISTENCY RULE: if you return any findings, the photo is ' +
+      'usable by definition — return `usable: true` and ' +
+      '`confidence ≥ 0.30`.\n' +
+      '\n' +
       'IMAGE-ANCHORED OVERLAY DATA (v17.0):\n' +
       'You MUST return `face_overlay` and per-finding ' +
       '`region_polygon` arrays. All coordinates are normalized 0..1 ' +

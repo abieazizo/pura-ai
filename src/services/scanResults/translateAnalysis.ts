@@ -116,6 +116,17 @@ export function classifyScanUsability(input: UsabilityInput): {
     return { usability: 'retake_required', reasons, issues };
   }
 
+  // TRUST-FINDINGS GUARD — defense in depth.
+  // If the AI successfully surfaced any supported finding, the photo
+  // was readable enough to extract a real visible signal. A poorly
+  // calibrated AI sometimes returns a self-reported quality issue
+  // ("blurry") with low confidence alongside genuine findings — those
+  // two facts contradict each other. Trust the findings over the
+  // self-report and never force `retake_required` from quality flags
+  // alone when supported findings exist. Demote to `limited_results`
+  // so the user sees what was actually found, with the soft notice.
+  const aiSurfacedSupportedFindings = input.supportedFindingCount > 0;
+
   // HARD-FAIL reasons — only the genuinely unreadable cases.
   // Thresholds intentionally lower than v19-era values: in practice the
   // AI is told to be conservative on quality, and a `confidence < 0.25`
@@ -123,10 +134,15 @@ export function classifyScanUsability(input: UsabilityInput): {
   // thresholds reserve `retake_required` for the cases where a human
   // looking at the photo would also say "you can't read this".
   const severeBlur =
-    input.issues.includes('blurry') && input.rawConfidence < 0.15;
+    !aiSurfacedSupportedFindings &&
+    input.issues.includes('blurry') &&
+    input.rawConfidence < 0.15;
   const majorZonesMissing =
-    input.issues.includes('partial_face') && input.rawConfidence < 0.15;
+    !aiSurfacedSupportedFindings &&
+    input.issues.includes('partial_face') &&
+    input.rawConfidence < 0.15;
   const extremeExposure =
+    !aiSurfacedSupportedFindings &&
     (input.issues.includes('low_light') ||
       input.issues.includes('harsh_light')) &&
     input.rawConfidence < 0.12;
@@ -241,10 +257,18 @@ function buildQuality(
       hasAnalysis: !!scan.aiAnalysis,
       hasFaceOverlay: !!scan.aiAnalysis?.face_overlay,
       faceDetected,
+      // AI-reported `usable` flag — read for visibility only; the
+      // classifier does NOT gate on this. Use `usability` (below) for
+      // routing decisions.
+      aiReportedUsable: scan.aiAnalysis?.image_quality?.usable ?? null,
       rawConfidence: confidence,
       issues,
       findingCount,
       supportedFindingCount,
+      // True when the trust-findings guard suppressed a quality-only
+      // retake. If you see this true alongside a `limited_results`
+      // route, that's the new defense-in-depth working as intended.
+      trustFindingsGuardActive: supportedFindingCount > 0,
       usability,
       reasons,
     });
