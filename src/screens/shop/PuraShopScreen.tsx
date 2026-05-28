@@ -62,6 +62,7 @@ import {
 } from './useShopViewModel';
 import { findShopProduct, type ShopCatalogProduct } from './shopCatalog';
 import { EditorialShopHeader } from './components/EditorialShopHeader';
+import { ScanSignalStrip, type ScanSignal } from './components/ScanSignalStrip';
 import { EditorialHero } from './components/EditorialHero';
 import {
   EditorialSection,
@@ -147,6 +148,9 @@ export function PuraShopScreen() {
   const scansCount = useAppStore((s) => s.scans.length);
   const latestScanDay = useAppStore(
     (s) => (s.scans.length > 0 ? s.scans[s.scans.length - 1].dayNumber : null),
+  );
+  const userInitial = useAppStore(
+    (s) => s.user?.initials?.[0] ?? s.user?.name?.[0] ?? s.name?.[0] ?? null,
   );
 
   const innerWidth = Math.max(
@@ -281,6 +285,20 @@ export function PuraShopScreen() {
   const issueTheme = deriveIssueTheme(filter);
   const scanReason = deriveScanReason(vm.hero.subline, filter);
 
+  // Scan signals — italic-serif row between search and hero. Derived
+  // from the view model's filter chips (already concern-aware) so the
+  // strip is honest about what the scan called out.
+  const scanSignals: ScanSignal[] = scansCount > 0
+    ? vm.filterChips
+        .filter((c) => c.key !== 'all')
+        .slice(0, 4)
+        .map((c) => ({
+          key: c.key,
+          label: c.label.toLowerCase(),
+          active: filter === c.key,
+        }))
+    : [];
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
@@ -301,11 +319,11 @@ export function PuraShopScreen() {
         >
           <Defs>
             <RadialGradient id="canvasGlow" cx="50%" cy="0%" rx="80%" ry="100%">
-              <Stop offset="0%" stopColor={puraShop.blush} stopOpacity={0.42} />
+              <Stop offset="0%" stopColor={puraShop.blush} stopOpacity={0.22} />
               <Stop
                 offset="55%"
                 stopColor={puraShop.coralSoft}
-                stopOpacity={0.18}
+                stopOpacity={0.10}
               />
               <Stop offset="100%" stopColor={puraShop.canvas} stopOpacity={0} />
             </RadialGradient>
@@ -327,6 +345,7 @@ export function PuraShopScreen() {
           <EditorialShopHeader
             issueNumber={issueNumber}
             issueTheme={issueTheme}
+            userInitial={userInitial}
             savedCount={vm.savedCount}
             bagCount={vm.bagBadgeCount}
             onPressSaved={openSaved}
@@ -348,6 +367,15 @@ export function PuraShopScreen() {
             onSelect={applySuggestion}
           />
         ) : null}
+
+        {/* Scan signals — bridge between search and hero */}
+        <ScanSignalStrip
+          signals={scanSignals}
+          onSelect={(key) => {
+            hapt.select();
+            setFilter(key as ShopConcernFilter);
+          }}
+        />
 
         {/* Hero — single editorial recommendation */}
         {vm.hero.featured ? (
@@ -441,33 +469,11 @@ export function PuraShopScreen() {
           </EditorialSection>
         ) : null}
 
-        {/* Picked for the theme */}
-        {!isSearchActive && vm.breakoutEssentials.length > 0 ? (
-          <EditorialSection
-            kicker="Picked for the theme"
-            title={`${issueTheme}, calmly.`}
-            note="A short list, drawn from this week’s skin direction."
-            onMore={() => nav.navigate('CategoryView', { kind: 'essentials' })}
-            moreLabel="See the full edit"
-          >
-            {vm.breakoutEssentials.slice(0, 4).map((card, i, arr) => (
-              <EditorialIndexRow
-                key={card.catalog.id}
-                index={i + 1}
-                product={card.catalog}
-                reason={
-                  card.factors[0]?.label
-                    ? `Picked because ${card.factors[0].label.toLowerCase()}.`
-                    : 'Hand-picked for the theme.'
-                }
-                isInRoutine={card.isInRoutine}
-                isLast={i === arr.length - 1}
-                onPress={() => openProduct(card.catalog.id)}
-                onAdd={() => handleQuickAdd(card.catalog.id)}
-              />
-            ))}
-          </EditorialSection>
-        ) : null}
+        {/* The "Picked for the theme" listing was removed in pass 7 —
+            it duplicated the purpose of "Pairs with tonight". The shop
+            now reads as: hero → one supporting list → end. Restraint
+            is a luxury signal. The full edit is reachable from
+            individual section actions. */}
       </Animated.ScrollView>
 
       <AddedToRoutineToast

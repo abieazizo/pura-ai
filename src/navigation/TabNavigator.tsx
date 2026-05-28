@@ -20,7 +20,7 @@ import { FloatingTabBar } from './FloatingTabBar';
 // disk (and still reachable from sub-routes that import them by their
 // exact source path) for archival reference.
 import { AssistantV25Screen } from '@/screens/assistant/v25/AssistantV25Screen';
-import { ProductDetailV25Screen } from '@/screens/productDetail/v25/ProductDetailV25Screen';
+import { EditorialProductDetailScreen as ProductDetailV25Screen } from '@/screens/productDetail/EditorialProductDetailScreen';
 import { CategoryView } from '@/screens/products/CategoryView';
 import { PlanScreen } from '@/screens/plan/PlanScreen';
 // pura27 hosts the Home production destination.

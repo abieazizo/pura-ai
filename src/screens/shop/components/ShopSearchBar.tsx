@@ -52,7 +52,7 @@ export function ShopSearchBar({
     <View style={styles.outer}>
       <View style={styles.kickerRow}>
         <Text style={styles.kicker} maxFontSizeMultiplier={1.05}>
-          LOOK FOR
+          ASK THE EDIT
         </Text>
         <View style={styles.rule} />
       </View>

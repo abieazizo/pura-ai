@@ -40,6 +40,7 @@ import { Check } from 'phosphor-react-native';
 import { puraShop } from '@/theme';
 import type { ShopCatalogProduct } from '../shopCatalog';
 import type { MatchedFactor } from '../personalization';
+import { PaperGrain } from './PaperGrain';
 
 export interface EditorialHeroProps {
   product: ShopCatalogProduct;
@@ -118,9 +119,9 @@ export function EditorialHero({
     .toUpperCase()
     .split(' ')
     .reduce<string[]>((acc, word) => {
-      // Wrap roughly every 12 chars; keeps lines balanced.
+      // Wrap aggressively so each line fits the engraved column width.
       const last = acc[acc.length - 1];
-      if (!last || (last + ' ' + word).length > 14) {
+      if (!last || (last + ' ' + word).length > 10) {
         acc.push(word);
       } else {
         acc[acc.length - 1] = last + ' ' + word;
@@ -157,7 +158,8 @@ export function EditorialHero({
           accessibilityRole="button"
           accessibilityLabel={`${product.brand} ${product.name}, $${product.price}`}
         >
-          {/* Editorial stage */}
+          {/* Editorial stage — the product name engraved on the wash
+              is the single typographic moment. Packshot supporting. */}
           <View style={[styles.stage, { height: stageHeight }]}>
             <LinearGradient
               colors={['#FBE9DF', '#F4D2C0', '#E6B49A']}
@@ -166,25 +168,9 @@ export function EditorialHero({
               end={{ x: 0.5, y: 1 }}
               style={StyleSheet.absoluteFillObject}
             />
-
-            {/* Top folio (left) — issue number */}
-            <View style={styles.folioLeft} pointerEvents="none">
-              <Text style={styles.folioText}>
-                No.{String(issueNumber).padStart(2, '0')} · 01
-              </Text>
-            </View>
-
-            {/* Serif flourish (right) — single italic word */}
-            <View style={styles.flourishWrap} pointerEvents="none">
-              <Text style={styles.flourish}>{flourish}</Text>
-            </View>
-
-            {/* Price stack — left column on stage */}
-            <View style={styles.priceColumn} pointerEvents="none">
-              <Text style={styles.priceLabel}>PRICE</Text>
-              <View style={styles.priceRule} />
-              <Text style={styles.priceValue}>${formatPrice(product.price)}</Text>
-            </View>
+            {/* Paper-grain pattern — gives the wash a photographed
+                quality rather than a flat gradient. (Pass 10) */}
+            <PaperGrain opacity={0.10} />
 
             {/* Product name engraved on stage — serif caps, stacked */}
             <View style={styles.nameStack} pointerEvents="none">
@@ -215,10 +201,15 @@ export function EditorialHero({
           <View style={styles.captionWrap}>
             <View style={styles.captionRow}>
               <Text style={styles.captionBrand}>{product.brand.toUpperCase()}</Text>
-              <View style={styles.captionDot} />
               <Text style={styles.captionTag} numberOfLines={2}>
                 {tagline}
               </Text>
+            </View>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>PRICE</Text>
+              <View style={styles.priceRule} />
+              <Text style={styles.priceValue}>${formatPrice(product.price)}</Text>
+              <Text style={styles.flourishInline}>{flourish}</Text>
             </View>
 
             {/* Add affordance — serif word + hairline rule, Aesop vocabulary */}
@@ -324,44 +315,18 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  // Price column — engraved left, below folio.
-  priceColumn: {
-    position: 'absolute',
-    top: STAGE_PAD + 36,
-    left: STAGE_PAD,
-    width: 70,
-  },
-  priceLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 2.2,
-    color: 'rgba(80, 40, 28, 0.6)',
-  },
-  priceRule: {
-    width: 22,
-    height: 1,
-    backgroundColor: 'rgba(80, 40, 28, 0.36)',
-    marginTop: 6,
-    marginBottom: 6,
-  },
-  priceValue: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
-    color: 'rgba(60, 30, 20, 0.86)',
-    letterSpacing: -0.4,
-  },
-
   // Product name engraved on the stage — serif caps stacked.
+  // Centered vertically now that the folio/price/flourish are gone.
   nameStack: {
     position: 'absolute',
-    top: STAGE_PAD + 140,
+    top: STAGE_PAD + 12,
     left: STAGE_PAD,
-    width: '60%',
+    width: '54%',
   },
   nameLine: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 26,
-    lineHeight: 28,
+    fontSize: 24,
+    lineHeight: 26,
     letterSpacing: -0.4,
     color: 'rgba(40, 20, 12, 0.88)',
   },
@@ -391,21 +356,13 @@ const styles = StyleSheet.create({
   captionRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 14,
   },
   captionBrand: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     letterSpacing: 2.6,
     color: puraShop.ink,
-  },
-  captionDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: puraShop.inkMuted,
-    transform: [{ translateY: -3 }],
   },
   captionTag: {
     flex: 1,
@@ -415,6 +372,37 @@ const styles = StyleSheet.create({
     color: puraShop.inkSecondary,
     letterSpacing: -0.05,
     minWidth: 0,
+  },
+  priceRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 12,
+  },
+  priceLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 2.2,
+    color: puraShop.inkMuted,
+  },
+  priceRule: {
+    width: 22,
+    height: 1,
+    backgroundColor: puraShop.borderWarm,
+  },
+  priceValue: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    color: puraShop.ink,
+    letterSpacing: -0.4,
+  },
+  flourishInline: {
+    flex: 1,
+    textAlign: 'right',
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 16,
+    color: puraShop.coralDeep,
+    letterSpacing: 0.1,
   },
 
   addAffordance: {

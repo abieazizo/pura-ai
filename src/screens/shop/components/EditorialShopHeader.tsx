@@ -20,21 +20,35 @@ export interface EditorialShopHeaderProps {
   issueNumber: number;
   /** "Calm + Repair", "Barrier Week", "Reset", etc. — the issue's theme. */
   issueTheme: string;
+  /** First initial of the user's name; the issue is dedicated. */
+  userInitial?: string | null;
   savedCount: number;
   bagCount: number;
   onPressSaved: () => void;
   onPressBag: () => void;
 }
 
+function formatDateStamp(): string {
+  // Hand-set publication date: "FOR M., 28 MAY 26" form.
+  const d = new Date();
+  const day = d.getDate();
+  const monthsShort = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const month = monthsShort[d.getMonth()];
+  const yy = String(d.getFullYear() % 100).padStart(2, '0');
+  return `${day} ${month} ${yy}`;
+}
+
 export function EditorialShopHeader({
   issueNumber,
   issueTheme,
+  userInitial,
   savedCount,
   bagCount,
   onPressSaved,
   onPressBag,
 }: EditorialShopHeaderProps) {
   const issuePadded = String(issueNumber).padStart(2, '0');
+  const dateStamp = formatDateStamp();
   return (
     <View style={styles.outer}>
       <View style={styles.metaRow}>
@@ -91,6 +105,16 @@ export function EditorialShopHeader({
           </IconCircle>
         </View>
       </View>
+
+      {/* Publication credit line — pass 10. Reads as the cover of a
+          real subscription publication: "Pura Shop. For M., 28 May.
+          Issue No. 19, Tonight." set on a full-width hairline. */}
+      <View style={styles.creditRule} />
+      <Text style={styles.credit} maxFontSizeMultiplier={1.05} numberOfLines={1}>
+        Pura Shop
+        {userInitial ? `  ·  For ${userInitial}, ${dateStamp.toLowerCase()}` : `  ·  ${dateStamp.toLowerCase()}`}
+        {`  ·  Issue No. ${issuePadded}, ${issueTheme}.`}
+      </Text>
     </View>
   );
 }
@@ -195,5 +219,24 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Bold',
     fontSize: 9,
     lineHeight: 11,
+  },
+  dedication: {
+    marginTop: 8,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 13,
+    color: puraShop.inkMuted,
+    letterSpacing: 0.1,
+  },
+  creditRule: {
+    marginTop: 12,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: puraShop.borderWarm,
+  },
+  credit: {
+    marginTop: 8,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 12.5,
+    color: puraShop.inkMuted,
+    letterSpacing: 0.1,
   },
 });

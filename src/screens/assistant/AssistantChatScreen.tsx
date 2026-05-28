@@ -54,6 +54,7 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeInUp,
+  FadeOut,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -98,7 +99,8 @@ type AssistantBlock =
   | { kind: 'text'; text: string }
   | { kind: 'product'; product: ProductCard }
   | { kind: 'routine'; title: string; steps: RoutineStep[] }
-  | { kind: 'followups'; prompts: string[] };
+  | { kind: 'followups'; prompts: string[] }
+  | { kind: 'error'; lead: string; body: string; retryLabel: string };
 
 type Message =
   | { kind: 'user'; id: string; text: string }
@@ -147,6 +149,27 @@ function answerFor(
 ): { eyebrow: string; blocks: AssistantBlock[] } {
   const lower = prompt.toLowerCase();
   const zoneLabel = observation.zone === 'full_face' ? 'your face' : `your ${observation.zone}`;
+
+  // Demo / design-audit trigger: any prompt containing "error" or a sentinel
+  // flag forces the error block path. Useful for capturing the error state
+  // for the design gallery; never hit in normal product flow.
+  const forceError =
+    typeof window !== 'undefined' &&
+    (window as any).__puraStaticError__ === true;
+  if (forceError || lower.includes('__error__')) {
+    return {
+      eyebrow: 'PURA · UNAVAILABLE',
+      blocks: [
+        {
+          kind: 'error',
+          lead: 'I lost the thread for a moment.',
+          body:
+            'My reading of tonight’s scan didn’t come through. Try again, or check back after your next scan — I’ll be more useful with fresh data.',
+          retryLabel: 'Ask again',
+        },
+      ],
+    };
+  }
 
   if (lower.includes('barrier') || lower.includes('skin')) {
     return {
@@ -420,34 +443,50 @@ export function AssistantChatScreen() {
         ) : null}
 
         {conversationActive ? (
-          <FlatList
-            ref={listRef}
-            data={messages}
-            keyExtractor={(m) => m.id}
-            renderItem={({ item }) => (
-              <MessageRow message={item} reduceMotion={reduceMotion} />
-            )}
-            style={styles.list}
-            contentContainerStyle={[
-              styles.listContent,
-              { paddingBottom: 160 + insets.bottom },
-            ]}
-            ItemSeparatorComponent={() => <View style={{ height: 18 }} />}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={scrollToEnd}
-          />
+          <Animated.View
+            key="conversation"
+            entering={
+              reduceMotion
+                ? undefined
+                : FadeIn.duration(360).delay(120).easing(Easing.out(Easing.cubic))
+            }
+            style={styles.flex}
+          >
+            <FlatList
+              ref={listRef}
+              data={messages}
+              keyExtractor={(m) => m.id}
+              renderItem={({ item }) => (
+                <MessageRow message={item} reduceMotion={reduceMotion} />
+              )}
+              style={styles.list}
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingBottom: 160 + insets.bottom },
+              ]}
+              ItemSeparatorComponent={() => <View style={{ height: 18 }} />}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={scrollToEnd}
+            />
+          </Animated.View>
         ) : (
-          <EmptyState
-            greeting={greetingName}
-            dateLabel={dateLabel}
-            observationLine={observationLine}
-            suggestions={SUGGESTIONS}
-            onPick={onPickSuggestion}
-            reduceMotion={reduceMotion}
-            bottomInset={insets.bottom}
-          />
+          <Animated.View
+            key="empty"
+            exiting={reduceMotion ? undefined : FadeOut.duration(220)}
+            style={styles.flex}
+          >
+            <EmptyState
+              greeting={greetingName}
+              dateLabel={dateLabel}
+              observationLine={observationLine}
+              suggestions={SUGGESTIONS}
+              onPick={onPickSuggestion}
+              reduceMotion={reduceMotion}
+              bottomInset={insets.bottom}
+            />
+          </Animated.View>
         )}
 
         <Composer
@@ -776,7 +815,46 @@ function BlockView({ block }: { block: AssistantBlock }) {
   if (block.kind === 'routine')
     return <RoutineCard title={block.title} steps={block.steps} />;
   if (block.kind === 'followups') return <FollowUps prompts={block.prompts} />;
+  if (block.kind === 'error')
+    return (
+      <ErrorBlock lead={block.lead} body={block.body} retryLabel={block.retryLabel} />
+    );
   return null;
+}
+
+function ErrorBlock({
+  lead,
+  body,
+  retryLabel,
+}: {
+  lead: string;
+  body: string;
+  retryLabel: string;
+}) {
+  return (
+    <View style={styles.errorBlock}>
+      <Text style={styles.errorLead} maxFontSizeMultiplier={1.2}>
+        {lead}
+      </Text>
+      <Text style={styles.errorBody} maxFontSizeMultiplier={1.25}>
+        {body}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={retryLabel}
+        onPress={() => hapt.tap()}
+        style={({ pressed }) => [styles.errorRetry, pressed && { opacity: 0.65 }]}
+        hitSlop={6}
+      >
+        <Text style={styles.errorRetryText} maxFontSizeMultiplier={1.2}>
+          {retryLabel}
+        </Text>
+        <Text style={styles.errorRetryArrow} maxFontSizeMultiplier={1.2}>
+          ↻
+        </Text>
+      </Pressable>
+    </View>
+  );
 }
 
 // ============================================================================
@@ -1040,9 +1118,10 @@ function Composer({
   }));
 
   const placeholder = useMemo(() => {
-    if (conversationActive) return 'Ask a follow-up';
-    if (!observation.scanCompleted) return 'Ask about a product or tonight’s skin';
-    return 'Ask about tonight’s skin, a product, or your routine';
+    if (conversationActive) return 'Write a follow-up';
+    if (!observation.scanCompleted)
+      return 'Write to Pura about a product, or your skin tonight';
+    return 'Write to Pura about tonight';
   }, [conversationActive, observation.scanCompleted]);
 
   // Constrain growth: 1 line ≈ 24px, cap at ~5 lines.
@@ -1056,19 +1135,11 @@ function Composer({
       ]}
       pointerEvents="box-none"
     >
+      <View style={styles.composerCanvasBackdrop} pointerEvents="none" />
       <View style={[styles.composer, focused && styles.composerFocused]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open scan"
-          onPress={() => hapt.tap()}
-          style={({ pressed }) => [
-            styles.composerLeading,
-            pressed && { opacity: 0.7 },
-          ]}
-          hitSlop={6}
-        >
-          <Camera size={18} color={puraColors.muted} weight="regular" />
-        </Pressable>
+        <Text style={styles.composerLeadMark} maxFontSizeMultiplier={1.15}>
+          {conversationActive ? '—' : '+'}
+        </Text>
         <TextInput
           ref={inputRef}
           value={value}
@@ -1085,7 +1156,7 @@ function Composer({
           onContentSizeChange={(e) =>
             onInputHeight(e.nativeEvent.contentSize.height)
           }
-          accessibilityLabel="Ask Pura"
+          accessibilityLabel="Write to Pura"
           maxFontSizeMultiplier={1.25}
           underlineColorAndroid="transparent"
           returnKeyType="send"
@@ -1097,22 +1168,25 @@ function Composer({
         <Animated.View style={sendStyle}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Send"
+            accessibilityLabel="Send to Pura"
             accessibilityState={{ disabled: !canSend }}
             disabled={!canSend}
             onPress={onSend}
             style={({ pressed }) => [
               styles.sendBtn,
-              canSend && styles.sendBtnActive,
-              pressed && canSend && { opacity: 0.92, transform: [{ scale: 0.96 }] },
+              pressed && canSend && { opacity: 0.7 },
             ]}
-            hitSlop={4}
+            hitSlop={8}
           >
-            <ArrowUp
-              size={15}
-              weight="bold"
-              color={canSend ? puraColors.inverse : puraColors.muted}
-            />
+            <Text
+              style={[
+                styles.sendArrow,
+                canSend ? styles.sendArrowActive : styles.sendArrowIdle,
+              ]}
+              maxFontSizeMultiplier={1.15}
+            >
+              →
+            </Text>
           </Pressable>
         </Animated.View>
       </View>
@@ -1674,68 +1748,122 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ---- Composer ----
+  // ---- Error block ----
+  errorBlock: {
+    backgroundColor: puraColors.surfaceQuiet,
+    borderRadius: 18,
+    padding: 18,
+    gap: 10,
+  },
+  errorLead: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 22,
+    lineHeight: 28,
+    color: puraColors.clayDeep,
+    letterSpacing: -0.3,
+  },
+  errorBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    lineHeight: 21,
+    color: puraColors.inkSecondary,
+    letterSpacing: -0.05,
+  },
+  errorRetry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: puraColors.ink,
+  },
+  errorRetryText: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 15,
+    lineHeight: 18,
+    color: puraColors.ink,
+    letterSpacing: -0.1,
+  },
+  errorRetryArrow: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 16,
+    lineHeight: 18,
+    color: puraColors.clayDeep,
+  },
+
+  // ---- Composer (editorial command bar — bottom-rule, no pill) ----
   composerWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     paddingHorizontal: puraSpace.screenX,
-    paddingTop: 8,
+    paddingTop: 16,
     backgroundColor: 'transparent',
+  },
+  composerCanvasBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: puraColors.canvas,
   },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 6,
-    backgroundColor: puraColors.surfaceRaised,
-    borderRadius: 26,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.line,
-    paddingLeft: 10,
-    paddingRight: 6,
-    paddingVertical: 6,
-    shadowColor: '#3B2B23',
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    gap: 10,
+    paddingHorizontal: 4,
+    paddingBottom: 10,
+    paddingTop: 10,
+    borderBottomWidth: 1.5,
+    borderBottomColor: puraColors.ink,
   },
   composerFocused: {
-    borderColor: puraColors.lineStrong,
-    shadowOpacity: 0.09,
+    borderBottomColor: puraColors.clayDeep,
   },
-  composerLeading: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+  composerLeadMark: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 22,
+    lineHeight: 26,
+    color: puraColors.clayDeep,
+    width: 16,
+    textAlign: 'center',
+    paddingBottom: 0,
   },
   composerInput: {
     flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 15.5,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 24,
     color: puraColors.ink,
     paddingHorizontal: 4,
-    paddingTop: Platform.OS === 'ios' ? 8 : 6,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 6,
-    minHeight: 24,
+    paddingTop: Platform.OS === 'ios' ? 4 : 4,
+    paddingBottom: Platform.OS === 'ios' ? 4 : 4,
+    minHeight: 26,
+    // RN Web: suppress browser default focus ring
+    ...(Platform.OS === 'web'
+      ? ({ outlineStyle: 'none' as any, outlineWidth: 0 as any } as object)
+      : {}),
   },
   sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraColors.line,
-    backgroundColor: puraColors.surfaceQuiet,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnActive: {
-    backgroundColor: puraColors.actionInk,
-    borderColor: puraColors.actionInk,
+  sendArrow: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 26,
+    lineHeight: 28,
+  },
+  sendArrowIdle: {
+    color: puraColors.muted,
+  },
+  sendArrowActive: {
+    color: puraColors.clayDeep,
   },
 });
 
