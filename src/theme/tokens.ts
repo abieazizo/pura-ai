@@ -764,6 +764,15 @@ export const pura27 = {
   info:             '#55788D',
   infoBackground:   '#EEF4F7',
 
+  // Deep gradient stops — paired with the base semantic above to sweep
+  // the ProgressMeter fill into a two-stop gradient. Each pair leans
+  // warmer at the leading edge and deepens toward the tail so the bar
+  // reads as a single sweep, never a label.
+  accentGradientDeep:  '#A45544',
+  successGradientDeep: '#3F614F',
+  warningGradientDeep: '#7F4732',
+  infoGradientDeep:    '#3F5E72',
+
   // CTA — deliberate near-black, not pure black.
   buttonPrimary:    '#171615',
   buttonPressed:    '#292725',

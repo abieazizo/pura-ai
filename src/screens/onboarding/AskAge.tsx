@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ShieldCheck } from 'phosphor-react-native';
 import { QuestionLayout } from '@/components/onboarding/QuestionLayout';
@@ -48,13 +48,10 @@ const PATTERN_OPTIONS: ReadonlyArray<{
 export function AskAge({ onNext }: AskAgeProps) {
   const ageRange = useAppStore((s) => s.ageRange);
   const setAgeRange = useAppStore((s) => s.setAgeRange);
+  const agePreferNotToSay = useAppStore((s) => s.agePreferNotToSay);
+  const setAgePreferNotToSay = useAppStore((s) => s.setAgePreferNotToSay);
   const patternContext = useAppStore((s) => s.patternContext);
   const setPatternContext = useAppStore((s) => s.setPatternContext);
-
-  // Local-only flag so "Prefer not to say" only appears selected after the
-  // user actively taps it. Without this, the null-default ageRange would
-  // make the row look pre-selected on first render.
-  const [agePreferNot, setAgePreferNot] = useState(false);
 
   const planImpactMessage = planImpactForPattern(patternContext);
 
@@ -94,7 +91,7 @@ export function AskAge({ onNext }: AskAgeProps) {
           {AGE_RANGES.map((r) => {
             const isPreferNot = r.label === 'Prefer not to say';
             const selected = isPreferNot
-              ? agePreferNot
+              ? agePreferNotToSay
               : ageRange === r.value;
             return (
               <View key={r.label} style={styles.gridItem}>
@@ -104,10 +101,10 @@ export function AskAge({ onNext }: AskAgeProps) {
                   selected={selected}
                   onToggle={() => {
                     if (isPreferNot) {
-                      setAgePreferNot(true);
+                      setAgePreferNotToSay(true);
                       setAgeRange(null);
                     } else {
-                      setAgePreferNot(false);
+                      setAgePreferNotToSay(false);
                       setAgeRange(r.value);
                     }
                   }}

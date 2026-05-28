@@ -117,16 +117,43 @@ export function TonightDecisionCard({
 
   const eyebrowText = eyebrow ?? DECISION.eyebrowUpdatedNow;
 
-  // Once unused (replaced by the radial behind the indicator); kept
-  // here so a future hook can repurpose the variable safely.
-  // const _ = useRef(false);
+  // State-aware gradient: each night type carries a distinct wash so
+  // the card root colour matches the signal — terracotta for recovery,
+  // rose/red for reset, sage for standard, neutral for check-in.
+  const washRgba =
+    decision.state === 'RESET_NIGHT'
+      ? `rgba(${hexToRgb(dx.signalReset)}, 0.10)`
+      : decision.state === 'STANDARD_NIGHT'
+        ? `rgba(${hexToRgb(dx.signalStandard)}, 0.07)`
+        : decision.state === 'TREATMENT_NIGHT'
+          ? `rgba(${hexToRgb(dx.signalTreatment)}, 0.08)`
+          : 'rgba(198, 93, 72, 0.10)'; // recovery + check-in → terracotta
+
+  const indicatorColor =
+    decision.state === 'RESET_NIGHT'
+      ? dx.signalReset
+      : decision.state === 'STANDARD_NIGHT'
+        ? dx.signalStandard
+        : decision.state === 'TREATMENT_NIGHT'
+          ? dx.signalTreatment
+          : decision.state === 'CHECK_IN_REQUIRED'
+            ? dx.signalCheckIn
+            : dx.terracotta;
+
+  // Secondary action copy varies by state so it always matches context.
+  const secondaryLabel =
+    decision.state === 'STANDARD_NIGHT'
+      ? DECISION.secondaryActionStandard
+      : decision.state === 'RESET_NIGHT'
+        ? DECISION.secondaryActionReset
+        : decision.state === 'CHECK_IN_REQUIRED'
+          ? DECISION.secondaryActionCheckIn
+          : DECISION.secondaryAction;
 
   return (
     <Animated.View style={[styles.card, dShadow.hero, containerStyle]}>
-      {/* Warm radial wash behind the state indicator — adds the
-          "anchored" feel without competing with content. */}
       <LinearGradient
-        colors={['rgba(198, 93, 72, 0.10)', 'rgba(198, 93, 72, 0)']}
+        colors={[washRgba, 'rgba(198, 93, 72, 0)']}
         start={{ x: 0, y: 0.18 }}
         end={{ x: 0.55, y: 0.42 }}
         pointerEvents="none"
@@ -136,7 +163,9 @@ export function TonightDecisionCard({
       <SectionEyebrow label={eyebrowText} tone="terracotta" />
 
       <View style={styles.titleRow}>
-        <Animated.View style={[styles.indicator, indicatorStyle]} />
+        <Animated.View
+          style={[styles.indicator, { backgroundColor: indicatorColor }, indicatorStyle]}
+        />
         <Animated.Text
           style={[styles.title, titleStyle]}
           accessibilityRole="header"
@@ -171,7 +200,7 @@ export function TonightDecisionCard({
         </Animated.View>
         <View style={styles.secondaryWrap}>
           <SecondaryActionButton
-            label={DECISION.secondaryAction}
+            label={secondaryLabel}
             onPress={onAskWhy}
             underline
           />
@@ -179,6 +208,15 @@ export function TonightDecisionCard({
       </View>
     </Animated.View>
   );
+}
+
+/** Convert a 6-digit hex colour to "R, G, B" for rgba(). */
+function hexToRgb(hex: string): string {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `${r}, ${g}, ${b}`;
 }
 
 const styles = StyleSheet.create({
@@ -207,7 +245,6 @@ const styles = StyleSheet.create({
     width: 3,
     height: 24,
     borderRadius: 2,
-    backgroundColor: dx.terracotta,
   },
   title: {
     flex: 1,

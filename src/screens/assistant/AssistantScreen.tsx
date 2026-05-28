@@ -21,16 +21,17 @@
  * through the store actions so state survives a tab switch.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -125,6 +126,7 @@ type ListItem =
   | { kind: 'morning-after' }
   | { kind: 'applied-confirmation' }
   | { kind: 'evidence' }
+  | { kind: 'scan-stale'; staleDays: number }
   | { kind: 'adjustments' }
   | { kind: 'provenance' }
   | { kind: 'prompts' }
@@ -141,10 +143,9 @@ export function AssistantScreen() {
   // The AssistantScreen always renders inside a Bottom Tab navigator
   // — this hook is safe to call unconditionally here.
   const tabBarHeight = useBottomTabBarHeight();
-  // Approximate composer height (input wrap + paddings) used by the
-  // FlatList bottom-spacer so the last content row is never hidden
-  // behind the sticky composer above the tab bar.
-  const composerClearance = 76;
+  // Composer height: paddingTop(8) + row(44) + paddingBottom(10) = 62px.
+  // Add 14px breathing room so the last list row lifts clear of the edge.
+  const composerClearance = 76; // 62 + 14
 
   const decision = useTonightDecision();
   const morningAfterVisible = useMorningAfterPromptVisible();
@@ -158,9 +159,17 @@ export function AssistantScreen() {
   const ownedProductCount = useAppStore(
     (s) => s.userRoutineMorning.length + s.userRoutineEvening.length,
   );
+  const storedConversation = useAppStore((s) => s.decisionConversation);
+  const persistConversation = useAppStore((s) => s.setDecisionConversation);
+  const clearPersistedConversation = useAppStore((s) => s.clearDecisionConversation);
 
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [conversation, setConversation] = useState<ConversationEntry[]>([]);
+  // Initialize conversation from persisted store so the thread survives
+  // tab switches. The cast is safe: stored entries are user/assistant only,
+  // which are both valid ConversationEntry shapes.
+  const [conversation, setConversation] = useState<ConversationEntry[]>(
+    () => storedConversation as ConversationEntry[],
+  );
   const [draft, setDraft] = useState('');
   const [composerFocused, setComposerFocused] = useState(false);
 
@@ -276,7 +285,18 @@ export function AssistantScreen() {
   const onViewDecision = useCallback(() => {
     hapt.select();
     setConversation([]);
-  }, []);
+    clearPersistedConversation();
+  }, [clearPersistedConversation]);
+
+  // Sync non-thinking entries to the store so the thread persists across
+  // tab switches. Thinking entries are transient UI — never persisted.
+  useEffect(() => {
+    const persistable = conversation.filter(
+      (e): e is Exclude<ConversationEntry, { kind: 'thinking' }> =>
+        e.kind !== 'thinking',
+    );
+    persistConversation(persistable);
+  }, [conversation, persistConversation]);
 
   const onSensationFromSheet = useCallback(
     (s: 'NORMAL' | 'TIGHT_OR_DRY' | 'STINGS_OR_BURNS') => {
@@ -343,12 +363,6 @@ export function AssistantScreen() {
       out.push({ kind: 'applied-confirmation' });
     }
 
-    // Stable-standard nights collapse the evidence section into a quieter
-    // empty-vs-decision treatment.
-    if (decision.state === 'STANDARD_NIGHT') {
-      out.push({ kind: 'stable-standard' });
-    }
-
     // Scan exists but no products owned — surface the "add my products"
     // affordance underneath the decision card so the user has a clear
     // path to enriching tonight's plan.
@@ -362,6 +376,12 @@ export function AssistantScreen() {
 
     if (decision.scanObservation && decision.state !== 'STANDARD_NIGHT') {
       out.push({ kind: 'evidence' });
+      // Surfaced AFTER evidence tiles — the user sees the data first,
+      // then the caveat about its age.
+      if (decision.scanObservation.scanAgeHours > 48) {
+        const staleDays = Math.floor(decision.scanObservation.scanAgeHours / 24);
+        out.push({ kind: 'scan-stale', staleDays });
+      }
     }
     if (decision.adjustments.length > 0) {
       out.push({ kind: 'adjustments' });
@@ -550,13 +570,15 @@ export function AssistantScreen() {
     }
 
     if (intent === 'EXPLAIN') {
+      const obsSentence = decision.scanObservation
+        ? decision.scanObservation.changeSummary.charAt(0).toUpperCase() +
+          decision.scanObservation.changeSummary.slice(1) + "."
+        : "No previous scan to compare against.";
       return (
         <View style={styles.explainCard}>
           <AssistantGroundingRow label={INTENT_GROUNDING.decision} />
           <Text style={styles.explainHeading} maxFontSizeMultiplier={1.2}>
-            {decision.scanObservation
-              ? `${decision.scanObservation.keyArea} appears more reactive today.`
-              : 'Today’s scan looks slightly more reactive.'}
+            {obsSentence}
           </Text>
           <Text style={styles.explainBody} maxFontSizeMultiplier={1.3}>
             {decision.explanation}
@@ -616,6 +638,7 @@ export function AssistantScreen() {
         return (
           <TonightDecisionCard
             decision={decision}
+            eyebrow={decision.eyebrowLabel}
             onApply={onApply}
             onAskWhy={onAskWhy}
           />
@@ -639,7 +662,13 @@ export function AssistantScreen() {
         const obs = decision.scanObservation;
         if (!obs) return null;
         return (
-          <View style={styles.section}>
+          <Pressable
+            style={({ pressed }) => [styles.section, pressed && { opacity: 0.88 }]}
+            onPress={onAskWhy}
+            accessibilityRole="button"
+            accessibilityLabel="View evidence details"
+            accessibilityHint="Opens the full evidence sheet"
+          >
             <SectionEyebrow label={EVIDENCE.sectionLabel} />
             <View style={styles.spacer8} />
             <EvidenceTileRow
@@ -651,14 +680,14 @@ export function AssistantScreen() {
                 },
                 {
                   primary: obs.keyArea,
-                  label: EVIDENCE.areaObservation,
+                  label: obs.areaChangeLabel,
                   trailing: obs.hasPreviousScan
                     ? EVIDENCE.comparisonLabel
                     : EVIDENCE.noComparisonLabel,
                 },
               ]}
             />
-          </View>
+          </Pressable>
         );
       }
       case 'adjustments': {
@@ -678,6 +707,19 @@ export function AssistantScreen() {
           </View>
         );
       }
+      case 'scan-stale':
+        return (
+          <View style={styles.staleWarning}>
+            <Text style={styles.staleText} maxFontSizeMultiplier={1.2}>
+              {`Scan is ${item.staleDays} ${item.staleDays === 1 ? 'day' : 'days'} old — a new scan will give more accurate guidance.`}
+            </Text>
+            <SecondaryActionButton
+              label="Start a new scan"
+              onPress={goScan}
+              underline
+            />
+          </View>
+        );
       case 'provenance':
         return (
           <View style={styles.provenanceRow}>
@@ -762,7 +804,11 @@ export function AssistantScreen() {
           renderEntry(item.entry)
         ) : (
           <Animated.View
-            entering={FadeInUp.duration(260).delay(40).springify()}
+            entering={
+              item.entry.kind === 'assistant'
+                ? FadeInDown.delay(20).springify().damping(18).stiffness(220).mass(0.8)
+                : FadeInUp.duration(200).delay(20).springify().damping(20).stiffness(280)
+            }
           >
             {renderEntry(item.entry)}
           </Animated.View>
@@ -781,8 +827,8 @@ export function AssistantScreen() {
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={tabBarHeight}
       >
         <View style={styles.headerWrap}>
           <AssistantHeader
@@ -876,6 +922,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 13.5,
     lineHeight: 19,
+    color: dx.inkSecondary,
+  },
+  staleWarning: {
+    backgroundColor: dx.terracottaSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: dx.terracottaTint,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  staleText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 17,
     color: dx.inkSecondary,
   },
 });

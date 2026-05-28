@@ -36,8 +36,8 @@ export interface ShopSearchBarProps {
   onFocusChange?: (focused: boolean) => void;
 }
 
-const SEARCH_HEIGHT = 58;
-const CTA_SIZE = 40;
+const SEARCH_HEIGHT = 54;
+const CTA_SIZE = 34;
 
 export function ShopSearchBar({
   value,
@@ -126,14 +126,14 @@ export function ShopSearchBar({
             style={StyleSheet.absoluteFill}
           >
             <Defs>
-              <RadialGradient id="ctaGlow" cx="42%" cy="34%" rx="58%" ry="58%">
-                <Stop offset="0%" stopColor={puraShop.coral} stopOpacity={1} />
-                <Stop offset="100%" stopColor={puraShop.coralDeep} stopOpacity={1} />
+              <RadialGradient id="ctaGlow" cx="38%" cy="30%" rx="62%" ry="62%">
+                <Stop offset="0%" stopColor={puraShop.ink} stopOpacity={1} />
+                <Stop offset="100%" stopColor="#34302C" stopOpacity={1} />
               </RadialGradient>
             </Defs>
             <Circle cx={50} cy={50} r={50} fill="url(#ctaGlow)" />
           </Svg>
-          <MagnifyingGlass size={17} color={puraShop.white} weight="bold" />
+          <MagnifyingGlass size={15} color={puraShop.white} weight="bold" />
         </Pressable>
       </View>
     </View>

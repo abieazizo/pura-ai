@@ -144,8 +144,17 @@ export function SaveProgressV2({
       />
       <View style={styles.body}>
         <Animated.View style={headlineStyle}>
-          <View style={styles.readyChip}>
-            <Text style={styles.readyChipLabel} maxFontSizeMultiplier={1.15}>
+          <View
+            style={styles.readyChip}
+            accessible
+            accessibilityLabel="Tonight’s routine is ready"
+            importantForAccessibility="yes"
+          >
+            <Text
+              style={styles.readyChipLabel}
+              maxFontSizeMultiplier={1.15}
+              importantForAccessibility="no-hide-descendants"
+            >
               TONIGHT’S ROUTINE IS READY
             </Text>
           </View>
@@ -200,9 +209,14 @@ export function SaveProgressV2({
           );
         })}
 
-        <View style={styles.privacyRow}>
+        <View
+          style={styles.privacyRow}
+          accessible
+          accessibilityLabel="Continue without saving and today’s photo will be deleted after this session."
+          importantForAccessibility="yes"
+        >
           <LockKey size={13} color={PURA.muted} weight="duotone" />
-          <Text style={styles.privacyText} maxFontSizeMultiplier={1.2}>
+          <Text style={styles.privacyText} maxFontSizeMultiplier={1.2} importantForAccessibility="no-hide-descendants">
             Continue without saving and today’s photo will be deleted after
             this session.
           </Text>
@@ -316,7 +330,9 @@ function ValueRow({
   label: string;
 }) {
   return (
-    <View style={valueStyles.row}>
+    // accessible={true} on a View groups all children into a single
+    // VoiceOver focus target — the icon is not announced separately.
+    <View style={valueStyles.row} accessible accessibilityLabel={label}>
       <View style={valueStyles.iconWrap}>
         <Icon size={18} color={PURA.terracotta} weight="duotone" />
       </View>

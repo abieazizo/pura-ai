@@ -160,10 +160,19 @@ export function EvidenceSheet({
               showsVerticalScrollIndicator={false}
             >
               <Text style={styles.stateBadge} maxFontSizeMultiplier={1.1}>
-                {isReset ? 'RESET NIGHT' : EVIDENCE_SHEET.state}
+                {decision.state === 'RESET_NIGHT'
+                  ? 'RESET NIGHT'
+                  : decision.state === 'STANDARD_NIGHT'
+                    ? 'STANDARD NIGHT'
+                    : decision.state === 'TREATMENT_NIGHT'
+                      ? 'TREATMENT NIGHT'
+                      : 'RECOVERY NIGHT'}
               </Text>
               <Text style={styles.observation} maxFontSizeMultiplier={1.2}>
-                {EVIDENCE_SHEET.observation}
+                {decision.scanObservation?.changeSummary
+                  ? decision.scanObservation.changeSummary.charAt(0).toUpperCase() +
+                    decision.scanObservation.changeSummary.slice(1) + "."
+                  : EVIDENCE_SHEET.observation}
               </Text>
 
               <View style={styles.section}>
@@ -178,7 +187,7 @@ export function EvidenceSheet({
                         {decision.scanObservation?.keyArea ?? 'Chin area'}
                       </Text>
                       <Text style={styles.areaSub} maxFontSizeMultiplier={1.25}>
-                        More visible irritation than yesterday
+                        {decision.scanObservation?.areaChangeLabel ?? 'Irritation increased'}
                       </Text>
                     </View>
                   </View>

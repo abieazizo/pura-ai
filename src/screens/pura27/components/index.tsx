@@ -24,10 +24,17 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
+  FadeIn,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { Check } from 'phosphor-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import {
   pura27,
   pura27Layout,
@@ -36,6 +43,7 @@ import {
   pura27Space,
   pura27Type,
 } from '@/theme';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 // ---------------------------------------------------------------------------
 // PuraScreen — safe-area-aware wrapper, max-width centered on web.
@@ -219,15 +227,17 @@ export function StatusPill({
       style={[
         pillStyles.pill,
         {
-          backgroundColor: v.bg,
-          borderColor: v.border,
+          backgroundColor: pura27.surface,
+          borderColor: pura27.border,
         },
         style,
       ]}
     >
+      <View style={[pillStyles.dot, { backgroundColor: v.fg }]} />
       <Text
         maxFontSizeMultiplier={1.2}
-        style={[pillStyles.label, { color: v.fg }]}
+        style={[pillStyles.label, { color: pura27.ink }]}
+        numberOfLines={1}
       >
         {label}
       </Text>
@@ -238,15 +248,24 @@ export function StatusPill({
 const pillStyles = StyleSheet.create({
   pill: {
     alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: pura27Radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
   label: {
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: 'Inter-Medium',
     fontSize: 11.5,
-    letterSpacing: 0.3,
+    letterSpacing: 0,
+    color: pura27.ink,
   },
 });
 
@@ -308,7 +327,12 @@ export function SegmentedTabs<T extends string>({
             accessibilityLabel={tab.label}
             hitSlop={6}
             onPress={() => {
-              if (!selected) onChange(tab.key);
+              if (selected) return;
+              // Selection feedback — a tap on the tab strip should
+              // register physically the same way iOS segmented controls
+              // do. Safe-fails silently on platforms without haptics.
+              Haptics.selectionAsync().catch(() => {});
+              onChange(tab.key);
             }}
             style={({ pressed }) => [
               tabStyles.tab,
@@ -389,6 +413,8 @@ export interface PrimaryButtonProps extends AccessibilityProps {
   style?: StyleProp<ViewStyle>;
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export function PrimaryButton({
   label,
   onPress,
@@ -404,10 +430,35 @@ export function PrimaryButton({
     size === 'md'
       ? pura27Layout.compactButtonHeight
       : pura27Layout.primaryButtonHeight;
+  const reduce = useReduceMotion();
+
+  // Press-scale signature: subtle 0.97 squish on touch, spring back on
+  // release. The single spring config matches the rest of the v25 system.
+  const scale = useSharedValue(1);
+  const handlePressIn = () => {
+    if (reduce) return;
+    scale.value = withSpring(0.97, {
+      damping: 22,
+      stiffness: 320,
+      mass: 0.8,
+    });
+  };
+  const handlePressOut = () => {
+    scale.value = withSpring(1, {
+      damping: 18,
+      stiffness: 260,
+      mass: 0.9,
+    });
+  };
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityState={{ disabled: !!disabled }}
@@ -427,10 +478,20 @@ export function PrimaryButton({
           opacity: disabled ? 0.85 : 1,
         },
         Platform.OS === 'web' ? buttonStyles.buttonWeb : null,
+        animatedStyle,
         style,
       ]}
     >
-      {icon ? <View style={buttonStyles.icon}>{icon}</View> : null}
+      {confirmed ? (
+        <Animated.View
+          entering={reduce ? undefined : FadeIn.duration(180)}
+          style={buttonStyles.confirmedIcon}
+        >
+          <Check size={18} color={pura27.white} weight="bold" />
+        </Animated.View>
+      ) : icon ? (
+        <View style={buttonStyles.icon}>{icon}</View>
+      ) : null}
       <Text
         maxFontSizeMultiplier={1.15}
         style={buttonStyles.label}
@@ -438,7 +499,7 @@ export function PrimaryButton({
       >
         {confirmed ? confirmedLabel ?? label : label}
       </Text>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -454,6 +515,7 @@ const buttonStyles = StyleSheet.create({
   },
   buttonWeb: { cursor: 'pointer' as any },
   icon: { marginRight: 2 },
+  confirmedIcon: { marginRight: 2 },
   label: {
     ...pura27Type.button,
     color: pura27.white,
@@ -655,8 +717,15 @@ export function ProgressMeter({
   accessibilityLabel,
   style,
 }: ProgressMeterProps) {
-  const clamped = Math.max(0, Math.min(max, value));
-  const ratio = max === 0 ? 0 : clamped / max;
+  // Sanitize NaN / Infinity / negative inputs before they reach
+  // Reanimated. `withTiming` to a NaN width crashes on Android and
+  // produces a 0-width fill on web — both are silent failures.
+  const safeMax =
+    Number.isFinite(max) && max > 0 ? max : 0;
+  const safeValue = Number.isFinite(value)
+    ? Math.max(0, Math.min(safeMax, value))
+    : 0;
+  const ratio = safeMax === 0 ? 0 : safeValue / safeMax;
   const progress = useSharedValue(0);
 
   React.useEffect(() => {
@@ -671,6 +740,16 @@ export function ProgressMeter({
   }));
 
   const percent = Math.round(ratio * 100);
+
+  // Two-stop gradient on the fill — premium apps don't ship flat progress
+  // bars. The gradient is computed from `fillColor` so callers that pass a
+  // semantic color (accent/success/warning) get a tonally-correct wash. We
+  // brighten the leading edge and tip slightly toward the deeper accent at
+  // the tail so the fill reads as a single sweep, not a label.
+  const gradientStops = React.useMemo<readonly [string, string]>(
+    () => deriveGradient(fillColor),
+    [fillColor],
+  );
 
   return (
     <View
@@ -688,12 +767,40 @@ export function ProgressMeter({
       <Animated.View
         style={[
           progressStyles.fill,
-          { backgroundColor: fillColor, borderRadius: height / 2 },
+          { borderRadius: height / 2 },
           fillStyle,
         ]}
-      />
+      >
+        <LinearGradient
+          colors={gradientStops as unknown as [string, string]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={[progressStyles.gradient, { borderRadius: height / 2 }]}
+        />
+      </Animated.View>
     </View>
   );
+}
+
+/**
+ * Pick a two-stop gradient for a progress fill based on the semantic
+ * color the caller passed in. Each pair leans warmer at the leading
+ * edge and deepens toward the tail — never a flat token to a flat
+ * token.
+ */
+function deriveGradient(color: string): readonly [string, string] {
+  switch (color) {
+    case pura27.accent:
+      return [pura27.accent, pura27.accentGradientDeep];
+    case pura27.success:
+      return [pura27.success, pura27.successGradientDeep];
+    case pura27.warning:
+      return [pura27.warning, pura27.warningGradientDeep];
+    case pura27.info:
+      return [pura27.info, pura27.infoGradientDeep];
+    default:
+      return [color, color];
+  }
 }
 
 const progressStyles = StyleSheet.create({
@@ -703,6 +810,10 @@ const progressStyles = StyleSheet.create({
   },
   fill: {
     height: '100%',
+    overflow: 'hidden',
+  },
+  gradient: {
+    flex: 1,
   },
 });
 
@@ -870,6 +981,145 @@ export function InfoState({
 const infoStyles = StyleSheet.create({
   body: { marginTop: 10 },
   cta: { marginTop: 20 },
+});
+
+// ---------------------------------------------------------------------------
+// CountUp — animated integer reveal. Used for hero numbers ("Day 12 of 84")
+// so the count earns its place on the screen rather than appearing instantly.
+// Respects reduced motion: lands on the final value immediately.
+// ---------------------------------------------------------------------------
+
+export interface CountUpProps {
+  value: number;
+  /** Number of integer steps to ramp through before settling. */
+  rampSteps?: number;
+  /** Total animation duration in ms. */
+  durationMs?: number;
+  style?: StyleProp<TextStyle>;
+}
+
+export function CountUp({
+  value,
+  rampSteps = 3,
+  durationMs = 540,
+  style,
+}: CountUpProps) {
+  const reduce = useReduceMotion();
+  const [display, setDisplay] = React.useState<number>(
+    reduce ? value : Math.max(0, value - rampSteps),
+  );
+
+  React.useEffect(() => {
+    if (reduce) {
+      setDisplay(value);
+      return;
+    }
+    if (display === value) return;
+    const start = Math.max(0, value - rampSteps);
+    setDisplay(start);
+    const stepMs = Math.max(60, Math.floor(durationMs / (value - start || 1)));
+    let current = start;
+    const tick = () => {
+      current += 1;
+      if (current >= value) {
+        setDisplay(value);
+        return;
+      }
+      setDisplay(current);
+      timer = setTimeout(tick, stepMs);
+    };
+    let timer = setTimeout(tick, stepMs);
+    return () => clearTimeout(timer);
+    // We intentionally only react to changes in `value`; `display` is
+    // owned by this effect and a self-reference would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, reduce, rampSteps, durationMs]);
+
+  return (
+    <Text maxFontSizeMultiplier={1.2} style={style}>
+      {display}
+    </Text>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BreathGlow — slow opacity pulse for the hero-module blush halo. The pulse
+// runs forever at a calm 3.5s cycle, reduced-motion-aware (renders a static
+// halo at the mid-opacity when reduced motion is on).
+// ---------------------------------------------------------------------------
+
+export interface BreathGlowProps {
+  /** Base color (terracotta blush by default). */
+  color?: string;
+  /** Size of the glow in points. */
+  size?: number;
+  /** Position styling — caller anchors the glow inside its hero frame. */
+  style?: StyleProp<ViewStyle>;
+  /** Opacity peak (default 0.6). */
+  peakOpacity?: number;
+  /** Opacity trough (default 0.38). */
+  troughOpacity?: number;
+}
+
+export function BreathGlow({
+  color = pura27.blush,
+  size = 240,
+  style,
+  peakOpacity = 0.6,
+  troughOpacity = 0.38,
+}: BreathGlowProps) {
+  const reduce = useReduceMotion();
+  const opacity = useSharedValue(peakOpacity);
+
+  React.useEffect(() => {
+    if (reduce) {
+      opacity.value = (peakOpacity + troughOpacity) / 2;
+      return;
+    }
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(troughOpacity, {
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+        }),
+        withTiming(peakOpacity, {
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+        }),
+      ),
+      -1,
+      true,
+    );
+  }, [reduce, opacity, peakOpacity, troughOpacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      pointerEvents="none"
+      style={[
+        glowStyles.glow,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color,
+        },
+        style,
+        animatedStyle,
+      ]}
+    />
+  );
+}
+
+const glowStyles = StyleSheet.create({
+  glow: {
+    position: 'absolute',
+  },
 });
 
 // ---------------------------------------------------------------------------

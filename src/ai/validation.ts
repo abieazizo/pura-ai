@@ -50,10 +50,15 @@ import {
   MIN_FINDINGS,
   ZONE_IDS,
   type ConcernId,
+  type OverlayStyle,
+  type RoutineSeedV2,
   type ScanFindingV2,
+  type ScanInsightV2,
+  type ScanQualityV2,
   type ScanResultV2,
   type SeverityLevel,
   type ZoneId,
+  type ZoneOverlayV2,
 } from '@/types/scanResultV2';
 import { aiLog } from './aiLog';
 
@@ -155,6 +160,13 @@ function validateFindingV2(raw: unknown): ScanFindingV2 | null {
     (h): h is string => typeof h === 'string' && h.length > 0,
   );
   if (hints.length === 0) return null;
+  // v34 — `confidence` is required by the schema but treated as
+  // optional here so legacy responses (or model omissions) still
+  // validate. When absent the UI assumes a calibrated 0.7.
+  let confidence: number | undefined;
+  if (typeof raw.confidence === 'number' && Number.isFinite(raw.confidence)) {
+    confidence = Math.max(0, Math.min(1, raw.confidence));
+  }
   return {
     id,
     zone: raw.zone as ZoneId,
@@ -164,6 +176,144 @@ function validateFindingV2(raw: unknown): ScanFindingV2 | null {
     observation: raw.observation,
     recommendation: raw.recommendation,
     ingredient_hints: hints.slice(0, 3),
+    ...(confidence !== undefined ? { confidence } : {}),
+  };
+}
+
+// v34 — companion validators for the richer optional payload. Each
+// returns its sanitized shape or null on any structural break. The
+// outer validator tolerates missing fields (legacy responses) but
+// rejects malformed fields when they ARE present.
+
+const OVERLAY_STYLES: ReadonlySet<OverlayStyle> = new Set<OverlayStyle>([
+  'soft_mask',
+  'heatmap',
+  'outline',
+  'pin',
+]);
+
+function validateOverlayV2(raw: unknown): ZoneOverlayV2 | null {
+  if (!isObject(raw)) return null;
+  if (!isString(raw.zone) || !ZONE_SET.has(raw.zone as ZoneId)) return null;
+  if (!isString(raw.concern) || !CONCERN_SET.has(raw.concern as ConcernId)) {
+    return null;
+  }
+  if (!isString(raw.style) || !OVERLAY_STYLES.has(raw.style as OverlayStyle)) {
+    return null;
+  }
+  if (typeof raw.opacity !== 'number' || !Number.isFinite(raw.opacity)) {
+    return null;
+  }
+  const findingId =
+    isString(raw.finding_id) && raw.finding_id.length > 0 ? raw.finding_id : null;
+  if (!findingId) return null;
+  return {
+    zone: raw.zone as ZoneId,
+    concern: raw.concern as ConcernId,
+    style: raw.style as OverlayStyle,
+    opacity: Math.max(0.05, Math.min(0.6, raw.opacity)),
+    findingId,
+  };
+}
+
+function validateInsightV2(raw: unknown): ScanInsightV2 | null {
+  if (!isObject(raw)) return null;
+  const id = isString(raw.id) && raw.id.length > 0 ? raw.id : null;
+  if (!id) return null;
+  if (!isString(raw.title) || raw.title.length < 2) return null;
+  if (!isString(raw.body) || raw.body.length < 4) return null;
+  const ICONS: ReadonlySet<ScanInsightV2['icon']> = new Set([
+    'barrier',
+    'hydration',
+    'clarity',
+    'tone',
+    'consistency',
+    'protection',
+    'gentle',
+  ]);
+  if (!isString(raw.icon) || !ICONS.has(raw.icon as ScanInsightV2['icon'])) {
+    return null;
+  }
+  const related = Array.isArray(raw.related_finding_ids)
+    ? raw.related_finding_ids.filter(
+        (s): s is string => typeof s === 'string' && s.length > 0,
+      )
+    : [];
+  return {
+    id,
+    title: raw.title,
+    body: raw.body,
+    icon: raw.icon as ScanInsightV2['icon'],
+    related_finding_ids: related.slice(0, 4),
+  };
+}
+
+function validateRoutineSeedV2(raw: unknown): RoutineSeedV2 | null {
+  if (!isObject(raw)) return null;
+  const skinNeeds = Array.isArray(raw.skin_needs)
+    ? raw.skin_needs.filter(
+        (s): s is string => typeof s === 'string' && s.length > 0,
+      )
+    : null;
+  if (!skinNeeds || skinNeeds.length === 0) return null;
+  const avoid = Array.isArray(raw.avoid_tonight)
+    ? raw.avoid_tonight.filter(
+        (s): s is string => typeof s === 'string' && s.length > 0,
+      )
+    : [];
+  const STEPS: ReadonlySet<'cleanse' | 'treat' | 'moisturize' | 'protect'> =
+    new Set(['cleanse', 'treat', 'moisturize', 'protect']);
+  const types = Array.isArray(raw.recommended_step_types)
+    ? raw.recommended_step_types.filter(
+        (s): s is 'cleanse' | 'treat' | 'moisturize' | 'protect' =>
+          typeof s === 'string' &&
+          STEPS.has(s as 'cleanse' | 'treat' | 'moisturize' | 'protect'),
+      )
+    : null;
+  if (!types || types.length === 0) return null;
+  if (
+    raw.intensity !== 'gentle' &&
+    raw.intensity !== 'moderate' &&
+    raw.intensity !== 'active'
+  ) {
+    return null;
+  }
+  const taglinesRaw = isObject(raw.step_taglines) ? raw.step_taglines : {};
+  const step_taglines: RoutineSeedV2['step_taglines'] = {};
+  for (const k of ['cleanse', 'treat', 'moisturize', 'protect'] as const) {
+    const v = taglinesRaw[k];
+    if (typeof v === 'string' && v.length > 0) {
+      step_taglines[k] = v.slice(0, 80);
+    }
+  }
+  return {
+    skin_needs: skinNeeds.slice(0, 5),
+    avoid_tonight: avoid.slice(0, 5),
+    recommended_step_types: types.slice(0, 4),
+    intensity: raw.intensity as 'gentle' | 'moderate' | 'active',
+    step_taglines,
+  };
+}
+
+function validateQualityV2(raw: unknown): ScanQualityV2 | null {
+  if (!isObject(raw)) return null;
+  if (typeof raw.usable !== 'boolean') return null;
+  if (raw.mode !== 'full' && raw.mode !== 'limited') return null;
+  const score =
+    typeof raw.score === 'number' && Number.isFinite(raw.score)
+      ? Math.max(0, Math.min(1, raw.score))
+      : null;
+  if (score === null) return null;
+  const reasons = Array.isArray(raw.reasons)
+    ? raw.reasons.filter(
+        (s): s is string => typeof s === 'string' && s.length > 0,
+      )
+    : [];
+  return {
+    usable: raw.usable,
+    mode: raw.mode as 'full' | 'limited',
+    score,
+    reasons: reasons.slice(0, 5),
   };
 }
 
@@ -229,6 +379,41 @@ export function validateScanResultV2(v: unknown): ScanResultV2 | null {
     );
     return null;
   }
+  // v34 — optional richer payload. When ANY of these fields are
+  // present they must parse cleanly; absent is fine (legacy responses).
+  let overlays: ZoneOverlayV2[] | undefined;
+  if (Array.isArray(v.overlays)) {
+    overlays = v.overlays
+      .map(validateOverlayV2)
+      .filter((o): o is ZoneOverlayV2 => o !== null)
+      .slice(0, 8);
+  }
+
+  let topFocus: string[] | undefined;
+  if (Array.isArray(v.top_focus_priority)) {
+    topFocus = v.top_focus_priority
+      .filter((s): s is string => typeof s === 'string' && s.length > 0)
+      .slice(0, 4);
+  }
+
+  let insights: ScanInsightV2[] | undefined;
+  if (Array.isArray(v.insights)) {
+    insights = v.insights
+      .map(validateInsightV2)
+      .filter((i): i is ScanInsightV2 => i !== null)
+      .slice(0, 4);
+  }
+
+  let routineSeed: RoutineSeedV2 | undefined;
+  if (v.routine_seed !== undefined && v.routine_seed !== null) {
+    routineSeed = validateRoutineSeedV2(v.routine_seed) ?? undefined;
+  }
+
+  let quality: ScanQualityV2 | undefined;
+  if (v.quality !== undefined && v.quality !== null) {
+    quality = validateQualityV2(v.quality) ?? undefined;
+  }
+
   return {
     overall_score: overall,
     // All five keys are populated above; the loop returns null if any
@@ -237,6 +422,11 @@ export function validateScanResultV2(v: unknown): ScanResultV2 | null {
     headline: v.headline,
     summary: v.summary,
     findings: findings.slice(0, MAX_FINDINGS),
+    ...(overlays ? { overlays } : {}),
+    ...(topFocus ? { top_focus_priority: topFocus } : {}),
+    ...(insights ? { insights } : {}),
+    ...(routineSeed ? { routine_seed: routineSeed } : {}),
+    ...(quality ? { quality } : {}),
   };
 }
 
@@ -295,8 +485,85 @@ export function deterministicScanResultV2(scanId: string): ScanResultV2 {
         recommendation:
           'A weekly clay or BHA treatment can keep pores looking refined.',
         ingredient_hints: ['salicylic acid', 'clay'],
+        confidence: 0.55,
       },
     ],
+    overlays: [
+      {
+        zone: 'forehead',
+        concern: 'texture',
+        style: 'soft_mask',
+        opacity: 0.18,
+        findingId: `${scanId}-baseline-texture`,
+      },
+      {
+        zone: 'left_undereye',
+        concern: 'dark_circles',
+        style: 'soft_mask',
+        opacity: 0.22,
+        findingId: `${scanId}-baseline-undereye`,
+      },
+      {
+        zone: 'right_undereye',
+        concern: 'dark_circles',
+        style: 'soft_mask',
+        opacity: 0.22,
+        findingId: `${scanId}-baseline-undereye`,
+      },
+      {
+        zone: 'nose_tip',
+        concern: 'enlarged_pores',
+        style: 'soft_mask',
+        opacity: 0.16,
+        findingId: `${scanId}-baseline-tzone`,
+      },
+    ],
+    top_focus_priority: [
+      `${scanId}-baseline-undereye`,
+      `${scanId}-baseline-texture`,
+      `${scanId}-baseline-tzone`,
+    ],
+    insights: [
+      {
+        id: `${scanId}-insight-consistency`,
+        title: 'Gentle consistency',
+        body: 'Your skin reads steady — small daily steps will hold this baseline better than aggressive treatments.',
+        icon: 'consistency',
+        related_finding_ids: [`${scanId}-baseline-texture`],
+      },
+      {
+        id: `${scanId}-insight-hydration`,
+        title: 'Light hydration',
+        body: 'A lightweight humectant under your moisturizer keeps the under-eye area looking rested.',
+        icon: 'hydration',
+        related_finding_ids: [`${scanId}-baseline-undereye`],
+      },
+      {
+        id: `${scanId}-insight-protection`,
+        title: 'Daily protection',
+        body: 'A daily SPF protects the tone and clarity your skin already shows.',
+        icon: 'protection',
+        related_finding_ids: [],
+      },
+    ],
+    routine_seed: {
+      skin_needs: ['gentle baseline', 'light hydration', 'daily protection'],
+      avoid_tonight: ['harsh actives'],
+      recommended_step_types: ['cleanse', 'moisturize', 'protect'],
+      intensity: 'gentle',
+      step_taglines: {
+        cleanse: 'Gentle daily reset for balanced skin.',
+        treat: 'Light hydration under the eyes.',
+        moisturize: 'Lightweight hydration that supports your barrier.',
+        protect: 'Daily SPF — your tone’s best ally.',
+      },
+    },
+    quality: {
+      usable: true,
+      mode: 'full',
+      score: 0.82,
+      reasons: [],
+    },
   };
 }
 

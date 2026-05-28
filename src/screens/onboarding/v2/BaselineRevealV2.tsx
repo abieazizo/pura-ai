@@ -35,6 +35,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { Info } from 'phosphor-react-native';
@@ -71,6 +72,55 @@ const GOAL_OPTIONS: ReadonlyArray<{ value: PrimaryGoal; label: string }> = [
   { value: 'texture', label: 'Texture' },
   { value: 'darkSpots', label: 'Dark spots' },
 ];
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const CHIP_SPRING = { damping: 18, stiffness: 340, mass: 1 };
+
+/**
+ * Individual goal chip with spring press feedback. Each chip owns its
+ * own scale shared value so simultaneous taps on different chips don't
+ * share animation state.
+ */
+function GoalChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const handle = () => {
+    scale.value = withSpring(0.955, CHIP_SPRING, () => {
+      scale.value = withSpring(1, CHIP_SPRING);
+    });
+    onPress();
+  };
+  return (
+    <AnimatedPressable
+      onPress={handle}
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      style={[
+        styles.goalChip,
+        selected && styles.goalChipOn,
+        animated,
+      ]}
+    >
+      <Text
+        style={[styles.goalChipLabel, selected && styles.goalChipLabelOn]}
+        maxFontSizeMultiplier={1.15}
+      >
+        {label}
+      </Text>
+    </AnimatedPressable>
+  );
+}
 
 export function BaselineRevealV2({
   onContinue,
@@ -222,37 +272,18 @@ export function BaselineRevealV2({
           What matters most to you tonight?
         </Text>
         <View style={styles.goalChips}>
-          {GOAL_OPTIONS.map((opt) => {
-            const selected = primaryGoal === opt.value;
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => {
-                  hapt.select();
-                  setPrimaryGoal(opt.value);
-                  onboardingV2.goalSelected(opt.value);
-                }}
-                accessibilityRole="radio"
-                accessibilityLabel={opt.label}
-                accessibilityState={{ selected }}
-                style={({ pressed }) => [
-                  styles.goalChip,
-                  selected && styles.goalChipOn,
-                  pressed && { opacity: 0.85 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.goalChipLabel,
-                    selected && styles.goalChipLabelOn,
-                  ]}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {GOAL_OPTIONS.map((opt) => (
+            <GoalChip
+              key={opt.value}
+              label={opt.label}
+              selected={primaryGoal === opt.value}
+              onPress={() => {
+                hapt.select();
+                setPrimaryGoal(opt.value);
+                onboardingV2.goalSelected(opt.value);
+              }}
+            />
+          ))}
         </View>
         {primaryGoal && !goalMatchesObservation ? (
           <View style={styles.alignNote}>

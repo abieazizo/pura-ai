@@ -1,6 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { dx, dRadius } from '../decisionTokens';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 interface Tile {
   primary: string;
@@ -19,11 +21,13 @@ interface Props {
  * surface, not a glanceable card.
  */
 export function EvidenceTileRow({ tiles }: Props) {
+  const reduceMotion = useReduceMotion();
   return (
     <View style={styles.row}>
       {tiles.map((tile, i) => (
-        <View
+        <Animated.View
           key={`${tile.primary}-${i}`}
+          entering={reduceMotion ? undefined : FadeInDown.duration(220).delay(i * 80).springify().damping(22).stiffness(300)}
           style={[styles.tile, { marginRight: i < tiles.length - 1 ? 10 : 0 }]}
         >
           <Text
@@ -49,7 +53,7 @@ export function EvidenceTileRow({ tiles }: Props) {
               {tile.trailing}
             </Text>
           ) : null}
-        </View>
+        </Animated.View>
       ))}
     </View>
   );

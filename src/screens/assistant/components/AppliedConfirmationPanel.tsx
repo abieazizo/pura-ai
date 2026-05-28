@@ -4,6 +4,7 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { SectionEyebrow } from './SectionEyebrow';
@@ -29,22 +30,27 @@ export function AppliedConfirmationPanel({
   onUndo,
 }: Props) {
   const op = useSharedValue(0);
-  const ty = useSharedValue(8);
+  const ty = useSharedValue(14);
+  const sc = useSharedValue(0.94);
 
   useEffect(() => {
+    // Opacity: quick fade so the card "is there" immediately.
     op.value = withTiming(1, {
-      duration: 360,
+      duration: 200,
       easing: Easing.bezier(0.22, 1, 0.36, 1),
     });
-    ty.value = withTiming(0, {
-      duration: 360,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
-    });
-  }, [op, ty]);
+    // Spring entrance — slight scale overshoot makes the panel feel
+    // celebratory rather than just appearing.
+    ty.value = withSpring(0, { damping: 18, stiffness: 280, mass: 0.8 });
+    sc.value = withSpring(1, { damping: 18, stiffness: 280, mass: 0.8 });
+  }, [op, ty, sc]);
 
   const animated = useAnimatedStyle(() => ({
     opacity: op.value,
-    transform: [{ translateY: ty.value }],
+    transform: [
+      { translateY: ty.value },
+      { scale: sc.value },
+    ],
   }));
 
   const removed = decision.adjustments.filter(

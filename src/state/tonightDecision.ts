@@ -62,6 +62,11 @@ export interface ScanObservation {
   comparisonSummary: string;
   hasRecentScan: boolean;
   hasPreviousScan: boolean;
+  /** Direction-aware label for the evidence tile ("Irritation increased",
+   *  "Skin calming", or "Skin status" when delta is negligible). */
+  areaChangeLabel: string;
+  /** Hours elapsed since the scan was captured — drives stale-scan UI. */
+  scanAgeHours: number;
 }
 
 export interface ProductAdjustment {
@@ -98,6 +103,8 @@ export interface TonightDecision {
   appliedAt: string | null;
   appliesToTonightOnly: boolean;
   userSensation: UserSensation;
+  /** Pre-computed eyebrow text for the decision card (scan freshness-aware). */
+  eyebrowLabel: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +212,43 @@ function formatScanLabel(iso: string): string {
 
 function deltaIsRiskier(delta: number): boolean {
   return delta <= -3;
+}
+
+/** True when the user's "applied" stamp is from before today's 4AM rollover.
+ *  4AM is used so a late-night apply stays active through the following
+ *  morning without re-triggering tomorrow evening. */
+function isAppliedStale(appliedAt: string | null): boolean {
+  if (!appliedAt) return false;
+  const then = new Date(appliedAt).getTime();
+  if (Number.isNaN(then)) return false;
+  const now = new Date();
+  const rollover = new Date(now);
+  rollover.setHours(4, 0, 0, 0);
+  if (now.getTime() < rollover.getTime()) {
+    rollover.setDate(rollover.getDate() - 1);
+  }
+  return then < rollover.getTime();
+}
+
+function getScanAgeHours(scan: Scan): number {
+  const diffMs = Date.now() - new Date(scan.capturedAt).getTime();
+  return Math.max(0, diffMs / (60 * 60 * 1000));
+}
+
+/** Returns the eyebrow text for the decision card based on scan freshness. */
+function computeDecisionEyebrow(scans: Scan[]): string {
+  if (scans.length === 0) return 'NO SCAN YET';
+  const latest = scans[scans.length - 1];
+  const ageH = getScanAgeHours(latest);
+  if (ageH < 6) return 'UPDATED JUST NOW';
+  if (ageH < 24) return 'SCAN FROM TODAY';
+  if (ageH < 48) return 'SCAN FROM YESTERDAY';
+  const days = Math.floor(ageH / 24);
+  if (days < 7) return `SCAN FROM ${days} DAYS AGO`;
+  const dateStr = new Date(latest.capturedAt)
+    .toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    .toUpperCase();
+  return `SCAN FROM ${dateStr}`;
 }
 
 function pickKeyArea(scan: Scan): { area: string; observation: string } {
@@ -447,19 +491,34 @@ function buildScanObservation(scans: Scan[]): ScanObservation | null {
   const delta = previous
     ? Math.round((latest.overallScore ?? 0) - (previous.overallScore ?? 0))
     : 0;
-  const { area, observation } = pickKeyArea(latest);
+  const { area } = pickKeyArea(latest);
+  const ageH = getScanAgeHours(latest);
+  // Observation copy is direction-aware — never claim "more reactive" when
+  // the scan is unchanged or improving.
+  const changeSummary = !previous
+    ? `${area} was scanned today`
+    : delta <= -3
+      ? `${area} appears more reactive than yesterday`
+      : delta >= 3
+        ? `${area} appears calmer than yesterday`
+        : `${area} looks about the same as yesterday`;
+  const areaChangeLabel =
+    delta <= -3 ? 'Irritation increased' :
+    delta >= 3  ? 'Skin calming' : 'Skin status';
   return {
     latestScanAt: latest.capturedAt,
     latestScanLabel: formatScanLabel(latest.capturedAt),
     skinScore: Math.max(0, Math.min(100, Math.round(latest.overallScore ?? 0))),
     scoreDeltaFromPrevious: delta,
     keyArea: area,
-    changeSummary: observation,
+    changeSummary,
     comparisonSummary: previous
       ? 'Compared with yesterday'
       : 'No previous scan to compare against',
     hasRecentScan: true,
     hasPreviousScan: !!previous,
+    areaChangeLabel,
+    scanAgeHours: ageH,
   };
 }
 
@@ -540,12 +599,12 @@ const COPY = {
 
 function dynamicChinExplanation(observation: ScanObservation | null): string {
   if (!observation) return COPY.RECOVERY_NIGHT.explanation;
-  const area = observation.keyArea.toLowerCase().endsWith(' area')
-    ? observation.keyArea
-    : `${observation.keyArea}`.toLowerCase();
-  const trimmed = area.replace(/ area$/, '');
-  const subject = trimmed === 'active' ? 'Your skin' : `Your ${trimmed} area`;
-  return `${subject} looks more irritated than yesterday. Because your routine included an active treatment recently, tonight should focus on calming and protecting your skin.`;
+  // Use the pre-computed changeSummary — it is already direction-aware and
+  // starts with "[Area] appears …", so we just capitalise and append context.
+  const firstSentence =
+    observation.changeSummary.charAt(0).toUpperCase() +
+    observation.changeSummary.slice(1);
+  return `${firstSentence}. Because your routine included an active treatment recently, tonight should focus on calming and protecting your skin.`;
 }
 
 export function deriveTonightDecision(input: DeriveInput): TonightDecision {
@@ -599,6 +658,7 @@ export function deriveTonightDecision(input: DeriveInput): TonightDecision {
     appliedAt: input.appliedAt,
     appliesToTonightOnly: true,
     userSensation: input.userSensation,
+    eyebrowLabel: computeDecisionEyebrow(input.scans),
   };
 }
 
@@ -632,21 +692,17 @@ export function useTonightDecision(): TonightDecision {
 
   return useMemo(() => {
     const ownedProductIds = Array.from(new Set([...morning, ...evening, ...wishlist]));
+    // If the apply stamp is from before today's 4AM rollover, treat the
+    // decision as not-yet-applied for this new evening cycle.
+    const effectiveApplied = applied && !isAppliedStale(appliedAt);
     return deriveTonightDecision({
       scans,
       ownedProductIds,
       userSensation,
       decisionStateOverride,
-      // The redesign exists to surface Recovery-night confidently. If the
-      // user has scanned but not reported burning AND has not been
-      // classified to a non-standard state already, surface RECOVERY so
-      // the user can see the decision experience end-to-end. This is
-      // deterministic — it never invents scan data — and is overridden
-      // the moment real data classifies otherwise (delta worse than -3,
-      // burning report, etc.).
-      forceRecoveryDemo: scans.length > 0 && userSensation !== 'STINGS_OR_BURNS',
-      applied,
-      appliedAt,
+      forceRecoveryDemo: false,
+      applied: effectiveApplied,
+      appliedAt: effectiveApplied ? appliedAt : null,
     });
   }, [
     scans,

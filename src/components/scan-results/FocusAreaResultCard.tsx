@@ -39,8 +39,10 @@ import type {
   ConcernPriority,
   FaceLandmarkResult,
   SemanticFaceZone,
+  SignalConfidenceBand,
   VisibleFinding,
 } from '@/types/scanResults';
+import { classifyConfidenceBand } from '@/types/scanResults';
 import { buildZonesCropRect } from '@/services/scanResults/faceGeometry';
 import { hapt } from '@/utils/haptics';
 
@@ -50,10 +52,46 @@ const PRIORITY_LABEL: Record<ConcernPriority, string> = {
   low: 'Low',
 };
 
+// Confidence label + pip-count derived from the canonical band classifier
+// (defined in `@/types/scanResults`) so the user-facing language tracks the
+// translator's thresholds — no drift between "what the UI says" and "what
+// the contract guarantees."
+//
+//   • clear      (≥ 0.72) → 3 filled pips, "Clearly visible"
+//   • supported  (≥ 0.52) → 2 filled pips, "Supported"
+//   • possible   (≥ 0.38) → 1 filled pip,  "Soft signal" (rarely reached
+//                                          here — the translator filters
+//                                          these out of the visible list,
+//                                          but the labeling stays correct
+//                                          if any slip through)
+function bandLabel(band: SignalConfidenceBand): string {
+  switch (band) {
+    case 'clear':
+      return 'Clearly visible';
+    case 'supported':
+      return 'Supported';
+    case 'possible':
+      return 'Soft signal';
+    case 'not_displayed':
+      return '—';
+  }
+}
+
+function bandFilledPips(band: SignalConfidenceBand): number {
+  switch (band) {
+    case 'clear':
+      return 3;
+    case 'supported':
+      return 2;
+    case 'possible':
+      return 1;
+    case 'not_displayed':
+      return 0;
+  }
+}
+
 function confidenceLabel(c: number): string {
-  if (c >= 0.78) return 'Clear signal';
-  if (c >= 0.6) return 'Visible signal';
-  return 'Soft signal';
+  return bandLabel(classifyConfidenceBand(c));
 }
 
 function ConfidencePips({
@@ -63,7 +101,7 @@ function ConfidencePips({
   confidence: number;
   tint: string;
 }) {
-  const filled = confidence >= 0.78 ? 3 : confidence >= 0.6 ? 2 : 1;
+  const filled = bandFilledPips(classifyConfidenceBand(confidence));
   return (
     <View style={pipStyles.row}>
       {[0, 1, 2].map((i) => (

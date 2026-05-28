@@ -75,6 +75,13 @@ export interface ScanFindingV2 {
   recommendation: string;
   /** 1–3 ingredient hints. */
   ingredient_hints: string[];
+  /**
+   * v34 — model-supplied confidence (0..1) that this finding is
+   * actually visible in the photograph. Used by the new SkinMap to
+   * decide overlay opacity; optional because legacy callers may not
+   * have populated it.
+   */
+  confidence?: number;
 }
 
 export interface ScoreBreakdownV2 {
@@ -85,6 +92,89 @@ export interface ScoreBreakdownV2 {
   vitality: number;
 }
 
+// ---------------------------------------------------------------------------
+// v34 — Premium SkinMap, FocusAreas, Insights & Routine seed contracts.
+// ---------------------------------------------------------------------------
+
+/** Visual style of a single zone overlay rendered on the user's photo. */
+export type OverlayStyle = 'soft_mask' | 'heatmap' | 'outline' | 'pin';
+
+/**
+ * A single overlay drawn on top of the captured photo, anchored to a
+ * canonical face zone. Coordinates are NOT pixel-perfect — they
+ * reference `ZONE_COORDS` so the overlay survives any reasonable
+ * front-facing crop. Always tasteful, never gimmicky.
+ */
+export interface ZoneOverlayV2 {
+  /** Canonical face zone. */
+  zone: ZoneId;
+  /** Concern this overlay represents. Drives the swatch color. */
+  concern: ConcernId;
+  /** Visual treatment. */
+  style: OverlayStyle;
+  /** 0..1, layered onto the concern's canonical swatch. */
+  opacity: number;
+  /** Linked finding id; UI uses this to toggle emphasis on tap. */
+  findingId: string;
+}
+
+/**
+ * One personalized insight surfaced after the Skin Map / Focus Areas.
+ * Title is the leading heading; body is one concise calm sentence.
+ */
+export interface ScanInsightV2 {
+  id: string;
+  title: string;
+  body: string;
+  /** Short slug used to pick a small line icon on the card. */
+  icon:
+    | 'barrier'
+    | 'hydration'
+    | 'clarity'
+    | 'tone'
+    | 'consistency'
+    | 'protection'
+    | 'gentle';
+  /** Finding ids that motivated this insight. */
+  related_finding_ids: string[];
+}
+
+/**
+ * Scan-derived seed that the routine builder consumes deterministically.
+ * The AI proposes; the deterministic builder disposes — it can ignore
+ * any seed value if local safety rules disagree.
+ */
+export interface RoutineSeedV2 {
+  /** Concise skin needs phrases, e.g. "barrier-support", "oil control". */
+  skin_needs: string[];
+  /** Concerns the routine should consciously avoid stressing tonight. */
+  avoid_tonight: string[];
+  /** Recommended step types, in canonical AM order. */
+  recommended_step_types: Array<'cleanse' | 'treat' | 'moisturize' | 'protect'>;
+  /** Treatment intensity for the routine overall. */
+  intensity: 'gentle' | 'moderate' | 'active';
+  /**
+   * Per-step taglines the routine generation screen surfaces under each
+   * step ("Targeting under-eye dehydration" / "Avoiding harsh actives —
+   * barrier-first cleanse"). Keys match `recommended_step_types`.
+   */
+  step_taglines: Partial<
+    Record<'cleanse' | 'treat' | 'moisturize' | 'protect', string>
+  >;
+}
+
+/** Scan quality classification produced server-side. */
+export interface ScanQualityV2 {
+  /** True when the scan is usable in any capacity (full or limited). */
+  usable: boolean;
+  /** `full` = all findings trusted; `limited` = partial confidence. */
+  mode: 'full' | 'limited';
+  /** 0..1 — overall image-quality confidence. */
+  score: number;
+  /** Short user-readable reasons (used by the limited-scan banner). */
+  reasons: string[];
+}
+
 export interface ScanResultV2 {
   overall_score: number;
   score_breakdown: ScoreBreakdownV2;
@@ -93,6 +183,18 @@ export interface ScanResultV2 {
   /** 2–3 sentences, warm but specific. */
   summary: string;
   findings: ScanFindingV2[];
+
+  // ---- v34 optional richer payload (legacy responses omit these) ----
+  /** Overlay geometry to draw on the user's real photo. */
+  overlays?: ZoneOverlayV2[];
+  /** Ordered list of finding ids that are top-priority focus areas. */
+  top_focus_priority?: string[];
+  /** 2–4 elegant insight cards. */
+  insights?: ScanInsightV2[];
+  /** Scan-derived seed for the routine builder. */
+  routine_seed?: RoutineSeedV2;
+  /** Scan quality classification. */
+  quality?: ScanQualityV2;
 }
 
 // ---------------------------------------------------------------------------

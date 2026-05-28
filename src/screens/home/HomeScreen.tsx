@@ -15,12 +15,19 @@
  * through every state without exercising the backend.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import {
   CameraSlash,
+  CheckCircle,
   Drop,
   ScanSmiley,
   ShieldCheck,
@@ -48,15 +55,27 @@ import {
   FIX_HISTORICAL_INSIGHTS,
   FIX_LATEST_RELIABLE,
   FIX_PLAN_CHANGE_INSIGHTS,
-  USER_NAME,
 } from '@/state/v25/fixtures';
 import { useV25Dev } from '@/state/v25/devSwitch';
+import { useAppStore } from '@/store/useAppStore';
 import type { RootStackParamList } from '@/navigation/types';
+
+/** Returns an appropriate greeting phrase for the current hour. */
+function timeOfDayGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return 'Good morning';
+  if (h >= 12 && h < 17) return 'Good afternoon';
+  if (h >= 17 && h < 21) return 'Good evening';
+  return 'Good night';
+}
 
 export function HomeScreen() {
   const nav = useNavigation<NavigationProp<RootStackParamList>>();
   const dailyScan = useV25Dev((s) => s.dailyScan);
   const openPanel = useV25Dev((s) => s.setPanelOpen);
+  const user = useAppStore((s) => s.user);
+  const userName = user?.name?.split(' ')[0] ?? 'there';
+  const userInitials = user?.initials ?? '?';
 
   const openScan = useCallback(() => {
     nav.navigate('ScanModal');
@@ -82,13 +101,31 @@ export function HomeScreen() {
       case 'no-valid-scan-today':
         return 'Ready for your daily check-in?';
       case 'valid-scan-today':
-        return 'Updated from today’s scan';
+        return "Updated from today's scan";
       case 'failed-scan-today':
-        return 'Today’s scan needs a retake';
+        return "Today's scan needs a retake";
       case 'tonight-complete':
         return 'Routine complete tonight';
     }
   }, [dailyScan]);
+
+  // Re-animate the content block on every state transition so the new
+  // content feels like it arrives, not like it was always there.
+  const contentOp = useSharedValue(0);
+  const contentY = useSharedValue(12);
+
+  useEffect(() => {
+    contentOp.value = 0;
+    contentY.value = 12;
+    const ease = Easing.out(Easing.cubic);
+    contentOp.value = withTiming(1, { duration: 380, easing: ease });
+    contentY.value = withTiming(0, { duration: 380, easing: ease });
+  }, [dailyScan, contentOp, contentY]);
+
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: contentOp.value,
+    transform: [{ translateY: contentY.value }],
+  }));
 
   return (
     <>
@@ -101,13 +138,13 @@ export function HomeScreen() {
           style={{ position: 'relative' }}
         >
           <PageHeader
-            greetingTitle={`Good evening, ${USER_NAME}`}
+            greetingTitle={`${timeOfDayGreeting()}, ${userName}`}
             subtitle={subtitle}
-            right={<ProfileMark />}
+            right={<ProfileMark initials={userInitials} />}
           />
         </Pressable>
 
-        <View style={s.gutter}>
+        <Animated.View style={[s.gutter, contentStyle]}>
           {dailyScan === 'no-valid-scan-today' && (
             <NoScanState
               onStartScan={openScan}
@@ -129,7 +166,7 @@ export function HomeScreen() {
           {dailyScan === 'tonight-complete' && (
             <TonightCompleteState onOpenProgress={openProgress} />
           )}
-        </View>
+        </Animated.View>
       </AppShell>
       <ReviewPanel />
     </>
@@ -374,7 +411,7 @@ function TonightCompleteState({
           You completed a gentle routine built around today’s reliable scan.
         </BodyPrimary>
         <View style={s.completeRow}>
-          <View style={s.completeTick} />
+          <CheckCircle size={18} color={T.sage} weight="fill" />
           <Text style={s.completeText} maxFontSizeMultiplier={1.2}>
             3 of 3 steps completed
           </Text>
@@ -403,11 +440,11 @@ function TonightCompleteState({
   );
 }
 
-function ProfileMark() {
+function ProfileMark({ initials }: { initials: string }) {
   return (
     <View style={s.avatar}>
       <Text style={s.avatarInitial} maxFontSizeMultiplier={1.1}>
-        Y
+        {initials}
       </Text>
     </View>
   );
@@ -569,12 +606,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 16,
-  },
-  completeTick: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: T.sage,
   },
   completeText: {
     fontFamily: TYPE.sansSemi,

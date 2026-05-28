@@ -17,6 +17,9 @@ export const DECISION = {
   primaryAction: 'Apply changes to tonight',
   primaryActionApplied: 'Changes applied for tonight',
   secondaryAction: 'Ask why this changed',
+  secondaryActionStandard: 'Ask about tonight',
+  secondaryActionReset: 'Ask about reset night',
+  secondaryActionCheckIn: 'Ask a general question',
 } as const;
 
 export const EVIDENCE = {

@@ -151,15 +151,38 @@ export async function buildRoutineFromScan(args: {
   const aiAnalysis = scan.aiAnalysis;
   let routine: CustomRoutine;
 
+  // v34 — read the scan-derived routineSeed so deterministic logic
+  // (and the explanation copy) can reflect the actual scan even when
+  // the legacy aiAnalysis path is missing.
+  const seed = scan.v2Analysis?.routine_seed ?? null;
+
   if (aiAnalysis) {
     try {
       const result = await generateAIRoutine({ scanId, analysis: aiAnalysis, signal });
       routine = result.routine;
     } catch {
-      routine = buildDeterministicRoutine(scanId, analysis, limitedByScan);
+      routine = buildDeterministicRoutine(scanId, analysis, limitedByScan, seed);
     }
   } else {
-    routine = buildDeterministicRoutine(scanId, analysis, limitedByScan);
+    routine = buildDeterministicRoutine(scanId, analysis, limitedByScan, seed);
+  }
+
+  // v34 — Even when the AI routine path returned a plan, weave the
+  // scan-derived seed into the explanation lines so the user can see
+  // the connection between scan findings and routine choices.
+  if (seed) {
+    const seedExplanation = buildSeedExplanation(seed, limitedByScan);
+    routine = {
+      ...routine,
+      explanation: dedupeMerge(routine.explanation, seedExplanation, 3),
+      excludedDirections: dedupeMerge(
+        routine.excludedDirections ?? [],
+        seed.avoid_tonight.map(
+          (a) => `Avoiding ${a} based on your scan tonight`,
+        ),
+        4,
+      ),
+    };
   }
 
   // ---------- Phase 3 — Per-product step walkthrough ----------
@@ -190,28 +213,60 @@ function buildDeterministicRoutine(
   scanId: string,
   analysis: ScanAnalysisResponse,
   limitedByScan: boolean,
+  seed: import('@/types/scanResultV2').RoutineSeedV2 | null,
 ): CustomRoutine {
   const findings = analysis.findings.filter((f) => f.present && f.supportedByScan);
   const findingIds = findings.map((f) => f.id);
-  const safeForActives = !limitedByScan;
+  const safeForActives = !limitedByScan && seed?.intensity !== 'gentle';
+
+  // v34 — seed-aware step inclusion. When the seed says "treat" is
+  // recommended, include it even if our concern filter would have
+  // skipped it (the seed encodes the AI's holistic decision).
+  const seedSteps = seed?.recommended_step_types ?? null;
+  const wantsTreat = seedSteps ? seedSteps.includes('treat') : true;
+  const wantsProtect = seedSteps ? seedSteps.includes('protect') : true;
+  const wantsCleanse = seedSteps ? seedSteps.includes('cleanse') : true;
+  const wantsMoisturize = seedSteps ? seedSteps.includes('moisturize') : true;
 
   const baseSteps: RoutineStep[] = [];
-  baseSteps.push(makeStep('cleanse', 1, 'both', findingIds, false));
+  if (wantsCleanse) {
+    const cleanse = makeStep('cleanse', 1, 'both', findingIds, false);
+    baseSteps.push({
+      ...cleanse,
+      purpose: seed?.step_taglines.cleanse ?? cleanse.purpose,
+    });
+  }
 
   const treatFindings = findings.filter((f) =>
     ['breakouts', 'dark_marks', 'texture', 'oil_balance'].includes(f.type),
   );
-  if (treatFindings.length > 0 && safeForActives) {
+  if (wantsTreat && (treatFindings.length > 0 || seedSteps?.includes('treat')) && safeForActives) {
     const top = treatFindings[0];
-    const step = makeStep('treat', 2, 'evening', [top.id], false);
+    const step = makeStep('treat', 2, 'evening', top ? [top.id] : findingIds, false);
     baseSteps.push({
       ...step,
-      purpose: `Targets visible ${top.displayName.toLowerCase()}.`,
+      purpose:
+        seed?.step_taglines.treat ??
+        (top
+          ? `Targets visible ${top.displayName.toLowerCase()}.`
+          : 'Targets your scan-supported focus areas.'),
     });
   }
 
-  baseSteps.push(makeStep('hydrate', 3, 'both', findingIds, false));
-  baseSteps.push(makeStep('protect', 4, 'morning', findingIds, false));
+  if (wantsMoisturize) {
+    const moist = makeStep('hydrate', 3, 'both', findingIds, false);
+    baseSteps.push({
+      ...moist,
+      purpose: seed?.step_taglines.moisturize ?? moist.purpose,
+    });
+  }
+  if (wantsProtect) {
+    const protect = makeStep('protect', 4, 'morning', findingIds, false);
+    baseSteps.push({
+      ...protect,
+      purpose: seed?.step_taglines.protect ?? protect.purpose,
+    });
+  }
 
   const morningSteps = baseSteps
     .filter((s) => s.timing === 'morning' || s.timing === 'both')
@@ -310,6 +365,46 @@ function frequencyFor(t: RoutineStep['type'], timing: RoutineStep['timing']): st
   if (t === 'treat') return '2× weekly to start';
   if (timing === 'both') return 'Daily';
   return timing === 'morning' ? 'Morning' : 'Evening';
+}
+
+// ---------------------------------------------------------------------------
+// v34 — seed → explanation copy. Used by the routine ready screen to
+// surface "Why this routine?" lines that are clearly tied to the scan.
+// ---------------------------------------------------------------------------
+
+function buildSeedExplanation(
+  seed: import('@/types/scanResultV2').RoutineSeedV2,
+  limitedByScan: boolean,
+): string[] {
+  const out: string[] = [];
+  if (seed.skin_needs.length > 0) {
+    out.push(`Designed around ${seed.skin_needs.slice(0, 2).join(' and ')}`);
+  }
+  if (seed.intensity === 'gentle') {
+    out.push('Kept gentle to protect your barrier');
+  } else if (seed.intensity === 'active') {
+    out.push('Calibrated for visible results — your scan can handle it');
+  } else {
+    out.push('Calibrated to your scan — balanced, not aggressive');
+  }
+  if (limitedByScan) {
+    out.push('Conservative plan while your scan settles in');
+  }
+  return out;
+}
+
+function dedupeMerge(a: string[], b: string[], cap: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of [...a, ...b]) {
+    const key = s.trim().toLowerCase();
+    if (key.length === 0) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= cap) break;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

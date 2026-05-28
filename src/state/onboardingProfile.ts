@@ -74,6 +74,10 @@ const SPEC_CONCERNS = new Set([
   'Sensitivity',
 ]);
 
+// Case-insensitive membership — the store persists concerns in whatever
+// case the UI sends them; we normalize here rather than at every call site.
+const SPEC_CONCERNS_LOWER = new Set([...SPEC_CONCERNS].map((c) => c.toLowerCase()));
+
 /* ------------------------------------------------------------------ */
 /* Concern membership helpers                                         */
 /* ------------------------------------------------------------------ */
@@ -190,7 +194,13 @@ function buildApproachExplanation(
     return 'Because you chose brighter tone or dark spots, Pura will make SPF and tone support central to your plan.';
   }
   if (approachLabel.startsWith('Simple start')) {
-    return 'Because you weren’t sure on some answers, Pura will start simple and refine your plan after your first scans.';
+    if (goal === 'smoother') {
+      return 'Because you chose smoother texture, Pura will start with a stable base and layer in targeted steps after your first scans.';
+    }
+    if (goal === 'simpler') {
+      return 'Because you chose a simpler routine, Pura will keep your first plan short and only build from there.';
+    }
+    return "Because you weren't sure on some answers, Pura will start simple and refine your plan after your first scans.";
   }
   return 'Pura will personalize your plan around the answers you gave and refine it after your first scan.';
 }
@@ -221,10 +231,13 @@ function pickActiveTolerance(
   snap: OnboardingSnapshot,
 ): DerivedProfile['activeTolerance'] {
   const { sensitivity, concerns, skinType } = snap;
+  // Legacy 'sensitive' skinType maps to very reactive — always cautious.
+  if (skinType === 'sensitive') return 'cautious';
   if (sensitivity === 'very') return 'cautious';
   if (sensitivity === 'unsure') return 'cautious';
   if (sensitivity === 'somewhat') return 'moderate';
   if (skinType === 'dry' && hasConcern(concerns, 'Dryness')) return 'moderate';
+  if (skinType === 'not_sure') return 'moderate'; // unknown → safe default
   if (hasConcern(concerns, 'Sensitivity')) return 'cautious';
   return sensitivity === 'not' ? 'open' : 'moderate';
 }
@@ -301,33 +314,50 @@ function pickTonePriority(snap: OnboardingSnapshot): Priority {
 function pickScanFocusAreas(snap: OnboardingSnapshot): string[] {
   const { concerns, goal, sensitivity, skinType } = snap;
   const cl = concernsLower(concerns);
-  // Always start with hydration + texture as a baseline
-  const out = new Set<string>();
-  out.add('Hydration signals');
-  out.add('Texture');
-  if (cl.includes('breakouts') || goal === 'clear') out.add('Breakouts');
-  if (cl.includes('redness') || sensitivity === 'very') out.add('Redness');
-  if (cl.includes('dryness') || skinType === 'dry' || goal === 'barrier') out.add('Barrier stress');
-  if (cl.includes('dark spots') || goal === 'bright') out.add('Tone evenness');
-  if (cl.includes('oiliness')) out.add('Oil patterns');
-  if (cl.includes('sensitivity')) out.add('Sensitivity signals');
-  return Array.from(out).slice(0, 5);
+
+  // Priority-ordered: user-declared concerns and goals first, then
+  // universal baseline signals. The first scan will focus on what
+  // the user actually cares about most.
+  const priority: string[] = [];
+  if (cl.includes('breakouts') || goal === 'clear') priority.push('Breakouts');
+  if (cl.includes('redness') || sensitivity === 'very' || skinType === 'sensitive') {
+    priority.push('Redness');
+  }
+  if (cl.includes('dryness') || skinType === 'dry' || skinType === 'sensitive' || goal === 'barrier') {
+    priority.push('Barrier stress');
+  }
+  if (cl.includes('dark spots') || goal === 'bright') priority.push('Tone evenness');
+  if (cl.includes('oiliness') || skinType === 'oily') priority.push('Oil patterns');
+  if (cl.includes('sensitivity')) priority.push('Sensitivity signals');
+  if (cl.includes('texture') || goal === 'smoother') priority.push('Surface texture');
+
+  // Baseline signals fill remaining slots (deduplicated).
+  const baseline = ['Hydration signals', 'Texture'];
+  const combined = [...priority, ...baseline.filter((b) => !priority.includes(b))];
+  return combined.slice(0, 5);
 }
 
 function pickProductAvoidList(snap: OnboardingSnapshot): string[] {
-  const { sensitivity, concerns } = snap;
+  const { sensitivity, concerns, skinType, goal } = snap;
   const out: string[] = [];
-  if (sensitivity === 'very' || hasConcern(concerns, 'Sensitivity')) {
+  // Reactive or sensitivity-flagged → avoid aggression from day one.
+  if (
+    sensitivity === 'very' ||
+    skinType === 'sensitive' ||
+    hasConcern(concerns, 'Sensitivity')
+  ) {
     out.push('High-strength acids early on');
     out.push('Fragranced formulas');
   }
   if (hasConcern(concerns, 'Redness')) {
     out.push('Aggressive physical scrubs');
   }
-  if (hasConcern(concerns, 'Dryness')) {
+  // Dry concern OR dry skin type → stripping cleansers are a barrier risk.
+  if (hasConcern(concerns, 'Dryness') || skinType === 'dry') {
     out.push('Stripping foaming cleansers');
   }
-  if (hasConcern(concerns, 'Breakouts')) {
+  // Breakout goal OR concern → heavy occlusives on active areas are a risk.
+  if (hasConcern(concerns, 'Breakouts') || goal === 'clear') {
     out.push('Heavy occlusive oils on active areas');
   }
   return out;
@@ -341,9 +371,13 @@ function buildMeaningBullets(p: {
   routineIntensity: DerivedProfile['routineIntensity'];
   activeTolerance: DerivedProfile['activeTolerance'];
   barrierPriority: Priority;
+  breakoutPriority: Priority;
+  tonePriority: Priority;
   spfPriority: Priority;
 }): string[] {
   const out: string[] = [];
+
+  // Intensity describes the pacing of the first routine.
   out.push(
     p.routineIntensity === 'light'
       ? 'Start with a short, gentle routine'
@@ -351,6 +385,8 @@ function buildMeaningBullets(p: {
         ? 'Build a fuller routine, paced to your skin'
         : 'Start with a realistic, calm routine',
   );
+
+  // Active tolerance shapes how quickly new treatments are introduced.
   out.push(
     p.activeTolerance === 'cautious'
       ? 'Avoid stacking strong actives early'
@@ -358,9 +394,27 @@ function buildMeaningBullets(p: {
         ? 'Introduce actives gradually with care'
         : 'Add actives one at a time, watching for irritation',
   );
-  out.push('Adjust your plan after each scan');
-  if (p.spfPriority === 'high') out.push('Keep SPF central to mornings');
-  if (p.barrierPriority === 'high') out.push('Keep barrier support as a daily anchor');
+
+  // High-priority signals earn their own bullet so the user sees the
+  // connection between their answers and the plan output.
+  if (p.spfPriority === 'high' && p.tonePriority === 'high') {
+    out.push('Keep SPF and tone support central');
+  } else if (p.spfPriority === 'high') {
+    out.push('Keep SPF central to mornings');
+  } else if (p.tonePriority === 'high') {
+    out.push('Prioritize tone support alongside barrier care');
+  } else if (p.breakoutPriority === 'high') {
+    out.push('Watch for congestion without over-drying');
+  } else if (p.barrierPriority === 'high') {
+    out.push('Keep barrier support as a daily anchor');
+  } else {
+    out.push('Adjust your plan after each scan');
+  }
+
+  // Scan-adapt message is always present but only earns its own slot
+  // when the bullets haven't already consumed the fourth position.
+  if (out.length < 4) out.push('Adjust your plan after each scan');
+
   return out.slice(0, 4);
 }
 
@@ -371,8 +425,12 @@ function buildMeaningBullets(p: {
 export function deriveOnboardingProfile(
   snap: OnboardingSnapshot,
 ): DerivedProfile {
-  // Sanitize concerns to the spec set; tolerate legacy values
-  const concerns = snap.concerns.filter((c) => SPEC_CONCERNS.has(c) || true);
+  // Sanitize concerns to the spec set — case-insensitive so legacy
+  // lowercase or mixed-case values from older persisted profiles still
+  // resolve. The || true that was here made this filter a no-op.
+  const concerns = snap.concerns.filter((c) =>
+    SPEC_CONCERNS_LOWER.has(c.toLowerCase()),
+  );
   const normalizedSnap: OnboardingSnapshot = { ...snap, concerns };
 
   const approach = pickStartingApproach(normalizedSnap);
@@ -402,6 +460,8 @@ export function deriveOnboardingProfile(
       routineIntensity,
       activeTolerance,
       barrierPriority,
+      breakoutPriority,
+      tonePriority,
       spfPriority,
     }),
   };
@@ -483,6 +543,11 @@ export function planImpactForSkinBehavior(
   sensitivity: AppState['sensitivity'],
 ): string | null {
   if (!skinType && !sensitivity) return null;
+
+  // Legacy 'sensitive' value — treat as combination skin + very reactive.
+  if (skinType === 'sensitive') {
+    return 'Pura will start barrier-first and avoid anything that could trigger a reaction.';
+  }
 
   const reactive = sensitivity === 'very' || sensitivity === 'somewhat';
 

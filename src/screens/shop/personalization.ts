@@ -46,6 +46,11 @@ export interface UserProfileSnapshot {
 export interface UserMatch {
   score: number;
   factors: MatchedFactor[];
+  /** True when the score is driven by real user signal (a scan,
+   *  a concern, a sensitivity flag, a goal — anything beyond the
+   *  static catalog affinity baseline). The orb / "match" claim
+   *  is only allowed to render when this is true.  */
+  hasRealPersonalization: boolean;
 }
 
 export type MatchedFactorKind =
@@ -260,7 +265,10 @@ export function scoreForUser(
 
   // Clamp + round.
   const final = Math.max(0, Math.min(100, Math.round(score)));
-  return { score: final, factors };
+  // "Real" personalization means we matched on a factor beyond the
+  // catalog-affinity baseline. Without that, the orb would be lying.
+  const hasRealPersonalization = factors.some((f) => f.kind !== 'baseline');
+  return { score: final, factors, hasRealPersonalization };
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import { ArrowUp } from 'phosphor-react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { dx, dRadius } from '../decisionTokens';
@@ -59,8 +60,16 @@ export function StickyComposer({
       sendScale.value = canSend ? 1 : 0.9;
       return;
     }
-    sendOpacity.value = withTiming(canSend ? 1 : 0.45, { duration: 160 });
-    sendScale.value = withTiming(canSend ? 1 : 0.9, { duration: 160 });
+    // Enabling: spring pop so the button "arrives" as the user types
+    // the first character. Disabling: quick timing so it doesn't
+    // distract after the message is sent.
+    if (canSend) {
+      sendOpacity.value = withTiming(1, { duration: 100 });
+      sendScale.value = withSpring(1, { damping: 14, stiffness: 260, mass: 0.7 });
+    } else {
+      sendOpacity.value = withTiming(0.45, { duration: 160 });
+      sendScale.value = withTiming(0.9, { duration: 160 });
+    }
   }, [canSend, reduceMotion, sendOpacity, sendScale]);
 
   const sendStyle = useAnimatedStyle(() => ({

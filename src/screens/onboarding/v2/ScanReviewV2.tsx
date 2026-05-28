@@ -148,6 +148,8 @@ export function ScanReviewV2({ onApproved, onRetake }: ScanReviewV2Props) {
               styles.statusPill,
               rejected ? styles.statusPillRejected : styles.statusPillApproved,
             ]}
+            accessible
+            accessibilityLabel={rejected ? "Let’s retake this" : 'Scan approved'}
           >
             {rejected ? (
               <Warning
@@ -167,7 +169,7 @@ export function ScanReviewV2({ onApproved, onRetake }: ScanReviewV2Props) {
               ]}
               maxFontSizeMultiplier={1.15}
             >
-              {rejected ? "LET’S RETAKE THIS" : 'SCAN APPROVED'}
+              {rejected ? "LET’S RETAKE THIS" : "SCAN APPROVED"}
             </Text>
           </View>
         </View>
@@ -197,6 +199,8 @@ export function ScanReviewV2({ onApproved, onRetake }: ScanReviewV2Props) {
                 source={{ uri: capturedScanUri }}
                 style={StyleSheet.absoluteFillObject}
                 resizeMode="cover"
+                accessibilityLabel="Your captured skin scan photo"
+                accessibilityIgnoresInvertColors
               />
               {rejected ? (
                 <View pointerEvents="none" style={styles.previewMask} />
@@ -272,7 +276,12 @@ export function ScanReviewV2({ onApproved, onRetake }: ScanReviewV2Props) {
                 style={styles.primaryCta}
               />
               {busy ? (
-                <View style={styles.busyRow}>
+                <View
+                  style={styles.busyRow}
+                  accessible
+                  accessibilityLabel="Analyzing your scan. This takes a moment."
+                  accessibilityLiveRegion="polite"
+                >
                   <CircleNotch size={14} color={PURA.muted} weight="bold" />
                   <HelperText style={styles.busyText}>
                     This takes a moment.
@@ -412,7 +421,9 @@ type _KeepObservationConfidence = ObservationConfidence;
 
 function CorrectionRow({ text }: { text: string }) {
   return (
-    <View style={styles.correctionRow}>
+    // accessible={true} groups the decorative dot + label as a single
+    // VoiceOver focus so the dot is not announced separately.
+    <View style={styles.correctionRow} accessible accessibilityLabel={text}>
       <View style={styles.correctionDot} />
       <Text style={styles.correctionText} maxFontSizeMultiplier={1.25}>
         {text}
@@ -423,7 +434,8 @@ function CorrectionRow({ text }: { text: string }) {
 
 function QualityBadge({ label }: { label: string }) {
   return (
-    <View style={styles.qualityBadge}>
+    // accessible={true} groups the check icon + label as one focus target.
+    <View style={styles.qualityBadge} accessible accessibilityLabel={label}>
       <Check size={12} color="#3F5A4B" weight="bold" />
       <Text style={styles.qualityBadgeText} maxFontSizeMultiplier={1.15}>
         {label}

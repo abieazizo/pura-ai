@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { Alert } from 'react-native';
 import {
   createNativeStackNavigator,
   type NativeStackNavigationOptions,
@@ -175,8 +176,11 @@ function SignInHost({ nav }: { nav: NativeStackNavigationProp<OnboardingStackPar
         onGoogleSignIn={completeSignIn}
         onEmailSignIn={completeSignIn}
         onForgotPassword={() => {
-          // eslint-disable-next-line no-console
-          console.log('[onboarding] TODO: forgot password flow');
+          Alert.alert(
+            'Reset your password',
+            'Password reset is launching soon. In the meantime, email support@puraskin.com and we\'ll get you back in.',
+            [{ text: 'OK', style: 'default' }],
+          );
         }}
         onCreateAccount={() => nav.replace('WelcomeV2')}
       />

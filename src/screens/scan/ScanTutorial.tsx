@@ -274,17 +274,38 @@ const PAGE_BODIES: Array<{
 // ---------- MediaStages ----------
 
 /**
- * Page 1 — lighting stage. Asset `assets/images/tutorial-lighting.jpg`
- * isn't shipped; the placeholder is a warm sand panel with the Mark
- * centered at 80pt, per §3.3.
+ * Page 1 — lighting stage. A warm radial blush wash with a large
+ * duotone sun icon at its center. Speaks directly to "good light"
+ * without invoking the brand cornflower-blue water drop (which only
+ * belongs on the scan arc gauge).
  */
 function StageLighting({ width }: { width: number }) {
+  const stageWidth = Math.min(320, width - 48);
   return (
-    <View style={[styles.lighting, { width: Math.min(320, width - 48) }]}>
-      <PuraMark variant="idle" size="lg" glow />
+    <View style={[styles.lighting, { width: stageWidth }]}>
+      <View style={lightingStyles.halo} />
+      <View style={lightingStyles.haloInner} />
+      <Sun size={92} color={palette.clay} weight="duotone" />
     </View>
   );
 }
+
+const lightingStyles = StyleSheet.create({
+  halo: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(198, 93, 72, 0.10)',
+  },
+  haloInner: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(198, 93, 72, 0.16)',
+  },
+});
 
 /**
  * Page 2 — four-zone animation inside a DeviceFrame. Zone labels pulse in

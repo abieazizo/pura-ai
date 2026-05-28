@@ -58,6 +58,10 @@ export interface ShopCard {
   catalog: ShopCatalogProduct;
   matchScore: number;
   factors: UserMatch['factors'];
+  /** True when the match score is driven by real user signal, not
+   *  just the static catalog affinity baseline. UI must hide the
+   *  match orb / "match" claim when this is false. */
+  hasRealPersonalization: boolean;
   isSaved: boolean;
   isInRoutine: boolean;
 }
@@ -180,13 +184,21 @@ export function useShopViewModel(input: ShopViewModelInput): ShopViewModel {
     }
 
     function toCard(p: ShopCatalogProduct): ShopCard {
-      const m = matchByProduct.get(p.id) ?? { score: 0, factors: [] };
+      const m =
+        matchByProduct.get(p.id) ??
+        { score: 0, factors: [], hasRealPersonalization: false };
       const aiM = aiMatchById.get(p.id);
       const displayScore = aiM?.match_score ?? m.score;
+      // An AI match from a real scan always counts as real
+      // personalization, regardless of which factors our local
+      // scorer surfaced.
+      const hasRealPersonalization =
+        m.hasRealPersonalization || aiM != null;
       return {
         catalog: p,
         matchScore: displayScore,
         factors: m.factors,
+        hasRealPersonalization,
         isSaved: savedSet.has(p.id),
         isInRoutine: routineSet.has(p.id),
       };
@@ -271,17 +283,20 @@ export function useShopViewModel(input: ShopViewModelInput): ShopViewModel {
     let heroSubline: string;
     if (isSearchActive) {
       heroSubline = `Top match for “${query}”.`;
-    } else if (!hasScan) {
-      heroSubline = 'Brand-favorite essentials to start.';
-    } else if (featuredCard && featuredCard.factors.length > 0) {
+    } else if (featuredCard?.hasRealPersonalization) {
+      // Real factors → name them. This is the only branch that earns
+      // the right to claim personalization.
       heroSubline = describeMatch({
         score: featuredCard.matchScore,
         factors: featuredCard.factors,
+        hasRealPersonalization: true,
       });
+    } else if (!hasScan) {
+      heroSubline = 'Editor’s pick. Scan to personalize.';
     } else if (activeFilter !== 'all') {
-      heroSubline = 'Personalized for what your skin is doing tonight.';
+      heroSubline = 'Filtered to what your skin is doing tonight.';
     } else {
-      heroSubline = 'Chosen for tonight’s routine.';
+      heroSubline = 'A best-seller across the catalog.';
     }
 
     const hero: ShopHero = {

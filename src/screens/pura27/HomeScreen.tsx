@@ -41,7 +41,9 @@ import { useAppStore } from '@/store/useAppStore';
 import {
   Body,
   BodyLarge,
+  BreathGlow,
   Card,
+  CountUp,
   DisplayHero,
   FunctionalTitle,
   PrimaryButton,
@@ -161,10 +163,7 @@ export function HomeP27Screen() {
       />
 
       {session.stage !== 'routine_complete' ? (
-        <AdaptationCard
-          session={session}
-          onSecondary={handleSecondaryRecovery}
-        />
+        <AdaptationCard session={session} />
       ) : null}
     </PuraScreen>
   );
@@ -284,12 +283,20 @@ function ScanReadyState({
 // ===========================================================================
 
 function CompletedState({
-  session: _session,
+  session,
   onViewProgress,
 }: {
   session: PuraSession;
   onViewProgress: () => void;
 }) {
+  const completedSteps = session.currentRoutine.steps.filter(
+    (s) => s.completed,
+  );
+  const fallbackSteps = session.currentRoutine.steps; // used only as label source if persistence is stale
+  const recapSteps =
+    completedSteps.length > 0 ? completedSteps : fallbackSteps;
+  const skipped = session.currentRoutine.skipped[0];
+
   return (
     <View style={stateStyles.wrap}>
       <DisplayHero style={stateStyles.heroHeading}>
@@ -307,9 +314,105 @@ function CompletedState({
         ctaAccessibility="View progress. Opens the Routine progress tab."
         onCta={onViewProgress}
       />
+
+      <Card style={recapStyles.card}>
+        <SectionLabel>TONIGHT AT A GLANCE</SectionLabel>
+        <View style={recapStyles.list}>
+          {recapSteps.map((step) => (
+            <View key={step.id} style={recapStyles.row}>
+              <View style={recapStyles.bullet} />
+              <View style={recapStyles.copy}>
+                <Text
+                  maxFontSizeMultiplier={1.2}
+                  style={recapStyles.title}
+                  numberOfLines={1}
+                >
+                  {step.title}
+                </Text>
+                <Text
+                  maxFontSizeMultiplier={1.2}
+                  style={recapStyles.subtitle}
+                  numberOfLines={1}
+                >
+                  {step.productName}
+                </Text>
+              </View>
+            </View>
+          ))}
+          {skipped ? (
+            <View style={[recapStyles.row, recapStyles.skippedRow]}>
+              <View
+                style={[recapStyles.bullet, recapStyles.skippedBullet]}
+              />
+              <View style={recapStyles.copy}>
+                <Text
+                  maxFontSizeMultiplier={1.2}
+                  style={recapStyles.title}
+                  numberOfLines={1}
+                >
+                  Paused: {skipped.productName}
+                </Text>
+                <Text
+                  maxFontSizeMultiplier={1.2}
+                  style={recapStyles.subtitle}
+                  numberOfLines={1}
+                >
+                  {skipped.reason}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </Card>
     </View>
   );
 }
+
+const recapStyles = StyleSheet.create({
+  card: {
+    marginTop: 22,
+    padding: 22,
+  },
+  list: {
+    marginTop: 12,
+    gap: 12,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  skippedRow: {
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: pura27.border,
+  },
+  bullet: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: pura27.success,
+  },
+  skippedBullet: {
+    backgroundColor: pura27.warning,
+  },
+  copy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  title: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14.5,
+    color: pura27.ink,
+    letterSpacing: -0.1,
+  },
+  subtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    color: pura27.inkSecondary,
+    marginTop: 2,
+  },
+});
 
 const stateStyles = StyleSheet.create({
   wrap: {
@@ -358,14 +461,20 @@ function HeroModule({
 }: HeroModuleProps) {
   return (
     <View style={moduleStyles.frame}>
-      <View
-        accessibilityLabel="Warm blush glow"
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+      {/* Soft warm wash anchored to the bottom-left, behind content. The
+          BreathGlow lives on top-right as a quiet, full-rounded blush. */}
+      <View pointerEvents="none" style={moduleStyles.washBL} />
+      <BreathGlow
+        size={220}
         style={moduleStyles.glow}
+        peakOpacity={0.46}
+        troughOpacity={0.30}
       />
       <View style={moduleStyles.content}>
-        <SectionLabel tone="accent">{label}</SectionLabel>
+        <View style={moduleStyles.labelRow}>
+          <View style={moduleStyles.labelDot} />
+          <SectionLabel tone="accent">{label}</SectionLabel>
+        </View>
         <FunctionalTitle style={moduleStyles.heading}>
           {heading}
         </FunctionalTitle>
@@ -375,12 +484,22 @@ function HeroModule({
         >
           {meta}
         </Text>
-        <PrimaryButton
-          label={ctaLabel}
+        <Pressable
           onPress={onCta}
+          accessibilityRole="button"
           accessibilityLabel={ctaAccessibility}
-          style={moduleStyles.cta}
-        />
+          style={({ pressed }) => [
+            moduleStyles.ctaBtn,
+            pressed && { opacity: 0.92, transform: [{ scale: 0.985 }] },
+          ]}
+        >
+          <Text style={moduleStyles.ctaLabel} maxFontSizeMultiplier={1.15}>
+            {ctaLabel}
+          </Text>
+          <View style={moduleStyles.ctaArrow}>
+            <Text style={moduleStyles.ctaArrowText}>→</Text>
+          </View>
+        </Pressable>
         {secondary ? (
           <Pressable
             accessibilityRole="button"
@@ -409,46 +528,100 @@ const moduleStyles = StyleSheet.create({
   frame: {
     marginTop: 28,
     borderRadius: pura27Radius.hero,
-    backgroundColor: pura27.surfaceWarm,
+    backgroundColor: pura27.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: pura27.border,
     overflow: 'hidden',
     minHeight: 282,
     ...pura27Shadow.elevated,
   },
-  glow: {
+  washBL: {
     position: 'absolute',
-    top: -60,
-    right: -40,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: pura27.blush,
-    opacity: 0.6,
+    bottom: -120,
+    left: -90,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: pura27.surfaceWarm,
+    opacity: 0.95,
+  },
+  glow: {
+    top: -70,
+    right: -50,
   },
   content: {
-    paddingHorizontal: 26,
-    paddingVertical: 28,
+    paddingHorizontal: 28,
+    paddingVertical: 30,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  labelDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: pura27.accent,
   },
   heading: {
     marginTop: 14,
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 26,
+    lineHeight: 31,
+    letterSpacing: -0.5,
   },
   meta: {
-    marginTop: 12,
+    marginTop: 14,
     fontFamily: 'Inter-Medium',
-    fontSize: 12.5,
+    fontSize: 12,
     color: pura27.inkTertiary,
-    letterSpacing: 0.5,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
-  cta: {
-    marginTop: 24,
+  // Inline editorial CTA — not a full-width pill. Refines the hero
+  // moment from generic action button to confident statement.
+  ctaBtn: {
+    marginTop: 28,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: pura27.buttonPrimary,
+    paddingLeft: 22,
+    paddingRight: 10,
+    height: 52,
+    borderRadius: 26,
+    gap: 12,
+    shadowColor: '#171615',
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  ctaLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: pura27.white,
+    letterSpacing: -0.1,
+  },
+  ctaArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: pura27.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaArrowText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: pura27.white,
+    lineHeight: 18,
+    marginTop: -1,
   },
   secondary: {
-    marginTop: 14,
-    alignSelf: 'center',
-    paddingVertical: 10,
+    marginTop: 18,
+    paddingVertical: 8,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -486,9 +659,18 @@ function ProgressCard({
     <Card style={progressCardStyles.card}>
       <SectionLabel>84-DAY PROGRESS</SectionLabel>
       <View style={progressCardStyles.row}>
-        <FunctionalTitle style={progressCardStyles.title}>
-          Day {progress.currentDay} of {progress.totalDays}
-        </FunctionalTitle>
+        <View style={progressCardStyles.titleRow}>
+          <FunctionalTitle style={progressCardStyles.title}>
+            Day{' '}
+          </FunctionalTitle>
+          <CountUp
+            value={progress.currentDay}
+            style={progressCardStyles.titleNumber}
+          />
+          <FunctionalTitle style={progressCardStyles.title}>
+            {' '}of {progress.totalDays}
+          </FunctionalTitle>
+        </View>
         <StatusPill label={progress.trendLabel} variant={trendVariant} />
       </View>
       <ProgressMeter
@@ -522,9 +704,20 @@ const progressCardStyles = StyleSheet.create({
     gap: 10,
     marginTop: 10,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
   title: {
     fontSize: 20,
     lineHeight: 24,
+  },
+  titleNumber: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    lineHeight: 24,
+    color: pura27.ink,
+    letterSpacing: -0.4,
   },
   meter: {
     marginTop: 14,
@@ -548,11 +741,13 @@ const progressCardStyles = StyleSheet.create({
 
 function AdaptationCard({
   session,
-  onSecondary,
 }: {
   session: PuraSession;
-  onSecondary: () => void;
 }) {
+  // Informational card. Earlier versions included a "Choose another
+  // recovery night" link that routed to the same destination as the
+  // primary hero CTA — a brutal-client redundancy. Removed: the
+  // adaptation is past-tense reading, not a navigation surface.
   const { lastAdaptationTitle, lastAdaptationBody } = session.progress;
   return (
     <Card style={adaptStyles.card}>
@@ -561,23 +756,6 @@ function AdaptationCard({
         {lastAdaptationTitle}
       </FunctionalTitle>
       <Body style={adaptStyles.body}>{lastAdaptationBody}</Body>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Choose another recovery night"
-        hitSlop={8}
-        onPress={onSecondary}
-        style={({ pressed }) => [
-          adaptStyles.link,
-          pressed && { opacity: 0.7 },
-        ]}
-      >
-        <Text
-          maxFontSizeMultiplier={1.2}
-          style={adaptStyles.linkText}
-        >
-          Choose another recovery night
-        </Text>
-      </Pressable>
     </Card>
   );
 }

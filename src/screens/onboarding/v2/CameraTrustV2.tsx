@@ -9,18 +9,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, useCameraPermissions } from 'expo-camera';
-import {
-  LockKey,
-  Camera as CameraIcon,
-  Info,
-  X,
-} from 'phosphor-react-native';
+import { useCameraPermissions } from 'expo-camera';
+import { X } from 'phosphor-react-native';
+import Svg, { Ellipse, Defs, RadialGradient, Stop } from 'react-native-svg';
 import {
   OnboardingScreenShellV2,
-  FunctionalHeadline,
   BodyText,
-  TrustRow,
   EditorialHeadline,
   PURA,
   PURA_FONT,
@@ -146,31 +140,36 @@ export function CameraTrustV2({ onPermissionGranted }: CameraTrustV2Props) {
           },
         }}
       >
-        <View style={styles.head}>
-          <FunctionalHeadline style={styles.headline}>
-            We only analyze a clear scan.
-          </FunctionalHeadline>
+        <View style={styles.hero}>
+          <FaceOvalSignature />
+          <Text style={styles.eyebrow} maxFontSizeMultiplier={1.1}>
+            BEFORE WE BEGIN
+          </Text>
+          <Text style={styles.headline} accessibilityRole="header" maxFontSizeMultiplier={1.15}>
+            A clear scan, <Text style={styles.headlineItalic}>quietly</Text> read.
+          </Text>
           <BodyText style={styles.lead}>
-            Your full face needs to be visible in even light. If it isn’t
-            clear, we’ll help you retake it.
+            Your full face in even light is all Pura needs. If it isn’t
+            clear, we’ll guide you to retake it — never guess.
           </BodyText>
         </View>
 
         <View style={styles.trustList}>
-          <TrustRow
-            Icon={LockKey}
+          <TrustLine
+            kicker="01"
             title="Private by design"
-            body="Save your photo only if you choose to create an account."
+            body="Your photo stays on this device until you choose to save it."
           />
-          <TrustRow
-            Icon={CameraIcon}
-            title="Quality checked first"
-            body="Forehead, cheeks, and chin must be visible."
+          <TrustLine
+            kicker="02"
+            title="Quality before reading"
+            body="Forehead, cheeks, and chin must be visible. We check first."
           />
-          <TrustRow
-            Icon={Info}
+          <TrustLine
+            kicker="03"
             title="Cosmetic guidance only"
-            body="Pura does not diagnose skin conditions."
+            body="Pura coaches visible skin. It does not diagnose conditions."
+            last
           />
         </View>
       </OnboardingScreenShellV2>
@@ -180,6 +179,79 @@ export function CameraTrustV2({ onPermissionGranted }: CameraTrustV2Props) {
         onClose={() => setShowHelp(false)}
       />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Signature face-oval — a warm soft halo with a hairline outline.
+// Replaces the templated icon-grid; gives the screen a single hero moment.
+// ---------------------------------------------------------------------------
+
+function FaceOvalSignature() {
+  return (
+    <View style={signatureStyles.wrap} pointerEvents="none">
+      <Svg width={196} height={244} viewBox="0 0 196 244">
+        <Defs>
+          <RadialGradient id="glow" cx="50%" cy="46%" r="58%">
+            <Stop offset="0%" stopColor="#F4D8CC" stopOpacity={1} />
+            <Stop offset="55%" stopColor="#F8E6DD" stopOpacity={0.85} />
+            <Stop offset="100%" stopColor="#FAF7F4" stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Ellipse cx={98} cy={122} rx={86} ry={114} fill="url(#glow)" />
+        <Ellipse
+          cx={98}
+          cy={122}
+          rx={70}
+          ry={96}
+          stroke={PURA.terracotta}
+          strokeOpacity={0.32}
+          strokeWidth={1}
+          strokeDasharray="2 5"
+          fill="none"
+        />
+        <Ellipse
+          cx={98}
+          cy={122}
+          rx={48}
+          ry={68}
+          stroke={PURA.terracotta}
+          strokeOpacity={0.16}
+          strokeWidth={1}
+          fill="none"
+        />
+      </Svg>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Trust line — typographic row separated by hairlines. Replaces TrustRow's
+// circular icon avatars (templated) with an editorial numeral + title + body.
+// ---------------------------------------------------------------------------
+
+interface TrustLineProps {
+  kicker: string;
+  title: string;
+  body: string;
+  last?: boolean;
+}
+
+function TrustLine({ kicker, title, body, last }: TrustLineProps) {
+  return (
+    <View style={[trustStyles.row, !last && trustStyles.rowDivider]}>
+      <Text style={trustStyles.kicker} maxFontSizeMultiplier={1.1}>
+        {kicker}
+      </Text>
+      <View style={trustStyles.col}>
+        <Text style={trustStyles.title} maxFontSizeMultiplier={1.2}>
+          {title}
+        </Text>
+        <Text style={trustStyles.body} maxFontSizeMultiplier={1.25}>
+          {body}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -203,10 +275,10 @@ function DeniedRecovery({
         secondary: { label: 'Not now', onPress: onNotNow },
       }}
     >
-      <View style={styles.head}>
-        <FunctionalHeadline style={styles.headline}>
+      <View style={styles.hero}>
+        <EditorialHeadline style={styles.headline}>
           Camera access is off
-        </FunctionalHeadline>
+        </EditorialHeadline>
         <BodyText style={styles.lead}>
           Turn it on to take a private skin scan.
         </BodyText>
@@ -288,21 +360,86 @@ function HowScansAreUsedSheet({
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  head: {
-    paddingHorizontal: 24,
-    paddingTop: 6,
+  hero: {
+    paddingHorizontal: 28,
+    paddingTop: 4,
     paddingBottom: 28,
+    alignItems: 'center',
+  },
+  eyebrow: {
+    fontFamily: PURA_FONT.sansSemi,
+    fontSize: 10.5,
+    letterSpacing: 2.2,
+    color: PURA.muted,
+    marginBottom: 14,
+    marginTop: -8,
   },
   headline: {
+    fontFamily: PURA_FONT.serifSemi,
+    fontSize: 38,
+    lineHeight: 42,
+    letterSpacing: -1.0,
     color: PURA.ink,
+    textAlign: 'center',
+  },
+  headlineItalic: {
+    fontFamily: PURA_FONT.serifItalic,
+    color: PURA.terracotta,
   },
   lead: {
-    marginTop: 12,
-    maxWidth: 380,
+    marginTop: 16,
+    maxWidth: 320,
+    textAlign: 'center',
+    color: PURA.body,
   },
   trustList: {
-    paddingHorizontal: 24,
-    gap: 18,
+    paddingHorizontal: 28,
+    marginTop: 4,
+  },
+});
+
+const signatureStyles = StyleSheet.create({
+  wrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -8,
+    marginBottom: -8,
+  },
+});
+
+const trustStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 22,
+    paddingVertical: 18,
+  },
+  rowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: PURA.border,
+  },
+  kicker: {
+    fontFamily: PURA_FONT.serifItalic,
+    fontSize: 17,
+    color: PURA.terracotta,
+    width: 26,
+    letterSpacing: 0.2,
+    marginTop: 1,
+  },
+  col: { flex: 1 },
+  title: {
+    fontFamily: PURA_FONT.sansSemi,
+    fontSize: 15.5,
+    lineHeight: 20,
+    color: PURA.ink,
+    letterSpacing: -0.15,
+  },
+  body: {
+    fontFamily: PURA_FONT.sans,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: PURA.body,
+    marginTop: 4,
   },
 });
 

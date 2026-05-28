@@ -93,6 +93,14 @@ export interface AppState {
     | '45-54'
     | '55+'
     | null;
+  /**
+   * v21.0 — true when the user explicitly chose "Prefer not to say"
+   * for age range. Kept as a separate boolean (not a union value on
+   * ageRange) so null ageRange unambiguously means "not yet answered"
+   * rather than "answered with prefer-not-to-say". Persisted so
+   * back-navigation doesn't lose the row selection.
+   */
+  agePreferNotToSay: boolean;
   gender: 'male' | 'female' | 'other' | 'prefer-not-to-say' | null;
   /**
    * v20.0 — optional hormone context. Replaces the blunt "gender" question
@@ -313,6 +321,17 @@ export interface AppState {
     | 'CHECK_IN_REQUIRED'
     | null;
   morningAfterFeedback: 'BETTER' | 'SAME' | 'WORSE' | null;
+  /**
+   * v27 — Persisted Decision Room conversation thread (user + assistant
+   * entries only; transient thinking rows are never stored). Survives tab
+   * switches and app restarts so the user can continue reasoning from
+   * where they left off. Cleared when the user explicitly returns to
+   * Decision Mode (taps the back arrow or "View decision").
+   */
+  decisionConversation: Array<
+    | { kind: 'user'; id: string; text: string }
+    | { kind: 'assistant'; id: string; intent: string; sourceText: string }
+  >;
 
   assistantTyping: boolean;
 
@@ -336,6 +355,7 @@ export interface AppState {
   setName: (name: string) => void;
   setAge: (age: number | null) => void;
   setAgeRange: (a: AppState['ageRange']) => void;
+  setAgePreferNotToSay: (v: boolean) => void;
   setGender: (g: AppState['gender']) => void;
   setHormoneContext: (h: AppState['hormoneContext']) => void;
   setSkinType: (t: AppState['skinType']) => void;
@@ -439,6 +459,8 @@ export interface AppState {
   ) => void;
   setMorningAfterFeedback: (f: 'BETTER' | 'SAME' | 'WORSE' | null) => void;
   clearTonightDecisionState: () => void;
+  setDecisionConversation: (entries: AppState['decisionConversation']) => void;
+  clearDecisionConversation: () => void;
 
   devLoadPopulated: () => void;
   devResetToNewUser: () => void;
@@ -463,6 +485,7 @@ const blankState = {
   name: '',
   age: null as number | null,
   ageRange: null as AppState['ageRange'],
+  agePreferNotToSay: false,
   gender: null as AppState['gender'],
   hormoneContext: null as AppState['hormoneContext'],
   skinType: null as AppState['skinType'],
@@ -541,6 +564,7 @@ const blankState = {
     | 'CHECK_IN_REQUIRED'
     | null,
   morningAfterFeedback: null as 'BETTER' | 'SAME' | 'WORSE' | null,
+  decisionConversation: [] as AppState['decisionConversation'],
 };
 
 export const useAppStore = create<AppState>()(
@@ -735,6 +759,7 @@ export const useAppStore = create<AppState>()(
       setName: (name) => set({ name }),
       setAge: (age) => set({ age }),
       setAgeRange: (ageRange) => set({ ageRange }),
+      setAgePreferNotToSay: (agePreferNotToSay) => set({ agePreferNotToSay }),
       setGender: (gender) => set({ gender }),
       setHormoneContext: (hormoneContext) => set({ hormoneContext }),
       setSkinType: (skinType) => set({ skinType }),
@@ -847,6 +872,8 @@ export const useAppStore = create<AppState>()(
           tonightDecisionOverride: null,
           morningAfterFeedback: null,
         }),
+      setDecisionConversation: (entries) => set({ decisionConversation: entries }),
+      clearDecisionConversation: () => set({ decisionConversation: [] }),
 
       // v18.9 — safety profile setters.
       setSkinConditions: (next) => set({ skinConditions: next }),
@@ -918,6 +945,7 @@ export const useAppStore = create<AppState>()(
         name: state.name,
         age: state.age,
         ageRange: state.ageRange,
+        agePreferNotToSay: state.agePreferNotToSay,
         gender: state.gender,
         hormoneContext: state.hormoneContext,
         skinType: state.skinType,
@@ -988,6 +1016,7 @@ export const useAppStore = create<AppState>()(
         tonightUserSensation: state.tonightUserSensation,
         tonightDecisionOverride: state.tonightDecisionOverride,
         morningAfterFeedback: state.morningAfterFeedback,
+        decisionConversation: state.decisionConversation,
       }),
     }
   )

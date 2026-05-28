@@ -16,7 +16,7 @@
  * and never collapses to a faded near-blank surface.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
   Platform,
@@ -28,6 +28,14 @@ import {
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import {
+  CheckCircle,
+  Drop,
+  Flask,
+  Prohibit,
+  Sparkle,
+  Sun,
+} from 'phosphor-react-native';
 
 import { pura27, pura27Radius } from '@/theme';
 import { hapt } from '@/utils/haptics';
@@ -82,12 +90,29 @@ export function ProductsP27Screen() {
     (s) => s.kind === 'treat',
   );
 
+  // Hold the confirm-then-navigate timer in a ref so unmount cleans it
+  // up cleanly (React-warning-free), and double-taps cancel the previous
+  // run rather than queueing duplicate navigations.
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) {
+        clearTimeout(confirmTimerRef.current);
+        confirmTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleAddToRoutine = useCallback(() => {
     if (!featured) return;
     hapt.tap();
     actions.selectFeaturedProduct(featured.id);
     setConfirmed(true);
-    setTimeout(() => {
+    if (confirmTimerRef.current) {
+      clearTimeout(confirmTimerRef.current);
+    }
+    confirmTimerRef.current = setTimeout(() => {
+      confirmTimerRef.current = null;
       setConfirmed(false);
       // Send the user to the Routine tab. From a child stack, nav.getParent
       // surfaces the parent tab navigator.
@@ -124,6 +149,10 @@ export function ProductsP27Screen() {
           treatStep={treatStep}
           confirmed={confirmed}
           onAddToRoutine={handleAddToRoutine}
+          onAddShelfPhoto={() => {
+            hapt.select();
+            setTab('shelf');
+          }}
         />
       ) : null}
 
@@ -135,7 +164,11 @@ export function ProductsP27Screen() {
       ) : null}
 
       {tab === 'discover' ? (
-        <DiscoverTab onReviewShelf={() => setTab('shelf')} />
+        <DiscoverTab
+          shelf={session.shelfProducts}
+          featuredProductId={session.featuredProductId}
+          onReviewShelf={() => setTab('shelf')}
+        />
       ) : null}
     </PuraScreen>
   );
@@ -157,7 +190,8 @@ function TonightTab({
   treatStep,
   confirmed,
   onAddToRoutine,
-}: TonightTabProps) {
+  onAddShelfPhoto,
+}: TonightTabProps & { onAddShelfPhoto?: () => void }) {
   if (!featured) {
     return (
       <InfoState
@@ -191,6 +225,7 @@ function TonightTab({
         treatStep={treatStep}
         confirmed={confirmed}
         onAddToRoutine={onAddToRoutine}
+        onAddShelfPhoto={onAddShelfPhoto}
       />
     </Animated.View>
   );
@@ -317,6 +352,7 @@ interface FeaturedProductCardProps {
   treatStep: RoutineStep | undefined;
   confirmed: boolean;
   onAddToRoutine: () => void;
+  onAddShelfPhoto?: () => void;
 }
 
 function FeaturedProductCard({
@@ -324,6 +360,7 @@ function FeaturedProductCard({
   treatStep,
   confirmed,
   onAddToRoutine,
+  onAddShelfPhoto,
 }: FeaturedProductCardProps) {
   const recognized = product.recognitionStatus === 'confirmed';
   const recognitionLine = recognized
@@ -348,6 +385,8 @@ function FeaturedProductCard({
         ) : (
           <ProductPlaceholder
             initials={initialsFromBrand(product.brand)}
+            category={product.category}
+            onAddShelfPhoto={onAddShelfPhoto}
           />
         )}
       </View>
@@ -491,7 +530,16 @@ function SafetyPanel() {
         style={[safetyStyles.column, safetyStyles.use]}
         accessibilityLabel="Use tonight: BHA on chin only"
       >
-        <SectionLabel tone="success">USE TONIGHT</SectionLabel>
+        <View style={safetyStyles.headerRow}>
+          <View style={[safetyStyles.iconBubble, safetyStyles.iconBubbleUse]}>
+            <CheckCircle
+              size={18}
+              color={pura27.success}
+              weight="duotone"
+            />
+          </View>
+          <SectionLabel tone="success">USE TONIGHT</SectionLabel>
+        </View>
         <FunctionalTitle style={safetyStyles.useLabel}>
           BHA · Chin only
         </FunctionalTitle>
@@ -500,7 +548,12 @@ function SafetyPanel() {
         style={[safetyStyles.column, safetyStyles.skip]}
         accessibilityLabel="Skip tonight: Retinoid serum"
       >
-        <SectionLabel style={{ color: pura27.warning }}>SKIP TONIGHT</SectionLabel>
+        <View style={safetyStyles.headerRow}>
+          <View style={[safetyStyles.iconBubble, safetyStyles.iconBubbleSkip]}>
+            <Prohibit size={18} color={pura27.warning} weight="duotone" />
+          </View>
+          <SectionLabel style={{ color: pura27.warning }}>SKIP TONIGHT</SectionLabel>
+        </View>
         <FunctionalTitle style={safetyStyles.skipLabel}>
           Retinoid serum
         </FunctionalTitle>
@@ -530,12 +583,30 @@ const safetyStyles = StyleSheet.create({
     backgroundColor: pura27.warningBackground,
     borderColor: pura27.warningBackground,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconBubble: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBubbleUse: {
+    backgroundColor: pura27.surface,
+  },
+  iconBubbleSkip: {
+    backgroundColor: pura27.surface,
+  },
   useLabel: {
-    marginTop: 8,
+    marginTop: 10,
     color: pura27.success,
   },
   skipLabel: {
-    marginTop: 8,
+    marginTop: 10,
     color: pura27.warning,
   },
 });
@@ -553,26 +624,88 @@ function initialsFromBrand(brand: string): string {
     .toUpperCase();
 }
 
-function ProductPlaceholder({ initials }: { initials: string }) {
-  return (
+function CategoryGlyph({
+  category,
+}: {
+  category: ShelfProduct['category'];
+}) {
+  const tint = pura27.accentText;
+  switch (category) {
+    case 'cleanser':
+      return <Drop size={42} color={tint} weight="duotone" />;
+    case 'treatment':
+      return <Sparkle size={42} color={tint} weight="duotone" />;
+    case 'moisturizer':
+      return <Drop size={42} color={tint} weight="duotone" />;
+    case 'serum':
+      return <Flask size={42} color={tint} weight="duotone" />;
+    case 'spf':
+      return <Sun size={42} color={tint} weight="duotone" />;
+  }
+}
+
+function ProductPlaceholder({
+  initials,
+  category,
+  onAddShelfPhoto,
+}: {
+  initials: string;
+  category: ShelfProduct['category'];
+  onAddShelfPhoto?: () => void;
+}) {
+  const content = (
     <View style={placeholderStyles.wrap}>
+      <CategoryGlyph category={category} />
       <Text
         maxFontSizeMultiplier={1.2}
         style={placeholderStyles.initials}
       >
         {initials}
       </Text>
-      <Text
-        maxFontSizeMultiplier={1.2}
-        style={placeholderStyles.note}
-      >
-        Add a shelf photo
-      </Text>
+      {onAddShelfPhoto ? (
+        <Text
+          maxFontSizeMultiplier={1.2}
+          style={placeholderStyles.cta}
+        >
+          Add a shelf photo
+        </Text>
+      ) : (
+        <Text
+          maxFontSizeMultiplier={1.2}
+          style={placeholderStyles.note}
+        >
+          No shelf photo yet
+        </Text>
+      )}
     </View>
   );
+  if (onAddShelfPhoto) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Add a shelf photo for this product"
+        accessibilityHint="Opens the shelf photo flow"
+        hitSlop={6}
+        onPress={onAddShelfPhoto}
+        style={({ pressed }) => [
+          placeholderStyles.pressable,
+          pressed && { opacity: 0.85 },
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return content;
 }
 
 const placeholderStyles = StyleSheet.create({
+  pressable: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -580,14 +713,22 @@ const placeholderStyles = StyleSheet.create({
   },
   initials: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 48,
+    fontSize: 32,
     color: pura27.accentText,
-    letterSpacing: -1,
+    letterSpacing: -0.6,
+    marginTop: 4,
   },
   note: {
     fontFamily: 'Inter-Medium',
     fontSize: 11.5,
     color: pura27.inkTertiary,
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+  },
+  cta: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11.5,
+    color: pura27.accentText,
     letterSpacing: 1.3,
     textTransform: 'uppercase',
   },
@@ -736,38 +877,148 @@ const shelfStyles = StyleSheet.create({
 // Discover tab — deliberately quiet.
 // ===========================================================================
 
-function DiscoverTab({ onReviewShelf }: { onReviewShelf: () => void }) {
+function DiscoverTab({
+  shelf,
+  featuredProductId,
+  onReviewShelf,
+}: {
+  shelf: readonly ShelfProduct[];
+  featuredProductId: string;
+  onReviewShelf: () => void;
+}) {
+  // Surface other shelf products as supporting cast — explicitly NOT as
+  // alternative treatments, but as the rest of tonight's gentle plan.
+  // This keeps Discover from drifting into a sales feed while still
+  // giving the user a reason to land on the tab.
+  const supportingCast = shelf.filter(
+    (p) => p.id !== featuredProductId && p.owned,
+  );
   return (
     <View style={discoverStyles.wrap}>
-      <Card variant="warm" style={discoverStyles.card}>
-        <DisplayCard>Missing something gentle?</DisplayCard>
-        <Body style={discoverStyles.body}>
-          Explore alternatives only when your shelf does not contain a
-          suitable match for tonight.
+      <Card variant="warm" style={discoverStyles.intro}>
+        <DisplayCard>The rest of tonight’s plan</DisplayCard>
+        <Body style={discoverStyles.introBody}>
+          These products support the same gentle direction. Use Discover
+          only when your shelf doesn’t fit tonight’s scan.
         </Body>
         <SecondaryButton
-          label="Review my shelf first"
+          label="Review my shelf"
           onPress={onReviewShelf}
-          style={discoverStyles.cta}
+          style={discoverStyles.introCta}
           accessibilityLabel="Switch to My Shelf"
         />
       </Card>
+
+      {supportingCast.map((p) => (
+        <Card key={p.id} style={discoverStyles.row}>
+          <View style={discoverStyles.rowTop}>
+            <View style={discoverStyles.thumb}>
+              <Text
+                maxFontSizeMultiplier={1.2}
+                style={discoverStyles.thumbInitials}
+              >
+                {initialsFromBrand(p.brand)}
+              </Text>
+            </View>
+            <View style={discoverStyles.copy}>
+              <SectionLabel>{p.brand.toUpperCase()}</SectionLabel>
+              <Text
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={2}
+                style={discoverStyles.name}
+              >
+                {p.name}
+              </Text>
+              <Text
+                maxFontSizeMultiplier={1.2}
+                style={discoverStyles.role}
+              >
+                {discoverRoleFor(p.category)}
+              </Text>
+            </View>
+          </View>
+        </Card>
+      ))}
+
+      {supportingCast.length === 0 ? (
+        <Body style={discoverStyles.empty}>
+          Your shelf only carries tonight’s featured product. Add gentle
+          companions from My Shelf to round out the routine.
+        </Body>
+      ) : null}
     </View>
   );
 }
 
+function discoverRoleFor(category: ShelfProduct['category']): string {
+  switch (category) {
+    case 'cleanser':
+      return 'Use first · Whole face';
+    case 'treatment':
+      return 'Spot-treat · Active area only';
+    case 'moisturizer':
+      return 'Use last · Plain finish';
+    case 'serum':
+      return 'Pause tonight · Use on calm nights';
+    case 'spf':
+      return 'Tomorrow morning · Whole face';
+  }
+}
+
 const discoverStyles = StyleSheet.create({
   wrap: {
-    marginTop: 24,
+    marginTop: 18,
+    gap: 14,
   },
-  card: {
-    padding: 24,
+  intro: {
+    padding: 22,
   },
-  body: {
+  introBody: {
     marginTop: 10,
   },
-  cta: {
-    marginTop: 22,
+  introCta: {
+    marginTop: 18,
     alignSelf: 'flex-start',
+  },
+  row: {
+    padding: 16,
+  },
+  rowTop: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'center',
+  },
+  thumb: {
+    width: 56,
+    height: 56,
+    borderRadius: pura27Radius.lg,
+    backgroundColor: pura27.imageSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbInitials: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 20,
+    color: pura27.accentText,
+  },
+  copy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  name: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14.5,
+    color: pura27.ink,
+    letterSpacing: -0.1,
+  },
+  role: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    color: pura27.inkSecondary,
+  },
+  empty: {
+    marginTop: 12,
+    textAlign: 'center',
   },
 });

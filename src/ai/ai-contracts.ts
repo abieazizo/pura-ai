@@ -1734,6 +1734,13 @@ export const SCAN_RESULT_V2_SCHEMA: JsonSchema = {
     'headline',
     'summary',
     'findings',
+    // v34 — premium pipeline always returns these so the UI never has
+    // to fabricate overlays / insights / routine seed in the client.
+    'overlays',
+    'top_focus_priority',
+    'insights',
+    'routine_seed',
+    'quality',
   ],
   properties: {
     overall_score: {
@@ -1783,6 +1790,7 @@ export const SCAN_RESULT_V2_SCHEMA: JsonSchema = {
           'observation',
           'recommendation',
           'ingredient_hints',
+          'confidence',
         ],
         properties: {
           id: { type: 'string', minLength: 4, maxLength: 64 },
@@ -1798,6 +1806,143 @@ export const SCAN_RESULT_V2_SCHEMA: JsonSchema = {
             maxItems: 3,
             items: { type: 'string', minLength: 2, maxLength: 40 },
           },
+          confidence: {
+            type: 'number',
+            minimum: 0,
+            maximum: 1,
+            description:
+              'Visual-evidence confidence (0..1) that this finding is actually visible. Mild but visible = 0.55-0.7; clear = 0.75+.',
+          },
+        },
+      },
+    },
+    // v34 — Overlays drawn on the user's real photograph.
+    overlays: {
+      type: 'array',
+      minItems: 0,
+      maxItems: 8,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['zone', 'concern', 'style', 'opacity', 'finding_id'],
+        properties: {
+          zone: { type: 'string', enum: [...ZONE_IDS] },
+          concern: { type: 'string', enum: [...CONCERN_IDS] },
+          style: {
+            type: 'string',
+            enum: ['soft_mask', 'heatmap', 'outline', 'pin'],
+          },
+          opacity: { type: 'number', minimum: 0.1, maximum: 0.55 },
+          finding_id: { type: 'string', minLength: 1, maxLength: 64 },
+        },
+      },
+    },
+    // v34 — Top-priority focus areas: ordered list of finding ids,
+    // first = primary focus. Max 4.
+    top_focus_priority: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 4,
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
+    // v34 — 2-4 personalized insights derived from the scan.
+    insights: {
+      type: 'array',
+      minItems: 2,
+      maxItems: 4,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'title', 'body', 'icon', 'related_finding_ids'],
+        properties: {
+          id: { type: 'string', minLength: 1, maxLength: 48 },
+          title: { type: 'string', minLength: 4, maxLength: 32 },
+          body: { type: 'string', minLength: 12, maxLength: 200 },
+          icon: {
+            type: 'string',
+            enum: [
+              'barrier',
+              'hydration',
+              'clarity',
+              'tone',
+              'consistency',
+              'protection',
+              'gentle',
+            ],
+          },
+          related_finding_ids: {
+            type: 'array',
+            minItems: 0,
+            maxItems: 4,
+            items: { type: 'string', minLength: 1, maxLength: 64 },
+          },
+        },
+      },
+    },
+    // v34 — Seed the routine builder consumes deterministically.
+    routine_seed: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'skin_needs',
+        'avoid_tonight',
+        'recommended_step_types',
+        'intensity',
+        'step_taglines',
+      ],
+      properties: {
+        skin_needs: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 5,
+          items: { type: 'string', minLength: 2, maxLength: 48 },
+        },
+        avoid_tonight: {
+          type: 'array',
+          minItems: 0,
+          maxItems: 5,
+          items: { type: 'string', minLength: 2, maxLength: 48 },
+        },
+        recommended_step_types: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 4,
+          items: {
+            type: 'string',
+            enum: ['cleanse', 'treat', 'moisturize', 'protect'],
+          },
+        },
+        intensity: {
+          type: 'string',
+          enum: ['gentle', 'moderate', 'active'],
+        },
+        step_taglines: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['cleanse', 'treat', 'moisturize', 'protect'],
+          properties: {
+            cleanse: { type: 'string', minLength: 4, maxLength: 80 },
+            treat: { type: 'string', minLength: 4, maxLength: 80 },
+            moisturize: { type: 'string', minLength: 4, maxLength: 80 },
+            protect: { type: 'string', minLength: 4, maxLength: 80 },
+          },
+        },
+      },
+    },
+    // v34 — Quality classification (full vs. limited).
+    quality: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['usable', 'mode', 'score', 'reasons'],
+      properties: {
+        usable: { type: 'boolean' },
+        mode: { type: 'string', enum: ['full', 'limited'] },
+        score: { type: 'number', minimum: 0, maximum: 1 },
+        reasons: {
+          type: 'array',
+          minItems: 0,
+          maxItems: 5,
+          items: { type: 'string', minLength: 1, maxLength: 120 },
         },
       },
     },

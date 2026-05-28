@@ -1,7 +1,9 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Plus, Minus } from 'phosphor-react-native';
 import { dx } from '../decisionTokens';
+import { localProductImageFor } from '@/data/seed';
 import type { ProductAdjustment } from '@/state/tonightDecision';
 
 interface Props {
@@ -25,12 +27,31 @@ export function RoutineAdjustmentRow({ adjustment, showDivider = true }: Props) 
   const Icon = isAdd ? Plus : Minus;
   const discBg = isAdd ? dx.signalStandard + '22' : dx.terracottaSoft;
   const glyphColor = isAdd ? dx.signalStandard : dx.terracotta;
+  // Show a product thumbnail when one exists — falls back to the
+  // colored disc so fallback is always clean.
+  const localSrc = adjustment.productId
+    ? localProductImageFor(adjustment.productId)
+    : undefined;
 
   return (
     <View style={[styles.row, showDivider && styles.rowWithDivider]}>
-      <View style={[styles.glyphDisc, { backgroundColor: discBg }]}>
-        <Icon size={12} color={glyphColor} weight="bold" />
-      </View>
+      {localSrc ? (
+        <View style={styles.thumbWrap}>
+          <Image
+            source={localSrc}
+            style={styles.thumb}
+            contentFit="contain"
+            transition={120}
+          />
+          <View style={[styles.glyphBadge, { backgroundColor: discBg }]}>
+            <Icon size={9} color={glyphColor} weight="bold" />
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.glyphDisc, { backgroundColor: discBg }]}>
+          <Icon size={12} color={glyphColor} weight="bold" />
+        </View>
+      )}
       <View style={styles.content}>
         <Text
           style={styles.name}
@@ -70,6 +91,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
+  },
+  thumbWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: dx.surfaceSecondary,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: dx.line,
+    overflow: 'visible',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  thumb: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+  },
+  glyphBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: dx.paper,
   },
   content: {
     flex: 1,

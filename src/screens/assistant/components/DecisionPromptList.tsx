@@ -27,7 +27,10 @@ export function DecisionPromptList({ prompts, onPick }: Props) {
             hapt.select();
             onPick(p);
           }}
-          style={({ pressed }) => [styles.row, pressed && { opacity: 0.92 }]}
+          style={({ pressed }) => [
+            styles.row,
+            pressed && { opacity: 0.88, transform: [{ scale: 0.97 }] },
+          ]}
           hitSlop={4}
         >
           <Text

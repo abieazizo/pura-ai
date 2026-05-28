@@ -43,6 +43,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { CaretLeft, Check, LockKey } from 'phosphor-react-native';
+import Svg, { Ellipse, Defs, RadialGradient, Stop, Path } from 'react-native-svg';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useOnboardingV2 } from '@/state/onboardingV2';
@@ -55,6 +56,12 @@ import {
   type LiveFrameInput,
 } from '@/services/scanQualityService';
 import { PURA, PURA_FONT, PURA_RADIUS } from '@/components/onboarding/v2';
+
+// Cornflower blue — the single brand color reserved for the scan arc
+// gauge. Used here for the capture-ready ring and the coverage arc
+// stroked around the face oval. Never used outside the scan flow.
+const SCAN_BLUE = '#6B8FE3';
+const SCAN_BLUE_DEEP = '#4A6FC9';
 
 export interface GuidedFirstScanV2Props {
   onCancel: () => void;
@@ -282,6 +289,8 @@ export function GuidedFirstScanV2({
   const enterStyle = useAnimatedStyle(() => ({ opacity: enter.value }));
 
   const captureAllowed = !!quality?.isCaptureAllowed && !capturing;
+  const checksReady = STATUS_ROW.filter((r) => !!quality?.checks[r.key]).length;
+  const coverage = checksReady / STATUS_ROW.length;
 
   return (
     <View style={styles.root}>
@@ -298,22 +307,22 @@ export function GuidedFirstScanV2({
         </Animated.View>
       ) : null}
 
-      {/* Vignette */}
+      {/* Cinematic vignette — top is heavier so the top bar reads
+          clearly, bottom is mid-weight to support the instruction stack */}
       <View pointerEvents="none" style={styles.vignetteTop} />
       <View pointerEvents="none" style={styles.vignetteBottom} />
+      <View pointerEvents="none" style={styles.vignetteCenter} />
 
-      {/* Face oval */}
+      {/* Face oval — paper-soft halo + double ring; cornflower blue
+          coverage arc fills as more checks pass. The single brand color
+          reserved exclusively for this scan moment. */}
       <View style={styles.ovalCenter} pointerEvents="none">
-        <Animated.View
-          style={[
-            styles.oval,
-            captureAllowed && styles.ovalReady,
-            ovalStyle,
-          ]}
-        />
+        <Animated.View style={ovalStyle}>
+          <FaceOval coverage={coverage} ready={captureAllowed} />
+        </Animated.View>
       </View>
 
-      {/* Top bar */}
+      {/* Top bar — single editorial line, no competing badge */}
       <SafeAreaView edges={['top']} style={styles.topBarSafe}>
         <View style={styles.topBar}>
           <Pressable
@@ -328,31 +337,31 @@ export function GuidedFirstScanV2({
           >
             <CaretLeft size={18} color={PURA.paper} weight="bold" />
           </Pressable>
-          <Text style={styles.topLabel} maxFontSizeMultiplier={1.15}>
-            FIRST BASELINE SCAN
-          </Text>
-          <View style={styles.privacyBadge}>
-            <LockKey size={12} color={PURA.paper} weight="duotone" />
-            <Text style={styles.privacyBadgeText} maxFontSizeMultiplier={1.1}>
-              Private
+          <View style={styles.topCenter}>
+            <Text style={styles.topKicker} maxFontSizeMultiplier={1.1}>
+              FIRST BASELINE
             </Text>
+            <View style={styles.topRule} />
+          </View>
+          <View style={styles.privacyBadge}>
+            <LockKey size={11} color={PURA.paper} weight="duotone" />
           </View>
         </View>
       </SafeAreaView>
 
-      {/* Bottom controls */}
+      {/* Bottom — three quiet status dots inline, then the editorial
+          italic-serif instruction, then a refined capture disc */}
       <View
         style={[
           styles.bottomBar,
-          { paddingBottom: Math.max(insets.bottom, 16) + 18 },
+          { paddingBottom: Math.max(insets.bottom, 16) + 22 },
         ]}
       >
-        {/* Status row — three honest checks */}
         <View style={styles.statusRow}>
-          {STATUS_ROW.map((row) => {
+          {STATUS_ROW.map((row, i) => {
             const ok = !!quality?.checks[row.key];
             return (
-              <View key={row.key} style={styles.statusChip}>
+              <View key={row.key} style={styles.statusItem}>
                 <View
                   style={[
                     styles.statusDot,
@@ -373,6 +382,9 @@ export function GuidedFirstScanV2({
                 >
                   {ok ? row.positive : row.negative}
                 </Text>
+                {i < STATUS_ROW.length - 1 ? (
+                  <View style={styles.statusSep} />
+                ) : null}
               </View>
             );
           })}
@@ -381,17 +393,14 @@ export function GuidedFirstScanV2({
         <Text style={styles.instruction} maxFontSizeMultiplier={1.15}>
           {quality?.instruction ?? 'Place your full face inside the frame'}
         </Text>
-        {quality?.instructionSubtext ? (
-          <Text style={styles.subInstruction} maxFontSizeMultiplier={1.2}>
-            {quality.instructionSubtext}
-          </Text>
-        ) : (
-          <Text style={styles.subInstruction} maxFontSizeMultiplier={1.2}>
-            Forehead to chin visible
-          </Text>
-        )}
+        <Text style={styles.subInstruction} maxFontSizeMultiplier={1.2}>
+          {quality?.instructionSubtext ?? 'Forehead to chin, in even light'}
+        </Text>
 
         <View style={styles.captureRow}>
+          {captureAllowed ? (
+            <View pointerEvents="none" style={styles.captureGlow} />
+          ) : null}
           <Pressable
             onPress={handleCapture}
             disabled={capturing}
@@ -418,6 +427,9 @@ export function GuidedFirstScanV2({
               ]}
             />
           </Pressable>
+          <Text style={styles.captureHint} maxFontSizeMultiplier={1.15}>
+            {captureAllowed ? 'Hold still — tap to capture' : `${checksReady}/3 ready`}
+          </Text>
         </View>
       </View>
 
@@ -483,11 +495,109 @@ void Image;
 const OVAL_WIDTH = 280;
 const OVAL_HEIGHT = 360;
 
+// -----------------------------------------------------------------------------
+// FaceOval — the cinematic capture frame.
+// Soft inner halo + paper-soft outer ring + cornflower-blue coverage arc that
+// fills as more quality checks pass. When `ready`, the inner ring shifts
+// to a saturated cornflower blue stroke and the outer halo brightens.
+// -----------------------------------------------------------------------------
+
+function FaceOval({ coverage, ready }: { coverage: number; ready: boolean }) {
+  const W = OVAL_WIDTH;
+  const H = OVAL_HEIGHT;
+  const cx = W / 2;
+  const cy = H / 2;
+  const rx = (W - 10) / 2;
+  const ry = (H - 10) / 2;
+
+  // Coverage arc: stroke an ellipse but only render `coverage` of the
+  // approximate perimeter via dash array.
+  const approxPerim = Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
+  const dash = approxPerim * coverage;
+  const gap = approxPerim - dash;
+
+  // Inner cross hairs for centering — quiet, only visible when not ready
+  const crossLen = 14;
+
+  return (
+    <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+      <Defs>
+        <RadialGradient id="ovalHalo" cx="50%" cy="50%" r="55%">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={ready ? 0.10 : 0.04} />
+          <Stop offset="80%" stopColor="#FFFFFF" stopOpacity={0} />
+          <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+
+      {/* Inner halo — soft skin-warm glow */}
+      <Ellipse cx={cx} cy={cy} rx={rx - 4} ry={ry - 4} fill="url(#ovalHalo)" />
+
+      {/* Outer paper ring */}
+      <Ellipse
+        cx={cx}
+        cy={cy}
+        rx={rx}
+        ry={ry}
+        fill="none"
+        stroke="rgba(252,250,247,0.45)"
+        strokeWidth={1.5}
+      />
+
+      {/* Inner ready ring — cornflower blue when armed */}
+      <Ellipse
+        cx={cx}
+        cy={cy}
+        rx={rx - 12}
+        ry={ry - 12}
+        fill="none"
+        stroke={ready ? SCAN_BLUE : 'rgba(252,250,247,0.18)'}
+        strokeWidth={ready ? 2 : 1}
+        strokeDasharray={ready ? undefined : '3 6'}
+      />
+
+      {/* Coverage arc — cornflower blue progressive sweep starting at top */}
+      {coverage > 0 ? (
+        <Ellipse
+          cx={cx}
+          cy={cy}
+          rx={rx}
+          ry={ry}
+          fill="none"
+          stroke={ready ? SCAN_BLUE_DEEP : SCAN_BLUE}
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${gap}`}
+          strokeDashoffset={approxPerim * 0.25}
+          opacity={0.85}
+        />
+      ) : null}
+
+      {/* Centering cross — fades when ready */}
+      {!ready ? (
+        <>
+          <Path
+            d={`M${cx - crossLen} ${cy} L${cx + crossLen} ${cy}`}
+            stroke="rgba(252,250,247,0.5)"
+            strokeWidth={1}
+            strokeLinecap="round"
+          />
+          <Path
+            d={`M${cx} ${cy - crossLen} L${cx} ${cy + crossLen}`}
+            stroke="rgba(252,250,247,0.5)"
+            strokeWidth={1}
+            strokeLinecap="round"
+          />
+        </>
+      ) : null}
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#1A1410', position: 'relative' },
+  root: { flex: 1, backgroundColor: '#0F0B08', position: 'relative' },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1A1410',
+    backgroundColor: '#0F0B08',
   },
   cameraWrap: { ...StyleSheet.absoluteFillObject },
   vignetteTop: {
@@ -495,32 +605,29 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 220,
-    backgroundColor: 'rgba(10,7,5,0.5)',
+    height: 200,
+    backgroundColor: 'rgba(10,7,5,0.62)',
   },
   vignetteBottom: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 260,
-    backgroundColor: 'rgba(10,7,5,0.55)',
+    height: 320,
+    backgroundColor: 'rgba(10,7,5,0.66)',
+  },
+  vignetteCenter: {
+    position: 'absolute',
+    top: 200,
+    bottom: 320,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(10,7,5,0.18)',
   },
   ovalCenter: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  oval: {
-    width: OVAL_WIDTH,
-    height: OVAL_HEIGHT,
-    borderRadius: OVAL_WIDTH / 2,
-    borderWidth: 2,
-    borderColor: 'rgba(252,250,247,0.55)',
-  },
-  ovalReady: {
-    borderColor: '#7A9A82',
-    borderWidth: 2.5,
   },
   topBarSafe: { position: 'absolute', top: 0, left: 0, right: 0 },
   topBar: {
@@ -528,117 +635,138 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 10,
     paddingBottom: 12,
+    gap: 12,
   },
   topBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(252,250,247,0.18)',
+    backgroundColor: 'rgba(252,250,247,0.10)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(252,250,247,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topLabel: {
-    fontFamily: PURA_FONT.sansSemi,
-    fontSize: 13,
-    color: PURA.paper,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  privacyBadge: {
+  topCenter: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: PURA_RADIUS.pill,
-    backgroundColor: 'rgba(252,250,247,0.18)',
+    justifyContent: 'center',
+    gap: 10,
   },
-  privacyBadgeText: {
+  topKicker: {
     fontFamily: PURA_FONT.sansSemi,
     fontSize: 10.5,
-    color: PURA.paper,
-    letterSpacing: 0.6,
+    color: 'rgba(252,250,247,0.88)',
+    letterSpacing: 2.4,
     textTransform: 'uppercase',
+  },
+  topRule: {
+    width: 26,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(252,250,247,0.36)',
+  },
+  privacyBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(252,250,247,0.10)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(252,250,247,0.22)',
   },
   bottomBar: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: 24,
+    paddingTop: 18,
     alignItems: 'center',
   },
   statusRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 14,
+    gap: 0,
+    marginBottom: 18,
   },
-  statusChip: {
+  statusItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(252,250,247,0.14)',
   },
   statusDot: {
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: 'rgba(252,250,247,0.18)',
+    backgroundColor: 'rgba(252,250,247,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   statusDotOn: {
-    backgroundColor: '#7A9A82',
+    backgroundColor: SCAN_BLUE,
+  },
+  statusSep: {
+    width: 12,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(252,250,247,0.28)',
+    marginHorizontal: 10,
   },
   statusLabel: {
     fontFamily: PURA_FONT.sansMed,
     fontSize: 11,
-    color: 'rgba(252,250,247,0.72)',
+    color: 'rgba(252,250,247,0.62)',
   },
   statusLabelOn: {
     color: PURA.paper,
   },
   instruction: {
-    fontFamily: PURA_FONT.sansSemi,
-    fontSize: 15,
-    lineHeight: 20,
+    fontFamily: PURA_FONT.serifItalic,
+    fontSize: 22,
+    lineHeight: 28,
     color: PURA.paper,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   subInstruction: {
     fontFamily: PURA_FONT.sans,
     fontSize: 13,
     lineHeight: 18,
-    color: 'rgba(252,250,247,0.72)',
+    color: 'rgba(252,250,247,0.62)',
     textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 14,
+    marginTop: 6,
+    marginBottom: 22,
   },
   captureRow: { alignItems: 'center', justifyContent: 'center' },
+  captureGlow: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: SCAN_BLUE,
+    opacity: 0.18,
+    top: -16,
+  },
   captureBtn: {
     width: 78,
     height: 78,
     borderRadius: 39,
-    backgroundColor: 'rgba(252,250,247,0.22)',
+    backgroundColor: 'rgba(252,250,247,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: PURA.paper,
+    borderColor: 'rgba(252,250,247,0.55)',
   },
   captureBtnReady: {
-    borderColor: '#7A9A82',
-    backgroundColor: 'rgba(122,154,130,0.20)',
+    borderColor: SCAN_BLUE,
+    backgroundColor: 'rgba(107,143,227,0.18)',
   },
   captureBtnDisabled: {
-    opacity: 0.5,
+    opacity: 0.7,
   },
   captureInner: {
     width: 60,
@@ -647,7 +775,15 @@ const styles = StyleSheet.create({
     backgroundColor: PURA.paper,
   },
   captureInnerReady: {
-    backgroundColor: '#EDF3EE',
+    backgroundColor: '#F4F7FF',
+  },
+  captureHint: {
+    fontFamily: PURA_FONT.sansMed,
+    fontSize: 11,
+    color: 'rgba(252,250,247,0.66)',
+    marginTop: 14,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
   // Help sheet
   helpScrim: {

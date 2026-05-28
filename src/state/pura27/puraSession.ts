@@ -211,6 +211,27 @@ function resolveStage(
   return 'scan_ready';
 }
 
+/**
+ * Whether an ISO timestamp belongs to the local calendar day.
+ *
+ * Used to gate persisted "tonight complete" markers — a timestamp from
+ * yesterday must NOT trigger today's completion state. Without this
+ * check, a user who finished tonight's routine yesterday would re-open
+ * the app today and still see "You did enough tonight" until they
+ * scanned again, eroding the same trust the scan-rescue work was meant
+ * to restore.
+ */
+function isSameLocalDay(iso: string | null, now = new Date()): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
 function todayHumanDate(now = new Date()): string {
   return now.toLocaleDateString('en-US', {
     month: 'long',
@@ -279,10 +300,19 @@ export function usePuraSession(): UsePuraSessionResult {
   }, [persisted.userRoutineEvening]);
 
   const session = useMemo<PuraSession>(() => {
+    // Day-rollover guard: only honor persisted state whose timestamp
+    // is from today. A persisted session from yesterday would otherwise
+    // freeze the Home stage at `routine_complete` forever.
     const persistedToday =
       persisted.session && persisted.session.date === today
         ? persisted.session
         : null;
+
+    const validTonightCompleteAt = isSameLocalDay(
+      persisted.tonightCompleteAt,
+    )
+      ? persisted.tonightCompleteAt
+      : null;
 
     const completedStepIds: readonly string[] =
       persistedToday?.completedStepIds ?? [];
@@ -290,14 +320,14 @@ export function usePuraSession(): UsePuraSessionResult {
     const status: 'notStarted' | 'active' | 'complete' =
       persistedToday?.status ?? 'notStarted';
 
-    const stage = resolveStage(status, persisted.tonightCompleteAt);
+    const stage = resolveStage(status, validTonightCompleteAt);
 
     const routine = buildRoutine({
       date: today,
       featuredProductId,
       completedStepIds,
       completedAt:
-        persistedToday?.completedAt ?? persisted.tonightCompleteAt,
+        persistedToday?.completedAt ?? validTonightCompleteAt,
     });
 
     return {

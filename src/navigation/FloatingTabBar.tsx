@@ -229,7 +229,6 @@ function TabButton({
       style={styles.tab}
     >
       <View style={styles.iconWrap}>
-        <Animated.View style={[styles.activePill, pillAnim]} />
         <Icon
           size={22}
           color={iconColor}
@@ -252,6 +251,11 @@ function TabButton({
       >
         {label}
       </Text>
+      {/* Active indicator — a small terracotta dot below the label. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.activeDot, pillAnim]}
+      />
     </Pressable>
   );
 }
@@ -344,6 +348,14 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     backgroundColor: puraShop.dockActivePillBg,
+  },
+  activeDot: {
+    position: 'absolute',
+    bottom: 1,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: puraShop.coral,
   },
   label: {
     ...puraShopType.dockLabel,

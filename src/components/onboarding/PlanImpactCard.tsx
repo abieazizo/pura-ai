@@ -2,13 +2,14 @@ import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { Sparkle } from 'phosphor-react-native';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import { palette } from '@/theme';
 
 export interface PlanImpactCardProps {
   /**
@@ -50,16 +51,22 @@ export function PlanImpactCard({
       opacity.value = withTiming(0, { duration: 160 });
       return;
     }
-    opacity.value = 0;
-    y.value = reduceMotion ? 0 : 8;
-    opacity.value = withTiming(1, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-    });
-    y.value = withTiming(0, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-    });
+    cancelAnimation(opacity);
+    cancelAnimation(y);
+    if (opacity.value < 0.1) {
+      // First reveal or card is currently invisible — snap position then
+      // fade + slide in from below.
+      y.value = reduceMotion ? 0 : 8;
+      opacity.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
+      y.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
+    } else {
+      // Rapid selection swap while card is already visible — cross-fade
+      // without re-sliding so the read position stays stable.
+      opacity.value = withSequence(
+        withTiming(0, { duration: 100, easing: Easing.in(Easing.cubic) }),
+        withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) }),
+      );
+    }
   }, [message, opacity, y, reduceMotion]);
 
   const style = useAnimatedStyle(() => ({
@@ -75,6 +82,7 @@ export function PlanImpactCard({
       accessible
       accessibilityRole="text"
       accessibilityLabel={`Plan impact: ${message}`}
+      accessibilityLiveRegion="polite"
     >
       <View style={styles.iconWrap}>
         <Sparkle size={14} color={PRIMARY_BLUE} weight="fill" />
@@ -140,7 +148,4 @@ const styles = StyleSheet.create({
     color: TEXT_SECONDARY,
     marginTop: 3,
   },
-  // Silence unused-color warning for `palette` import; kept available
-  // for future themed variants.
-  _unused: { color: palette.bg },
 });

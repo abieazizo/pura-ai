@@ -39,6 +39,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { CaretRight, Info, Sun, X } from 'phosphor-react-native';
@@ -84,6 +85,50 @@ const GOAL_LABEL: Record<PrimaryGoal, string> = {
   texture: 'Texture',
   darkSpots: 'Dark spots',
 };
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const CHIP_SPRING = { damping: 18, stiffness: 340, mass: 1 };
+
+function SensChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const handle = () => {
+    scale.value = withSpring(0.955, CHIP_SPRING, () => {
+      scale.value = withSpring(1, CHIP_SPRING);
+    });
+    onPress();
+  };
+  return (
+    <AnimatedPressable
+      onPress={handle}
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      style={[
+        styles.sensChip,
+        selected && styles.sensChipOn,
+        animated,
+      ]}
+    >
+      <Text
+        style={[styles.sensChipLabel, selected && styles.sensChipLabelOn]}
+        maxFontSizeMultiplier={1.15}
+      >
+        {label}
+      </Text>
+    </AnimatedPressable>
+  );
+}
 
 export function TonightRoutineV2({ onContinue }: TonightRoutineV2Props) {
   const insets = useSafeAreaInsets();
@@ -222,37 +267,18 @@ export function TonightRoutineV2({ onContinue }: TonightRoutineV2Props) {
               Does your skin react easily to new products?
             </Text>
             <View style={styles.sensitivityRow}>
-              {SENSITIVITY_OPTIONS.map((opt) => {
-                const selected = productReactivity === opt.value;
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => {
-                      hapt.select();
-                      setProductReactivity(opt.value);
-                      onboardingV2.safetyCalibrationSelected(opt.value);
-                    }}
-                    accessibilityRole="radio"
-                    accessibilityLabel={opt.label}
-                    accessibilityState={{ selected }}
-                    style={({ pressed }) => [
-                      styles.sensChip,
-                      selected && styles.sensChipOn,
-                      pressed && { opacity: 0.85 },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.sensChipLabel,
-                        selected && styles.sensChipLabelOn,
-                      ]}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              {SENSITIVITY_OPTIONS.map((opt) => (
+                <SensChip
+                  key={opt.value}
+                  label={opt.label}
+                  selected={productReactivity === opt.value}
+                  onPress={() => {
+                    hapt.select();
+                    setProductReactivity(opt.value);
+                    onboardingV2.safetyCalibrationSelected(opt.value);
+                  }}
+                />
+              ))}
             </View>
           </View>
 
@@ -307,12 +333,13 @@ export function TonightRoutineV2({ onContinue }: TonightRoutineV2Props) {
           </Animated.View>
 
           <View style={styles.matchedCard}>
-            <Eyebrow>MATCHED NEXT STEP</Eyebrow>
+            <Eyebrow>YOUR FIRST PRODUCT HINT</Eyebrow>
             <Text style={styles.matchedTitle} maxFontSizeMultiplier={1.2}>
-              Find a gentle moisturizer
+              A gentle moisturizer tonight
             </Text>
             <BodyText style={styles.matchedBody}>
-              Product matching will appear here once connected.
+              After your first scans, Pura will surface products matched to
+              your skin's visible signals — not generic recommendations.
             </BodyText>
             <HelperText style={styles.matchedNote}>
               Ranked for fit, never sponsorship.
