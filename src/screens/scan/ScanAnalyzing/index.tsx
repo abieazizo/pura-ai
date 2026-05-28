@@ -60,8 +60,32 @@ declare const __DEV__: boolean | undefined;
 function debugCheckpoint(stage: string, data?: Record<string, unknown>): void {
   if (typeof __DEV__ !== 'undefined' && !__DEV__) return;
   // eslint-disable-next-line no-console
-  console.log(`[scan:${stage}]`, data ?? {});
+  console.log(`[Pura Scan QA] ${stage}`, data ?? {});
 }
+
+/**
+ * v33 — Preflight is HINT-ONLY. The previous flow treated any non-'ok'
+ * preflight reason as a hard retake gate, which was the dominant cause
+ * of "clear selfie rejected" reports. The full analysis is the source
+ * of truth — preflight runs first only to short-circuit catastrophic
+ * captures (no face at all, completely black frame).
+ *
+ * Hard-block reasons (force retake BEFORE analyze):
+ *   • `no_face` — no human face is visible. Spending tokens on the
+ *     full analysis would be pointless.
+ *
+ * Soft notices (continue to analyze, log only):
+ *   • `partial_face`, `too_dark`, `too_blurry`, `not_centered`,
+ *     `unknown` — these are advisory. The full analyzer is robust to
+ *     mild conditions; let it decide.
+ *
+ * If the photo is genuinely unreadable for the analyzer too, the
+ * downstream classifier will route to `retake_required` honestly with
+ * a real reason. We never reject a usable photo on preflight alone.
+ */
+const HARD_BLOCK_PREFLIGHT_REASONS = new Set<ScanPreflightReason>([
+  'no_face',
+]);
 
 function classifyServiceError(msg: string): ScanAnalysisErrorCode {
   const lower = msg.toLowerCase();
@@ -171,14 +195,39 @@ export function ScanAnalyzingFaceScreen({
       try {
         const result = await preflightFaceScan({ photoUri });
         if (cancelled) return;
-        debugCheckpoint('preflight_result', { result });
+        debugCheckpoint('preflight_result', {
+          reason: result?.reason ?? 'no_result',
+          face_present: result?.face_present,
+          full_face_visible: result?.full_face_visible,
+          centered_enough: result?.centered_enough,
+          lighting_ok: result?.lighting_ok,
+          blur_ok: result?.blur_ok,
+        });
         if (!result) {
+          // No preflight result at all — proceed; the analyzer will
+          // truth-check the photo.
           setPreflight({ kind: 'skipped' });
           return;
         }
-        if (result.reason === 'ok') {
+        const hardBlocked = HARD_BLOCK_PREFLIGHT_REASONS.has(result.reason);
+        if (result.reason === 'ok' || !hardBlocked) {
+          // PASS-THROUGH: even when the preflight flagged a soft notice
+          // (mild blur, slight angle, mild shadow, slight off-center),
+          // we continue to the full analyzer. The analyzer is robust to
+          // these conditions; if the photo is truly unreadable it will
+          // honestly classify as `retake_required`.
+          if (result.reason !== 'ok') {
+            debugCheckpoint('preflight_soft_notice_continuing', {
+              reason: result.reason,
+              retry_message: result.retry_message,
+            });
+          }
           setPreflight({ kind: 'pass' });
         } else {
+          debugCheckpoint('preflight_hard_block', {
+            reason: result.reason,
+            retry_message: result.retry_message,
+          });
           setPreflight({
             kind: 'fail',
             reason: result.reason,
@@ -189,6 +238,8 @@ export function ScanAnalyzingFaceScreen({
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
         debugCheckpoint('preflight_threw', { error: msg });
+        // On preflight error we proceed to analysis rather than
+        // hard-blocking — service problems must not look like a bad photo.
         setPreflight({ kind: 'skipped' });
       }
     })();
@@ -219,7 +270,11 @@ export function ScanAnalyzingFaceScreen({
         debugCheckpoint('analyze_completed', {
           hasAiAnalysis: !!scan.aiAnalysis,
           imageQualityUsable: scan.aiAnalysis?.image_quality?.usable,
+          imageQualityConfidence: scan.aiAnalysis?.image_quality?.confidence,
           imageQualityIssues: scan.aiAnalysis?.image_quality?.issues,
+          findingsCount: scan.aiAnalysis?.findings?.length ?? 0,
+          hasFaceOverlay: !!scan.aiAnalysis?.face_overlay,
+          hasV2Analysis: !!scan.v2Analysis,
         });
 
         // Persist the scan + the legacy ScanResult so the rest of the
@@ -246,10 +301,14 @@ export function ScanAnalyzingFaceScreen({
         setAnalysis(response);
 
         const usability = response.scanQuality.usability;
+        const supportedFindings = selectVisibleFindings(response).length;
         debugCheckpoint('quality_classified', {
           usability,
           reasons: response.scanQuality.reasons,
-          findings: response.findings.length,
+          confidence: response.scanQuality.confidence,
+          rawFindings: response.findings.length,
+          supportedFindings,
+          routineAllowed: response.routineEligibility.allowed,
         });
 
         // Hold the 84% beat for a moment so the user reads "Finishing
@@ -258,10 +317,23 @@ export function ScanAnalyzingFaceScreen({
         if (cancelled) return;
 
         if (usability === 'retake_required') {
+          debugCheckpoint('route_decision', {
+            route: 'retake_required',
+            reason: response.scanQuality.reasons.join('; '),
+          });
           setPhase('retake_required');
         } else if (usability === 'limited_results') {
+          debugCheckpoint('route_decision', {
+            route: 'limited_choice',
+            reason: response.scanQuality.reasons.join('; '),
+            supportedFindings,
+          });
           setPhase('limited_choice');
         } else {
+          debugCheckpoint('route_decision', {
+            route: 'continue_to_results',
+            supportedFindings,
+          });
           setPhase('continue_to_results');
         }
       } catch (e) {

@@ -48,6 +48,8 @@ import {
   severityImpliesPresent,
 } from './concernCatalog';
 
+declare const __DEV__: boolean | undefined;
+
 // ---------------------------------------------------------------------------
 // Usability classifier — the single source of truth for the gate.
 // ---------------------------------------------------------------------------
@@ -70,10 +72,20 @@ export interface UsabilityInput {
 /**
  * Classify a scan into one of three usability tiers.
  *
- * Truth-first: when the AI returned no structured analysis at all, the
- * answer is `retake_required` — we will NEVER show a results UI for a
- * scan we have no analysis for. Service failures route through the
- * separate error path, not through this classifier.
+ * Calibration philosophy (post bug-fix): the bar for `retake_required`
+ * is HIGH. We only force a retake when the photo is genuinely unreadable
+ * — not because lighting is imperfect, not because the AI is uncertain,
+ * not because findings are mild or absent. A normal everyday phone selfie
+ * should land in `full_results` or `limited_results`, never in
+ * `retake_required`.
+ *
+ * Service failures (AI unavailable, validation failure) route through the
+ * SEPARATE error path (`ScanServiceErrorScreen`), not this classifier.
+ * If `hasAnalysis` is false here it means the caller chose to translate
+ * an empty scan — we treat it as retake because there is literally
+ * nothing to display, but the upstream code path (ScanAnalyzingFaceScreen)
+ * never lets that happen for a real service error — it shows the error
+ * screen instead.
  */
 export function classifyScanUsability(input: UsabilityInput): {
   usability: ScanUsability;
@@ -88,20 +100,36 @@ export function classifyScanUsability(input: UsabilityInput): {
     return { usability: 'retake_required', reasons, issues };
   }
 
-  if (!input.faceDetected) {
+  // FACE DETECTION:
+  // The AI's `face_overlay` is optional and frequently stripped by the
+  // validator when any single landmark is malformed. We must NOT treat
+  // a missing/stripped face_overlay as "no face". The analysis itself
+  // succeeded — that is evidence enough that a face was visible. Only
+  // route to retake when the AI explicitly told us no face was readable:
+  //   • AND the AI flagged image-quality confidence as extremely low, OR
+  //   • AND the AI flagged `partial_face` AND zero findings came through.
+  // A clean face that produced zero findings is NOT a retake — it is
+  // either `full_results` with the "no focus area" empty state or
+  // `limited_results` depending on confidence.
+  if (!input.faceDetected && input.rawConfidence < 0.2) {
     reasons.push('No face detected in the photo');
     return { usability: 'retake_required', reasons, issues };
   }
 
-  // Hard-fail reasons.
+  // HARD-FAIL reasons — only the genuinely unreadable cases.
+  // Thresholds intentionally lower than v19-era values: in practice the
+  // AI is told to be conservative on quality, and a `confidence < 0.25`
+  // bar tripped on ordinary phone selfies with mild shadow. The new
+  // thresholds reserve `retake_required` for the cases where a human
+  // looking at the photo would also say "you can't read this".
   const severeBlur =
-    input.issues.includes('blurry') && input.rawConfidence < 0.25;
+    input.issues.includes('blurry') && input.rawConfidence < 0.15;
   const majorZonesMissing =
-    input.issues.includes('partial_face') && input.rawConfidence < 0.2;
+    input.issues.includes('partial_face') && input.rawConfidence < 0.15;
   const extremeExposure =
     (input.issues.includes('low_light') ||
       input.issues.includes('harsh_light')) &&
-    input.rawConfidence < 0.22;
+    input.rawConfidence < 0.12;
 
   if (severeBlur) {
     reasons.push('Photo is too blurry to read');
@@ -116,8 +144,12 @@ export function classifyScanUsability(input: UsabilityInput): {
     return { usability: 'retake_required', reasons, issues };
   }
 
-  // Limited reasons.
-  const moderateConfidence = input.rawConfidence < 0.7;
+  // LIMITED reasons — the photo is usable, just not pristine. Surface
+  // soft notices but always show real findings.
+  // Threshold relaxed from 0.7 → 0.5 so an ordinary phone selfie with
+  // good but not studio-perfect confidence sits in `full_results`
+  // instead of being penalized into `limited_results`.
+  const moderateConfidence = input.rawConfidence < 0.5;
   const moderateBlur = input.issues.includes('blurry');
   const offAngle = input.issues.includes('angled');
   const unevenLighting =
@@ -177,10 +209,18 @@ function buildQuality(
   supportedFindingCount: number
 ): ScanQuality {
   const aiQuality = scan.aiAnalysis?.image_quality;
-  const confidence = aiQuality?.confidence ?? (scan.aiAnalysis ? 0.5 : 0.4);
+  // When the AI returned analysis but no confidence number, default to
+  // 0.7 (good enough to surface results) rather than 0.5. The old 0.5
+  // default pushed every confidence-missing scan into `limited_results`
+  // even when the AI considered it fine.
+  const confidence = aiQuality?.confidence ?? (scan.aiAnalysis ? 0.7 : 0.4);
   const issues = aiQuality?.issues ?? [];
-  const faceDetected =
-    !!scan.aiAnalysis?.face_overlay || findingCount > 0;
+  // faceDetected is now lenient: if the AI returned analysis at all,
+  // we treat that as evidence a face was visible. `face_overlay` being
+  // stripped by the validator (one bad landmark fails the whole overlay)
+  // should not cascade into "no face detected". A clean face with zero
+  // findings is also legitimate — that's "no focus area", not "no face".
+  const faceDetected = !!scan.aiAnalysis || findingCount > 0;
 
   const { usability, reasons, issues: mappedIssues } = classifyScanUsability({
     hasAnalysis: !!scan.aiAnalysis,
@@ -190,6 +230,25 @@ function buildQuality(
     findingCount,
     supportedFindingCount,
   });
+
+  // v33 — diagnostic trace at the single classification point. This is
+  // the one place the retake decision is made for the scan result, so
+  // it is the single trace point future debug sessions can follow.
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    // eslint-disable-next-line no-console
+    console.log('[Pura Scan QA] classify usability', {
+      scanId: scan.id,
+      hasAnalysis: !!scan.aiAnalysis,
+      hasFaceOverlay: !!scan.aiAnalysis?.face_overlay,
+      faceDetected,
+      rawConfidence: confidence,
+      issues,
+      findingCount,
+      supportedFindingCount,
+      usability,
+      reasons,
+    });
+  }
 
   const userMessage =
     usability === 'retake_required'
@@ -656,10 +715,17 @@ export function selectPossibleFindings(
  *   • `'none'`          — neither supported nor possible findings.
  *
  * Used by the conclusion screen to pick the right empty-state copy.
+ *
+ * Defensive: retake-required scans never surface "possible" copy — they
+ * own their own messaging via `RetakeRequiredScreen`. Without this
+ * gate, a caller other than `ScanResultsFaceScreen` could surface the
+ * "A clearer scan may reveal more" line on a scan that should be on
+ * the hard-retake path.
  */
 export function classifyFindingsPresence(
   response: ScanAnalysisResponse
 ): 'has_visible' | 'possible_only' | 'none' {
+  if (response.scanQuality.usability === 'retake_required') return 'none';
   const visible = selectVisibleFindings(response);
   if (visible.length > 0) return 'has_visible';
   const possible = selectPossibleFindings(response);

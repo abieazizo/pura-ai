@@ -805,32 +805,46 @@ export class OpenAIClient {
       'job is fast: look at the supplied photo and decide whether it ' +
       'is usable for a structured skin analysis. You return EXACTLY ' +
       'the JSON object specified by the schema. No prose.\n\n' +
-      'Hard rules:\n' +
-      '• face_present — true if a human face is clearly visible.\n' +
-      '• full_face_visible — true only if forehead, both cheeks, and ' +
-      'chin are all inside the frame. False if any of those is cut ' +
-      'off at an edge.\n' +
-      '• centered_enough — true if the face center is within roughly ' +
-      'the middle third of both axes.\n' +
-      '• lighting_ok — true if the face is evenly lit and skin ' +
-      'features are readable. False if too dark, too bright, or ' +
-      'heavily shadowed.\n' +
-      '• blur_ok — true if facial features are sharp enough to read ' +
-      'skin texture. False if the photo is motion-blurred or ' +
-      'out of focus.\n' +
+      'CALIBRATION (read this first):\n' +
+      'You are NOT a studio-photo gatekeeper. The downstream analyzer ' +
+      'is robust to ordinary phone selfies. Default to `ok` for any ' +
+      'photo where a human face is visibly readable, even if lighting ' +
+      'is imperfect, the angle is slight, or the framing is not ' +
+      'centered. Reserve a non-ok reason for cases where a reasonable ' +
+      'person would also say "I cannot read this skin from this ' +
+      'photo." Mild shadow, mild softness, slight crop, or slight ' +
+      'off-center → return `ok`.\n\n' +
+      'Field rules:\n' +
+      '• face_present — TRUE whenever a human face is visibly ' +
+      'identifiable. Use FALSE only when no face is in the frame at ' +
+      'all or the face is so obscured that a person could not point ' +
+      'to it.\n' +
+      '• full_face_visible — TRUE if forehead, cheeks, and chin are ' +
+      'mostly visible. A small crop at the top of the forehead or ' +
+      'just under the chin is acceptable. Use FALSE only when a ' +
+      'major facial region (whole forehead, an entire cheek, the ' +
+      'whole chin) is missing.\n' +
+      '• centered_enough — TRUE for any face occupying a reasonable ' +
+      'part of the frame. Slight off-center is fine. Only FALSE when ' +
+      'the face is jammed into a corner or barely visible.\n' +
+      '• lighting_ok — TRUE for any photo a person could read. Mild ' +
+      'shadow, indoor lighting, side light: all TRUE. Only FALSE for ' +
+      'photos that are nearly black or so blown-out that no skin ' +
+      'tone is readable.\n' +
+      '• blur_ok — TRUE for any photo where you can make out facial ' +
+      'features. Slight softness is FINE. Only FALSE for severe motion ' +
+      'blur or complete defocus.\n' +
       '• face_box — when face_present is true, return the face ' +
       'bounding box normalised to [0, 1] over the photo width/height. ' +
       'When false, return null.\n' +
-      '• reason — pick the SINGLE most-actionable failure, in this ' +
-      'priority order: no_face → partial_face → too_dark → ' +
-      'too_blurry → not_centered → unknown. Use "ok" only when every ' +
-      'other field above is true.\n' +
+      '• reason — return `ok` unless a field above is FALSE under the ' +
+      'strict definitions just given. Priority for the single reason: ' +
+      'no_face → partial_face → too_dark → too_blurry → not_centered → ' +
+      'unknown. When in doubt, return `ok` and let the analyzer make ' +
+      'the call.\n' +
       '• retry_message — one short, calm, premium sentence the user ' +
       'reads on the retry screen ("Try again with your full face ' +
-      'centered in the frame."). Empty string when reason is "ok".\n' +
-      '• Be conservative on lighting_ok / blur_ok: only fail when a ' +
-      'human would also struggle to read the photo. The downstream ' +
-      'analyzer is robust to mild conditions.';
+      'centered in the frame."). Empty string when reason is "ok".';
 
     const userContent = this.buildImageUserContent(
       params.imageBase64,

@@ -24,6 +24,8 @@ import { buildSafetyProfile } from '@/utils/safetyProfile';
 import type { ProductIdentity, ProductMatchResult } from '@/ai/ai-contracts';
 import type { ScanResultV2 } from '@/types/scanResultV2';
 
+declare const __DEV__: boolean | undefined;
+
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -138,11 +140,22 @@ export async function analyzeFaceScan(args: {
   // ── Primary path: real AI ──
   if (aiGateway.isAvailable()) {
     let imageBase64: string | null = null;
+    let imageReadError: string | null = null;
     try {
       imageBase64 = await readImageAsBase64(photoUri);
     } catch (e) {
+      imageReadError = e instanceof Error ? e.message : String(e);
       aiLog.warn('analyzeFaceScan', 'failed to read image bytes', {
-        error: e instanceof Error ? e.message : String(e),
+        error: imageReadError,
+      });
+    }
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[Pura Scan QA] image payload prepared', {
+        photoUri,
+        imagePayloadByteLength: imageBase64?.length ?? 0,
+        hasPayload: !!imageBase64,
+        imageReadError,
       });
     }
     if (imageBase64) {
@@ -221,10 +234,29 @@ export async function analyzeFaceScan(args: {
         if (v2Analysis) scan.v2Analysis = v2Analysis;
         return scan;
       }
+      // v33 — AI path was AVAILABLE but the call returned null
+      // (gateway error, validation error, network failure). This is
+      // a SERVICE FAILURE, not a photo-quality failure. Throwing here
+      // lets ScanAnalyzingFaceScreen catch it and surface
+      // `ScanServiceErrorScreen` instead of falling silently into the
+      // deterministic mock (which produces a scan without `aiAnalysis`,
+      // which then masquerades as `retake_required` because the
+      // translator reads `hasAnalysis: false`).
       aiLog.warn(
         'analyzeFaceScan',
-        'AI path failed (gateway/validation), using deterministic fallback',
+        'AI path failed (gateway/validation) — surfacing as service error',
         { scanId }
+      );
+      throw new Error(
+        'Analysis service did not return a usable result. Please try again.'
+      );
+    }
+    // imageBase64 was null — could not read photo bytes. This is also
+    // a service condition, not a photo-quality failure. Surface it as
+    // an error rather than falling through to the deterministic mock.
+    if (imageReadError) {
+      throw new Error(
+        `Could not read the captured photo bytes (${imageReadError}). Please try again.`
       );
     }
   }
