@@ -27,6 +27,15 @@ const LABEL_ORDER: Array<keyof ScoreBreakdownV2> = [
   'vitality',
 ];
 
+// Title-case display names — more legible than ALL CAPS at 12px.
+const LABEL_DISPLAY: Record<keyof ScoreBreakdownV2, string> = {
+  hydration: 'Hydration',
+  texture:   'Texture',
+  tone:      'Tone',
+  clarity:   'Clarity',
+  vitality:  'Vitality',
+};
+
 export interface ScoreBreakdownBarsProps {
   breakdown: ScoreBreakdownV2;
 }
@@ -45,7 +54,7 @@ export function ScoreBreakdownBars({ breakdown }: ScoreBreakdownBarsProps) {
       {LABEL_ORDER.map((key, i) => (
         <BarRow
           key={key}
-          label={key}
+          label={LABEL_DISPLAY[key]}
           value={safe(breakdown?.[key])}
           delay={i * 70}
         />
@@ -81,7 +90,7 @@ function BarRow({
   return (
     <View style={styles.row}>
       <Text style={styles.label} maxFontSizeMultiplier={1.2}>
-        {label.toUpperCase()}
+        {label}
       </Text>
       <View style={styles.track}>
         <Animated.View style={[styles.fill, animStyle]} />
@@ -103,9 +112,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   label: {
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: 'Inter-Medium',
     fontSize: 12,
-    letterSpacing: 0.8,
+    letterSpacing: 0.2,
     color: '#4A3D35',
     width: 78,
   },

@@ -228,6 +228,18 @@ export function SkinMapV2({
       </Svg>
       </Animated.View>
 
+      {/* Background tap target — rendered before dots so dots win on overlap.
+          Only active when a finding is selected; tapping empty face area
+          dismisses the selection (the only way to discover deselection). */}
+      {anySelected ? (
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => onSelect(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Deselect finding"
+        />
+      ) : null}
+
       {/* Dots — plain Animated.View circles positioned over the SVG.
           This is the Expo-Go-safe pattern: no animated SVG props. */}
       {dots.map((d, i) => (

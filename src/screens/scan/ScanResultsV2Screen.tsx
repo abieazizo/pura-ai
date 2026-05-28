@@ -311,6 +311,9 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
         {/* 4. Skin map */}
         <Animated.View style={sectionMap}>
           <View style={styles.mapBlock}>
+            <Text style={styles.mapSectionLabel} maxFontSizeMultiplier={1.1}>
+              Where we found it
+            </Text>
             <SkinMapV2
               findings={sortedFindings}
               selectedFindingId={selectedId}
@@ -376,11 +379,13 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
 
 // ── FilterRow ───────────────────────────────────────────────────────────────
 
+// Ordered low → high to match the SkinMapLegend below the face map,
+// so the visual language stays consistent across both surfaces.
 const FILTER_OPTIONS: { key: SeverityFilter; label: string }[] = [
   { key: 'all',        label: 'All' },
-  { key: 'pronounced', label: 'Pronounced' },
-  { key: 'moderate',   label: 'Moderate' },
   { key: 'mild',       label: 'Mild' },
+  { key: 'moderate',   label: 'Moderate' },
+  { key: 'pronounced', label: 'Pronounced' },
 ];
 
 function FilterRow({
@@ -515,6 +520,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
     marginBottom: 28,
+  },
+  mapSectionLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 1.1,
+    color: 'rgba(60,40,30,0.45)',
+    textTransform: 'uppercase',
+    marginBottom: 16,
+    alignSelf: 'center',
   },
   findingsBlock: {
     marginTop: 12,
