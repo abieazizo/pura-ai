@@ -47,6 +47,8 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 declare const __DEV__: boolean | undefined;
 
+type SeverityFilter = 'all' | 'pronounced' | 'moderate' | 'mild';
+
 export interface ScanResultsV2ScreenProps {
   scanId: string;
   /** Called when the user taps the close (✕) button. Falls back to
@@ -76,6 +78,58 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
     if (!v2) return [];
     return [...v2.findings].sort((a, b) => b.severity - a.severity);
   }, [v2]);
+
+  // ── Score delta (scan-to-scan comparison) ────────────────────────────────
+  // Walk backwards through scans to find the most recent one that has a v2
+  // score. Used to populate the comparison notch on the arc + delta caption.
+  const prevScan = useMemo(() => {
+    const idx = scans.findIndex((s) => s.id === (scan?.id ?? ''));
+    if (idx <= 0) return null;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (typeof scans[i].v2Analysis?.overall_score === 'number') return scans[i];
+    }
+    return null;
+  }, [scans, scan?.id]);
+
+  const prevScore: number | null =
+    typeof prevScan?.v2Analysis?.overall_score === 'number'
+      ? prevScan.v2Analysis.overall_score
+      : null;
+
+  const deltaCaption = useMemo<string | null>(() => {
+    if (prevScore === null || !v2) return null;
+    const delta = Math.round(v2.overall_score) - Math.round(prevScore);
+    if (Math.abs(delta) < 1) return 'Same as last scan';
+    const sign = delta > 0 ? '+' : '';
+    return `${sign}${delta} since last scan`;
+  }, [prevScore, v2]);
+  // ── End score delta ───────────────────────────────────────────────────────
+
+  // ── Severity filter ───────────────────────────────────────────────────────
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all');
+
+  const filteredFindings = useMemo<ScanFindingV2[]>(() => {
+    if (severityFilter === 'all') return sortedFindings;
+    switch (severityFilter) {
+      case 'pronounced': return sortedFindings.filter((f) => f.severity >= 4);
+      case 'moderate':   return sortedFindings.filter((f) => f.severity === 3);
+      case 'mild':       return sortedFindings.filter((f) => f.severity <= 2);
+    }
+  }, [sortedFindings, severityFilter]);
+
+  // Sync selection + expansion state to the active filter — deselect items
+  // that are no longer visible so the map + card focus stays coherent.
+  useEffect(() => {
+    if (selectedId && !filteredFindings.find((f) => f.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [filteredFindings, selectedId]);
+  useEffect(() => {
+    if (expandedId && !filteredFindings.find((f) => f.id === expandedId)) {
+      setExpandedId(null);
+    }
+  }, [filteredFindings, expandedId]);
+  // ── End severity filter ───────────────────────────────────────────────────
 
   const handleSelect = useCallback(
     (id: string | null) => {
@@ -228,6 +282,8 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
               size={200}
               showTier
               delay={120}
+              previousValue={prevScore}
+              deltaCaption={deltaCaption}
               onRevealComplete={handleRevealComplete}
             />
           </View>
@@ -265,16 +321,27 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
           </View>
         </Animated.View>
 
-        {/* 5. Findings list — each card staggers its own entrance */}
+        {/* 5. Findings list — filter row + staggered cards */}
         <View style={styles.findingsBlock}>
-          {sortedFindings.map((f, i) => (
+          <FilterRow
+            value={severityFilter}
+            onChange={(v) => { hapt.select(); setSeverityFilter(v); }}
+          />
+          {filteredFindings.length === 0 ? (
+            <View style={styles.filterEmpty}>
+              <Text style={styles.filterEmptyText}>
+                {`No ${severityFilter} findings in this scan.`}
+              </Text>
+            </View>
+          ) : null}
+          {filteredFindings.map((f, i) => (
             <FindingCardV2
               key={f.id}
               finding={f}
               expanded={expandedId === f.id}
               selected={selectedId === f.id}
               onPress={() => handleCardTap(f.id)}
-              entranceDelay={1080 + i * 60}
+              entranceDelay={severityFilter === 'all' ? 1080 + i * 60 : i * 50}
             />
           ))}
         </View>
@@ -306,6 +373,78 @@ export function ScanResultsV2Screen({ scanId, onClose }: ScanResultsV2ScreenProp
     </SafeAreaView>
   );
 }
+
+// ── FilterRow ───────────────────────────────────────────────────────────────
+
+const FILTER_OPTIONS: { key: SeverityFilter; label: string }[] = [
+  { key: 'all',        label: 'All' },
+  { key: 'pronounced', label: 'Pronounced' },
+  { key: 'moderate',   label: 'Moderate' },
+  { key: 'mild',       label: 'Mild' },
+];
+
+function FilterRow({
+  value,
+  onChange,
+}: {
+  value: SeverityFilter;
+  onChange: (v: SeverityFilter) => void;
+}) {
+  return (
+    <View style={filterStyles.row}>
+      {FILTER_OPTIONS.map(({ key, label }) => {
+        const active = value === key;
+        return (
+          <Pressable
+            key={key}
+            onPress={() => onChange(key)}
+            style={[filterStyles.chip, active && filterStyles.chipActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`Show ${label} findings`}
+            hitSlop={4}
+          >
+            <Text
+              style={[filterStyles.chipText, active && filterStyles.chipTextActive]}
+              maxFontSizeMultiplier={1.15}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const filterStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: 'rgba(60,40,30,0.18)',
+    backgroundColor: 'transparent',
+  },
+  chipActive: {
+    backgroundColor: '#2A1E18',
+    borderColor: '#2A1E18',
+  },
+  chipText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#4A3D35',
+  },
+  chipTextActive: {
+    color: '#FFFFFF',
+  },
+});
 
 const styles = StyleSheet.create({
   root: {
@@ -379,6 +518,16 @@ const styles = StyleSheet.create({
   },
   findingsBlock: {
     marginTop: 12,
+  },
+  filterEmpty: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  filterEmptyText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: 'rgba(60,40,30,0.45)',
+    textAlign: 'center',
   },
   ctaWrap: {
     position: 'absolute',
