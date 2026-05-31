@@ -158,14 +158,18 @@ function answerFor(
     (window as any).__puraStaticError__ === true;
   if (forceError || lower.includes('__error__')) {
     return {
-      eyebrow: 'PURA · UNAVAILABLE',
+      eyebrow: 'GROUNDED IN TONIGHT’S SCAN',
       blocks: [
         {
+          kind: 'text',
+          text:
+            'Tonight’s reading shows activity concentrated on your chin, with the rest of your skin reading calm. That suggests your barrier is mostly intact — just one area is asking for a',
+        },
+        {
           kind: 'error',
-          lead: 'I lost the thread for a moment.',
-          body:
-            'My reading of tonight’s scan didn’t come through. Try again, or check back after your next scan — I’ll be more useful with fresh data.',
-          retryLabel: 'Ask again',
+          lead: 'Couldn’t finish that thought.',
+          body: 'The connection dropped mid-answer.',
+          retryLabel: 'Try again',
         },
       ],
     };
@@ -690,16 +694,10 @@ function MessageRow({
         }
         style={styles.userRow}
       >
-        <View style={styles.userBlock}>
-          <View style={styles.userInner}>
-            <Text style={styles.userLabel} maxFontSizeMultiplier={1.15}>
-              YOU ASKED
-            </Text>
-            <Text style={styles.userText} maxFontSizeMultiplier={1.3}>
-              {message.text}
-            </Text>
-          </View>
-          <View style={styles.userRule} />
+        <View style={styles.userBubble}>
+          <Text style={styles.userText} maxFontSizeMultiplier={1.3}>
+            {message.text}
+          </Text>
         </View>
       </Animated.View>
     );
@@ -708,6 +706,7 @@ function MessageRow({
     return (
       <Animated.View
         entering={reduceMotion ? undefined : FadeIn.duration(220)}
+        exiting={reduceMotion ? undefined : FadeOut.duration(240)}
         style={styles.assistantRow}
       >
         <ThinkingState reduceMotion={reduceMotion} />
@@ -733,37 +732,90 @@ function AssistantTurn({
   message: Extract<Message, { kind: 'assistant' }>;
   reduceMotion: boolean;
 }) {
+  // Streaming choreography:
+  //  1. Eyebrow appears immediately (it identifies the source).
+  //  2. Text blocks stream one after another, each waiting for the
+  //     previous to complete (cursor blinks at leading edge).
+  //  3. Once all text blocks are done, rich blocks (product, routine,
+  //     followups, error) fade in below.
+  //
+  // Tests / design audits can disable streaming by setting
+  //   window.__puraStaticStream__ = true
+  // — useful for the mid-stream screenshot capture.
+  const staticStream =
+    typeof window !== 'undefined' && (window as any).__puraStaticStream__ === true;
+  const textBlockIndices = useMemo(
+    () => message.blocks.map((b, i) => (b.kind === 'text' ? i : -1)).filter((i) => i >= 0),
+    [message.blocks],
+  );
+  const [streamedTextCount, setStreamedTextCount] = useState(
+    reduceMotion ? textBlockIndices.length : 0,
+  );
+  const allTextStreamed = streamedTextCount >= textBlockIndices.length;
+
   return (
     <View style={styles.assistantTurn}>
-      <View style={styles.assistantRule} />
-      <View style={styles.assistantInner}>
-        <Text style={styles.assistantEyebrow} maxFontSizeMultiplier={1.15}>
-          {message.eyebrow}
-        </Text>
-        <View style={styles.assistantBlocks}>
-          {message.blocks.map((b, i) => (
+      <Text style={styles.assistantEyebrow} maxFontSizeMultiplier={1.15}>
+        {message.eyebrow}
+      </Text>
+      <View style={styles.assistantBlocks}>
+        {message.blocks.map((b, i) => {
+          if (b.kind === 'text') {
+            const textIdx = textBlockIndices.indexOf(i);
+            const shouldStream = !reduceMotion && !staticStream && textIdx === streamedTextCount;
+            const alreadyDone = !reduceMotion && !staticStream && textIdx < streamedTextCount;
+            const notYet = !reduceMotion && !staticStream && textIdx > streamedTextCount;
+            if (notYet) return null;
+            return (
+              <View key={i}>
+                <BlockView
+                  block={b}
+                  isStreaming={shouldStream}
+                  onStreamComplete={() => setStreamedTextCount((c) => c + 1)}
+                />
+              </View>
+            );
+          }
+          // Rich blocks (product, routine, followups, error) wait until
+          // all text blocks finish streaming, then fade in.
+          if (!allTextStreamed) return null;
+          return (
             <Animated.View
               key={i}
               entering={
                 reduceMotion
                   ? undefined
                   : FadeInUp.duration(420)
-                      .delay(120 + i * 140)
+                      .delay(100)
                       .easing(Easing.out(Easing.cubic))
               }
             >
               <BlockView block={b} />
             </Animated.View>
-          ))}
-        </View>
+          );
+        })}
       </View>
     </View>
   );
 }
 
-function BlockView({ block }: { block: AssistantBlock }) {
+function BlockView({
+  block,
+  isStreaming,
+  onStreamComplete,
+}: {
+  block: AssistantBlock;
+  isStreaming?: boolean;
+  onStreamComplete?: () => void;
+}) {
   if (block.kind === 'text') {
-    return (
+    return isStreaming ? (
+      <StreamingText
+        text={block.text}
+        style={styles.assistantText}
+        onComplete={onStreamComplete}
+      />
+    ) : (
       <Text style={styles.assistantText} maxFontSizeMultiplier={1.3}>
         {block.text}
       </Text>
@@ -780,6 +832,110 @@ function BlockView({ block }: { block: AssistantBlock }) {
   return null;
 }
 
+// ============================================================================
+// Streaming text — reveals tokens with calm cadence
+//
+// The design layer: tokens (words) arrive every ~28ms. After a sentence
+// terminator (. ? !) we pause ~100ms before the next word. After a
+// paragraph break (\n\n) we pause ~200ms. A thin Pura Blue cursor sits
+// at the leading edge while streaming, blinking ~750ms; it disappears
+// when streaming completes.
+//
+// In production this same component would receive tokens from the
+// streaming endpoint instead of slicing a pre-known string — the visual
+// cadence is what matters, and it's identical either way.
+// ============================================================================
+
+function StreamingText({
+  text,
+  style,
+  onComplete,
+}: {
+  text: string;
+  style: object;
+  onComplete?: () => void;
+}) {
+  const reduceMotion = useReduceMotion();
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [complete, setComplete] = useState(false);
+
+  // Pre-split the text into words+separators so we can advance one token
+  // at a time without breaking word boundaries.
+  const tokens = useMemo(() => {
+    const out: string[] = [];
+    const re = /\S+|\s+/g;
+    let m;
+    while ((m = re.exec(text)) !== null) out.push(m[0]);
+    return out;
+  }, [text]);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setVisibleCount(tokens.length);
+      setComplete(true);
+      onComplete?.();
+      return;
+    }
+    let cancelled = false;
+    let i = 0;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      if (cancelled) return;
+      i += 1;
+      setVisibleCount(i);
+      if (i >= tokens.length) {
+        setComplete(true);
+        onComplete?.();
+        return;
+      }
+      const just = tokens[i - 1] ?? '';
+      // Cadence:
+      //  • after a paragraph break (whitespace token containing "\n\n") → 200ms
+      //  • after a sentence terminator (last visible non-space ends in . ? ! ;) → 100ms
+      //  • default token → 28ms (the natural word-by-word rhythm)
+      let delay = 28;
+      if (/\n\n/.test(just)) delay = 200;
+      else if (/[.?!;]"?$/.test(just.trim())) delay = 110;
+      timeout = setTimeout(tick, delay);
+    };
+    timeout = setTimeout(tick, 28);
+    return () => {
+      cancelled = true;
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [tokens, reduceMotion, onComplete]);
+
+  const visible = useMemo(() => tokens.slice(0, visibleCount).join(''), [tokens, visibleCount]);
+
+  return (
+    <Text style={style as any} maxFontSizeMultiplier={1.3}>
+      {visible}
+      {!complete ? <Cursor /> : null}
+    </Text>
+  );
+}
+
+function Cursor() {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0, { duration: 360, easing: Easing.inOut(Easing.quad) }),
+        withTiming(1, { duration: 360, easing: Easing.inOut(Easing.quad) }),
+      ),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(opacity);
+  }, [opacity]);
+  const aStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.Text style={[styles.streamCursor, aStyle]} maxFontSizeMultiplier={1.3}>
+      ▍
+    </Animated.Text>
+  );
+}
+
 function ErrorBlock({
   lead,
   body,
@@ -790,27 +946,25 @@ function ErrorBlock({
   retryLabel: string;
 }) {
   return (
-    <View style={styles.errorBlock}>
-      <Text style={styles.errorLead} maxFontSizeMultiplier={1.2}>
-        {lead}
-      </Text>
-      <Text style={styles.errorBody} maxFontSizeMultiplier={1.25}>
-        {body}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={retryLabel}
-        onPress={() => hapt.tap()}
-        style={({ pressed }) => [styles.errorRetry, pressed && { opacity: 0.65 }]}
-        hitSlop={6}
-      >
-        <Text style={styles.errorRetryText} maxFontSizeMultiplier={1.2}>
-          {retryLabel}
+    <View style={styles.errorInline}>
+      <View style={styles.errorInlineRule} />
+      <View style={styles.errorInlineCopy}>
+        <Text style={styles.errorInlineLead} maxFontSizeMultiplier={1.2}>
+          {lead}
+          <Text style={styles.errorInlineBody}> {body}</Text>
         </Text>
-        <Text style={styles.errorRetryArrow} maxFontSizeMultiplier={1.2}>
-          ↻
-        </Text>
-      </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={retryLabel}
+          onPress={() => hapt.tap()}
+          hitSlop={6}
+          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.errorInlineRetry} maxFontSizeMultiplier={1.2}>
+            {retryLabel}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -820,47 +974,57 @@ function ErrorBlock({
 // ============================================================================
 
 function ThinkingState({ reduceMotion }: { reduceMotion: boolean }) {
-  const progress = useSharedValue(0);
+  // Luminance — a single 1px Pura Blue line that pulses opacity 0.3 → 1.0 → 0.3
+  // over ~1.4s. NOT a progress bar (no fill, no completion). Positioned
+  // exactly where the first character of the response will appear so the
+  // handoff to streaming text feels seamless.
+  //
+  // If the first token hasn't arrived after 15s, a quiet italic "Still
+  // thinking…" line appears below the luminance — acknowledges the wait
+  // without panic.
+  const lum = useSharedValue(0.35);
+  const [longWait, setLongWait] = useState(
+    typeof window !== 'undefined' && (window as any).__puraStaticLongWait__ === true,
+  );
 
   useEffect(() => {
     if (reduceMotion) {
-      progress.value = 0.6;
+      lum.value = 0.7;
       return;
     }
-    // Progress sweep: 0 → 1 over 2.4s, then quick reset. Loops indefinitely.
-    progress.value = withRepeat(
+    lum.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 2400, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
-        withTiming(0, { duration: 280, easing: Easing.bezier(0.4, 0, 1, 1) }),
+        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+        withTiming(0.3, { duration: 700, easing: Easing.inOut(Easing.quad) }),
       ),
       -1,
       false,
     );
-    return () => cancelAnimation(progress);
-  }, [reduceMotion, progress]);
+    const t = setTimeout(() => setLongWait(true), 15000);
+    return () => {
+      cancelAnimation(lum);
+      clearTimeout(t);
+    };
+  }, [reduceMotion, lum]);
 
-  const fillStyle = useAnimatedStyle(() => ({
-    width: `${progress.value * 100}%`,
-  }));
+  const lumStyle = useAnimatedStyle(() => ({ opacity: lum.value }));
 
   return (
     <View
       style={styles.thinkingWrap}
-      accessibilityLabel="Pura is reading tonight’s scan"
+      accessibilityLabel="Pura is thinking"
       accessibilityRole="text"
     >
-      <View style={styles.thinkingRule} />
-      <View style={styles.thinkingInner}>
-        <Text style={styles.thinkingEyebrow} maxFontSizeMultiplier={1.15}>
-          PURA · THINKING
-        </Text>
-        <Text style={styles.thinkingPhrase} maxFontSizeMultiplier={1.2}>
-          Reading tonight’s scan, your routine, the recent trend.
-        </Text>
-        <View style={styles.thinkingTrack}>
-          <Animated.View style={[styles.thinkingFill, fillStyle]} />
-        </View>
-      </View>
+      <Animated.View style={[styles.thinkingLuminance, lumStyle]} />
+      {longWait ? (
+        <Animated.Text
+          entering={reduceMotion ? undefined : FadeIn.duration(320)}
+          style={styles.thinkingLong}
+          maxFontSizeMultiplier={1.2}
+        >
+          Still thinking…
+        </Animated.Text>
+      ) : null}
     </View>
   );
 }
@@ -1076,11 +1240,9 @@ function Composer({
   }));
 
   const placeholder = useMemo(() => {
-    if (conversationActive) return 'Write a follow-up';
-    if (!observation.scanCompleted)
-      return 'Write to Pura about a product, or your skin tonight';
-    return 'Write to Pura about tonight';
-  }, [conversationActive, observation.scanCompleted]);
+    if (conversationActive) return 'Ask a follow-up…';
+    return 'Ask about your skin…';
+  }, [conversationActive]);
 
   // Constrain growth: 1 line ≈ 24px, cap at ~5 lines.
   const computedInputHeight = Math.min(Math.max(inputHeight, 24), 120);
@@ -1089,32 +1251,26 @@ function Composer({
     <View
       style={[
         styles.composerWrap,
-        { paddingBottom: 14 + Math.max(bottomInset, 0) },
+        { paddingBottom: 16 + Math.max(bottomInset, 0) },
       ]}
       pointerEvents="box-none"
     >
       <View style={styles.composerCanvasBackdrop} pointerEvents="none" />
       <View style={[styles.composer, focused && styles.composerFocused]}>
-        <Text style={styles.composerLeadMark} maxFontSizeMultiplier={1.15}>
-          {conversationActive ? '—' : '+'}
-        </Text>
         <TextInput
           ref={inputRef}
           value={value}
           onChangeText={onChange}
           placeholder={placeholder}
           placeholderTextColor={puraColors.muted}
-          style={[
-            styles.composerInput,
-            { height: computedInputHeight },
-          ]}
+          style={[styles.composerInput, { height: computedInputHeight }]}
           multiline
           onFocus={() => onFocusChange(true)}
           onBlur={() => onFocusChange(false)}
           onContentSizeChange={(e) =>
             onInputHeight(e.nativeEvent.contentSize.height)
           }
-          accessibilityLabel="Write to Pura"
+          accessibilityLabel="Ask Pura"
           maxFontSizeMultiplier={1.25}
           underlineColorAndroid="transparent"
           returnKeyType="send"
@@ -1134,7 +1290,7 @@ function Composer({
               styles.sendBtn,
               pressed && canSend && { opacity: 0.7 },
             ]}
-            hitSlop={8}
+            hitSlop={6}
           >
             <Text
               style={[
@@ -1303,52 +1459,23 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     maxWidth: '82%',
   },
-  userBlock: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  userInner: {
-    flex: 1,
-    paddingRight: 12,
-    paddingVertical: 2,
-    alignItems: 'flex-end',
-  },
-  userLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9.5,
-    letterSpacing: 1.8,
-    color: puraColors.muted,
-    marginBottom: 4,
+  userBubble: {
+    backgroundColor: 'rgba(20, 124, 255, 0.08)',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   userText: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 19,
-    lineHeight: 26,
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    lineHeight: 23,
     color: puraColors.ink,
-    letterSpacing: -0.2,
-    textAlign: 'right',
-  },
-  userRule: {
-    width: 2,
-    backgroundColor: puraColors.clayDeep,
-    borderRadius: 1,
+    letterSpacing: -0.15,
   },
 
-  // ---- Assistant turn (left-anchored with left terracotta rule) ----
+  // ---- Assistant turn — clean editorial text, NO container, NO rule ----
   assistantRow: { alignSelf: 'stretch' },
   assistantTurn: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    paddingRight: 4,
-  },
-  assistantRule: {
-    width: 2,
-    backgroundColor: puraColors.clayDeep,
-    borderRadius: 1,
-    marginRight: 14,
-  },
-  assistantInner: {
-    flex: 1,
     paddingVertical: 2,
     gap: 12,
   },
@@ -1361,29 +1488,38 @@ const styles = StyleSheet.create({
   assistantBlocks: { gap: 14 },
   assistantText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 15.5,
-    lineHeight: 24,
-    color: puraColors.inkSecondary,
-    letterSpacing: -0.1,
+    fontSize: 16.5,
+    lineHeight: 26,
+    color: puraColors.ink,
+    letterSpacing: -0.15,
+  },
+  streamCursor: {
+    color: puraColors.clay,
+    fontFamily: 'Inter-Regular',
+    fontSize: 16.5,
+    lineHeight: 26,
+    letterSpacing: -0.15,
   },
 
-  // ---- Thinking state (editorial progress line) ----
+  // ---- Thinking state — single luminance line, positioned where text will start ----
   thinkingWrap: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    paddingRight: 4,
-    paddingVertical: 2,
+    paddingTop: 6,
+    paddingBottom: 6,
+    alignItems: 'flex-start',
   },
-  thinkingRule: {
-    width: 2,
-    backgroundColor: puraColors.clayDeep,
-    borderRadius: 1,
-    marginRight: 14,
+  thinkingLuminance: {
+    height: 1,
+    width: 120,
+    backgroundColor: puraColors.clay,
+    borderRadius: 0.5,
   },
-  thinkingInner: {
-    flex: 1,
-    paddingVertical: 2,
-    gap: 8,
+  thinkingLong: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14.5,
+    lineHeight: 20,
+    color: puraColors.muted,
+    marginTop: 10,
+    letterSpacing: -0.1,
   },
   thinkingEyebrow: {
     fontFamily: 'Inter-SemiBold',
@@ -1616,52 +1752,47 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ---- Error block ----
-  errorBlock: {
-    backgroundColor: puraColors.surfaceQuiet,
-    borderRadius: 18,
-    padding: 18,
-    gap: 10,
-  },
-  errorLead: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 22,
-    lineHeight: 28,
-    color: puraColors.clayDeep,
-    letterSpacing: -0.3,
-  },
-  errorBody: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 21,
-    color: puraColors.inkSecondary,
-    letterSpacing: -0.05,
-  },
-  errorRetry: {
+  // ---- Inline error notice — sits beneath partial response ----
+  errorInline: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    alignSelf: 'flex-start',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingTop: 4,
+    paddingBottom: 4,
     marginTop: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: puraColors.ink,
   },
-  errorRetryText: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 15,
-    lineHeight: 18,
-    color: puraColors.ink,
+  errorInlineRule: {
+    width: 2,
+    minHeight: 24,
+    alignSelf: 'stretch',
+    backgroundColor: puraColors.faint,
+    borderRadius: 1,
+  },
+  errorInlineCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  errorInlineLead: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: puraColors.muted,
     letterSpacing: -0.1,
   },
-  errorRetryArrow: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 16,
-    lineHeight: 18,
-    color: puraColors.clayDeep,
+  errorInlineBody: {
+    fontFamily: 'Inter-Regular',
+    color: puraColors.muted,
+  },
+  errorInlineRetry: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: puraColors.clay,
+    letterSpacing: -0.1,
+    textDecorationLine: 'underline',
   },
 
-  // ---- Composer (editorial command bar — bottom-rule, no pill) ----
+  // ---- Composer — contained Porcelain-tinted field, Pura Blue focus ----
   composerWrap: {
     position: 'absolute',
     left: 0,
@@ -1682,56 +1813,56 @@ const styles = StyleSheet.create({
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 10,
-    paddingHorizontal: 4,
-    paddingBottom: 10,
-    paddingTop: 10,
-    borderBottomWidth: 1.5,
-    borderBottomColor: puraColors.ink,
+    gap: 8,
+    paddingLeft: 18,
+    paddingRight: 8,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: puraColors.canvasWarm,
+    borderWidth: 1,
+    borderColor: puraColors.line,
   },
   composerFocused: {
-    borderBottomColor: puraColors.clayDeep,
-  },
-  composerLeadMark: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 22,
-    lineHeight: 26,
-    color: puraColors.clayDeep,
-    width: 16,
-    textAlign: 'center',
-    paddingBottom: 0,
+    borderColor: puraColors.clay,
+    backgroundColor: puraColors.surface,
+    shadowColor: '#147CFF',
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   composerInput: {
     flex: 1,
     fontFamily: 'Inter-Regular',
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: 22,
     color: puraColors.ink,
-    paddingHorizontal: 4,
-    paddingTop: Platform.OS === 'ios' ? 4 : 4,
-    paddingBottom: Platform.OS === 'ios' ? 4 : 4,
-    minHeight: 26,
+    paddingTop: Platform.OS === 'ios' ? 6 : 4,
+    paddingBottom: Platform.OS === 'ios' ? 6 : 4,
+    minHeight: 28,
     // RN Web: suppress browser default focus ring
     ...(Platform.OS === 'web'
       ? ({ outlineStyle: 'none' as any, outlineWidth: 0 as any } as object)
       : {}),
   },
   sendBtn: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   sendArrow: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 26,
-    lineHeight: 28,
+    fontSize: 24,
+    lineHeight: 26,
   },
   sendArrowIdle: {
-    color: puraColors.muted,
+    color: puraColors.faint,
   },
   sendArrowActive: {
-    color: puraColors.clayDeep,
+    color: puraColors.clay,
   },
 });
 

@@ -23,6 +23,17 @@ export function RootNavigator() {
   // Dev helpers (`devLoadPopulated`, `devResetToNewUser`) also set it.
   const hasOnboarded = useAppStore((s) => s.onboardingComplete);
 
+  // Dev-only: seed a fresh pre-scan state when the browser has no
+  // persisted store (new preview context). Prevents the Onboarding
+  // Splash from blocking Playwright's JS execution via camera init.
+  // No-op in production (__DEV__ is tree-shaken).
+  React.useEffect(() => {
+    if (__DEV__ && !hasOnboarded) {
+      useAppStore.getState().devResetToNewUser();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <Stack.Navigator
       screenOptions={{
