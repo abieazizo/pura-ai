@@ -49,7 +49,6 @@ import type { ShopCatalogProduct } from '../shopCatalog';
 import type { MatchedFactor } from '../personalization';
 import { ProductPackshot } from './ProductPackshot';
 import { AddButton } from './AddButton';
-import { MatchedTags } from './MatchedTags';
 
 export interface HeroProductCardProps {
   product: ShopCatalogProduct;
@@ -74,7 +73,6 @@ export function HeroProductCard({
   height,
   badgeLabel = "Editor's pick",
   matchPercent,
-  factors,
   hasRealPersonalization = false,
   isInRoutine,
   onPress,
@@ -101,12 +99,13 @@ export function HeroProductCard({
   const imageH = Math.round(height * 0.48);
 
   // The match claim is only honest when it's backed by real signal. We no
-  // longer paint it as an orb — it gates the "why it fits" reason line and
-  // the accessibility match phrase only.
+  // longer paint it as an orb OR as factor chips on the card — the matched
+  // traits already live as prose in the status sentence above the hero, and
+  // the kicker ("Your top match") earns the personalization claim. Here it
+  // gates the accessibility match phrase only, so the visible plate stays a
+  // clean editorial essence line with zero chips.
   const matchScore = matchPercent ?? 0;
   const showMatch = hasRealPersonalization && matchScore > 0;
-  const realFactors = (factors ?? []).filter((f) => f.kind !== 'baseline');
-  const showFactors = showMatch && realFactors.length > 0;
 
   // Prefer the short name on the hero so the serif headline stays on one
   // confident line; the full name is the fallback.
@@ -169,13 +168,10 @@ export function HeroProductCard({
               {heroName}
             </Text>
 
-            {/* One reason row: matched factors when we've earned the
-                claim, otherwise the editorial benefit line. */}
-            {showFactors ? (
-              <View style={styles.reason}>
-                <MatchedTags factors={realFactors} showKicker={false} limit={2} />
-              </View>
-            ) : product.benefitLine ? (
+            {/* One essence line — the product's benefit, as prose. Never
+                chips: the personalization story is told by the kicker and the
+                status sentence, so the plate stays editorial and uncluttered. */}
+            {product.benefitLine ? (
               <Text
                 style={styles.benefit}
                 maxFontSizeMultiplier={1.15}
@@ -284,9 +280,6 @@ const styles = StyleSheet.create({
     ...puraShopType.benefitLine,
     color: puraShop.inkSecondary,
     marginTop: 4,
-  },
-  reason: {
-    marginTop: 7,
   },
   footer: {
     marginTop: 'auto',
