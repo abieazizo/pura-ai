@@ -29,7 +29,7 @@
  * don't break.
  */
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -76,6 +76,13 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
 
+  // Resilience: when true, the screen renders in its final, fully-visible
+  // state WITHOUT depending on the Reanimated entrance animation. Guards
+  // against runtimes that don't drive mount animations to completion
+  // (observed on web), which would otherwise leave the cards and the
+  // Begin CTA stuck at opacity 0 — trapping the user on this screen.
+  const [settled, setSettled] = useState(false);
+
   // Shared values per card — flip rotation and opacity.
   const cardA = useSharedValue(0);
   const cardB = useSharedValue(0);
@@ -88,6 +95,7 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
       cardB.value = 1;
       cardC.value = 1;
       cta.value = 1;
+      setSettled(true);
       return;
     }
     const flip = (sv: typeof cardA, delay: number) => {
@@ -106,11 +114,20 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
       CTA_DELAY,
       withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) })
     );
+    // Safety net: if the entrance animation never runs to completion, force
+    // the final visible state shortly after it *should* have finished. This
+    // is a plain timer + React state — it does NOT rely on Reanimated, so it
+    // still fires on runtimes where the animation itself silently no-ops.
+    const settleTimer = setTimeout(
+      () => setSettled(true),
+      CTA_DELAY + 500 + 400
+    );
     return () => {
       cancelAnimation(cardA);
       cancelAnimation(cardB);
       cancelAnimation(cardC);
       cancelAnimation(cta);
+      clearTimeout(settleTimer);
     };
   }, [reduceMotion, cardA, cardB, cardC, cta]);
 
@@ -132,6 +149,16 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
   const sharedValues = useMemo(
     () => [cardA, cardB, cardC] as const,
     [cardA, cardB, cardC]
+  );
+
+  const beginButton = (
+    <PrimaryButton
+      label="Begin."
+      onPress={begin}
+      serif
+      tone="accent"
+      accessibilityLabel="Begin scan"
+    />
   );
 
   return (
@@ -162,26 +189,34 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
               question={spec.question}
               progress={sharedValues[i]}
               index={spec.index}
+              settled={settled}
             />
           ))}
         </View>
 
-        {/* Begin CTA — fades in after the third card lands. */}
-        <Animated.View
-          style={[
-            styles.footer,
-            { paddingBottom: Math.max(24, insets.bottom + 12) },
-            ctaStyle,
-          ]}
-        >
-          <PrimaryButton
-            label="Begin."
-            onPress={begin}
-            serif
-            tone="accent"
-            accessibilityLabel="Begin scan"
-          />
-        </Animated.View>
+        {/* Begin CTA — fades in after the third card lands. Once `settled`
+            we drop the animated wrapper for a plain View, so the button is
+            guaranteed visible and tappable even if the fade-in never ran. */}
+        {settled ? (
+          <View
+            style={[
+              styles.footer,
+              { paddingBottom: Math.max(24, insets.bottom + 12) },
+            ]}
+          >
+            {beginButton}
+          </View>
+        ) : (
+          <Animated.View
+            style={[
+              styles.footer,
+              { paddingBottom: Math.max(24, insets.bottom + 12) },
+              ctaStyle,
+            ]}
+          >
+            {beginButton}
+          </Animated.View>
+        )}
       </SafeAreaView>
     </View>
   );
@@ -195,9 +230,12 @@ interface QuestionCardProps {
   /** Kept on the type for a11y / analytics extension; not used in
    *  render after Pass 7 removed the order pip. */
   index: number;
+  /** When true, render statically (no animation dependency). See the
+   *  settle fallback in ScanTutorial's mount effect. */
+  settled: boolean;
 }
 
-function QuestionCard({ question, progress, index }: QuestionCardProps) {
+function QuestionCard({ question, progress, index, settled }: QuestionCardProps) {
   void index; // see prop doc above
   const style = useAnimatedStyle(() => {
     // Flip animation: rotateX from -42° to 0°, opacity 0→1, translateY
@@ -213,17 +251,22 @@ function QuestionCard({ question, progress, index }: QuestionCardProps) {
     };
   });
 
-  return (
-    <Animated.View style={[cardStyles.card, style]}>
-      {/* Pass 7 — order pip removed. The three cards already imply
-          sequence through the flip choreography; the pip was over-
-          designed and competed for attention with the question. The
-          question now owns the card. */}
-      <Text style={cardStyles.question} maxFontSizeMultiplier={1.15}>
-        {question}
-      </Text>
-    </Animated.View>
+  // Pass 7 — order pip removed. The three cards already imply sequence
+  // through the flip choreography; the pip was over-designed and competed
+  // for attention with the question. The question now owns the card.
+  const content = (
+    <Text style={cardStyles.question} maxFontSizeMultiplier={1.15}>
+      {question}
+    </Text>
   );
+
+  // Settled: a plain View with the card's resting appearance (opacity 1,
+  // no transform) — guaranteed visible even if the entrance never ran.
+  if (settled) {
+    return <View style={cardStyles.card}>{content}</View>;
+  }
+
+  return <Animated.View style={[cardStyles.card, style]}>{content}</Animated.View>;
 }
 
 
