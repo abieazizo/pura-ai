@@ -230,10 +230,14 @@ export const scan = {
   headsUp: 'Heads up',
   addWishlist: 'Add to wishlist',
   findSimilar: 'Find similar',
-  permissionTitle: 'Camera access needed',
+  // v35 Pass-1 — State 7 "The Door". Replaces "Camera access needed"
+  // with the Pura voice: dignified, not begging. Single-line italic
+  // headline (rendered via fontFamily override in ScanCaptureScreen),
+  // one quiet body sentence, paper-card Settings CTA.
+  permissionTitle: 'Camera is off.',
   permissionBody:
-    'Pura uses your camera to see your skin in detail. Your photos stay on this device.',
-  permissionEnable: 'Enable camera',
+    'Turn it on in Settings to give Pura something to read.',
+  permissionEnable: 'Open Settings',
 };
 
 export const assistant = {

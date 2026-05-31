@@ -655,27 +655,40 @@ export function ScanCaptureScreen({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.ink },
   ink: { backgroundColor: palette.ink },
+  // v35 Pass-1 State 7 "The Door" — permission denied redesign.
+  // Italic Instrument Serif headline reads as a calm statement, not
+  // a demand. Body sits in a quieter weight beneath. Restraint over
+  // chrome; cornflower reserved (no accent here — terracotta is the
+  // app's warmth color and the Open Settings CTA inherits the
+  // existing PrimaryButton terracotta-leaning styling).
   permissionBox: {
     flex: 1,
     padding: space.lg,
     justifyContent: 'center',
-    gap: space.md,
+    gap: space.sm,
   },
   permClose: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(250,247,244,0.12)',
+    backgroundColor: 'rgba(250,247,244,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
     marginBottom: space.lg,
   },
-  permTitle: { ...typography.titleSerif, color: palette.inkInverse },
+  permTitle: {
+    ...typography.titleSerif,
+    fontFamily: 'InstrumentSerif-Italic',
+    color: palette.inkInverse,
+    letterSpacing: -0.4,
+    marginBottom: space.xs,
+  },
   permBody: {
     ...typography.body,
-    color: 'rgba(250,247,244,0.8)',
+    color: 'rgba(250,247,244,0.72)',
     marginBottom: space.md,
+    maxWidth: 320,
   },
   // v19.14 — manual lighting toggle styles removed.
 });

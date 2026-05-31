@@ -1,18 +1,37 @@
 /**
  * RetakeRequiredScreen — full-screen recovery state.
  *
- * Used when scan quality is too low to support honest result content.
- * Shows the captured photo dimmed, an elegant heading, a short
- * checklist of what to fix, and a single coral CTA: "Retake scan".
- * A secondary "Use limited result" link is shown only when the caller
- * has confirmed at least one high-confidence finding survived.
+ * v35 Pass-1, State 8 — Direction A "The Returned".
+ *
+ * Previous treatment dimmed the captured photo to 55% opacity, ran a
+ * two-line italic-accented title ("Let's try / another photo."), a
+ * 4-item check-grid, and a coral CTA — clinical and apologetic, the
+ * exact failure mode the design framework bans on retake.
+ *
+ * The Returned moves to:
+ *   • The captured photo is shown at ~60% width on a tilted (~3°)
+ *     paper "Polaroid" card with a soft drop shadow — feels HELD,
+ *     not rejected. The tilt is the visual signature.
+ *   • A single Instrument Serif italic coaching word above the
+ *     photo derived from the AI's reason: "Closer." / "Steadier." /
+ *     "Brighter." Default "Again." when reason is unknown.
+ *   • A short single-sentence body line beneath the photo, only
+ *     when a meaningful detail was passed (defaults to nothing —
+ *     the coaching word does the work).
+ *   • A single paper-card CTA: "One more time." with a small
+ *     terracotta arrow.
+ *   • Optional "Use limited result" secondary preserved.
+ *
+ * Brand position: warmth, not judgment. The Polaroid tilt + the
+ * single italic word are the unmistakably-Pura signature at the
+ * moment the user is most likely to feel rejected.
  */
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowRight, Check } from 'phosphor-react-native';
+import { ArrowRight } from 'phosphor-react-native';
 import { Image as ExpoImage } from 'expo-image';
 import {
   scanColors,
@@ -31,12 +50,41 @@ export interface RetakeRequiredScreenProps {
   onUseLimited?: () => void;
 }
 
-const CHECKLIST: ReadonlyArray<string> = [
-  'Face centered',
-  'Even lighting',
-  'No hat or shadow over focus areas',
-  'Camera at eye level',
-];
+/**
+ * Derive the single coaching word from the AI's quality detail string.
+ * The matcher is intentionally lenient — practitioner-tone, not
+ * keyword-strict. When the reason doesn't match any known dimension we
+ * fall back to "Again." so the screen never feels broken.
+ */
+function deriveCoachingWord(detail: string | undefined): string {
+  if (!detail) return 'Again';
+  const lower = detail.toLowerCase();
+  if (
+    lower.includes('blur') ||
+    lower.includes('soft') ||
+    lower.includes('steady') ||
+    lower.includes('focus')
+  )
+    return 'Steadier';
+  if (
+    lower.includes('light') ||
+    lower.includes('dark') ||
+    lower.includes('shadow') ||
+    lower.includes('exposure')
+  )
+    return 'Brighter';
+  if (
+    lower.includes('partial') ||
+    lower.includes('frame') ||
+    lower.includes('center') ||
+    lower.includes('crop')
+  )
+    return 'Closer';
+  if (lower.includes('cover') || lower.includes('hair') || lower.includes('occlud')) {
+    return 'Clear';
+  }
+  return 'Again';
+}
 
 export function RetakeRequiredScreen({
   photoUri,
@@ -44,69 +92,65 @@ export function RetakeRequiredScreen({
   onRetake,
   onUseLimited,
 }: RetakeRequiredScreenProps) {
+  const coaching = deriveCoachingWord(detail);
+
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <View style={styles.page}>
+        {/* Single italic coaching word — the brand signature at the
+            moment the user is most likely to feel judged. */}
+        <Text
+          style={styles.coachingWord}
+          maxFontSizeMultiplier={1.05}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${coaching}. Take another photo.`}
+        >
+          {coaching}.
+        </Text>
+
+        {/* Tilted Polaroid — feels held, not rejected. */}
         {photoUri ? (
-          <View style={styles.thumbWrap}>
-            <ExpoImage
-              source={{ uri: photoUri }}
-              style={styles.thumb}
-              contentFit="cover"
-              cachePolicy="memory"
-            />
-            <View style={styles.thumbDim} />
+          <View style={styles.polaroidWrap}>
+            <View style={styles.polaroid}>
+              <ExpoImage
+                source={{ uri: photoUri }}
+                style={styles.photo}
+                contentFit="cover"
+                cachePolicy="memory"
+              />
+            </View>
           </View>
         ) : null}
 
-        <View style={styles.titleBlock}>
-          <Text style={scanType.editorialHeading} maxFontSizeMultiplier={1.1}>
-            Let’s try
-          </Text>
+        {/* Optional supporting line — only when a meaningful detail
+            was passed. The coaching word usually does the work. */}
+        {detail ? (
           <Text
-            style={[
-              scanType.editorialHeading,
-              { color: scanColors.coralDark, fontFamily: 'InstrumentSerif-Italic' },
-            ]}
-            maxFontSizeMultiplier={1.1}
+            style={[scanType.body, styles.detail]}
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={2}
           >
-            another photo.
+            {detail}
           </Text>
-          <Text style={[scanType.body, styles.subtext]} maxFontSizeMultiplier={1.2}>
-            {detail ??
-              'A clearer view helps Pura map your skin accurately. A front-facing photo in even light is all it takes.'}
-          </Text>
-        </View>
-
-        <View style={styles.checklist}>
-          {CHECKLIST.map((line) => (
-            <View key={line} style={styles.checkRow}>
-              <View style={styles.checkIcon}>
-                <Check size={14} weight="bold" color={scanColors.coralDark} />
-              </View>
-              <Text style={styles.checkText} maxFontSizeMultiplier={1.2}>
-                {line}
-              </Text>
-            </View>
-          ))}
-        </View>
+        ) : null}
 
         <View style={styles.ctaBlock}>
           <Pressable
             onPress={onRetake}
             accessibilityRole="button"
-            accessibilityLabel="Retake scan"
+            accessibilityLabel="Take another photo"
             style={({ pressed }) => [
               styles.cta,
-              pressed && { transform: [{ scale: 0.98 }] },
+              pressed && { transform: [{ scale: 0.985 }] },
             ]}
           >
             <Text style={styles.ctaLabel} maxFontSizeMultiplier={1.1}>
-              Retake scan
+              One more time
             </Text>
             <View style={styles.ctaArrow}>
-              <ArrowRight size={16} weight="bold" color={scanColors.white} />
+              <ArrowRight size={14} weight="bold" color={scanColors.coralDark} />
             </View>
           </Pressable>
           {onUseLimited ? (
@@ -139,94 +183,80 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     paddingHorizontal: scanLayout.pageHorizontalPadding,
-    paddingTop: 22,
+    paddingTop: 38,
     alignItems: 'center',
   },
-  thumbWrap: {
-    width: 158,
-    height: 210,
-    borderRadius: scanRadius.imageFrame,
-    overflow: 'hidden',
-    backgroundColor: scanColors.cardSoft,
+  // Instrument Serif italic — sized to read at iPhone-arms-length as
+  // editorial, not loud. Tracking slightly tightened so the word
+  // composes as a single object, not as letters.
+  coachingWord: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 44,
+    lineHeight: 50,
+    letterSpacing: -1.2,
+    color: scanColors.coralDark,
+    marginBottom: 28,
+  },
+  // Polaroid frame: white paper border around the photo, tilted ~3°,
+  // soft drop shadow. The tilt is the visual signature of the state.
+  polaroidWrap: {
+    transform: [{ rotate: '-2.6deg' }],
     ...scanShadows.softLift,
   },
-  thumb: {
-    width: '100%',
-    height: '100%',
+  polaroid: {
+    backgroundColor: scanColors.white,
+    padding: 10,
+    paddingBottom: 36, // classic Polaroid bottom strip
+    borderRadius: 6,
   },
-  thumbDim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 248, 242, 0.55)',
-  },
-  titleBlock: {
-    marginTop: 26,
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  subtext: {
-    marginTop: 10,
-    textAlign: 'center',
-    maxWidth: 320,
-  },
-  checklist: {
-    marginTop: 26,
+  photo: {
+    width: 200,
+    height: 264,
+    borderRadius: 3,
     backgroundColor: scanColors.cardSoft,
-    borderRadius: scanRadius.largeCard,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    width: '100%',
-    gap: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scanColors.line,
   },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  checkIcon: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: scanColors.coralWash,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkText: {
-    ...scanType.body,
+  detail: {
+    marginTop: 26,
+    textAlign: 'center',
+    maxWidth: 300,
     color: scanColors.inkSoft,
-    fontFamily: 'Inter-Medium',
   },
   ctaBlock: {
     width: '100%',
     marginTop: 'auto',
-    paddingBottom: 18,
+    paddingBottom: 22,
     alignItems: 'center',
+    gap: 14,
   },
+  // Paper-card CTA — restrained, not loud. The terracotta arrow inside
+  // the chip is the only saturated mark on this screen.
   cta: {
-    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: scanColors.coralStrong,
-    paddingVertical: 16,
+    justifyContent: 'center',
+    gap: 14,
+    backgroundColor: scanColors.cardSoft,
+    paddingVertical: 14,
     paddingHorizontal: 22,
     borderRadius: scanRadius.button,
-    ...scanShadows.glow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scanColors.line,
   },
   ctaLabel: {
     ...scanType.buttonLabel,
+    color: scanColors.inkSoft,
+    fontFamily: 'Inter-SemiBold',
+    letterSpacing: 0.2,
   },
   ctaArrow: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: scanColors.coralDark,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: scanColors.coralWash,
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondary: {
-    marginTop: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
 });
