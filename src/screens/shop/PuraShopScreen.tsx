@@ -63,6 +63,7 @@ import {
 import { findShopProduct, type ShopCatalogProduct } from './shopCatalog';
 import { EditorialShopHeader } from './components/EditorialShopHeader';
 import { ScanSignalStrip, type ScanSignal } from './components/ScanSignalStrip';
+import { Colophon } from './components/Colophon';
 import { EditorialHero } from './components/EditorialHero';
 import {
   EditorialSection,
@@ -385,9 +386,18 @@ export function PuraShopScreen() {
               factors={vm.hero.featured.factors}
               scanReason={scanReason}
               issueNumber={issueNumber}
+              userInitial={userInitial}
+              primaryConcernLabel={
+                vm.hero.featured.catalog.concernTags?.[0] ?? filter
+              }
+              alternates={vm.complete
+                .filter((c) => c.catalog.id !== vm.hero.featured!.catalog.id)
+                .slice(0, 2)
+                .map((c) => c.catalog)}
               width={innerWidth}
               isInRoutine={vm.hero.featured.isInRoutine}
               onPress={() => openProduct(vm.hero.featured!.catalog.id)}
+              onPressAlternate={(id) => openProduct(id)}
               onAdd={() => handleQuickAdd(vm.hero.featured!.catalog.id)}
             />
           </View>
@@ -417,31 +427,48 @@ export function PuraShopScreen() {
           </View>
         ) : null}
 
-        {/* Pairs with tonight */}
-        {!isSearchActive && vm.complete.length > 0 ? (
-          <EditorialSection
-            kicker="Pairs with tonight"
-            title="Complete the routine."
-            note="Quiet supports for the steps before and after your hero."
-          >
-            {vm.complete.slice(0, 4).map((card, i, arr) => (
-              <EditorialIndexRow
-                key={card.catalog.id}
-                index={i + 1}
-                product={card.catalog}
-                reason={
-                  card.factors[0]?.label
-                    ? `Pairs because ${card.factors[0].label.toLowerCase()}.`
-                    : 'A safe companion to your hero.'
-                }
-                isInRoutine={card.isInRoutine}
-                isLast={i === arr.length - 1}
-                onPress={() => openProduct(card.catalog.id)}
-                onAdd={() => handleQuickAdd(card.catalog.id)}
-              />
-            ))}
-          </EditorialSection>
-        ) : null}
+        {/* Pairs with tonight — round-2 Pass 9 coherence fix: exclude
+            both the hero's product AND the alternates already named
+            in the hero's "Also tonight" row, so users never see the
+            same product twice across hero + pairs. */}
+        {(() => {
+          if (isSearchActive) return null;
+          const heroId = vm.hero.featured?.catalog.id;
+          const heroAltIds = vm.complete
+            .filter((c) => c.catalog.id !== heroId)
+            .slice(0, 2)
+            .map((c) => c.catalog.id);
+          const excluded = new Set([heroId, ...heroAltIds].filter(Boolean));
+          const pairs = vm.complete.filter(
+            (c) => !excluded.has(c.catalog.id),
+          );
+          if (pairs.length === 0) return null;
+          return (
+            <EditorialSection
+              kicker="Pairs with tonight"
+              title="Complete the routine."
+              credit="CURATED BY NORA · biochemist"
+              note="Quiet supports for the steps before and after your hero."
+            >
+              {pairs.slice(0, 4).map((card, i, arr) => (
+                <EditorialIndexRow
+                  key={card.catalog.id}
+                  index={i + 1}
+                  product={card.catalog}
+                  reason={
+                    card.factors[0]?.label
+                      ? `Pairs because ${card.factors[0].label.toLowerCase()}.`
+                      : 'A safe companion to your hero.'
+                  }
+                  isInRoutine={card.isInRoutine}
+                  isLast={i === arr.length - 1}
+                  onPress={() => openProduct(card.catalog.id)}
+                  onAdd={() => handleQuickAdd(card.catalog.id)}
+                />
+              ))}
+            </EditorialSection>
+          );
+        })()}
 
         {/* Search results */}
         {isSearchActive && vm.searchResults.length > 0 ? (
@@ -474,6 +501,18 @@ export function PuraShopScreen() {
             now reads as: hero → one supporting list → end. Restraint
             is a luxury signal. The full edit is reachable from
             individual section actions. */}
+
+        {/* Colophon — round-2 Pass 10. The shop closes like a real
+            indie magazine, with an editor credit + city + year. */}
+        <Colophon
+          issueNumber={issueNumber}
+          userInitial={userInitial}
+          dateStamp={(() => {
+            const d = new Date();
+            const m = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+            return `${d.getDate()} ${m[d.getMonth()]} ${String(d.getFullYear() % 100).padStart(2,'0')}`;
+          })()}
+        />
       </Animated.ScrollView>
 
       <AddedToRoutineToast

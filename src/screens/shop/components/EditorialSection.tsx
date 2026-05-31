@@ -23,6 +23,8 @@ export interface EditorialSectionProps {
   kicker: string; // italic serif — "Pairs with tonight"
   title: string; // serif — "Complete the routine."
   note?: string; // optional single editor's note
+  /** Curator credit — round 2. "Curated by NORA · biochemist" */
+  credit?: string;
   onMore?: () => void;
   moreLabel?: string;
   children: React.ReactNode;
@@ -32,6 +34,7 @@ export function EditorialSection({
   kicker,
   title,
   note,
+  credit,
   onMore,
   moreLabel = 'See all',
   children,
@@ -49,6 +52,11 @@ export function EditorialSection({
         >
           {title}
         </Text>
+        {credit ? (
+          <Text style={sectionStyles.credit} maxFontSizeMultiplier={1.1}>
+            {credit}
+          </Text>
+        ) : null}
         {note ? (
           <Text style={sectionStyles.note} maxFontSizeMultiplier={1.2}>
             {note}
@@ -97,6 +105,14 @@ const sectionStyles = StyleSheet.create({
     letterSpacing: -0.6,
     color: puraShop.ink,
     marginTop: 4,
+  },
+  credit: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    color: puraShop.inkMuted,
+    marginTop: 10,
+    textTransform: 'uppercase',
   },
   note: {
     fontFamily: 'Inter-Regular',
@@ -190,9 +206,12 @@ export function EditorialIndexRow({
         <Text style={rowStyles.name} maxFontSizeMultiplier={1.1} numberOfLines={2}>
           {product.name}
         </Text>
-        <Text style={rowStyles.reason} maxFontSizeMultiplier={1.2} numberOfLines={2}>
-          {reason}
-        </Text>
+        <View style={rowStyles.reasonRow}>
+          <View style={rowStyles.reasonRule} />
+          <Text style={rowStyles.reason} maxFontSizeMultiplier={1.2} numberOfLines={2}>
+            {reason}
+          </Text>
+        </View>
         <View style={rowStyles.metaRow}>
           <Text style={rowStyles.price} maxFontSizeMultiplier={1.1}>
             ${formatPrice(product.price)}
@@ -239,7 +258,7 @@ const rowStyles = StyleSheet.create({
     borderRadius: 4,
   },
   rowPressed: {
-    backgroundColor: puraShop.surfaceWarm,
+    backgroundColor: puraShop.coralSoft,
   },
   rowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -284,8 +303,8 @@ const rowStyles = StyleSheet.create({
   },
   brand: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 9.5,
-    letterSpacing: 2.4,
+    fontSize: 9,
+    letterSpacing: 2.8,
     color: puraShop.inkMuted,
   },
   name: {
@@ -296,25 +315,38 @@ const rowStyles = StyleSheet.create({
     color: puraShop.ink,
     marginTop: 6,
   },
+  reasonRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  reasonRule: {
+    width: 14,
+    height: 1,
+    backgroundColor: puraShop.coralDeep,
+    opacity: 0.6,
+    marginTop: 9,
+  },
   reason: {
+    flex: 1,
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 14,
     lineHeight: 19,
     color: puraShop.inkSecondary,
-    marginTop: 8,
     letterSpacing: -0.05,
   },
   metaRow: {
-    marginTop: 12,
+    marginTop: 14,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
   },
   price: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
     color: puraShop.ink,
-    letterSpacing: -0.1,
+    letterSpacing: -0.3,
   },
   markBtn: {
     width: 28,

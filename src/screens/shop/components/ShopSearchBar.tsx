@@ -10,7 +10,7 @@
  * publication, not a top-of-page utility.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -20,6 +20,16 @@ import {
 } from 'react-native';
 import { MagnifyingGlass, X } from 'phosphor-react-native';
 import { puraShop, puraShopLayout } from '@/theme';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
+
+const PLACEHOLDERS = [
+  'an ingredient, a brand, a concern',
+  'a calmer evening',
+  'a quiet barrier moisturizer',
+  'something with ceramides',
+  'a gentle exfoliant for tonight',
+  'a sunscreen that disappears',
+] as const;
 
 export interface ShopSearchBarProps {
   value: string;
@@ -38,6 +48,22 @@ export function ShopSearchBar({
 }: ShopSearchBarProps) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<TextInput | null>(null);
+  const reduceMotion = useReduceMotion();
+
+  // Rotating placeholder — cycles every 4s through curated inquiries
+  // unless the user has focused or typed. Reduces motion automatically.
+  const [phIndex, setPhIndex] = useState(0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    if (focused) return;
+    if (value.length > 0) return;
+    const id = setInterval(() => {
+      setPhIndex((i) => (i + 1) % PLACEHOLDERS.length);
+    }, 4000);
+    return () => clearInterval(id);
+  }, [focused, value, reduceMotion]);
+
+  const placeholder = PLACEHOLDERS[phIndex];
 
   const handleFocus = () => {
     setFocused(true);
@@ -76,7 +102,7 @@ export function ShopSearchBar({
           onSubmitEditing={onSubmit}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          placeholder="an ingredient, a brand, a concern"
+          placeholder={placeholder}
           placeholderTextColor={puraShop.inkMuted}
           returnKeyType="search"
           style={styles.input}

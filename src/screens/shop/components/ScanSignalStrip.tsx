@@ -1,21 +1,21 @@
 /**
- * ScanSignalStrip — pass 6 bridge between the scan and the shop.
+ * ScanSignalStrip — round-2 rebuild.
  *
- * A single horizontal line of italic-serif scan signals, separated by
- * thin vertical rules. Tapping a signal narrows the shop's focus to
- * that concern. Replaces the previous SkinProfileStrip + ConcernFilter
- * chip rows with one editorial line.
+ * Replaces the chip-rail signal strip with a sentence-shaped editor's
+ * voice. Reads as something Nora said, not a token bar:
  *
- *   TONIGHT'S SIGNALS  │  chin  │  barrier  │  t-zone
+ *   ── Nora's three concerns tonight:
+ *   breakouts, hydration, barrier.
  *
- * When no scan exists, falls back to:
- *
- *   TONIGHT'S EDIT — baseline picks  (no signals)
+ * Signals are inline italic-serif words within the sentence, tappable
+ * (active gets an underline). Falls back to a quiet baseline line
+ * when the user has no scan.
  */
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { puraShop, puraShopLayout } from '@/theme';
+import { EDITOR_NORA } from '../curator';
 
 export interface ScanSignal {
   key: string;
@@ -31,47 +31,63 @@ export interface ScanSignalStripProps {
 
 export function ScanSignalStrip({ signals, onSelect }: ScanSignalStripProps) {
   const hasSignals = signals.length > 0;
+  const editorFirstName = EDITOR_NORA.name.split(' ')[0];
+
+  if (!hasSignals) {
+    return (
+      <View style={styles.outer}>
+        <View style={styles.kickerRow}>
+          <View style={styles.lead} />
+          <Text style={styles.kicker} maxFontSizeMultiplier={1.05}>
+            BASELINE EDIT
+          </Text>
+        </View>
+        <Text style={styles.sentence} maxFontSizeMultiplier={1.15}>
+          {`Tonight's picks before your first scan — quiet, gentle, and a fair place to begin.`}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.outer}>
-      <Text style={styles.kicker} maxFontSizeMultiplier={1.05}>
-        {hasSignals ? "TONIGHT'S SIGNALS" : "TONIGHT'S EDIT"}
-      </Text>
-      <View style={styles.rule} />
-      {hasSignals ? (
-        <View style={styles.row}>
-          {signals.map((s, i) => (
-            <React.Fragment key={s.key}>
-              <Pressable
-                onPress={() => onSelect?.(s.key)}
-                accessibilityRole="button"
-                accessibilityLabel={`Focus the edit on ${s.label}`}
-                hitSlop={6}
-                style={({ pressed }) => [
-                  styles.signalBtn,
-                  pressed && { opacity: 0.65 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.signalText,
-                    s.active && styles.signalActive,
-                  ]}
-                  maxFontSizeMultiplier={1.1}
-                >
-                  {s.label}
-                </Text>
-              </Pressable>
-              {i < signals.length - 1 ? (
-                <View style={styles.sep} />
-              ) : null}
-            </React.Fragment>
-          ))}
-        </View>
-      ) : (
-        <Text style={styles.fallback} maxFontSizeMultiplier={1.1}>
-          baseline picks — take a scan to make them yours
+      <View style={styles.kickerRow}>
+        <View style={styles.lead} />
+        <Text style={styles.kicker} maxFontSizeMultiplier={1.05}>
+          {`${editorFirstName.toUpperCase()}'S READ`}
         </Text>
-      )}
+      </View>
+      <View style={styles.sentenceRow}>
+        <Text style={styles.sentenceStart} maxFontSizeMultiplier={1.15}>
+          {`Three concerns tonight — `}
+        </Text>
+        {signals.slice(0, 4).map((s, i, arr) => (
+          <React.Fragment key={s.key}>
+            <Pressable
+              onPress={() => onSelect?.(s.key)}
+              accessibilityRole="button"
+              accessibilityLabel={`Focus the edit on ${s.label}`}
+              hitSlop={6}
+              style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            >
+              <Text
+                style={[styles.signal, s.active && styles.signalActive]}
+                maxFontSizeMultiplier={1.15}
+              >
+                {s.label}
+              </Text>
+            </Pressable>
+            {i < arr.length - 1 ? (
+              <Text style={styles.connector}>
+                {i === arr.length - 2 ? ', and ' : ', '}
+              </Text>
+            ) : null}
+          </React.Fragment>
+        ))}
+        <Text style={styles.sentenceEnd} maxFontSizeMultiplier={1.15}>
+          {'.'}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -79,10 +95,19 @@ export function ScanSignalStrip({ signals, onSelect }: ScanSignalStripProps) {
 const styles = StyleSheet.create({
   outer: {
     paddingHorizontal: puraShopLayout.horizontalPadding,
-    paddingBottom: 20,
+    paddingBottom: 22,
+  },
+  kickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    marginBottom: 8,
+  },
+  lead: {
+    width: 18,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: puraShop.coralDeep,
+    opacity: 0.6,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
@@ -90,41 +115,48 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
     color: puraShop.coralDeep,
   },
-  rule: {
-    width: 16,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: puraShop.borderWarm,
-  },
-  row: {
-    flex: 1,
+  sentenceRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     flexWrap: 'wrap',
   },
-  signalBtn: {
-    paddingVertical: 4,
-  },
-  signalText: {
+  sentence: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 15,
+    fontSize: 17,
+    lineHeight: 24,
     color: puraShop.inkSecondary,
     letterSpacing: -0.1,
   },
-  signalActive: {
+  sentenceStart: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 17,
+    lineHeight: 24,
     color: puraShop.ink,
+    letterSpacing: -0.1,
+  },
+  signal: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 17,
+    lineHeight: 24,
+    color: puraShop.ink,
+    letterSpacing: -0.1,
+  },
+  signalActive: {
+    color: puraShop.coralDeep,
     textDecorationLine: 'underline',
   },
-  sep: {
-    width: 1,
-    height: 11,
-    backgroundColor: puraShop.borderWarm,
-    marginHorizontal: 12,
-  },
-  fallback: {
-    flex: 1,
+  connector: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 14,
-    color: puraShop.inkMuted,
-    letterSpacing: -0.05,
+    fontSize: 17,
+    lineHeight: 24,
+    color: puraShop.ink,
+    letterSpacing: -0.1,
+  },
+  sentenceEnd: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 17,
+    lineHeight: 24,
+    color: puraShop.ink,
+    letterSpacing: -0.1,
   },
 });

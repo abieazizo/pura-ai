@@ -14,6 +14,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Bookmark, BookmarkSimple, Tote } from 'phosphor-react-native';
 import { puraShop, puraShopLayout, puraShopType } from '@/theme';
+import { EDITOR_NORA } from '../curator';
 
 export interface EditorialShopHeaderProps {
   /** Day number derived from the user's scan history. Drives "Edit No. ##". */
@@ -106,15 +107,26 @@ export function EditorialShopHeader({
         </View>
       </View>
 
-      {/* Publication credit line — pass 10. Reads as the cover of a
-          real subscription publication: "Pura Shop. For M., 28 May.
-          Issue No. 19, Tonight." set on a full-width hairline. */}
+      {/* Byline only — round-2 Pass 7 deleted the redundant credit
+          line (Pura Shop · For M, 29 may 26 · Issue No. 19) because
+          the EDIT NO + the Edited By byline already carry the issue
+          identity + the editor. Three identifying lines became two. */}
       <View style={styles.creditRule} />
-      <Text style={styles.credit} maxFontSizeMultiplier={1.05} numberOfLines={1}>
-        Pura Shop
-        {userInitial ? `  ·  For ${userInitial}, ${dateStamp.toLowerCase()}` : `  ·  ${dateStamp.toLowerCase()}`}
-        {`  ·  Issue No. ${issuePadded}, ${issueTheme}.`}
-      </Text>
+      <View style={styles.bylineRow}>
+        <Text style={styles.bylineKicker} maxFontSizeMultiplier={1.05}>
+          EDITED BY
+        </Text>
+        <Text style={styles.bylineName} maxFontSizeMultiplier={1.05}>
+          {EDITOR_NORA.name}
+        </Text>
+        <Text style={styles.bylineRole} maxFontSizeMultiplier={1.1}>
+          {EDITOR_NORA.role}
+        </Text>
+        <View style={{ flex: 1 }} />
+        <Text style={styles.bylineDate} maxFontSizeMultiplier={1.05}>
+          {userInitial ? `for ${userInitial}, ${dateStamp.toLowerCase()}` : dateStamp.toLowerCase()}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -236,6 +248,37 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 12.5,
+    color: puraShop.inkMuted,
+    letterSpacing: 0.1,
+  },
+  bylineRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  bylineKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    letterSpacing: 1.8,
+    color: puraShop.inkMuted,
+  },
+  bylineName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10.5,
+    letterSpacing: 1.4,
+    color: puraShop.ink,
+    textTransform: 'uppercase',
+  },
+  bylineRole: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 13,
+    color: puraShop.inkSecondary,
+    letterSpacing: 0.1,
+  },
+  bylineDate: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 12,
     color: puraShop.inkMuted,
     letterSpacing: 0.1,
   },

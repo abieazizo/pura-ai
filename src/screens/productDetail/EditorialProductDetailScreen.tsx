@@ -82,6 +82,7 @@ import { hapt } from '@/utils/haptics';
 import { findShopProduct, type ShopCatalogProduct } from '@/screens/shop/shopCatalog';
 import { EditorialIndexMark } from '@/screens/shop/components/EditorialIndexMark';
 import { PaperGrain } from '@/screens/shop/components/PaperGrain';
+import { composeEditorsNote, EDITOR_NORA } from '@/screens/shop/curator';
 import type { HomeStackParamList } from '@/navigation/types';
 
 type Route = RouteProp<HomeStackParamList, 'ProductDetail'>;
@@ -377,10 +378,6 @@ export function EditorialProductDetailScreen() {
         <View style={styles.masthead}>
           <View style={styles.readingRow}>
             <Text style={styles.readingKicker} maxFontSizeMultiplier={1.05}>
-              PURA SHOP
-            </Text>
-            <View style={styles.readingDot} />
-            <Text style={styles.readingKicker} maxFontSizeMultiplier={1.05}>
               READING N°01
             </Text>
             <View style={styles.readingDot} />
@@ -444,15 +441,41 @@ export function EditorialProductDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* WHY THIS, TONIGHT */}
+        {/* A NOTE FROM NORA — round-2 Pass 5. The PDP opens with the
+            curator's voice, addressed to the user, before any
+            functional content. */}
         <Animated.View
           entering={FadeInDown.duration(360).delay(80)}
           style={styles.section}
         >
-          <SectionHead title="Why this, tonight" />
-          <Text style={styles.bodyLarge} maxFontSizeMultiplier={1.2}>
-            {reason}
-          </Text>
+          <SectionHead
+            title={`A note from ${EDITOR_NORA.name.split(' ')[0]}`}
+          />
+          {(() => {
+            const note = composeEditorsNote(
+              product.concernTags?.[0],
+              null,
+            );
+            return (
+              <>
+                <Text style={styles.bodyLarge} maxFontSizeMultiplier={1.2}>
+                  {note.body}
+                </Text>
+                <Text style={styles.editorSig} maxFontSizeMultiplier={1.1}>
+                  {note.signature}
+                </Text>
+                {/* Scan reasoning, merged into the editor's note as a
+                    footnote — round-2 Pass 7. The standalone "Why this,
+                    tonight" section was duplicate of the note above. */}
+                <View style={styles.scanFootnoteRow}>
+                  <View style={styles.scanFootnoteRule} />
+                  <Text style={styles.scanFootnoteText} maxFontSizeMultiplier={1.2}>
+                    {reason}
+                  </Text>
+                </View>
+              </>
+            );
+          })()}
         </Animated.View>
 
         <EditorialDivider />
@@ -469,9 +492,14 @@ export function EditorialProductDetailScreen() {
                   i < arr.length - 1 && styles.formulaRowDivider,
                 ]}
               >
-                <Text style={styles.formulaNumeral}>
-                  {String(i + 1).padStart(2, '0')}
-                </Text>
+                {/* Ingredient glyph — italic-serif initial in a hairline
+                    circle, round-2 Pass 5. Replaces the bare numeral
+                    with a typographic anchor specific to the ingredient. */}
+                <View style={styles.formulaGlyph}>
+                  <Text style={styles.formulaGlyphLetter} maxFontSizeMultiplier={1.05}>
+                    {item.key.trim()[0]?.toUpperCase() ?? '·'}
+                  </Text>
+                </View>
                 <View style={styles.formulaCol}>
                   <Text style={styles.formulaKey} maxFontSizeMultiplier={1.1}>
                     {item.key}
@@ -480,6 +508,9 @@ export function EditorialProductDetailScreen() {
                     {item.role}
                   </Text>
                 </View>
+                <Text style={styles.formulaIndex} maxFontSizeMultiplier={1.05}>
+                  {String(i + 1).padStart(2, '0')}
+                </Text>
               </View>
             ))}
           </View>
@@ -811,6 +842,33 @@ const styles = StyleSheet.create({
     color: puraShop.ink,
     letterSpacing: -0.1,
   },
+  editorSig: {
+    marginTop: 14,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 16,
+    color: puraShop.coralDeep,
+    letterSpacing: 0.2,
+  },
+  scanFootnoteRow: {
+    marginTop: 22,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  scanFootnoteRule: {
+    width: 18,
+    height: 1,
+    backgroundColor: puraShop.borderStrongWarm,
+    marginTop: 8,
+  },
+  scanFootnoteText: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: puraShop.inkMuted,
+    letterSpacing: -0.05,
+  },
 
   // Formula list
   formulaList: {},
@@ -831,6 +889,30 @@ const styles = StyleSheet.create({
     width: 28,
     paddingTop: 4,
     letterSpacing: 0.4,
+  },
+  formulaGlyph: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: puraShop.coralDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  formulaGlyphLetter: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 18,
+    color: puraShop.coralDeep,
+    letterSpacing: 0.2,
+    marginTop: -2,
+  },
+  formulaIndex: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 13,
+    color: puraShop.inkMuted,
+    letterSpacing: 0.6,
+    marginTop: 6,
   },
   formulaCol: { flex: 1, minWidth: 0 },
   formulaKey: {

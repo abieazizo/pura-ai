@@ -32,15 +32,20 @@ import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { Check } from 'phosphor-react-native';
 import { puraShop } from '@/theme';
 import type { ShopCatalogProduct } from '../shopCatalog';
 import type { MatchedFactor } from '../personalization';
 import { PaperGrain } from './PaperGrain';
+import { composeEditorsNote, EDITOR_NORA } from '../curator';
+import { HandsetSignature } from './HandsetSignature';
 
 export interface EditorialHeroProps {
   product: ShopCatalogProduct;
@@ -49,8 +54,16 @@ export interface EditorialHeroProps {
   factors?: MatchedFactor[];
   isInRoutine: boolean;
   issueNumber?: number;
+  /** First initial of the user's name; addressed in the editor's note. */
+  userInitial?: string | null;
+  /** Primary concern label from the scan ("breakouts", "hydration"). */
+  primaryConcernLabel?: string;
+  /** Up to 2 alternate products Nora considered. Round-2 Pass 4. */
+  alternates?: ShopCatalogProduct[];
   onPress: () => void;
   onAdd: () => void;
+  /** Open one of the alternates by id. */
+  onPressAlternate?: (id: string) => void;
 }
 
 const STAGE_PAD = 24;
@@ -96,12 +109,38 @@ export function EditorialHero({
   scanReason,
   isInRoutine,
   issueNumber = 1,
+  userInitial,
+  primaryConcernLabel,
+  alternates,
   onPress,
   onAdd,
+  onPressAlternate,
 }: EditorialHeroProps) {
+  const note = composeEditorsNote(
+    primaryConcernLabel ?? product.concernTags?.[0],
+    userInitial ?? null,
+  );
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
+  }));
+
+  // Signature animation — the "— N." reveals last (handwritten-feel).
+  const sigOp = useSharedValue(0);
+  const sigDx = useSharedValue(-6);
+  React.useEffect(() => {
+    sigOp.value = withDelay(
+      600,
+      withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) }),
+    );
+    sigDx.value = withDelay(
+      600,
+      withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) }),
+    );
+  }, [sigOp, sigDx]);
+  const sigStyle = useAnimatedStyle(() => ({
+    opacity: sigOp.value,
+    transform: [{ translateX: sigDx.value }],
   }));
 
   // Editorial portrait: ~1.18 ratio (taller than wide).
@@ -131,16 +170,26 @@ export function EditorialHero({
 
   return (
     <View style={[styles.outer, { width }]}>
-      {/* WHY band */}
-      <View style={styles.whyRow}>
-        <Text style={styles.whyKicker} maxFontSizeMultiplier={1.05}>
-          WHY
+      {/* Editor's note — round-2 signature. Signed italic-serif
+          paragraph addressed to the user, tied to their scan signal.
+          Replaces the bare WHY band. */}
+      <View style={styles.noteRow}>
+        <Text style={styles.noteKicker} maxFontSizeMultiplier={1.05}>
+          A NOTE FROM {EDITOR_NORA.name.split(' ')[0].toUpperCase()}
         </Text>
-        <View style={styles.whyRule} />
+        <View style={styles.noteRule} />
       </View>
-      <Text style={styles.scanReason} maxFontSizeMultiplier={1.15} numberOfLines={2}>
-        {scanReason}
+      <Text style={styles.noteGreeting} maxFontSizeMultiplier={1.15}>
+        {note.greeting}
       </Text>
+      <Text style={styles.noteBody} maxFontSizeMultiplier={1.15}>
+        {note.body}
+      </Text>
+      {/* Handset signature — round-2 Pass 10. Real SVG bezier "— N."
+          replaces the typeset version. Reads as Nora's hand. */}
+      <Animated.View style={[styles.noteSigWrap, sigStyle]}>
+        <HandsetSignature width={60} />
+      </Animated.View>
 
       <Animated.View style={animated}>
         <Pressable
@@ -241,6 +290,44 @@ export function EditorialHero({
                 </>
               )}
             </Pressable>
+
+            {/* Alternates row — round-2 Pass 4. The hero is one of
+                three Nora considered tonight. Implies real curation
+                depth. */}
+            {alternates && alternates.length > 0 ? (
+              <View style={styles.altsBlock}>
+                <Text style={styles.altsKicker} maxFontSizeMultiplier={1.05}>
+                  ALSO TONIGHT
+                </Text>
+                <View style={styles.altsList}>
+                  {alternates.slice(0, 2).map((alt, i) => (
+                    <Pressable
+                      key={alt.id}
+                      onPress={() =>
+                        onPressAlternate ? onPressAlternate(alt.id) : undefined
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${alt.brand} ${alt.name}`}
+                      hitSlop={6}
+                      style={({ pressed }) => [
+                        styles.altRow,
+                        pressed && { opacity: 0.65 },
+                      ]}
+                    >
+                      <Text style={styles.altNumeral}>
+                        {String(i + 2).padStart(2, '0')}
+                      </Text>
+                      <Text style={styles.altBrand}>
+                        {alt.brand.toUpperCase()}
+                      </Text>
+                      <Text style={styles.altName} numberOfLines={1}>
+                        {alt.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           </View>
         </Pressable>
       </Animated.View>
@@ -278,6 +365,51 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     letterSpacing: -0.15,
     color: puraShop.ink,
+    marginBottom: 22,
+  },
+
+  // Editor's note block (round 2)
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  noteKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 2.2,
+    color: puraShop.coralDeep,
+  },
+  noteRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: puraShop.borderWarm,
+  },
+  noteGreeting: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 17,
+    color: puraShop.ink,
+    letterSpacing: -0.1,
+    marginBottom: 4,
+  },
+  noteBody: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 17,
+    lineHeight: 24,
+    color: puraShop.ink,
+    letterSpacing: -0.1,
+  },
+  noteSig: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 15,
+    color: puraShop.coralDeep,
+    letterSpacing: 0.2,
+    marginTop: 10,
+    marginBottom: 22,
+  },
+  noteSigWrap: {
+    marginTop: 12,
     marginBottom: 22,
   },
 
@@ -426,5 +558,49 @@ const styles = StyleSheet.create({
     width: 144,
     height: 1,
     backgroundColor: puraShop.ink,
+  },
+
+  // Alternates ("Also tonight") block — round-2 Pass 4
+  altsBlock: {
+    marginTop: 26,
+    paddingTop: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: puraShop.borderWarm,
+  },
+  altsKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 2.2,
+    color: puraShop.inkMuted,
+    marginBottom: 10,
+  },
+  altsList: {
+    gap: 10,
+  },
+  altRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 12,
+  },
+  altNumeral: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    color: puraShop.coralDeep,
+    width: 22,
+    letterSpacing: 0.3,
+  },
+  altBrand: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 2.0,
+    color: puraShop.inkSecondary,
+  },
+  altName: {
+    flex: 1,
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 14,
+    color: puraShop.ink,
+    letterSpacing: -0.05,
+    minWidth: 0,
   },
 });
