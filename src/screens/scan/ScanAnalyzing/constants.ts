@@ -77,14 +77,15 @@ export function getBeatTiming(scanCount: number): BeatTiming {
 }
 
 export const MARKER_INTERVAL = 350; // ms between each of the 4 detection markers
-// v11.13 — bumped from 12s → 70s. The previous 12s cutoff fired
-// while the gateway's analyzeFaceScan call (which has a 60s timeout
-// in TIMEOUT_MS) was still in flight, so a successful slow AI run
-// would still flip the screen to ErrorState. 70s = gateway timeout +
-// 10s safety margin. This is a TRUE outer-bound guard against
-// runaway promises; the user can cancel anytime via the close
-// button if they don't want to wait.
-export const MAX_TOTAL_WAIT = 70_000;
+// v34 — bumped 70s → 110s. With analyzeFaceScan AND analyzeFaceScanV2
+// now racing in parallel (see src/api/scan.ts), the bottleneck is the
+// 90s gateway TIMEOUT_MS on analyzeFaceScanV2 — which itself matches
+// the Vercel function maxDuration of 90s. 110s = 90s gateway ceiling +
+// 20s safety margin for cold-start latency + image upload of a real
+// 3-5 MB selfie. Real-world clear-selfie runs land at 40-60s end-to-end;
+// the 110s cap is a TRUE outer-bound guard against runaway promises,
+// not the typical path.
+export const MAX_TOTAL_WAIT = 110_000;
 export const PHOTO_MARGIN_H = 24;
 
 // ------------------------------------------------------------------

@@ -159,7 +159,15 @@ export async function analyzeFaceScan(args: {
       });
     }
     if (imageBase64) {
-      const analysis = await tryAi(() =>
+      // v34 — fire V1 (analyzeFaceScan) and V2 (analyzeFaceScanV2) TRULY
+      // in parallel. The previous flow awaited V1 first then awaited V2
+      // sequentially, which pushed total wall-clock time to ~60-100 s on
+      // real selfies and tripped the ScanAnalyzingFaceScreen's
+      // MAX_TOTAL_WAIT (70 s) before either result was attached — the
+      // user then saw "I couldn't finish this reading."
+      // Parallel total ≈ max(V1, V2) ≈ 30-50 s, comfortably within
+      // the outer-bound guard.
+      const v1Promise = tryAi(() =>
         aiGateway.analyzeFaceScan({
           imageBase64: imageBase64!,
           mediaType: 'image/jpeg',
@@ -170,6 +178,24 @@ export async function analyzeFaceScan(args: {
           userProfileSummary: buildUserProfileSummary(),
         })
       );
+      const v2Promise: Promise<ScanResultV2 | undefined> = aiGateway
+        .analyzeFaceScanV2({
+          imageBase64: imageBase64!,
+          mediaType: 'image/jpeg',
+          scanId,
+        })
+        .catch((e: unknown) => {
+          aiLog.warn(
+            'analyzeFaceScanV2',
+            'v2 call failed, omitting from scan',
+            { scanId, error: e instanceof Error ? e.message : String(e) }
+          );
+          return undefined;
+        });
+      const [analysis, v2Analysis] = await Promise.all([
+        v1Promise,
+        v2Promise,
+      ]);
       if (analysis) {
         // v17.2 — observable diagnostic. Logs the live overlay
         // payload shape so the dev surface (and the AI source badge)
@@ -197,28 +223,11 @@ export async function analyzeFaceScan(args: {
           `analyzed scan ${scanId} via proxy (skin score ${analysis.skin_score.value}, ${analysis.findings.length} findings, overlay=${overlayPresent ? 'yes' : 'no'}, polys=${polygonCount}/${analysis.findings.length})`
         );
 
-        // v32 — fire the V2 analysis call in parallel with the V1
-        // path. V2 guarantees 3-6 findings via prompt + schema +
-        // retry + deterministic fallback; the server proxy will
-        // never return zero findings. The V2 result rides on the
-        // Scan record so the new ScanResultsV2Screen can render it
-        // without invalidating the rest of the V1 pipeline.
-        let v2Analysis: ScanResultV2 | undefined;
-        try {
-          v2Analysis = await aiGateway.analyzeFaceScanV2({
-            imageBase64: imageBase64!,
-            mediaType: 'image/jpeg',
-            scanId,
-          });
+        if (v2Analysis) {
           aiLog.info('analyzeFaceScanV2', 'v2 result attached to scan', {
             scanId,
             overall_score: v2Analysis.overall_score,
             findings_count: v2Analysis.findings.length,
-          });
-        } catch (e) {
-          aiLog.warn('analyzeFaceScanV2', 'v2 call failed, omitting from scan', {
-            scanId,
-            error: e instanceof Error ? e.message : String(e),
           });
         }
 
