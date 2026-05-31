@@ -21,12 +21,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSpring,
   withTiming,
+  cancelAnimation,
+  Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import Svg, { Defs, RadialGradient, Stop, Circle, Ellipse } from 'react-native-svg';
+import Svg, { Defs, RadialGradient, Stop, Circle, Ellipse, Path } from 'react-native-svg';
 import {
   House,
   ShoppingBagOpen,
@@ -46,6 +49,7 @@ import {
   puraShopSpace,
 } from '@/theme';
 import { hapt } from '@/utils/haptics';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { tabs as tabsStrings } from '@/copy/strings';
 import { useRoutineFocus } from '@/state/v26/routineFocus';
 import { useRoutineStore, countUnconfirmedRequiredSteps } from '@/state/routine/routineStore';
@@ -69,6 +73,9 @@ const TAB_META: Record<string, TabMeta> = {
 const VISIBLE_TABS = ['HomeTab', 'ProductsTab', 'ScanTab', 'RoutineTab', 'MeTab'] as const;
 
 const DOCK_HEIGHT = puraShopLayout.dockBarHeight;
+
+/** Porcelain — the warm off-white used for the Scan face marks. */
+const SCAN_FACE = '#FCFDFF';
 
 export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -95,9 +102,10 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     }),
   );
 
-  const onTabPress = (routeName: string, routeKey: string) => {
+  // Emit the tabPress + navigate. Kept haptic-free so callers can choose
+  // their own feedback (the Scan orb fires a Light impact on press-in).
+  const navigateTab = (routeName: string, routeKey: string) => {
     const focused = state.routes[state.index]?.key === routeKey;
-    hapt.select();
     const event = navigation.emit({
       type: 'tabPress',
       target: routeKey,
@@ -106,6 +114,11 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     if (!focused && !event.defaultPrevented) {
       navigation.navigate(routeName);
     }
+  };
+
+  const onTabPress = (routeName: string, routeKey: string) => {
+    hapt.select();
+    navigateTab(routeName, routeKey);
   };
 
   if (routineFocused) return null;
@@ -129,7 +142,16 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               const meta = TAB_META[route.name];
               if (!meta) return null;
               const focused = state.routes[state.index]?.key === route.key;
-              const isScan = route.name === 'ScanTab';
+              if (route.name === 'ScanTab') {
+                return (
+                  <ScanTabButton
+                    key={route.key}
+                    label={meta.label}
+                    focused={focused}
+                    onPress={() => navigateTab(route.name, route.key)}
+                  />
+                );
+              }
               const badge =
                 route.name === 'RoutineTab' && routineBadge ? routineBadge : null;
               return (
@@ -138,7 +160,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                   label={meta.label}
                   Icon={meta.Icon}
                   focused={focused}
-                  elevated={isScan}
                   badge={badge}
                   onPress={() => onTabPress(route.name, route.key)}
                 />
@@ -159,14 +180,12 @@ function TabButton({
   label,
   Icon,
   focused,
-  elevated,
   badge,
   onPress,
 }: {
   label: string;
   Icon: PhosphorIcon;
   focused: boolean;
-  elevated: boolean;
   badge?: TabBadge | null;
   onPress: () => void;
 }) {
@@ -185,35 +204,6 @@ function TabButton({
 
   const iconColor = focused ? puraShop.dockIcon : puraShop.dockIconIdle;
   const labelColor = focused ? puraShop.dockLabel : puraShop.dockLabelIdle;
-
-  if (elevated) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${label} tab`}
-        accessibilityState={{ selected: focused }}
-        onPress={onPress}
-        hitSlop={6}
-        style={styles.tab}
-      >
-        <ScanOrb focused={focused}>
-          <Icon
-            size={24}
-            color="#FFFFFF"
-            weight="bold"
-          />
-        </ScanOrb>
-        <Text
-          style={[styles.label, { color: labelColor, marginTop: 4 }]}
-          numberOfLines={1}
-          allowFontScaling
-          maxFontSizeMultiplier={1.0}
-        >
-          {label}
-        </Text>
-      </Pressable>
-    );
-  }
 
   return (
     <Pressable
@@ -261,39 +251,135 @@ function TabButton({
 }
 
 // ---------------------------------------------------------------------------
-// ScanOrb — elevated center control with soft coral rim + bloom.
+// ScanTabButton — elevated center control, designed as a small warm moment:
+//   • Quiet-face icon (two eyes + a soft smile) instead of a scanner reticle
+//   • Slow idle breathing (scale + shadow) so it feels alive, not dead
+//   • Spring "squish" + Light haptic on press for tactile personality
+// The idle breath rests under Reduce Motion and while the button is pressed.
+// The Scan screen itself is a full-screen modal that covers the dock, so the
+// orb already rests (is offscreen) when the user is actually scanning.
 // ---------------------------------------------------------------------------
 
-function ScanOrb({
+function ScanTabButton({
+  label,
   focused,
-  children,
+  onPress,
 }: {
+  label: string;
   focused: boolean;
-  children: React.ReactNode;
+  onPress: () => void;
 }) {
+  const reduceMotion = useReduceMotion();
+  const breathe = useSharedValue(0); // 0 → 1 → 0, one slow breath
+  const pressScale = useSharedValue(1);
+  const pressing = useSharedValue(0); // 1 while held (pauses the breath)
+
+  useEffect(() => {
+    if (reduceMotion || focused) {
+      cancelAnimation(breathe);
+      breathe.value = withTiming(0, { duration: 240 });
+      return;
+    }
+    // 2.8s full cycle = 1400ms in-breath + 1400ms out-breath, ease-in-out.
+    breathe.value = withRepeat(
+      withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
+    return () => cancelAnimation(breathe);
+  }, [reduceMotion, focused, breathe]);
+
+  // Scale: the idle breath is a 2.5% swell; the press squish multiplies on top.
+  const orbAnim = useAnimatedStyle(() => {
+    const breathScale = pressing.value === 1 ? 1 : 1 + breathe.value * 0.025;
+    return { transform: [{ scale: pressScale.value * breathScale }] };
+  });
+
+  // Shadow breathes with the orb — expands + softens at the peak of the breath,
+  // contracts on the exhale — so the button feels like it has weight.
+  const shadowAnim = useAnimatedStyle(() => {
+    const t = pressing.value === 1 ? 0 : breathe.value;
+    return {
+      shadowOpacity: 0.24 + t * 0.1,
+      shadowRadius: 16 + t * 6,
+    };
+  });
+
+  const onPressIn = () => {
+    pressing.value = 1;
+    pressScale.value = withSpring(0.92, { mass: 0.5, damping: 15, stiffness: 420 });
+    hapt.tap(); // Light impact — soft, never heavy
+  };
+
+  const onPressOut = () => {
+    pressing.value = 0;
+    // Spring back with a gentle overshoot (~1.02) before settling at 1.0.
+    pressScale.value = withSpring(1, { mass: 0.6, damping: 9, stiffness: 230 });
+  };
+
+  const labelColor = focused ? puraShop.dockLabel : puraShop.dockLabelIdle;
+
   return (
-    <View style={styles.scanOrbWrap}>
-      <Svg width={48} height={48} viewBox="0 0 100 100" style={StyleSheet.absoluteFill}>
-        <Defs>
-          <RadialGradient id="scanFill" cx="50%" cy="30%" rx="75%" ry="75%">
-            <Stop offset="0%" stopColor="#5CA8FF" stopOpacity={1} />
-            <Stop offset="50%" stopColor="#147CFF" stopOpacity={1} />
-            <Stop offset="100%" stopColor="#0A57C9" stopOpacity={1} />
-          </RadialGradient>
-          <RadialGradient id="scanGloss" cx="40%" cy="26%" rx="48%" ry="38%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.6} />
-            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        {/* white base disc → crisp ring separating the orb from the dock */}
-        <Circle cx={50} cy={50} r={48} fill="#FFFFFF" />
-        {/* vibrant brand-blue fill */}
-        <Circle cx={50} cy={50} r={focused ? 45 : 46} fill="url(#scanFill)" />
-        {/* glossy top highlight for dimensionality */}
-        <Ellipse cx={42} cy={30} rx={24} ry={14} fill="url(#scanGloss)" />
-      </Svg>
-      <View style={styles.scanOrbInner}>{children}</View>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label} tab`}
+      accessibilityState={{ selected: focused }}
+      onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      hitSlop={6}
+      style={styles.tab}
+    >
+      <Animated.View style={[styles.scanOrbWrap, shadowAnim, orbAnim]}>
+        <ScanOrbFace focused={focused} />
+      </Animated.View>
+      <Text
+        style={[styles.label, { color: labelColor, marginTop: 4 }]}
+        numberOfLines={1}
+        allowFontScaling
+        maxFontSizeMultiplier={1.0}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// ScanOrbFace — the vibrant Pura-Blue orb + a quiet, friendly face.
+// Two Porcelain eyes and a single soft closed-smile curve. No outline, no
+// nose — three quiet marks. Warm without tipping into kawaii.
+function ScanOrbFace({ focused }: { focused: boolean }) {
+  return (
+    <Svg width={48} height={48} viewBox="0 0 100 100" style={StyleSheet.absoluteFill}>
+      <Defs>
+        <RadialGradient id="scanFill" cx="50%" cy="30%" rx="75%" ry="75%">
+          <Stop offset="0%" stopColor="#5CA8FF" stopOpacity={1} />
+          <Stop offset="50%" stopColor="#147CFF" stopOpacity={1} />
+          <Stop offset="100%" stopColor="#0A57C9" stopOpacity={1} />
+        </RadialGradient>
+        <RadialGradient id="scanGloss" cx="40%" cy="26%" rx="48%" ry="38%">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.6} />
+          <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+      {/* white base disc → crisp ring separating the orb from the dock */}
+      <Circle cx={50} cy={50} r={48} fill="#FFFFFF" />
+      {/* vibrant brand-blue fill */}
+      <Circle cx={50} cy={50} r={focused ? 45 : 46} fill="url(#scanFill)" />
+      {/* glossy top highlight for dimensionality */}
+      <Ellipse cx={42} cy={30} rx={24} ry={14} fill="url(#scanGloss)" />
+      {/* quiet face — two soft eyes */}
+      <Circle cx={37} cy={45} r={5} fill={SCAN_FACE} />
+      <Circle cx={63} cy={45} r={5} fill={SCAN_FACE} />
+      {/* quiet face — a single gentle closed-smile */}
+      <Path
+        d="M36 59 Q50 70 64 59"
+        stroke={SCAN_FACE}
+        strokeWidth={4.6}
+        strokeLinecap="round"
+        fill="none"
+      />
+    </Svg>
   );
 }
 
@@ -365,12 +451,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
     ...puraShopShadow.scanOrb,
-  },
-  scanOrbInner: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   percentBadge: {
     position: 'absolute',

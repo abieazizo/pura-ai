@@ -2,32 +2,29 @@
  * HeroProductCard — full-width featured recommendation. The shop's
  * unambiguous first focal point.
  *
- * v37 — the label becomes a designed moment, not a black pill.
- *   • The old blurred dark "Tonight's #1" capsule floating in the
- *     image corner is GONE. The label now leads the info plate as an
- *     editorial kicker — a short hairline rule + the line set in
- *     Instrument Serif *italic*. It rhymes with the upright serif
- *     product name below it (italic eyebrow → roman headline), the
- *     classic magazine pairing, and reads as intent rather than chrome.
- *   • The label is honest and non-temporal: "Editor's pick" pre-scan,
- *     "Your top match" once real personalization backs the pick,
- *     "Top match" inside search. No "Tonight's" — the engine is not
- *     time-of-day aware.
- *   • The card is taller (its parent reclaimed the deleted filter
- *     chrome's room), so the image stage is bigger AND the plate has
- *     space for the kicker + a confident, larger serif name without
- *     ever clipping.
- *   • Rendered through the canonical `ProductPackshot` (same renderer
- *     as every mini card) so the photo always paints over the luminous
- *     tonal backdrop instead of a harsh fill.
- *   • Match orb renders ONLY when the recommendation is backed by real
- *     personalization (`hasRealPersonalization`). Pre-scan it stays
- *     hidden — no fake precision, cleaner stage.
- *   • The single Pura Blue accent budget for this screen is spent on
- *     the status sentence's link, so the hero is deliberately
- *     monochrome ink — no blue sparkle, no blue label.
- *   • Plus button is a sibling overlay (never nested inside the outer
- *     Pressable), zIndex 20.
+ * v38 — tightened. The hero is now DELIBERATELY COMPACT so the feed
+ * breathes and the next section peeks below the fold (a tall hero that
+ * ate the whole viewport was the regression this corrects):
+ *   • Shorter image stage (~30% less tall) over a tight packshot crop, so
+ *     the bottle still reads generously without a cavernous card.
+ *   • The label is an editorial kicker leading the plate — a short
+ *     hairline rule + the line in Instrument Serif *italic*, rhyming with
+ *     the upright serif name below (italic eyebrow → roman headline). It
+ *     is honest + non-temporal: "Editor's pick" pre-scan, "Your top match"
+ *     once real personalization backs the pick, "Top match" in search.
+ *     No "Tonight's" — the engine is not time-of-day aware.
+ *   • No match orb. Match accuracy is ambient state that lives in the
+ *     status sentence above the hero, never as chrome on the card. The
+ *     hero's one reason line says WHY it fits (matched factors / benefit),
+ *     not a redundant percentage.
+ *   • Price is plain text, never a chip; it collapses with the single add
+ *     action onto one footer row.
+ *   • Rendered through the canonical `ProductPackshot` (same renderer as
+ *     every mini card) over the luminous tonal backdrop.
+ *   • The single Pura Blue accent budget for this screen is spent on the
+ *     status sentence's link, so the hero is deliberately monochrome ink.
+ *   • Add button is a sibling overlay (never nested inside the outer
+ *     Pressable), zIndex 20 — a light blue-ringed disc, never a black void.
  */
 
 import React from 'react';
@@ -51,7 +48,6 @@ import {
 import type { ShopCatalogProduct } from '../shopCatalog';
 import type { MatchedFactor } from '../personalization';
 import { ProductPackshot } from './ProductPackshot';
-import { MatchOrb } from './MatchOrb';
 import { AddButton } from './AddButton';
 import { MatchedTags } from './MatchedTags';
 
@@ -64,14 +60,13 @@ export interface HeroProductCardProps {
   factors?: MatchedFactor[];
   /** True only when the match is driven by real user signal (a scan /
    *  profile), not the static catalog affinity baseline. Gates the
-   *  match orb + "match" claim so the hero never overstates fit. */
+   *  "why it fits" matched-factor reason line so the hero never
+   *  overstates fit pre-scan. */
   hasRealPersonalization?: boolean;
   isInRoutine: boolean;
   onPress: () => void;
   onAdd: () => void;
 }
-
-const ORB_SIZE = 60;
 
 export function HeroProductCard({
   product,
@@ -100,16 +95,22 @@ export function HeroProductCard({
     });
   };
 
-  // Image stage ~50% of the (now taller) card; the rest is the info
-  // plate. Even at 50% the absolute stage is bigger than the old card's,
-  // and the floor keeps the bottle generous on the shortest hero.
-  const imageH = Math.max(208, Math.round(height * 0.5));
+  // Compact stage — a touch under half the (now shorter) card, leaving the
+  // plate ~160px. The tight packshot crop keeps the bottle generous even
+  // on the shortest hero.
+  const imageH = Math.round(height * 0.48);
 
-  // The match claim is only honest when it's backed by real signal.
+  // The match claim is only honest when it's backed by real signal. We no
+  // longer paint it as an orb — it gates the "why it fits" reason line and
+  // the accessibility match phrase only.
   const matchScore = matchPercent ?? 0;
   const showMatch = hasRealPersonalization && matchScore > 0;
   const realFactors = (factors ?? []).filter((f) => f.kind !== 'baseline');
   const showFactors = showMatch && realFactors.length > 0;
+
+  // Prefer the short name on the hero so the serif headline stays on one
+  // confident line; the full name is the fallback.
+  const heroName = product.shortName ?? product.name;
 
   return (
     <View style={[styles.card, { width, height }]}>
@@ -128,7 +129,8 @@ export function HeroProductCard({
           }
           style={styles.pressable}
         >
-          {/* Image stage — canonical packshot renderer. */}
+          {/* Image stage — canonical packshot renderer. Nothing floats
+              here: the label leads the plate below as an editorial kicker. */}
           <View style={[styles.imageArea, { height: imageH }]}>
             <ProductPackshot
               source={product.catalogPackshot}
@@ -137,21 +139,12 @@ export function HeroProductCard({
               height={imageH}
               accessibilityLabel={`${product.brand} ${product.name}`}
             />
-
-            {/* Match orb — only when the match is real. The label that
-                used to float here as a dark pill now leads the plate
-                below as an editorial kicker. */}
-            {showMatch ? (
-              <View style={styles.orbWrap} pointerEvents="none">
-                <MatchOrb percent={matchScore} size={ORB_SIZE} />
-              </View>
-            ) : null}
           </View>
 
-          {/* Info plate */}
+          {/* Info plate — compact: kicker, brand, one-line serif name, one
+              reason line, and a single price/add footer row. */}
           <View style={styles.plate}>
-            {/* Editorial kicker — the "designed moment". A short rule +
-                the label in italic serif, leading the plate. */}
+            {/* Editorial kicker — the label as a designed moment. */}
             <View style={styles.kicker}>
               <View style={styles.kickerRule} />
               <Text
@@ -166,8 +159,14 @@ export function HeroProductCard({
             <Text style={styles.brand} maxFontSizeMultiplier={1.1} numberOfLines={1}>
               {product.brand.toUpperCase()}
             </Text>
-            <Text style={styles.name} maxFontSizeMultiplier={1.05} numberOfLines={2}>
-              {product.name}
+            <Text
+              style={styles.name}
+              maxFontSizeMultiplier={1.05}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+            >
+              {heroName}
             </Text>
 
             {/* One reason row: matched factors when we've earned the
@@ -186,19 +185,18 @@ export function HeroProductCard({
               </Text>
             ) : null}
 
+            {/* Footer — price as plain text (never a chip) on one row; the
+                single add action is the floating button at the right. */}
             <View style={styles.footer}>
-              <View style={styles.pricePill}>
-                <Text style={styles.priceText} maxFontSizeMultiplier={1.1}>
-                  ${formatPrice(product.price)}
-                </Text>
-              </View>
-              <View style={styles.plusReserve} />
+              <Text style={styles.priceText} maxFontSizeMultiplier={1.1}>
+                ${formatPrice(product.price)}
+              </Text>
             </View>
           </View>
         </Pressable>
       </Animated.View>
 
-      {/* Floating AddButton — sibling overlay */}
+      {/* Floating AddButton — sibling overlay, light blue-ringed disc. */}
       <View style={styles.addFloat} pointerEvents="box-none">
         <AddButton
           onPress={onAdd}
@@ -241,17 +239,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: puraShop.borderWarm,
   },
-  orbWrap: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 10,
-  },
   plate: {
     flex: 1,
     paddingHorizontal: 18,
-    paddingTop: 15,
-    paddingBottom: 15,
+    paddingTop: 13,
+    paddingBottom: 13,
     backgroundColor: puraShop.heroInfoBg,
   },
   // Editorial kicker — the label as a designed moment.
@@ -259,7 +251,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
-    marginBottom: 10,
+    marginBottom: 7,
   },
   kickerRule: {
     width: 18,
@@ -269,8 +261,8 @@ const styles = StyleSheet.create({
   },
   kickerText: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 16,
-    lineHeight: 19,
+    fontSize: 15,
+    lineHeight: 18,
     letterSpacing: -0.1,
     color: puraShop.ink,
   },
@@ -278,44 +270,33 @@ const styles = StyleSheet.create({
     ...puraShopType.brand,
     color: puraShop.inkSecondary,
   },
-  // Confident serif headline — larger than the shared heroProductSerif
-  // token so the hero's name carries the screen.
+  // Confident serif headline kept to one line; adjustsFontSizeToFit guards
+  // the rare long short-name.
   name: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 26,
-    lineHeight: 29,
-    letterSpacing: -0.6,
+    fontSize: 24,
+    lineHeight: 27,
+    letterSpacing: -0.5,
     color: puraShop.ink,
-    marginTop: 5,
+    marginTop: 3,
   },
   benefit: {
     ...puraShopType.benefitLine,
     color: puraShop.inkSecondary,
-    marginTop: 5,
+    marginTop: 4,
   },
   reason: {
-    marginTop: 9,
+    marginTop: 7,
   },
   footer: {
     marginTop: 'auto',
-    paddingTop: 12,
+    paddingTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  pricePill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: puraShopRadius.pricePill,
-    backgroundColor: puraShop.surfaceMuted,
-  },
   priceText: {
     ...puraShopType.priceLarge,
-    color: puraShop.pricePillText,
-  },
-  plusReserve: {
-    width: 48,
-    height: 40,
-    marginLeft: 'auto',
+    color: puraShop.ink,
   },
   addFloat: {
     position: 'absolute',

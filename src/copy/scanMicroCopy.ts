@@ -80,11 +80,17 @@ export type LoadingMessage = (typeof LOADING_MESSAGES)[number];
  * the cinematic analyzing flow.
  */
 export const ANALYZING_BEATS_PRACTITIONER = {
-  preflight: 'Holding the photo steady.',
+  // Pass 5 deep-tune: preflight and score lines refined after reading
+  // aloud. "Holding the photo steady." sounded mechanical → "Letting
+  // my eye adjust." personifies the AI as having a practitioner's
+  // gaze. "Pulling it together." sounded casual → "Letting it
+  // settle." carries ritual without losing intimacy. The remaining
+  // lines passed the read-aloud test on the first take and stay.
+  preflight: 'Letting my eye adjust.',
   locate: 'Reading the surface.',
   partition: 'Where the cheekbones turn.',
   detect: 'A few areas asking for attention.',
-  score: 'Pulling it together.',
+  score: 'Letting it settle.',
   waiting: 'Still reading. A moment.',
   reveal: 'Ready.',
 } as const;

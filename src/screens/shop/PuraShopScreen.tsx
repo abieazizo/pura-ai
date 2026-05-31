@@ -78,16 +78,17 @@ type TabNav = NavigationProp<TabParamList>;
 function computeLayout(deviceWidth: number, deviceHeight: number) {
   const innerWidth = Math.max(280, deviceWidth - puraShopLayout.horizontalPadding * 2);
   const heroWidth = innerWidth;
-  // Hero height — the hero is now the unambiguous first focal point, so
-  // it is given the room the deleted filter chrome was hogging. Taller
-  // card → a bigger image stage AND a plate with space for the editorial
-  // kicker + a confident serif name, never cramped.
-  //   • Floor: 440 — comfortable image + kicker/brand/name/reason/footer
-  //   • Ceiling: heroWidth * 1.26 OR 486, whichever is smaller — keeps
-  //     the card from ballooning on a wide desktop browser.
+  // Hero height — deliberately COMPACT. The hero is the first focal point,
+  // but it must not eat the whole viewport: the next section has to peek
+  // below the fold. ~30% shorter than the old tall card; the tight packshot
+  // crop keeps the bottle generous despite the smaller stage.
+  //   • Floor: 308 — image (~48%) + a ~160px plate that fits the kicker,
+  //     brand, one-line serif name, reason line, and price/add footer.
+  //   • Ceiling: heroWidth * 0.92 OR 340, whichever is smaller — keeps the
+  //     card from ballooning on a wide desktop browser.
   const heroHeight = Math.max(
-    440,
-    Math.min(486, Math.round(heroWidth * 1.26)),
+    308,
+    Math.min(340, Math.round(heroWidth * 0.92)),
   );
   const miniWidth =
     deviceWidth >= 410 ? 172 : deviceWidth >= 390 ? 164 : 156;

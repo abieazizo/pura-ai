@@ -192,10 +192,13 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
 interface QuestionCardProps {
   question: string;
   progress: ReturnType<typeof useSharedValue<number>>;
+  /** Kept on the type for a11y / analytics extension; not used in
+   *  render after Pass 7 removed the order pip. */
   index: number;
 }
 
 function QuestionCard({ question, progress, index }: QuestionCardProps) {
+  void index; // see prop doc above
   const style = useAnimatedStyle(() => {
     // Flip animation: rotateX from -42° to 0°, opacity 0→1, translateY
     // 10pt → 0. Reads as a paper card landing on a desk, not a flat fade.
@@ -212,16 +215,17 @@ function QuestionCard({ question, progress, index }: QuestionCardProps) {
 
   return (
     <Animated.View style={[cardStyles.card, style]}>
-      {/* Small terracotta order pip — quiet brand mark on each card. */}
-      <View style={cardStyles.pip}>
-        <Text style={cardStyles.pipText}>{index + 1}</Text>
-      </View>
+      {/* Pass 7 — order pip removed. The three cards already imply
+          sequence through the flip choreography; the pip was over-
+          designed and competed for attention with the question. The
+          question now owns the card. */}
       <Text style={cardStyles.question} maxFontSizeMultiplier={1.15}>
         {question}
       </Text>
     </Animated.View>
   );
 }
+
 
 // ---------- Styles ----------
 
@@ -272,20 +276,6 @@ const cardStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
     gap: 10,
-  },
-  pip: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(201, 122, 90, 0.14)', // terracotta wash
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pipText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    color: '#C97A5A', // terracotta
-    letterSpacing: 0.2,
   },
   question: {
     fontFamily: 'InstrumentSerif-Italic',
