@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: palette.clayPaper,
     borderWidth: 1,
-    borderColor: '#EBCFC5',
+    borderColor: '#CFE3FF',
     marginTop: 16,
   },
   scanIcon: {

@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: palette.clayPaper,
     borderWidth: 1,
-    borderColor: '#EBCFC5',
+    borderColor: '#CFE3FF',
   },
   conclusionLabel: {
     fontFamily: 'Inter-SemiBold',
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryBtnPressed: {
-    backgroundColor: '#0F0E0D',
+    backgroundColor: '#0A0C12',
   },
   primaryLabel: {
     fontFamily: 'Inter-SemiBold',

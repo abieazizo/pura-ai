@@ -473,7 +473,7 @@ const legendStyles = StyleSheet.create({
   text: {
     fontFamily: 'Inter-Medium',
     fontSize: 12,
-    color: '#4A3D35',
+    color: '#5D6673',
     letterSpacing: 0.3,
   },
 });

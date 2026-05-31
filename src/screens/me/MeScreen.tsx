@@ -117,11 +117,20 @@ export function MeScreen() {
           >
             Me
           </Text>
-          <View style={styles.avatar}>
+          <Pressable
+            onPress={openProfileSheet}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.avatar,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
             <Text style={styles.avatarText} maxFontSizeMultiplier={1.1}>
               {userInitials || (name ? name[0].toUpperCase() : 'Y')}
             </Text>
-          </View>
+          </Pressable>
         </View>
 
         {/* Editorial greeting */}
@@ -359,14 +368,17 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: puraShop.surfaceMuted,
+    backgroundColor: puraShop.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: puraShop.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 18,
-    color: puraShop.ink,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: puraShop.inkSecondary,
+    letterSpacing: 0.2,
   },
   summary: {
     paddingHorizontal: puraShopLayout.horizontalPadding,

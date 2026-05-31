@@ -1,31 +1,32 @@
 /**
  * HeroProductCard — full-width featured recommendation.
  *
- * v35 — minimal, guaranteed-render rebuild.
- *   • Backdrop: a single peach LinearGradient. No white "bloom"
- *     overlay (the prior bloom was painting over the bottle on
- *     web).
- *   • Packshot: React Native's built-in <Image> with explicit pixel
- *     width + height (no percent strings, no onLayout) so it always
- *     paints, even on the first commit, on every renderer.
- *   • Match orb is ALWAYS rendered (using the lowest non-zero
- *     fallback) so the user sees the personalization signal.
- *   • Plate sized to fit: brand + name + benefit + factor row + price
- *     pill + plus button — all visible on a 420pt-tall hero.
- *   • Plus button is a sibling overlay (never nested inside the
- *     outer Pressable), zIndex 20.
+ * v36 — render through the canonical ProductPackshot.
+ *   • The image stage is now `ProductPackshot` — the exact same
+ *     renderer every mini/supporting card uses. This is what
+ *     guarantees the photo paints (the prior v35 raw <Image> over a
+ *     deep-blue LinearGradient left the stage as an empty blue void
+ *     on web) and it gives the hero the luminous tonal backdrop that
+ *     matches the rest of the storefront instead of a harsh blue fill.
+ *   • Compact, balanced proportions: the card no longer floors at
+ *     440pt. The image stage reads the product clearly; the plate
+ *     holds brand + name + one reason row + price/add with breathing
+ *     room and never clips.
+ *   • Match orb + "match" claim render ONLY when the recommendation
+ *     is backed by real personalization (`hasRealPersonalization`).
+ *     With no scan it stays hidden — no fake precision, cleaner stage.
+ *   • Plus button is a sibling overlay (never nested inside the outer
+ *     Pressable), zIndex 20.
  */
 
 import React from 'react';
 import {
-  Image,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -41,6 +42,7 @@ import {
 } from '@/theme';
 import type { ShopCatalogProduct } from '../shopCatalog';
 import type { MatchedFactor } from '../personalization';
+import { ProductPackshot } from './ProductPackshot';
 import { MatchOrb } from './MatchOrb';
 import { AddButton } from './AddButton';
 import { MatchedTags } from './MatchedTags';
@@ -52,13 +54,16 @@ export interface HeroProductCardProps {
   badgeLabel?: string;
   matchPercent?: number;
   factors?: MatchedFactor[];
+  /** True only when the match is driven by real user signal (a scan /
+   *  profile), not the static catalog affinity baseline. Gates the
+   *  match orb + "match" claim so the hero never overstates fit. */
+  hasRealPersonalization?: boolean;
   isInRoutine: boolean;
   onPress: () => void;
   onAdd: () => void;
 }
 
-const PADDING = 16;
-const ORB_SIZE = 64;
+const ORB_SIZE = 60;
 
 export function HeroProductCard({
   product,
@@ -67,6 +72,7 @@ export function HeroProductCard({
   badgeLabel = "Tonight's #1",
   matchPercent,
   factors,
+  hasRealPersonalization = false,
   isInRoutine,
   onPress,
   onAdd,
@@ -86,24 +92,15 @@ export function HeroProductCard({
     });
   };
 
-  // Image area takes ~52% of card height. With heroHeight ≥ 420 the
-  // image is at least 218px tall — large enough for the bottle to
-  // read confidently while leaving room for the full plate.
-  const imageH = Math.max(200, Math.round(height * 0.52));
-  // Packshot wraps inside the imageArea with the given inset.
-  const packshotW = Math.max(120, width - PADDING * 2);
-  const packshotH = Math.max(120, imageH - PADDING * 2);
+  // Image stage ~53% of the card; the rest is the info plate. Floor
+  // keeps the bottle legible even on the shortest hero.
+  const imageH = Math.max(176, Math.round(height * 0.53));
 
-  // ALWAYS show the match orb — even a low score communicates "this
-  // is personalized to you". Floor at the product's catalog-level
-  // matchScore (98 for Paula's, etc.) so the orb is meaningful even
-  // when the user has no profile data yet.
-  const matchScore =
-    matchPercent && matchPercent > 0
-      ? matchPercent
-      : product.matchScore && product.matchScore > 0
-        ? product.matchScore
-        : 0;
+  // The match claim is only honest when it's backed by real signal.
+  const matchScore = matchPercent ?? 0;
+  const showMatch = hasRealPersonalization && matchScore > 0;
+  const realFactors = (factors ?? []).filter((f) => f.kind !== 'baseline');
+  const showFactors = showMatch && realFactors.length > 0;
 
   return (
     <View style={[styles.card, { width, height }]}>
@@ -113,39 +110,24 @@ export function HeroProductCard({
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           accessibilityRole="button"
-          accessibilityLabel={`${product.brand} ${product.name}, ${matchScore} percent match, $${product.price}`}
+          accessibilityLabel={
+            showMatch
+              ? `${product.brand} ${product.name}, ${Math.round(
+                  matchScore,
+                )} percent match, $${product.price}`
+              : `${product.brand} ${product.name}, $${product.price}`
+          }
           style={styles.pressable}
         >
-          {/* Image stage */}
+          {/* Image stage — canonical packshot renderer. */}
           <View style={[styles.imageArea, { height: imageH }]}>
-            <LinearGradient
-              colors={[puraShop.heroFrom, puraShop.heroVia, puraShop.heroTo]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
+            <ProductPackshot
+              source={product.catalogPackshot}
+              tone={product.packshotTone}
+              width={width}
+              height={imageH}
+              accessibilityLabel={`${product.brand} ${product.name}`}
             />
-
-            {/* Packshot — explicit pixel dimensions, plain RN Image. */}
-            <View
-              style={[
-                styles.packshotWrap,
-                {
-                  width: packshotW,
-                  height: packshotH,
-                  left: PADDING,
-                  top: PADDING,
-                },
-              ]}
-              pointerEvents="none"
-            >
-              <Image
-                source={product.catalogPackshot}
-                style={{ width: packshotW, height: packshotH }}
-                resizeMode="contain"
-                accessibilityLabel={`${product.brand} ${product.name}`}
-                fadeDuration={180}
-              />
-            </View>
 
             {/* Tonight's #1 capsule */}
             <View style={styles.badgeWrap} pointerEvents="none">
@@ -168,8 +150,8 @@ export function HeroProductCard({
               </View>
             </View>
 
-            {/* Match orb */}
-            {matchScore > 0 ? (
+            {/* Match orb — only when the match is real. */}
+            {showMatch ? (
               <View style={styles.orbWrap} pointerEvents="none">
                 <MatchOrb percent={matchScore} size={ORB_SIZE} />
               </View>
@@ -184,7 +166,14 @@ export function HeroProductCard({
             <Text style={styles.name} maxFontSizeMultiplier={1.05} numberOfLines={2}>
               {product.name}
             </Text>
-            {product.benefitLine ? (
+
+            {/* One reason row: matched factors when we've earned the
+                claim, otherwise the editorial benefit line. */}
+            {showFactors ? (
+              <View style={styles.reason}>
+                <MatchedTags factors={realFactors} showKicker={false} limit={2} />
+              </View>
+            ) : product.benefitLine ? (
               <Text
                 style={styles.benefit}
                 maxFontSizeMultiplier={1.15}
@@ -192,12 +181,6 @@ export function HeroProductCard({
               >
                 {product.benefitLine}
               </Text>
-            ) : null}
-
-            {factors && factors.length > 0 ? (
-              <View style={styles.factors}>
-                <MatchedTags factors={factors} showKicker={false} limit={2} />
-              </View>
             ) : null}
 
             <View style={styles.footer}>
@@ -252,12 +235,8 @@ const styles = StyleSheet.create({
     width: '100%',
     position: 'relative',
     overflow: 'hidden',
-  },
-  packshotWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: puraShop.borderWarm,
   },
   badgeWrap: {
     position: 'absolute',
@@ -293,7 +272,7 @@ const styles = StyleSheet.create({
   plate: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 13,
     paddingBottom: 14,
     backgroundColor: puraShop.heroInfoBg,
   },
@@ -309,14 +288,14 @@ const styles = StyleSheet.create({
   benefit: {
     ...puraShopType.benefitLine,
     color: puraShop.inkSecondary,
-    marginTop: 4,
+    marginTop: 5,
   },
-  factors: {
-    marginTop: 8,
+  reason: {
+    marginTop: 9,
   },
   footer: {
     marginTop: 'auto',
-    paddingTop: 10,
+    paddingTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },

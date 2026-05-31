@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     fontSize: 12,
     letterSpacing: 0.2,
-    color: '#4A3D35',
+    color: '#5D6673',
     width: 78,
   },
   track: {
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   value: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
-    color: '#4A3D35',
+    color: '#5D6673',
     width: 28,
     textAlign: 'right',
     fontVariant: ['tabular-nums'],

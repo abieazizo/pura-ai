@@ -58,7 +58,7 @@ const TONE_GRADIENTS: Record<
     rim: puraShop.packshotBlushDeep,
   },
   peach: {
-    core: '#FFEFE0',
+    core: '#EAF4FF',
     mid: puraShop.packshotPeach,
     rim: puraShop.packshotPeachDeep,
   },

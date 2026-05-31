@@ -102,14 +102,14 @@ export const V26_MOTION = {
 
 export const V26_SHADOW = {
   card: {
-    shadowColor: '#2A1F18',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.022,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
   hero: {
-    shadowColor: '#2A1F18',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.04,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 8 },

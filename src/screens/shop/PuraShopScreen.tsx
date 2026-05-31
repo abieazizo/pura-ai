@@ -1,19 +1,27 @@
 /**
- * Pura Shop — the storefront destination.
+ * Pura Shop — a PERSONALIZED RECOMMENDATION FEED.
+ *
+ * This screen is one thing, and the discipline is in refusing to let it
+ * become anything else. Curation is the product; browsing is a secondary
+ * path; filtering is not a primary concept here. Concern names are
+ * navigation to a dedicated surface, never an in-place narrowing of this
+ * list. The user's traits (active breakouts, combination) are a *sentence*
+ * describing them, not tappable controls. Match accuracy is ambient state
+ * that lives in that sentence, never UI chrome.
  *
  * Mobile layout:
- *   1. Header (scroll-parallaxed)
- *   2. Search (live-filters product carousels)
- *   3. Skin profile chips
- *   4. Concern filter chips
- *   5. Full-width personalized hero recommendation
+ *   1. Header (scroll-parallaxed wordmark + save / bag)
+ *   2. Search (one quiet input)
+ *   3. Status sentence — the single editorial line that replaced three
+ *      competing filter rows. Pre-scan: a scan invitation. Post-scan: who
+ *      the user is + how matched + a quiet Improve link.
+ *   4. Hero — the unambiguous first focal point. Editorial treatment.
+ *   5. "Browse by concern →" — one quiet line into the concern index.
  *   6. "Complete tonight's routine" — stable supporting carousel
- *   7. Search results OR "Breakout essentials" — concern-aware carousel
+ *   7. Search results OR "Breakout essentials" — curated carousel
  *
- * Atmospheric morning-light glow fades as the user scrolls; a fine
- * hairline separator appears beneath the top chrome once the hero
- * has cleared the screen. The "Added to tonight's routine" toast
- * floats above the dock when a product is added, with one-tap Undo.
+ * Two states, ONE layout. Only the status sentence, the hero label, and
+ * the hero's matched product change between pre-scan and post-scan.
  *
  * All product imagery is rendered via `ProductPackshot`, which only
  * accepts real catalog packshot assets.
@@ -45,22 +53,15 @@ import { hapt } from '@/utils/haptics';
 import { puraShop, puraShopLayout } from '@/theme';
 import type { HomeStackParamList, TabParamList } from '@/navigation/types';
 
-import {
-  useShopViewModel,
-  type ShopConcernFilter,
-  type ShopSkinContextPill,
-} from './useShopViewModel';
+import { useShopViewModel } from './useShopViewModel';
 import { findShopProduct, type ShopCatalogProduct } from './shopCatalog';
 import { ShopHeader } from './components/ShopHeader';
 import { ShopSearchBar } from './components/ShopSearchBar';
-import { SkinProfileStrip } from './components/SkinProfileStrip';
-import { ConcernFilterRow } from './components/ConcernFilterRow';
 import { SectionHeader } from './components/SectionHeader';
 import { HeroProductCard } from './components/HeroProductCard';
 import { ProductCarousel } from './components/ProductCarousel';
 import { EmptyState } from './components/EmptyState';
 import { AddedToRoutineToast } from './components/AddedToRoutineToast';
-import { ProfileMeter } from './components/ProfileMeter';
 import { SearchSuggestionsPanel } from './components/SearchSuggestionsPanel';
 import { useDebouncedValue } from './searchUtils';
 
@@ -74,16 +75,15 @@ type TabNav = NavigationProp<TabParamList>;
 function computeLayout(deviceWidth: number, deviceHeight: number) {
   const innerWidth = Math.max(280, deviceWidth - puraShopLayout.horizontalPadding * 2);
   const heroWidth = innerWidth;
-  // Hero height — bounded so the plate (brand / name / benefit /
-  // matched-for tags / price-add footer) is always fully visible.
-  //   • Floor: 440 — covers the plate + image at any width
-  //   • Ceiling: heroWidth * 1.22 OR 520, whichever is smaller —
-  //     prevents the card from getting "tall window" stretched when
-  //     the app runs in a desktop browser (where deviceHeight may
-  //     be 1000+ px).
+  // Hero height — compact and balanced. The image stage reads the
+  // product clearly and the plate (brand / name / one reason row /
+  // price-add footer) sits below it without dead space.
+  //   • Floor: 356 — covers image + plate at any width
+  //   • Ceiling: heroWidth * 1.02 OR 396, whichever is smaller —
+  //     keeps the card from stretching tall in a desktop browser.
   const heroHeight = Math.max(
-    440,
-    Math.min(520, Math.round(heroWidth * 1.22)),
+    356,
+    Math.min(396, Math.round(heroWidth * 1.02)),
   );
   const miniWidth =
     deviceWidth >= 410 ? 172 : deviceWidth >= 390 ? 164 : 156;
@@ -101,8 +101,6 @@ export function PuraShopScreen() {
   const nav = useNavigation<Nav>();
   const tabNav = useNavigation<TabNav>();
 
-  const [filter, setFilter] = useState<ShopConcernFilter>('all');
-  const [contextKey, setContextKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   // Session-only recent searches, capped at 5. (We deliberately don't
@@ -115,10 +113,14 @@ export function PuraShopScreen() {
   const debouncedQuery = useDebouncedValue(query, 110);
   const [toast, setToast] = useState<ToastState>({ product: null, tick: 0 });
 
+  // The shop landing screen is a personalized recommendation feed —
+  // not a filter surface. Concern is navigation (a separate destination),
+  // never an in-place narrowing of this list. The view model is always
+  // asked for the full, score-ranked feed.
   const vm = useShopViewModel({
-    activeFilter: filter,
+    activeFilter: 'all',
     query: debouncedQuery,
-    activeContextKey: contextKey,
+    activeContextKey: null,
   });
 
   const addToRoutine = useAppStore((s) => s.addUserRoutineProduct);
@@ -215,15 +217,6 @@ export function PuraShopScreen() {
     };
   }, [toast.product, lastAddedWasHero, completeIdsNotInRoutine, handleBundleAdd]);
 
-  const onSelectFilter = useCallback((next: ShopConcernFilter) => {
-    hapt.select();
-    setFilter(next);
-  }, []);
-  const onSelectContext = useCallback((next: ShopSkinContextPill) => {
-    hapt.select();
-    setContextKey(next.key);
-    if (next.concernKey) setFilter(next.concernKey);
-  }, []);
   const openSaved = useCallback(() => {
     hapt.select();
     nav.navigate('CategoryView', { kind: 'new' });
@@ -245,11 +238,9 @@ export function PuraShopScreen() {
     hapt.select();
     setQuery('');
   }, []);
-  const resetFilters = useCallback(() => {
+  const resetSearch = useCallback(() => {
     hapt.select();
-    setFilter('all');
     setQuery('');
-    setContextKey(null);
   }, []);
 
   const isSearchActive = vm.isSearchActive;
@@ -349,24 +340,11 @@ export function PuraShopScreen() {
             onSelect={applySuggestion}
           />
         ) : null}
-        <SkinProfileStrip
-          pills={vm.contextPills}
-          onSelect={onSelectContext}
-        />
-        <ConcernFilterRow
-          chips={vm.filterChips}
-          active={vm.activeFilter}
-          onSelect={onSelectFilter}
-        />
-
-        {/* Profile completeness — visible signal that the page is
-            personalized, and a one-tap path to tighten the fit. */}
-        {!isSearchActive ? (
-          <ProfileMeter
-            accuracy={vm.profileAccuracy}
-            onImprove={openScan}
-          />
-        ) : null}
+        {/* PASS 1 — DELETE. The three competing filter/navigation
+            systems that used to live here (skin-trait pills, concern
+            chip row, match-accuracy progress bar) are gone. The space
+            between search and hero is intentionally clear; Pass 2 fills
+            it with a single editorial status sentence. */}
 
         {/* Hero block */}
         {vm.hero.featured ? (
@@ -386,6 +364,7 @@ export function PuraShopScreen() {
                 product={vm.hero.featured.catalog}
                 matchPercent={vm.hero.featured.matchScore}
                 factors={vm.hero.featured.factors}
+                hasRealPersonalization={vm.hero.featured.hasRealPersonalization}
                 badgeLabel={vm.heroBadge}
                 width={layout.heroWidth}
                 height={layout.heroHeight}
@@ -411,11 +390,11 @@ export function PuraShopScreen() {
                   ? `Did you mean “${vm.suggestion}”?`
                   : 'Reset and we’ll surface tonight’s best picks across your full profile.'
               }
-              actionLabel={vm.suggestion ? `Try “${vm.suggestion}”` : 'Reset'}
+              actionLabel={vm.suggestion ? `Try “${vm.suggestion}”` : 'Clear search'}
               onAction={
                 vm.suggestion
                   ? () => applySuggestion(vm.suggestion!)
-                  : resetFilters
+                  : resetSearch
               }
             />
           </View>

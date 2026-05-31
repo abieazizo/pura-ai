@@ -592,7 +592,7 @@ const moduleStyles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     gap: 12,
-    shadowColor: '#171615',
+    shadowColor: '#080A0F',
     shadowOpacity: 0.22,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },

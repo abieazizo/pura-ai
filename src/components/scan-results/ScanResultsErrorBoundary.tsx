@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     letterSpacing: 2.2,
-    color: '#A85A47',
+    color: '#075FD1',
     marginBottom: 12,
   },
   title: {
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     lineHeight: 22,
-    color: '#6C6765',
+    color: '#5D6673',
     textAlign: 'center',
     marginTop: 16,
     maxWidth: 320,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   debug: {
     fontFamily: 'Inter-Regular',
     fontSize: 10,
-    color: '#A85A47',
+    color: '#075FD1',
     textAlign: 'center',
     marginTop: 22,
     maxWidth: 320,
@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#A85A47',
+    backgroundColor: '#075FD1',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -221,6 +221,6 @@ const styles = StyleSheet.create({
   secondaryLabel: {
     fontFamily: 'Inter-Medium',
     fontSize: 14,
-    color: '#A85A47',
+    color: '#075FD1',
   },
 });

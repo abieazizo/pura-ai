@@ -84,7 +84,7 @@ function FaceDiagram({ region }: { region: string }) {
       <Path
         d="M50 8 C32 8 22 22 22 44 C22 70 30 100 50 112 C70 100 78 70 78 44 C78 22 68 8 50 8 Z"
         fill={palette.clayPaper}
-        stroke="#EBCFC5"
+        stroke="#CFE3FF"
         strokeWidth={1}
       />
       {highlightForehead ? (

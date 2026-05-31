@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryBtnPressed: {
-    backgroundColor: '#0F0E0D',
+    backgroundColor: '#0A0C12',
   },
   primaryLabel: {
     fontFamily: 'Inter-SemiBold',

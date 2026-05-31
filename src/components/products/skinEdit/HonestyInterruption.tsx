@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: palette.clayPaper,
     borderWidth: 1,
-    borderColor: '#EBCFC5',
+    borderColor: '#CFE3FF',
   },
   stateChipText: {
     fontFamily: 'Inter-SemiBold',
