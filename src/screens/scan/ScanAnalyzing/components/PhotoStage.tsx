@@ -76,10 +76,24 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
   const entranceOpacity = useSharedValue(0);
   const entranceScale = useSharedValue(1.04);
 
+  // v35 Pass-1 — State 5 "The Ember Carry". The CornflowerArc on the
+  // capture screen releases a terracotta ember at completion (6
+  // o'clock terminus, drifts ~55% inward). The capture screen then
+  // unmounts and PhotoStage mounts. To preserve the perception of a
+  // single continuous gesture across the screen boundary, PhotoStage
+  // re-materializes a matching terracotta ember at the bottom-center
+  // of the photo and drifts it upward toward face-center over 700ms.
+  // The user sees one ember crossing two screens; the perception of
+  // continuity is what matters, not literal state hand-off.
+  const emberOpacity = useSharedValue(0);
+  const emberScale = useSharedValue(0.6);
+  const emberDrift = useSharedValue(0); // 0 → 1 upward travel
+
   useEffect(() => {
     if (reduceMotion) {
       entranceOpacity.value = 1;
       entranceScale.value = 1;
+      emberOpacity.value = 0; // skip the ember in reduce-motion mode
       return;
     }
     entranceOpacity.value = withTiming(1, {
@@ -87,7 +101,33 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
       easing: Easing.out(Easing.cubic),
     });
     entranceScale.value = withSpring(1, { damping: 22, stiffness: 140 });
-  }, [entranceOpacity, entranceScale, reduceMotion]);
+
+    // Ember carry — choreographed to start IMMEDIATELY on mount so the
+    // perception is "the ember from the capture screen kept traveling."
+    // 120ms ramp-in, 240ms hold visible, 340ms fade-out as it dissolves
+    // into the analysis particles further up the face.
+    emberOpacity.value = withTiming(1, {
+      duration: 120,
+      easing: Easing.out(Easing.cubic),
+    });
+    emberScale.value = withTiming(1.4, {
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+    });
+    emberDrift.value = withTiming(1, {
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+    });
+    // Schedule fade-out as a separate timing so the dissolve into the
+    // mesh reads as the ember "becoming" the analysis layer.
+    const fadeTimer = setTimeout(() => {
+      emberOpacity.value = withTiming(0, {
+        duration: 340,
+        easing: Easing.in(Easing.cubic),
+      });
+    }, 360);
+    return () => clearTimeout(fadeTimer);
+  }, [entranceOpacity, entranceScale, emberOpacity, emberScale, emberDrift, reduceMotion]);
 
   useEffect(() => {
     const targetH = revealMode ? PHOTO_HEIGHT_REVEAL : PHOTO_HEIGHT_ACTIVE;
@@ -111,6 +151,35 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
     transform: [{ scale: entranceScale.value }],
   }));
 
+  // Ember position: starts at the bottom-center (mirroring the
+  // CornflowerArc's 6 o'clock terminus), drifts upward by ~60% of the
+  // photo height toward face-center. Scale grows as it travels so the
+  // ember reads as the seed of the analysis layer "blooming" into the
+  // mesh, not a static pinpoint.
+  const emberStyle = useAnimatedStyle(() => {
+    const photoH = revealMode ? PHOTO_HEIGHT_REVEAL : PHOTO_HEIGHT_ACTIVE;
+    const travelDistance = photoH * 0.6;
+    return {
+      position: 'absolute',
+      left: PHOTO_WIDTH / 2 - 7,
+      top: photoH - 18,
+      width: 14,
+      height: 14,
+      borderRadius: 7,
+      backgroundColor: '#C97A5A', // terracotta — Pura's brand warmth
+      shadowColor: '#C97A5A',
+      shadowOpacity: 0.7,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 8,
+      opacity: emberOpacity.value,
+      transform: [
+        { translateY: -travelDistance * emberDrift.value },
+        { scale: emberScale.value },
+      ],
+    };
+  });
+
   // SVG dimensions follow the non-animated "current" height so overlays lay
   // out cleanly — spring-interpolating the SVG viewBox every frame is
   // expensive and visually noisy. Snapping on beat change looks seamless
@@ -130,6 +199,13 @@ export const PhotoStage = forwardRef<View, PhotoStageProps>(function PhotoStage(
         {/* Warm tint wash — ~5% terracotta over the photo to key it to the
             analytical feel. Never a cold blue cyan. */}
         <View style={styles.processTint} pointerEvents="none" />
+
+        {/* v35 Pass-1 — State 5 "The Ember Carry". Terracotta ember
+            materializes at bottom-center mirroring the CornflowerArc's
+            6 o'clock terminus, drifts upward and dissolves into the
+            analysis layer. Reads as the same ember from the capture
+            screen, continuing its travel across the screen boundary. */}
+        <Animated.View pointerEvents="none" style={emberStyle} />
 
         <Svg
           width={PHOTO_WIDTH}
