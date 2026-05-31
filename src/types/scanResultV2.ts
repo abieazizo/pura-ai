@@ -217,7 +217,7 @@ export const SEVERITY_COLOR: Record<SeverityLevel, string> = {
   2: '#7FA8C4',
   3: '#E8B873',
   4: '#D88A5C',
-  5: '#C65D48',
+  5: '#147CFF',
 };
 
 /**

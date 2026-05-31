@@ -269,6 +269,6 @@ export { ScanServiceErrorScreen };
 const styles = StyleSheet.create({
   blank: {
     flex: 1,
-    backgroundColor: '#FFFDF9',
+    backgroundColor: '#FCFDFF',
   },
 });

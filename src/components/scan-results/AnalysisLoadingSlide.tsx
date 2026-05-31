@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
   },
   taskDotActive: {
     backgroundColor: scanColors.coral,
-    shadowColor: '#E98973',
+    shadowColor: '#147CFF',
     shadowOpacity: 0.55,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 0 },

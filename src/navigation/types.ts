@@ -9,58 +9,52 @@ export type ProductsRowKind =
   | 'essentials';
 
 /**
- * v25 — scan-first onboarding. The questionnaire-first arc is gone.
- * The active stack carries only the routes the new flow needs.
- * Legacy routes (`Splash`, `AskGoal`, etc.) are listed here for
- * back-compat with deep-link callers; they are not reachable from the
- * navigator. New code should target the v25 routes.
+ * Question-first onboarding. The active arc is the questionnaire:
+ * Splash → AuthChoice → Ask* → Processing → ProfileSummary → Tutorial,
+ * which then hands off into the scan camera. Returning users take
+ * Splash → SignIn → Tabs.
+ *
+ * Routes whose screens still exist on disk but are not mounted are kept
+ * in the legacy section below for type back-compat. DO NOT navigate to
+ * them from new code.
  */
 export type OnboardingStackParamList = {
-  // ---- v25 scan-first arc ----
-  WelcomeV2: undefined;
-  /** Legacy goal-before-scan route. v29 moves goal selection into
-   *  BaselineRevealV2 (after the scan). Kept in the param list so old
-   *  navigation calls compile, but unreachable from the navigator. */
+  // ---- Active question-first arc ----
+  Splash: undefined;
+  AuthChoice: undefined;
+  /** Returning-user provider sign-in. */
+  SignIn: undefined;
+  AskName: undefined;
+  AskAge: undefined;
+  AskGender: undefined;
+  AskSkinType: undefined;
+  AskConcerns: undefined;
+  AskSensitivity: undefined;
+  AskSunExposure: undefined;
+  AskEffort: undefined;
+  AskGoal: undefined;
+  AskAttribution: undefined;
+  Processing: undefined;
+  ProfileSummary: undefined;
+  Tutorial: undefined;
+
+  // ---- Kept on disk, not mounted (type back-compat only). DO NOT
+  //      navigate to these from new code. ----
+  Paywall: undefined;
+  ReviewAsk: undefined;
+  AskSkinBehavior: undefined;
+  AskLifestyle: undefined;
+  FirstScanInvitation: undefined;
+  PlanReveal: undefined;
+  // Scan-first (V2) survivors — unreachable. The 7 mounted V2 screens
+  // (Welcome / CameraTrust / GuidedFirstScan / ScanReview / BaselineReveal
+  // / TonightRoutine / SaveProgress) were deleted when the questionnaire
+  // was restored.
   PrimaryGoalV2: undefined;
-  CameraTrustV2: undefined;
-  GuidedFirstScanV2: undefined;
-  /** v29 — capture review (rejected vs approved). */
-  ScanReviewV2: undefined;
-  /** v29 — superseded by ScanReviewV2 + BaselineRevealV2; kept for
-   *  back-compat type-checking, no longer mounted. */
   ProcessingV2: undefined;
-  BaselineRevealV2: undefined;
-  /** v29 — collapsed into TonightRoutineV2's inline sensitivity row.
-   *  Routes kept for type back-compat only. */
   SafetyCalibrationV2: undefined;
   RoutineSimplicityV2: undefined;
   PlanRevealV2: undefined;
-  /** v29 — single climax screen replacing Safety + Simplicity + Plan. */
-  TonightRoutineV2: undefined;
-  SaveProgressV2: undefined;
-  /** Returning-user provider sign-in. Reused from v20.0. */
-  SignIn: undefined;
-
-  // ---- Legacy routes (preserved for back-compat type-checking only;
-  //      unreachable in the new navigator). DO NOT navigate to these
-  //      from new code — they are scheduled for removal. ----
-  Splash: undefined;
-  AuthChoice: undefined;
-  AskGoal: undefined;
-  AskConcerns: undefined;
-  AskSkinBehavior: undefined;
-  AskSkinType: undefined;
-  AskSensitivity: undefined;
-  AskEffort: undefined;
-  AskLifestyle: undefined;
-  AskSunExposure: undefined;
-  AskAge: undefined;
-  Processing: undefined;
-  FirstScanInvitation: undefined;
-  PlanReveal: undefined;
-  ProfileSummary: undefined;
-  Paywall: undefined;
-  Tutorial: undefined;
 };
 
 export type TabParamList = {

@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   },
   chipIdle: {
     borderColor: palette.hairline,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
   },
   chipActive: {
     borderColor: palette.clay,

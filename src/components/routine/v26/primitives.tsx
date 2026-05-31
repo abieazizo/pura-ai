@@ -318,7 +318,7 @@ export function PrimaryAction({
 
   const variants: Record<BtnVariant, { bg: string; fg: string; border?: string }> = {
     ink: { bg: V26.ctaDarkFill, fg: V26.ctaDarkText },
-    terracotta: { bg: V26.terracotta, fg: '#FCFAF7' },
+    terracotta: { bg: V26.terracotta, fg: '#FFFFFF' },
     ghost: { bg: 'transparent', fg: V26.ink, border: V26.borderStrong },
   };
   const m = variants[variant];

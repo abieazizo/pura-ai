@@ -23,46 +23,45 @@
  */
 
 export const pura26 = {
-  // Solid surfaces
-  paper:             '#FAF7F4',
-  surface:           '#FCFAF7',
-  warmTint:          '#F7F0EC',
+  // Solid surfaces — porcelain white (Pura Blue system)
+  paper:             '#FCFDFF',
+  surface:           '#FFFFFF',
+  warmTint:          '#F7FAFF',
 
-  // Ink scale (locked spec)
-  ink:               '#1A1A1A',
-  inkSecondary:      '#625C58',
-  inkMuted:          '#8A817B',
-  inkFaint:          '#B4AAA3',
+  // Ink scale (cool graphite)
+  ink:               '#080A0F',
+  inkSecondary:      '#5D6673',
+  inkMuted:          '#7C8696',
+  inkFaint:          '#B5BDC8',
 
-  // Structure (locked spec)
-  border:            '#E8DFD8',
-  borderStrong:      '#DED3CC',
+  // Structure (cool hairlines)
+  border:            '#E5EAF1',
+  borderStrong:      '#D4DCE8',
 
-  // Terracotta family — the brand line for the nightly experience.
-  // Solely reserved for emotionally earned moments: the primary
-  // interaction, a changed routine step, active navigation, the single
-  // most meaningful safety decision.
-  terracotta:        '#C65D48',
-  terracottaPressed: '#B6533F',
-  terracottaTint:    '#F3E2DC',
-  terracottaSoft:    '#F2DFD9',
-  terracottaOutline: '#D9A292',
-  terracottaText:    '#984637',
+  // Brand line for the nightly experience. Legacy `terracotta*` names
+  // retained; values are now Pura Blue. Reserved for emotionally
+  // earned moments: the primary interaction, a changed routine step,
+  // active navigation, the single most meaningful safety decision.
+  terracotta:        '#147CFF',
+  terracottaPressed: '#075FD1',
+  terracottaTint:    '#EAF4FF',
+  terracottaSoft:    '#F3F8FF',
+  terracottaOutline: '#A8C8FF',
+  terracottaText:    '#063D8F',
 
-  // Sage — used exclusively for the "doing less" / "this is improving"
-  // / "you're done" moments. Restrained, never used as a "success
-  // green" badge.
-  sageSoft: '#E5ECE4',
-  sageInk:  '#49614F',
+  // Sage — "doing less" / "improving" / "you're done" moments.
+  // Restrained semantic green, never used as a generic badge.
+  sageSoft: '#E9F8F2',
+  sageInk:  '#188A65',
 
   // Translucent variants — named by use, not alpha math.
-  paperTranslucent:       'rgba(250, 247, 244, 0.82)',
-  shadowWarm:             'rgba(31, 20, 16, 0.045)',
-  mirrorAuraOuter:        'rgba(198, 93, 72, 0.06)',
-  mirrorAuraInner:        'rgba(243, 226, 220, 0.32)',
-  mirrorRim:              'rgba(152, 70, 55, 0.16)',
-  scanRingBorder:         'rgba(152, 70, 55, 0.22)',
-  pausedMarkerRingBorder: 'rgba(198, 93, 72, 0.32)',
+  paperTranslucent:       'rgba(252, 253, 255, 0.82)',
+  shadowWarm:             'rgba(8, 17, 31, 0.06)',
+  mirrorAuraOuter:        'rgba(20, 124, 255, 0.06)',
+  mirrorAuraInner:        'rgba(234, 244, 255, 0.32)',
+  mirrorRim:              'rgba(7, 95, 209, 0.16)',
+  scanRingBorder:         'rgba(7, 95, 209, 0.22)',
+  pausedMarkerRingBorder: 'rgba(20, 124, 255, 0.32)',
 
   // White highlights inside the portal SVG.
   highlightStrong: 'rgba(255, 255, 255, 0.70)',
@@ -70,12 +69,12 @@ export const pura26 = {
   highlightFaint:  'rgba(255, 255, 255, 0.16)',
   highlightOff:    'rgba(255, 255, 255, 0)',
 
-  // Atmospheric warmth stops for the mirror radial gradient.
-  mirrorHot:     '#FCF2EC',
-  mirrorWarm:    '#F8EEEA',
-  mirrorHollow:  '#F3E2DC',
-  mirrorEdge:    '#EBD3CC',
-  mirrorGather:  '#FCEFE9',
+  // Atmospheric stops for the mirror radial gradient — cool icy sweep.
+  mirrorHot:     '#FAFCFF',
+  mirrorWarm:    '#F3F8FF',
+  mirrorHollow:  '#EAF4FF',
+  mirrorEdge:    '#DDE9FB',
+  mirrorGather:  '#F1F6FF',
 } as const;
 
 export type Pura26Token = keyof typeof pura26;

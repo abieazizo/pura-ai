@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   list: {
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,

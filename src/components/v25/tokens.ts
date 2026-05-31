@@ -14,16 +14,16 @@
 import { Easing } from 'react-native-reanimated';
 
 export const T = {
-  paper: '#FAF7F4',
-  surface: '#FCFAF7',
+  paper: '#FCFDFF',
+  surface: '#FFFFFF',
   surfaceRaised: '#FFFFFF',
-  ink: '#1A1A1A',
+  ink: '#080A0F',
   inkSecondary: '#514B47',
   inkMuted: '#807870',
-  line: '#E8E0D9',
+  line: '#E5EAF1',
   lineStrong: '#D8CDC4',
 
-  terracotta: '#C65D48',
+  terracotta: '#147CFF',
   terracottaDeep: '#A94736',
   terracottaSoft: '#F3E2DB',
   terracottaMist: '#FAF1ED',
@@ -35,9 +35,9 @@ export const T = {
   neutralSoft: '#EEEAE5',
   neutralDeep: '#625D59',
   neutralMid: '#716A64',
-  failedSoft: '#F4DFD8',
+  failedSoft: '#EAF4FF',
 
-  overlayDark: 'rgba(26,26,26,0.45)',
+  overlayDark: 'rgba(8,10,15,0.45)',
 } as const;
 
 export const TYPE = {
@@ -60,21 +60,21 @@ export const RADIUS = {
 
 export const SHADOW = {
   card: {
-    shadowColor: '#2A1F18',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.025,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
   hero: {
-    shadowColor: '#2A1F18',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.045,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 10 },
     elevation: 5,
   },
   overlay: {
-    shadowColor: '#2A1F18',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.10,
     shadowRadius: 46,
     shadowOffset: { width: 0, height: 20 },

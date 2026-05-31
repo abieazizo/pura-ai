@@ -126,13 +126,13 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: 20,
     borderRadius: 26,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: palette.hairline,
     paddingHorizontal: 18,
     paddingTop: 22,
     paddingBottom: 18,
-    shadowColor: '#5C4033',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.04,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   primaryBtnPressed: {
-    backgroundColor: '#0F0E0D',
+    backgroundColor: '#0A0C12',
   },
   primaryBtnLabel: {
     fontFamily: 'Inter-SemiBold',

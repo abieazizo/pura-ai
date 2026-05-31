@@ -247,7 +247,7 @@ const markStyles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     backgroundColor: scanColors.coralStrong,
-    shadowColor: '#E98973',
+    shadowColor: '#147CFF',
     shadowOpacity: 0.8,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },

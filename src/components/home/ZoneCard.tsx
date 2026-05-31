@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   },
   empty: {
     borderWidth: 1,
-    borderColor: 'rgba(198,93,72,0.25)',
+    borderColor: 'rgba(20,124,255,0.25)',
     borderStyle: 'dashed',
   },
   kicker: {

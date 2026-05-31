@@ -1,18 +1,23 @@
 /**
- * Pura design tokens — v25 warm skincare rebrand.
+ * Pura design tokens — v31 "Pura Blue" rebrand.
  *
- * Warm paper surfaces, terracotta brand, calm ink. Instrument Serif
- * preserved for hero numbers + editorial moments; Inter carries the UI.
- * This file is the ONLY legitimate home for hex color literals.
+ * Premium white + perfect blue + black. Porcelain surfaces, ink type,
+ * a single blue intelligence accent reserved for scan, AI, progress,
+ * and active states. Instrument Serif preserved for editorial moments;
+ * Inter carries the UI. This file is the ONLY legitimate home for hex
+ * color literals.
  *
  *   grep '#[0-9A-Fa-f]\{3,6\}' src --exclude-dir=theme
  *
  * The result must be empty.
  *
  * NOTE on the naming: the legacy material names (`clay`, `sand`, `moss`,
- * `rust`, `amber`, `coral`) are retained so every existing call site
- * resolves, but the HEX values are now warm. `clay` is the brand
- * terracotta. New code should prefer the semantic `brand*` / `success*` /
+ * `rust`, `amber`, `coral`, `terracotta`) are retained so every existing
+ * call site resolves, but the HEX values are now COOL. `clay` and
+ * `coral` and `terracotta` ALL resolve to the new Pura Blue (`#147CFF`).
+ * `sand` is now a cool gray. `moss` stays as the success green, `amber`
+ * stays as warning, `rust` stays as danger — semantic states are not
+ * recolored. New code should prefer the semantic `brand*` / `success*` /
  * `warning*` / `danger*` aliases in `colors` below.
  */
 
@@ -28,78 +33,79 @@ type Scheme = 'light' | 'dark';
 // rust=danger).
 
 export const palette = {
-  // Surfaces — warm paper. Never pure #FFFFFF, never cool grey.
-  bg: '#FAF7F4',          // Paper — primary surface
-  bgDeep: '#F3DED8',      // Terracotta-soft elevated surface
-  bgInk: '#1A1A1A',       // Ink — inverse surface
-  bgInkElevated: '#2A2424',
+  // Surfaces — porcelain white. Never pure cold #FFFFFF, never warm cream.
+  bg: '#FCFDFF',          // Page — primary surface (icy white)
+  bgDeep: '#EEF6FF',      // Blue-wash elevated surface
+  bgInk: '#05070B',       // Black — inverse surface
+  bgInkElevated: '#111827',
 
-  // Text — warm graphite scale
-  ink: '#1A1A1A',
-  inkSecondary: '#6E625D',
-  inkTertiary: '#A99287',
-  inkInverse: '#FCFAF7',
+  // Text — cool graphite scale (slightly blue-leaning ink)
+  ink: '#080A0F',
+  inkSecondary: '#5D6673',
+  inkTertiary: '#929BA8',
+  inkInverse: '#FFFFFF',
 
-  // Brand — clay is now warm terracotta. `clayDeep` is the pressed/active
-  // state; `clayLight` is the warm clay tint; `clayPaper` is the soft
-  // terracotta paper for secondary surfaces.
-  clay: '#C65D48',
-  clayDeep: '#A84A38',
-  clayLight: '#D8B7AA',
-  clayPaper: '#F3DED8',
+  // Brand — Pura Blue. The legacy `clay*` names are RETAINED so all
+  // existing call sites resolve, but every value is now blue. `clayDeep`
+  // is the pressed state; `clayLight` is the soft blue tint; `clayPaper`
+  // is the blue wash for secondary surfaces.
+  clay: '#147CFF',
+  clayDeep: '#075FD1',
+  clayLight: '#A8C8FF',
+  clayPaper: '#EAF4FF',
 
-  // `coral` is the warm terracotta alias.
-  coral: '#C65D48',
-  coralGlow: 'rgba(198, 93, 72, 0.22)',
+  // `coral` legacy alias → also Pura Blue (no actual coral anywhere).
+  coral: '#147CFF',
+  coralGlow: 'rgba(20, 124, 255, 0.28)',
 
-  // `sand` is the warm taupe family — used for inactive states, dividers,
-  // and quiet surface accents.
-  sand: '#A99287',
-  sandLight: '#E8DED8',
-  sandPaper: '#FCFAF7',
+  // `sand` legacy alias → cool gray family used for inactive states,
+  // dividers, and quiet surface accents. No warm taupe.
+  sand: '#929BA8',
+  sandLight: '#E5EAF1',
+  sandPaper: '#F7FAFF',
 
-  // Semantic — harmonized with the warm palette. Success is a soft sage;
-  // warning is a quiet clay; danger is a restrained rust.
-  moss: '#7D9A82',
-  mossLight: '#E8F0E7',
-  mossDeep: '#5C7A62',
-  amber: '#C8804A',
-  amberLight: '#F5E2D2',
-  amberDeep: '#8E5A30',
-  rust: '#B14635',
-  rustLight: '#F3DED8',
+  // Semantic — restrained, preserved meaning. Success stays green
+  // (improvement, safety). Warning stays amber (only true warnings).
+  // Danger stays red (redness, breakouts, irritation).
+  moss: '#20A67A',
+  mossLight: '#E9F8F2',
+  mossDeep: '#188A65',
+  amber: '#C58A1D',
+  amberLight: '#FFF7E6',
+  amberDeep: '#956712',
+  rust: '#E24D4D',
+  rustLight: '#FFF0F0',
 
-  // Structure — warm hairlines. `hairline` is the visible divider;
+  // Structure — cool hairlines. `hairline` is the visible divider;
   // `divider` is softer, used as a row-separator that shouldn't compete
   // with content.
-  hairline: '#E8DED8',
-  divider: '#F1E7E0',
-  scrim: 'rgba(26, 26, 26, 0.55)',
-  scrimSoft: 'rgba(26, 26, 26, 0.25)',
+  hairline: '#E5EAF1',
+  divider: '#EEF1F5',
+  scrim: 'rgba(8, 10, 15, 0.55)',
+  scrimSoft: 'rgba(8, 10, 15, 0.25)',
 
   // Utility
-  grainOverlay: 'rgba(92, 64, 51, 0.02)',
-  shadowTint: '#5C4033',
+  grainOverlay: 'rgba(8, 10, 15, 0.02)',
+  shadowTint: '#0A1A2F',
 
   // v26 — home rebuild palette. Centralized per CLAUDE.md (theme/tokens
-  // is the only legitimate home for hex literals). Consumed by the new
-  // home composition (MirrorPortal, TonightsEdit, PostScanReveal, etc.).
-  // The v26 home screen NEVER touches `bg` / `surface` / `clay` directly
-  // — it reads these names so the redesign stays a coherent system.
-  paper:               '#FAF7F4',
-  surfaceWarm:         '#FCFAF7',
-  warmTint:            '#F7F0EC',
-  inkPrimary:          '#1A1A1A',
-  inkSecondary26:      '#675F59',
-  inkMuted:            '#8C837D',
-  inkFaint:            '#B4AAA3',
-  borderHairline:      '#E9E1DB',
-  borderStrong26:      '#DED3CC',
-  terracotta:          '#C65D48',
-  terracottaPressed:   '#B2503E',
-  terracottaTint:      '#F3E2DC',
-  terracottaSoft:      '#F8EEEA',
-  terracottaText:      '#984637',
+  // is the only legitimate home for hex literals). Reused by the home,
+  // routine, and assistant nightly surfaces. Names retained for source
+  // stability; values now cool/blue.
+  paper:               '#FCFDFF',
+  surfaceWarm:         '#FFFFFF',
+  warmTint:            '#F7FAFF',
+  inkPrimary:          '#080A0F',
+  inkSecondary26:      '#5D6673',
+  inkMuted:            '#7C8696',
+  inkFaint:            '#B5BDC8',
+  borderHairline:      '#E5EAF1',
+  borderStrong26:      '#D4DCE8',
+  terracotta:          '#147CFF',
+  terracottaPressed:   '#075FD1',
+  terracottaTint:      '#EAF4FF',
+  terracottaSoft:      '#F3F8FF',
+  terracottaText:      '#063D8F',
 } as const;
 
 export type Palette = typeof palette;
@@ -268,17 +274,17 @@ export const darkColors: ColorPalette = {
   bgDeep: palette.bgInkElevated,
   surface: palette.bgInkElevated,
   textPrimary: palette.inkInverse,
-  textSecondary: '#C2B5AF',
-  textTertiary: '#8A7B74',
+  textSecondary: '#C2C8D2',
+  textTertiary: '#828B98',
   textInverse: palette.ink,
   ink: palette.inkInverse,
-  inkSecondary: '#C2B5AF',
-  inkTertiary: '#8A7B74',
+  inkSecondary: '#C2C8D2',
+  inkTertiary: '#828B98',
   inkInverse: palette.ink,
-  hairline: '#3A302C',
-  border: '#3A302C',
-  borderLight: '#2E2622',
-  divider: '#2E2622',
+  hairline: '#2A303B',
+  border: '#2A303B',
+  borderLight: '#1F242E',
+  divider: '#1F242E',
 };
 
 export const lightColors = colors;
@@ -556,9 +562,9 @@ export const shadow: {
 };
 
 // Pressed tints (internal to PrimaryButton — keep outside ColorPalette).
-// Darkened values used when a button is held down; match the warm system.
+// Darkened values used when a button is held down; match the cool system.
 export const pressedTints = {
-  primary: '#0F0E0D',
+  primary: '#0A0C12',
   accent: palette.clayDeep,
   success: palette.mossDeep,
 } as const;
@@ -593,14 +599,14 @@ export const spring = {
 };
 
 // ---------- Avatar swatches ----------
-// Warm palette — brand terracotta + sage + clay + warm neutral tones.
+// Cool palette — Pura Blue + supporting cool tones. No warm taupes.
 export const avatarSwatches = [
-  palette.clay,        // brand terracotta (default)
-  palette.moss,        // soft sage
-  palette.amber,       // warm clay
-  '#A99287',           // warm taupe
-  '#6E625D',           // muted ink
-  '#D8B7AA',           // clay light
+  palette.clay,        // Pura Blue (default)
+  palette.moss,        // success green
+  '#18B7FF',           // cyan
+  '#5D6673',           // cool body
+  '#929BA8',           // cool muted
+  '#A8C8FF',           // pale blue
 ] as const;
 
 export type AvatarColor = (typeof avatarSwatches)[number];
@@ -662,23 +668,23 @@ export const pura26 = {
   border:            palette.borderHairline,
   borderStrong:      palette.borderStrong26,
 
-  // Terracotta family
+  // Brand family — legacy `terracotta*` names retained, values are
+  // now Pura Blue.
   terracotta:        palette.terracotta,
   terracottaPressed: palette.terracottaPressed,
   terracottaTint:    palette.terracottaTint,
   terracottaSoft:    palette.terracottaSoft,
   terracottaText:    palette.terracottaText,
 
-  // Translucent variants — named by use, not alpha math.
-  // The MirrorPortal aura layers, FloatingTabBar tint, PausedRoutineStep
-  // marker ring, etc. all read from these so no rgba string lives in a
-  // component file.
-  paperTranslucent:        'rgba(250, 247, 244, 0.82)',
-  mirrorAuraOuter:         'rgba(198, 93, 72, 0.06)',
-  mirrorAuraInner:         'rgba(243, 226, 220, 0.32)',
-  mirrorRim:               'rgba(152, 70, 55, 0.16)',
-  scanRingBorder:          'rgba(152, 70, 55, 0.22)',
-  pausedMarkerRingBorder:  'rgba(198, 93, 72, 0.32)',
+  // Translucent variants — named by use, not alpha math. Now use a
+  // Pura Blue base so MirrorPortal aura, FloatingTabBar tint, paused
+  // routine marker rings, etc. all read in cool intelligence tones.
+  paperTranslucent:        'rgba(252, 253, 255, 0.82)',
+  mirrorAuraOuter:         'rgba(20, 124, 255, 0.06)',
+  mirrorAuraInner:         'rgba(234, 244, 255, 0.32)',
+  mirrorRim:               'rgba(7, 95, 209, 0.16)',
+  scanRingBorder:          'rgba(7, 95, 209, 0.22)',
+  pausedMarkerRingBorder:  'rgba(20, 124, 255, 0.32)',
 
   // White highlights used inside the portal SVG. These are LIGHT
   // effects (not brand colors) so they live here as well so every
@@ -688,25 +694,24 @@ export const pura26 = {
   highlightFaint:  'rgba(255, 255, 255, 0.16)',
   highlightOff:    'rgba(255, 255, 255, 0)',
 
-  // Atmospheric warmth stops used by the mirror radial gradient. Named
-  // by their position in the radial sweep ("hot" → "cool") rather than
-  // by their hex value.
-  mirrorHot:     '#FCF2EC',
-  mirrorWarm:    '#F8EEEA',
-  mirrorHollow:  '#F3E2DC',
-  mirrorEdge:    '#EBD3CC',
-  mirrorGather:  '#FCEFE9',
+  // Atmospheric stops used by the mirror radial gradient. Named by
+  // their position in the radial sweep ("hot" → "edge") rather than
+  // by their hex value. Now a cool icy gradient.
+  mirrorHot:     '#FAFCFF',
+  mirrorWarm:    '#F3F8FF',
+  mirrorHollow:  '#EAF4FF',
+  mirrorEdge:    '#DDE9FB',
+  mirrorGather:  '#F1F6FF',
 
   // v26.2 — Decision-state signal colors. The CompressedDecisionAnchor
   // and any other at-a-glance state indicator reads from these so the
-  // bar color reflects the actual decision state (not always brand
-  // terracotta). Mapped onto the existing semantic palette so we
-  // never introduce a one-off hex outside theme/tokens.ts.
-  signalRecovery:  palette.terracotta,   // pause / recovery
-  signalReset:     palette.amberDeep,    // stop actives / reset
+  // bar color reflects the actual decision state (not always brand).
+  // Semantic meanings preserved.
+  signalRecovery:  palette.terracotta,   // pause / recovery → Pura Blue
+  signalReset:     palette.amberDeep,    // stop actives / reset (warning)
   signalCheckIn:   palette.amber,        // soft warning
-  signalStandard:  palette.moss,         // stay consistent
-  signalTreatment: palette.terracottaText, // active night allowed
+  signalStandard:  palette.moss,         // stay consistent (success)
+  signalTreatment: palette.terracottaText, // active night allowed (deep blue)
 } as const;
 
 export type Pura26Token = keyof typeof pura26;
@@ -726,57 +731,59 @@ export type Pura26Token = keyof typeof pura26;
  * `src/screens/pura27/` or `src/components/pura27/` may inline hex.
  */
 export const pura27 = {
-  // Surfaces — warmer than #FFFFFF, calmer than the v26 paper.
-  background:       '#FCFAF7',
-  backgroundSoft:   '#F7F2ED',
+  // Surfaces — porcelain white system. Cooler than warm paper, calmer
+  // than pure #FFFFFF where it matters.
+  background:       '#FCFDFF',
+  backgroundSoft:   '#F7FAFF',
   surface:          '#FFFFFF',
-  surfaceWarm:      '#FBF6F2',
-  imageSurface:     '#F4E9E3',
+  surfaceWarm:      '#F7FAFF',
+  imageSurface:     '#EAF4FF',
 
-  // Atmospheric blush — used for hero glows and accented modules.
-  blush:            '#F1E1DA',
-  blushStrong:      '#E7CBC1',
+  // Atmospheric blue — used for hero glows and intelligence modules.
+  // Replaces the warm blush family.
+  blush:            '#EAF4FF',
+  blushStrong:      '#CFE3FF',
 
-  // Brand terracotta — slightly softer than the v26 clay so it reads
-  // as warm hospitality rather than a brand stamp.
-  accent:           '#B86755',
-  accentPressed:    '#A45544',
-  accentSoft:       '#F6E9E4',
-  accentText:       '#8F4937',
+  // Brand Pura Blue — reads as precise intelligence, not warm
+  // hospitality. Semantic name `accent` retained.
+  accent:           '#147CFF',
+  accentPressed:    '#075FD1',
+  accentSoft:       '#EAF4FF',
+  accentText:       '#063D8F',
 
   // Ink scale — strict legibility target. Body copy never falls below
   // inkSecondary; tertiary is reserved for metadata labels only.
-  ink:              '#171615',
-  inkSecondary:     '#57524E',
-  inkTertiary:      '#817A73',
-  inkMuted:         '#A39B94',
+  ink:              '#080A0F',
+  inkSecondary:     '#5D6673',
+  inkTertiary:      '#7C8696',
+  inkMuted:         '#929BA8',
 
   // Structure
-  border:           '#E8E1DB',
-  borderStrong:     '#D9CEC6',
-  activeBorder:     '#DAB3A7',
+  border:           '#E5EAF1',
+  borderStrong:     '#D4DCE8',
+  activeBorder:     '#A8C8FF',
 
   // Semantic — restrained, always paired with text not just a swatch.
-  success:          '#4F7561',
-  successBackground:'#EDF4EF',
-  warning:          '#985A42',
-  warningBackground:'#F8ECE7',
-  info:             '#55788D',
-  infoBackground:   '#EEF4F7',
+  success:          '#20A67A',
+  successBackground:'#E9F8F2',
+  warning:          '#C58A1D',
+  warningBackground:'#FFF7E6',
+  info:             '#147CFF',
+  infoBackground:   '#EAF4FF',
 
   // Deep gradient stops — paired with the base semantic above to sweep
   // the ProgressMeter fill into a two-stop gradient. Each pair leans
-  // warmer at the leading edge and deepens toward the tail so the bar
+  // brighter at the leading edge and deepens toward the tail so the bar
   // reads as a single sweep, never a label.
-  accentGradientDeep:  '#A45544',
-  successGradientDeep: '#3F614F',
-  warningGradientDeep: '#7F4732',
-  infoGradientDeep:    '#3F5E72',
+  accentGradientDeep:  '#075FD1',
+  successGradientDeep: '#188A65',
+  warningGradientDeep: '#956712',
+  infoGradientDeep:    '#063D8F',
 
   // CTA — deliberate near-black, not pure black.
-  buttonPrimary:    '#171615',
-  buttonPressed:    '#292725',
-  buttonDisabled:   '#D2CDC8',
+  buttonPrimary:    '#05070B',
+  buttonPressed:    '#1A1F2A',
+  buttonDisabled:   '#D4DCE8',
 
   white:            '#FFFFFF',
 } as const;
@@ -878,25 +885,25 @@ export const pura27Space = {
 
 export const pura27Shadow = {
   card: {
-    shadowColor: '#171615',
+    shadowColor: '#08111F',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.045,
     shadowRadius: 22,
     elevation: 2,
   },
   elevated: {
-    shadowColor: '#171615',
+    shadowColor: '#08111F',
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.08,
     shadowRadius: 34,
     elevation: 3,
   },
   accent: {
-    shadowColor: '#B86755',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.07,
-    shadowRadius: 18,
-    elevation: 2,
+    shadowColor: '#147CFF',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 26,
+    elevation: 3,
   },
 } as const satisfies Record<string, ViewStyle>;
 
@@ -943,20 +950,23 @@ export const layoutPura26 = {
 // distinguishable by hue.
 
 export const analysisMarkers = {
-  dryness: '#C8804A',   // warm clay — dryness reads warm
-  texture: '#C65D48',   // brand terracotta — texture is the headline metric
-  barrier: '#7D9A82',   // sage — a healthy barrier
-  hydration: '#A99287', // warm taupe — water-adjacent neutral
-  redness: '#B14635',   // warm rust
-  clarity: '#6E625D',   // muted ink — clean / neutral
+  // Cool intelligence palette. Concern colors that must carry meaning
+  // are preserved (redness → red, breakouts → red). The rest read as
+  // cool tones in the Pura Blue family.
+  dryness: '#18B7FF',   // cyan — dryness reads cool/clean
+  texture: '#147CFF',   // Pura Blue — texture is the headline AI metric
+  barrier: '#20A67A',   // success green — a healthy barrier
+  hydration: '#5BB9FF', // light cyan — water-adjacent
+  redness: '#E24D4D',   // danger red — must read as redness
+  clarity: '#5D6673',   // cool body — neutral
 } as const;
 
 export type AnalysisMarkerType = keyof typeof analysisMarkers;
 
 export const status = {
-  calm: '#7D9A82',      // mirrors palette.moss (success)
-  monitor: '#C8804A',   // mirrors palette.amber (warning)
-  active: '#B14635',    // mirrors palette.rust (danger)
+  calm: '#20A67A',      // mirrors palette.moss (success)
+  monitor: '#C58A1D',   // mirrors palette.amber (warning)
+  active: '#E24D4D',    // mirrors palette.rust (danger)
 } as const;
 
 export type StatusTier = keyof typeof status;
@@ -1088,166 +1098,166 @@ export type ScanTypographyKey = keyof typeof scanTypography;
  * hex literal lives outside this file (per CLAUDE.md).
  */
 export const puraShop = {
-  // ----- Surfaces -----
-  canvas:           '#FFFCF8',
+  // ----- Surfaces — Pura Blue porcelain -----
+  canvas:           '#FCFDFF',
   surface:          '#FFFFFF',
-  surfaceWarm:      '#FBF6F0',
-  surfaceMuted:     '#F5EEE6',
-  glassSurface:     'rgba(255, 252, 248, 0.84)',
-  glassSurfaceStrong:'rgba(255, 252, 248, 0.94)',
-  pageBg:           '#FFFCF8', // alias for code that still reads pageBg
+  surfaceWarm:      '#F7FAFF',
+  surfaceMuted:     '#EEF6FF',
+  glassSurface:     'rgba(252, 253, 255, 0.84)',
+  glassSurfaceStrong:'rgba(252, 253, 255, 0.94)',
+  pageBg:           '#FCFDFF',
 
-  // ----- Ink -----
-  ink:              '#181613',
-  inkSecondary:     '#655F59',
-  inkMuted:         '#8B847D',
-  inkFaint:         '#B3ADA6',
-  inkOnDark:        '#FFFDF9',
+  // ----- Ink — cool graphite scale -----
+  ink:              '#080A0F',
+  inkSecondary:     '#5D6673',
+  inkMuted:         '#7C8696',
+  inkFaint:         '#B5BDC8',
+  inkOnDark:        '#FFFFFF',
 
-  // ----- Accent (warm coral system) -----
-  coral:            '#E55D48',
-  coralDeep:        '#CC4937',
-  coralSoft:        '#FBE6DF',
-  coralWashLight:   'rgba(229, 93, 72, 0.10)',
-  blush:            '#F6DDD5',
-  peachGlow:        '#F4C4B2',
-  champagne:        '#F3E9DC',
-  ivory:            '#FBF3E5',
+  // ----- Accent (Pura Blue — replaces the warm coral system) -----
+  coral:            '#147CFF',
+  coralDeep:        '#075FD1',
+  coralSoft:        '#EAF4FF',
+  coralWashLight:   'rgba(20, 124, 255, 0.10)',
+  blush:            '#EAF4FF',
+  peachGlow:        '#CFE3FF',
+  champagne:        '#F3F8FF',
+  ivory:            '#F7FAFF',
 
-  // ----- Semantic soft tag colors (restrained, warm-coherent) -----
-  sageSoft:         '#E5F0E3',
-  sageText:         '#3D7046',
-  honeySoft:        '#F8E9CC',
-  honeyText:        '#856223',
-  oceanSoft:        '#E3EBF1',
-  oceanText:        '#2F5F7A',
-  coralChipSoft:    '#FCE2D9',
-  coralChipText:    '#A93B2A',
+  // ----- Semantic soft tag colors (restrained, cool-coherent) -----
+  sageSoft:         '#E9F8F2',
+  sageText:         '#188A65',
+  honeySoft:        '#FFF7E6',
+  honeyText:        '#956712',
+  oceanSoft:        '#EAF4FF',
+  oceanText:        '#063D8F',
+  coralChipSoft:    '#EAF4FF',
+  coralChipText:    '#063D8F',
 
-  // ----- Structure -----
-  border:           'rgba(56, 42, 28, 0.08)',
-  borderWarm:       'rgba(222, 111, 85, 0.22)',
-  borderStrongWarm: 'rgba(221, 91, 68, 0.38)',
-  hairline:         'rgba(56, 42, 28, 0.06)',
+  // ----- Structure — cool hairlines -----
+  border:           'rgba(8, 22, 56, 0.08)',
+  borderWarm:       'rgba(20, 124, 255, 0.22)',
+  borderStrongWarm: 'rgba(20, 124, 255, 0.38)',
+  hairline:         'rgba(8, 22, 56, 0.06)',
 
   // ----- Search bar -----
   searchBg:         '#FFFFFF',
-  searchBorder:     'rgba(222, 111, 85, 0.22)',
-  searchBorderFocus:'rgba(229, 93, 72, 0.38)',
-  searchPlaceholder:'#A29C95',
-  searchButton:     '#E55D48',
-  searchButtonDeep: '#CC4937',
-  searchSparkle:    '#E55D48',
+  searchBorder:     'rgba(20, 124, 255, 0.22)',
+  searchBorderFocus:'rgba(20, 124, 255, 0.45)',
+  searchPlaceholder:'#929BA8',
+  searchButton:     '#147CFF',
+  searchButtonDeep: '#075FD1',
+  searchSparkle:    '#147CFF',
 
   // ----- Personalization context pills -----
-  contextLabel:     '#181613',
-  contextActiveBg:  '#FBE6DF',
-  contextActiveText:'#CC4937',
-  contextIdleBg:    '#F5EEE6',
-  contextIdleText:  '#3D352D',
+  contextLabel:     '#080A0F',
+  contextActiveBg:  '#EAF4FF',
+  contextActiveText:'#075FD1',
+  contextIdleBg:    '#F7FAFF',
+  contextIdleText:  '#1F2533',
 
   // ----- Concern filter chips -----
   chipBg:           '#FFFFFF',
-  chipBorder:       'rgba(56, 42, 28, 0.08)',
-  chipBgActive:     '#181613',
-  chipText:         '#181613',
+  chipBorder:       'rgba(8, 22, 56, 0.08)',
+  chipBgActive:     '#05070B',
+  chipText:         '#080A0F',
   chipTextActive:   '#FFFFFF',
-  chipIcon:         '#3D352D',
-  chipIconActive:   '#FFEFE3',
+  chipIcon:         '#1F2533',
+  chipIconActive:   '#A8C8FF',
 
   // ----- Cards -----
   cardSurface:      '#FFFFFF',
-  cardBorder:       'rgba(56, 42, 28, 0.08)',
-  cardSurfaceWarm:  '#FBF6F0',
+  cardBorder:       'rgba(8, 22, 56, 0.08)',
+  cardSurfaceWarm:  '#F7FAFF',
 
-  // Image area backdrops (luminous, never muddy)
-  packshotIvory:    '#FBF3E5',
-  packshotIvoryDeep:'#F2E4CF',
-  packshotBlush:    '#FBE2D5',
-  packshotBlushDeep:'#F4C4B2',
-  packshotSage:     '#E6EFE3',
-  packshotSageDeep: '#D2E2CD',
-  packshotPeach:    '#FCDCC6',
-  packshotPeachDeep:'#F1B698',
-  packshotMist:     '#EEEEF1',
-  packshotMistDeep: '#D8D9E1',
+  // Image area backdrops (luminous porcelain + ice gradients)
+  packshotIvory:    '#F7FAFF',
+  packshotIvoryDeep:'#E8EFF8',
+  packshotBlush:    '#EAF4FF',
+  packshotBlushDeep:'#CFE3FF',
+  packshotSage:     '#E9F8F2',
+  packshotSageDeep: '#CDE5DC',
+  packshotPeach:    '#DFF2FF',
+  packshotPeachDeep:'#B2D7F4',
+  packshotMist:     '#EEF1F8',
+  packshotMistDeep: '#D8DDE7',
 
   // ----- Hero featured card -----
-  heroFrom:         '#FBE7D6',
-  heroVia:          '#F4C4B2',
-  heroTo:           '#E89F86',
-  heroTagBg:        'rgba(24, 22, 19, 0.78)',
-  heroTagText:      '#FFFDF9',
-  heroSparkle:      '#FFCDB0',
-  heroInfoBg:       '#FFFFFF', // light, NOT muddy brown
-  heroInfoBgGlass:  'rgba(255, 252, 248, 0.92)',
+  heroFrom:         '#EAF4FF',
+  heroVia:          '#A8C8FF',
+  heroTo:           '#075FD1',
+  heroTagBg:        'rgba(8, 10, 15, 0.84)',
+  heroTagText:      '#FFFFFF',
+  heroSparkle:      '#A8C8FF',
+  heroInfoBg:       '#FFFFFF',
+  heroInfoBgGlass:  'rgba(252, 253, 255, 0.92)',
 
-  // Match orb — warm illuminated recommendation signal
-  orbBg:            '#FDE7D2',
-  orbCenter:        '#FFF1DD',
+  // Match orb — Pura Blue illuminated recommendation signal
+  orbBg:            '#DFF2FF',
+  orbCenter:        '#EAF4FF',
   orbHighlight:     'rgba(255, 255, 255, 0.86)',
-  orbRim:           'rgba(229, 93, 72, 0.32)',
-  orbPercentText:   '#A93B2A',
-  orbMatchText:     '#A93B2A',
+  orbRim:           'rgba(20, 124, 255, 0.34)',
+  orbPercentText:   '#063D8F',
+  orbMatchText:     '#063D8F',
 
   // ----- Status pill tones -----
-  tagGentleBg:      '#E5F0E3',
-  tagGentleText:    '#3D7046',
-  tagValueBg:       '#F8E9CC',
-  tagValueText:     '#856223',
-  tagCoasterBg:     '#E3EBF1',
-  tagCoasterText:   '#2F5F7A',
-  tagNewBg:         '#E3EBF1',
-  tagNewText:       '#2F5F7A',
-  tagBestsellerBg:  '#FCE2D9',
-  tagBestsellerText:'#A93B2A',
-  tagViralBg:       '#E5F0E3',
-  tagViralText:     '#3D7046',
+  tagGentleBg:      '#E9F8F2',
+  tagGentleText:    '#188A65',
+  tagValueBg:       '#FFF7E6',
+  tagValueText:     '#956712',
+  tagCoasterBg:     '#EAF4FF',
+  tagCoasterText:   '#063D8F',
+  tagNewBg:         '#EAF4FF',
+  tagNewText:       '#063D8F',
+  tagBestsellerBg:  '#EAF4FF',
+  tagBestsellerText:'#063D8F',
+  tagViralBg:       '#E9F8F2',
+  tagViralText:     '#188A65',
 
   // ----- Rating -----
-  ratingStar:       '#D7A93B',
-  ratingText:       '#181613',
+  ratingStar:       '#C58A1D',
+  ratingText:       '#080A0F',
 
   // ----- Price pill -----
   pricePillBg:      '#FFFFFF',
-  pricePillBorder:  'rgba(56, 42, 28, 0.08)',
-  pricePillText:    '#181613',
+  pricePillBorder:  'rgba(8, 22, 56, 0.08)',
+  pricePillText:    '#080A0F',
 
-  // ----- Plus / Add button -----
-  plusBg:           '#181613',
-  plusBgPressed:    '#3D352D',
-  plusBgConfirmed:  '#3D7046',
-  plusIcon:         '#FFFDF9',
+  // ----- Plus / Add button — black with restraint -----
+  plusBg:           '#05070B',
+  plusBgPressed:    '#1A1F2A',
+  plusBgConfirmed:  '#188A65',
+  plusIcon:         '#FFFFFF',
 
-  // ----- Bag badge -----
-  badgeBg:          '#E55D48',
+  // ----- Bag badge — Pura Blue -----
+  badgeBg:          '#147CFF',
   badgeText:        '#FFFFFF',
 
   // ----- Section -----
-  sectionTitle:     '#181613',
-  sectionSub:       '#8B847D',
-  viewAll:          '#181613',
-  viewAllPillBg:    '#FBF6F0',
+  sectionTitle:     '#080A0F',
+  sectionSub:       '#7C8696',
+  viewAll:          '#080A0F',
+  viewAllPillBg:    '#F7FAFF',
 
   // ----- Floating bottom dock -----
   dockSurface:      '#FFFFFF',
-  dockSurfaceGlass: 'rgba(255, 252, 248, 0.95)',
-  dockHairline:     'rgba(56, 42, 28, 0.08)',
-  dockShadow:       '#3C2818',
-  dockIcon:         '#181613',
-  dockIconIdle:     '#A29C95',
-  dockLabel:        '#181613',
-  dockLabelIdle:    '#A29C95',
-  dockActivePillBg: '#FBE6DF',
-  dockActiveText:   '#CC4937',
-  dockScanTint:     '#FDE7D2',
-  dockScanRim:      'rgba(229, 93, 72, 0.32)',
+  dockSurfaceGlass: 'rgba(252, 253, 255, 0.95)',
+  dockHairline:     'rgba(8, 22, 56, 0.08)',
+  dockShadow:       '#0A1A2F',
+  dockIcon:         '#080A0F',
+  dockIconIdle:     '#929BA8',
+  dockLabel:        '#080A0F',
+  dockLabelIdle:    '#929BA8',
+  dockActivePillBg: '#EAF4FF',
+  dockActiveText:   '#075FD1',
+  dockScanTint:     '#DFF2FF',
+  dockScanRim:      'rgba(20, 124, 255, 0.34)',
   dockScanCore:     '#FFFFFF',
-  dockScanIcon:     '#CC4937',
+  dockScanIcon:     '#147CFF',
   dockScanHighlight:'rgba(255, 255, 255, 0.85)',
 
   white:            '#FFFFFF',
-  black:            '#000000',
+  black:            '#05070B',
 } as const;
 
 export type PuraShopToken = keyof typeof puraShop;
@@ -1407,42 +1417,42 @@ export const puraShopSpace = {
 
 export const puraShopShadow = {
   card: {
-    shadowColor: '#3C2818',
+    shadowColor: '#0A1A2F',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 14,
     elevation: 2,
   },
   hero: {
-    shadowColor: '#3C2818',
+    shadowColor: '#0A1A2F',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 24,
     elevation: 4,
   },
   dock: {
-    shadowColor: '#3C2818',
+    shadowColor: '#0A1A2F',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 22,
     elevation: 8,
   },
   plus: {
-    shadowColor: '#181613',
+    shadowColor: '#05070B',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.16,
     shadowRadius: 8,
     elevation: 3,
   },
   scanOrb: {
-    shadowColor: '#CC4937',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
+    shadowColor: '#147CFF',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
     elevation: 6,
   },
   search: {
-    shadowColor: '#3C2818',
+    shadowColor: '#0A1A2F',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 12,

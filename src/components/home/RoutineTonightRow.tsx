@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(198,93,72,0.1)',
+    backgroundColor: 'rgba(20,124,255,0.1)',
   },
   inner: {
     flexDirection: 'row',

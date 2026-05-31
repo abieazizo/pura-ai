@@ -19,63 +19,63 @@
  */
 
 export const puraColors = {
-  // Background atmosphere
-  canvas: '#F8F4EF',
-  canvasWarm: '#F6F0EA',
-  canvasDepth: '#F1E8E0',
-  surface: '#FCF9F5',
-  surfaceRaised: '#FFFCF8',
-  surfaceQuiet: '#F5EFE9',
-  surfacePressed: '#EFE7DF',
+  // Background atmosphere — porcelain Pura Blue system
+  canvas: '#FCFDFF',
+  canvasWarm: '#F7FAFF',
+  canvasDepth: '#EEF6FF',
+  surface: '#FFFFFF',
+  surfaceRaised: '#FFFFFF',
+  surfaceQuiet: '#F7FAFF',
+  surfacePressed: '#EAF4FF',
 
-  // Ink
-  ink: '#171513',
-  inkSecondary: '#3C3632',
-  body: '#625B55',
-  muted: '#8D847C',
-  faint: '#AEA59D',
-  disabled: '#C7BFB7',
-  inverse: '#FFF9F5',
+  // Ink — cool graphite
+  ink: '#080A0F',
+  inkSecondary: '#1F2533',
+  body: '#5D6673',
+  muted: '#7C8696',
+  faint: '#B5BDC8',
+  disabled: '#C9D0DA',
+  inverse: '#FFFFFF',
 
   // Hairlines and structure
-  line: '#E8DED5',
-  lineSoft: '#EFE7DF',
-  lineStrong: '#D7C8BE',
+  line: '#E5EAF1',
+  lineSoft: '#EEF1F5',
+  lineStrong: '#D4DCE8',
 
-  // Brand warmth
-  clay: '#BC6650',
-  clayDeep: '#A65340',
-  claySoft: '#ECD2C9',
-  clayMist: '#F7EBE7',
-  rose: '#D9A79C',
-  roseLight: '#F1DCD6',
-  sand: '#E8D7C1',
-  sandLight: '#F5ECDF',
+  // Brand — Pura Blue (legacy `clay*` names retained)
+  clay: '#147CFF',
+  clayDeep: '#075FD1',
+  claySoft: '#EAF4FF',
+  clayMist: '#F3F8FF',
+  rose: '#A8C8FF',
+  roseLight: '#DFF2FF',
+  sand: '#929BA8',
+  sandLight: '#E5EAF1',
 
-  // Scan intelligence
-  scanGlow: 'rgba(188, 102, 80, 0.17)',
-  scanGlowStrong: 'rgba(188, 102, 80, 0.30)',
-  scanLine: 'rgba(188, 102, 80, 0.46)',
-  scanContour: 'rgba(111, 84, 74, 0.18)',
-  scanContourActive: 'rgba(188, 102, 80, 0.62)',
+  // Scan intelligence — luminous blue (formerly warm clay)
+  scanGlow: 'rgba(20, 124, 255, 0.18)',
+  scanGlowStrong: 'rgba(20, 124, 255, 0.32)',
+  scanLine: 'rgba(20, 124, 255, 0.55)',
+  scanContour: 'rgba(7, 95, 209, 0.18)',
+  scanContourActive: 'rgba(20, 124, 255, 0.62)',
 
   // High contrast action
-  actionInk: '#171513',
-  actionInkPressed: '#292522',
+  actionInk: '#05070B',
+  actionInkPressed: '#1A1F2A',
 
   // Semantic, extremely restrained
-  safeBg: '#E8F0E9',
-  safeText: '#46604B',
-  cautionBg: '#F4E7D2',
-  cautionText: '#795A2D',
-  skipBg: '#F3DFDB',
-  skipText: '#874D45',
-  observationBg: '#EFE9E4',
-  observationText: '#665C55',
+  safeBg: '#E9F8F2',
+  safeText: '#188A65',
+  cautionBg: '#FFF7E6',
+  cautionText: '#956712',
+  skipBg: '#FFF0F0',
+  skipText: '#A33B3B',
+  observationBg: '#F7FAFF',
+  observationText: '#5D6673',
 
   // Overlay
-  overlay: 'rgba(23, 21, 19, 0.34)',
-  overlaySoft: 'rgba(23, 21, 19, 0.18)',
+  overlay: 'rgba(8, 10, 15, 0.36)',
+  overlaySoft: 'rgba(8, 10, 15, 0.18)',
 } as const;
 
 export type PuraColor = keyof typeof puraColors;
@@ -110,22 +110,22 @@ export const puraRadius = {
 
 export const puraShadow = {
   softLift: {
-    shadowColor: '#3B2B23',
-    shadowOpacity: 0.045,
+    shadowColor: '#0A1A2F',
+    shadowOpacity: 0.05,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
   actionLift: {
-    shadowColor: '#3B2B23',
-    shadowOpacity: 0.08,
+    shadowColor: '#0A1A2F',
+    shadowOpacity: 0.09,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 9 },
     elevation: 3,
   },
   orbAmbient: {
-    shadowColor: '#BC6650',
-    shadowOpacity: 0.13,
+    shadowColor: '#147CFF',
+    shadowOpacity: 0.20,
     shadowRadius: 42,
     shadowOffset: { width: 0, height: 12 },
     elevation: 3,

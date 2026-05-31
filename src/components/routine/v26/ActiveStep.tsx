@@ -398,7 +398,7 @@ const s = StyleSheet.create({
   },
   compactMarkText: {
     fontFamily: V26_TYPE.sansBold,
-    color: '#FCFAF7',
+    color: '#FFFFFF',
     fontSize: 12,
     lineHeight: 13,
   },

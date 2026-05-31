@@ -15,34 +15,36 @@
  */
 
 export const PURA = {
-  paper: '#FAF7F4',
-  paperRaised: '#FCFAF7',
-  ink: '#1A1A1A',
-  body: '#5C5550',
-  muted: '#847971',
-  border: '#E5DDD6',
-  borderStrong: '#D8CEC6',
-  terracotta: '#C65D48',
-  terracottaPressed: '#AC4E3C',
-  claySelected: '#F3E4DE',
-  claySupport: '#F6ECE7',
-  claySubtle: '#F8F0EC',
-  disabledBg: '#E5DFDA',
-  disabledText: '#9B918A',
-  overlayDark: 'rgba(26, 26, 26, 0.42)',
+  // Onboarding palette — Pura Blue system. Legacy property names
+  // retained (terracotta, clay*) but values are now blue.
+  paper: '#FCFDFF',
+  paperRaised: '#FFFFFF',
+  ink: '#080A0F',
+  body: '#5D6673',
+  muted: '#7C8696',
+  border: '#E5EAF1',
+  borderStrong: '#D4DCE8',
+  terracotta: '#147CFF',
+  terracottaPressed: '#075FD1',
+  claySelected: '#EAF4FF',
+  claySupport: '#F0F6FF',
+  claySubtle: '#F7FAFF',
+  disabledBg: '#E5EAF1',
+  disabledText: '#929BA8',
+  overlayDark: 'rgba(8, 10, 15, 0.42)',
 } as const;
 
 export const PURA_SHADOW = {
   soft: {
-    shadowColor: '#2A1F18',
-    shadowOpacity: 0.055,
+    shadowColor: '#0A1A2F',
+    shadowOpacity: 0.07,
     shadowRadius: 30,
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
   card: {
-    shadowColor: '#2A1F18',
-    shadowOpacity: 0.035,
+    shadowColor: '#0A1A2F',
+    shadowOpacity: 0.04,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,

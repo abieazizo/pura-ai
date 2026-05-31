@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: palette.hairline,
   },

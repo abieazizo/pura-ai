@@ -198,9 +198,9 @@ function TabButton({
       >
         <ScanOrb focused={focused}>
           <Icon
-            size={22}
-            color={puraShop.dockScanIcon}
-            weight={focused ? 'fill' : 'duotone'}
+            size={24}
+            color="#FFFFFF"
+            weight="bold"
           />
         </ScanOrb>
         <Text
@@ -275,26 +275,22 @@ function ScanOrb({
     <View style={styles.scanOrbWrap}>
       <Svg width={48} height={48} viewBox="0 0 100 100" style={StyleSheet.absoluteFill}>
         <Defs>
-          <RadialGradient id="scanRim" cx="50%" cy="42%" rx="60%" ry="60%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={1} />
-            <Stop offset="60%" stopColor={puraShop.dockScanTint} stopOpacity={1} />
-            <Stop offset="100%" stopColor={puraShop.peachGlow} stopOpacity={1} />
+          <RadialGradient id="scanFill" cx="50%" cy="30%" rx="75%" ry="75%">
+            <Stop offset="0%" stopColor="#5CA8FF" stopOpacity={1} />
+            <Stop offset="50%" stopColor="#147CFF" stopOpacity={1} />
+            <Stop offset="100%" stopColor="#0A57C9" stopOpacity={1} />
           </RadialGradient>
-          <RadialGradient id="scanHighlight" cx="40%" cy="30%" rx="42%" ry="34%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.92} />
+          <RadialGradient id="scanGloss" cx="40%" cy="26%" rx="48%" ry="38%">
+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.6} />
             <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
           </RadialGradient>
         </Defs>
-        <Circle cx={50} cy={50} r={48} fill="url(#scanRim)" />
-        <Circle
-          cx={50}
-          cy={50}
-          r={48}
-          fill="none"
-          stroke={puraShop.dockScanRim}
-          strokeWidth={focused ? 1.5 : 1}
-        />
-        <Ellipse cx={40} cy={32} rx={20} ry={12} fill="url(#scanHighlight)" />
+        {/* white base disc → crisp ring separating the orb from the dock */}
+        <Circle cx={50} cy={50} r={48} fill="#FFFFFF" />
+        {/* vibrant brand-blue fill */}
+        <Circle cx={50} cy={50} r={focused ? 45 : 46} fill="url(#scanFill)" />
+        {/* glossy top highlight for dimensionality */}
+        <Ellipse cx={42} cy={30} rx={24} ry={14} fill="url(#scanGloss)" />
       </Svg>
       <View style={styles.scanOrbInner}>{children}</View>
     </View>
@@ -363,6 +359,7 @@ const styles = StyleSheet.create({
   scanOrbWrap: {
     width: 48,
     height: 48,
+    borderRadius: 24,
     marginTop: -10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -383,10 +380,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 999,
-    backgroundColor: '#DF735C',
+    backgroundColor: '#147CFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#DF735C',
+    shadowColor: '#147CFF',
     shadowOpacity: 0.32,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -405,7 +402,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#DF735C',
+    backgroundColor: '#147CFF',
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
   },

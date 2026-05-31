@@ -25,66 +25,66 @@ const SANS_BOLD = 'Inter-Bold';
 // ---------------------------------------------------------------------------
 
 export const puraRoutineColors = {
-  // Surfaces
-  background: '#FFFDF9',
-  backgroundWarm: '#FFF8F2',
+  // Surfaces — Pura Blue porcelain system
+  background: '#FCFDFF',
+  backgroundWarm: '#F7FAFF',
   surface: '#FFFFFF',
-  surfaceSoft: '#FFFAF5',
-  surfaceBlush: '#FFF2EC',
-  surfaceSage: '#F2F3EC',
-  surfaceLilac: '#F5EFF8',
+  surfaceSoft: '#F7FAFF',
+  surfaceBlush: '#EAF4FF',
+  surfaceSage: '#E9F8F2',
+  surfaceLilac: '#EEF1FB',
 
-  // Ink scale
-  ink: '#111015',
-  inkSoft: '#29272B',
-  body: '#69666A',
-  muted: '#9A9591',
+  // Ink scale — cool graphite
+  ink: '#080A0F',
+  inkSoft: '#1F2533',
+  body: '#5D6673',
+  muted: '#929BA8',
 
-  // Structure
-  line: '#EEE2D7',
-  lineStrong: '#E1CDBE',
-  hairline: 'rgba(56, 42, 28, 0.06)',
+  // Structure — cool hairlines
+  line: '#E5EAF1',
+  lineStrong: '#D4DCE8',
+  hairline: 'rgba(8, 22, 56, 0.06)',
 
-  // Coral / accent
-  coral: '#E98973',
-  coralStrong: '#DF735C',
-  coralDeep: '#A85A47',
-  coralWash: '#FBE6DF',
-  coralWashStrong: '#F8D7C8',
-  peachGlow: '#FFD7C9',
-  peachGlowSoft: 'rgba(255, 215, 201, 0.55)',
+  // Pura Blue accent (legacy `coral*` names retained, values now blue)
+  coral: '#147CFF',
+  coralStrong: '#075FD1',
+  coralDeep: '#063D8F',
+  coralWash: '#EAF4FF',
+  coralWashStrong: '#CFE3FF',
+  peachGlow: '#DFF2FF',
+  peachGlowSoft: 'rgba(207, 227, 255, 0.55)',
 
-  // Sage
-  sage: '#94A184',
-  sageDeep: '#68745A',
-  sageWash: '#EFF1E9',
+  // Sage → success green (preserved)
+  sage: '#20A67A',
+  sageDeep: '#188A65',
+  sageWash: '#E9F8F2',
 
-  // Lilac
-  lilac: '#B39ACF',
-  lilacDeep: '#775A98',
-  lilacWash: '#F2EBF8',
+  // Lilac → secondary cool tone (now a soft cyan)
+  lilac: '#5BB9FF',
+  lilacDeep: '#1487C9',
+  lilacWash: '#E7F8FF',
 
-  // Amber
-  amber: '#D4A25E',
-  amberWash: '#FAF0DE',
+  // Amber → warning (preserved)
+  amber: '#C58A1D',
+  amberWash: '#FFF7E6',
 
   // Semantic
-  success: '#639374',
-  successWash: '#E8F0E9',
-  warningWash: '#FAEFDF',
-  blackButton: '#151419',
+  success: '#20A67A',
+  successWash: '#E9F8F2',
+  warningWash: '#FFF7E6',
+  blackButton: '#05070B',
   white: '#FFFFFF',
 
-  // Status badges (background / text pairs)
-  badgeOwnedBg: '#E8F0E9',
-  badgeOwnedText: '#3D6B4A',
-  badgeConfirmBg: '#FBE6DF',
-  badgeConfirmText: '#A85A47',
-  badgeMatchBg: '#FAF0DE',
-  badgeMatchText: '#88683A',
+  // Status badges (background / text pairs) — cool semantics
+  badgeOwnedBg: '#E9F8F2',
+  badgeOwnedText: '#188A65',
+  badgeConfirmBg: '#EAF4FF',
+  badgeConfirmText: '#063D8F',
+  badgeMatchBg: '#FFF7E6',
+  badgeMatchText: '#956712',
   badgeOptionalBg: '#FFFFFF',
-  badgeOptionalText: '#69666A',
-  badgeOptionalBorder: '#E1CDBE',
+  badgeOptionalText: '#5D6673',
+  badgeOptionalBorder: '#D4DCE8',
 } as const;
 
 export type PuraRoutineColor = keyof typeof puraRoutineColors;
@@ -276,29 +276,29 @@ export const puraRoutineSpace = {
 
 export const puraRoutineShadows = {
   card: {
-    shadowColor: '#32231D',
-    shadowOpacity: 0.055,
+    shadowColor: '#0A1A2F',
+    shadowOpacity: 0.06,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 9 },
     elevation: 3,
   },
   hero: {
-    shadowColor: '#3C2818',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.10,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 13 },
     elevation: 7,
   },
   coralGlow: {
-    shadowColor: '#E98973',
-    shadowOpacity: 0.19,
+    shadowColor: '#147CFF',
+    shadowOpacity: 0.22,
     shadowRadius: 26,
     shadowOffset: { width: 0, height: 10 },
     elevation: 5,
   },
   button: {
-    shadowColor: '#181613',
-    shadowOpacity: 0.18,
+    shadowColor: '#05070B',
+    shadowOpacity: 0.20,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,

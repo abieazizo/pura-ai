@@ -1,5 +1,4 @@
 import React, { useCallback } from 'react';
-import { Alert } from 'react-native';
 import {
   createNativeStackNavigator,
   type NativeStackNavigationOptions,
@@ -8,57 +7,74 @@ import {
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { SlideEntry } from '@/components/onboarding/SlideEntry';
-import {
-  WelcomeV2,
-  CameraTrustV2,
-  GuidedFirstScanV2,
-  ScanReviewV2,
-  BaselineRevealV2,
-  TonightRoutineV2,
-  SaveProgressV2,
-} from '@/screens/onboarding/v2';
+import { Splash } from '@/screens/onboarding/Splash';
+import { AuthChoice } from '@/screens/onboarding/AuthChoice';
 import { SignIn } from '@/screens/onboarding/SignIn';
+import { Tutorial } from '@/screens/onboarding/Tutorial';
+import { AskName } from '@/screens/onboarding/AskName';
+import { AskAge } from '@/screens/onboarding/AskAge';
+import { AskGender } from '@/screens/onboarding/AskGender';
+import { AskSkinType } from '@/screens/onboarding/AskSkinType';
+import { AskConcerns } from '@/screens/onboarding/AskConcerns';
+import { AskSensitivity } from '@/screens/onboarding/AskSensitivity';
+import { AskSunExposure } from '@/screens/onboarding/AskSunExposure';
+import { AskEffort } from '@/screens/onboarding/AskEffort';
+import { AskGoal } from '@/screens/onboarding/AskGoal';
+import { AskAttribution } from '@/screens/onboarding/AskAttribution';
+import { Processing } from '@/screens/onboarding/Processing';
+import { ProfileSummary } from '@/screens/onboarding/ProfileSummary';
 import { useAppStore } from '@/store/useAppStore';
-import { useOnboardingV2 } from '@/state/onboardingV2';
-import { onboardingV2 } from '@/ai/onboardingAnalyticsV2';
 import type { OnboardingStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 
 /**
- * v25 — scan-first onboarding navigator.
+ * Question-first onboarding navigator (restored).
  *
- *   WelcomeV2
- *     → PrimaryGoalV2
- *     → CameraTrustV2          (permission requested on CTA)
- *     → GuidedFirstScanV2      (camera + capture + Use / Retake)
- *     → ProcessingV2           (runs analyzeFaceScan; honest stages)
- *     → BaselineRevealV2       (signals derived from real Scan)
- *     → SafetyCalibrationV2    (product reactivity, warm clay)
- *     → RoutineSimplicityV2    (no "Advanced" first-run option)
- *     → PlanRevealV2           (real starting routine)
- *     → SaveProgressV2         (Apple / Google / Email / Guest)
- *         on success → finishOnboarding → root resets to Tabs
+ *   Splash
+ *     → AuthChoice            (new user) / SignIn (returning user)
+ *     → AskName → AskAge → AskGender → AskSkinType → AskConcerns
+ *     → AskSensitivity → AskSunExposure → AskEffort → AskGoal
+ *     → AskAttribution
+ *     → Processing            (profile calibration; honest checklist)
+ *     → ProfileSummary
+ *     → Tutorial              (product walkthrough; complete or skip)
+ *         → finishOnboarding + setHasSeenScanTutorial(true)
+ *         → root resets to [Tabs, ScanModal] — user lands in the camera
  *
- * Returning user: WelcomeV2 → SignIn → Tabs.
+ * Returning user: Splash → SignIn → Tabs.
  *
- * Legacy routes (AskGoal / AskConcerns / AskSkinBehavior / AskEffort /
- * AskLifestyle / AskAge / Processing / PlanReveal / AuthChoice /
- * FirstScanInvitation / Splash) are NO LONGER REACHABLE from this
- * navigator. The files remain on disk so legacy diagnostics can compile,
- * but the active onboarding entry point is WelcomeV2.
+ * Camera and notification permissions are requested contextually (at the
+ * first scan capture and the first routine schedule, respectively), not
+ * up front. The ReviewAsk + Paywall steps are intentionally omitted from
+ * this flow.
+ *
+ * The scan-first (V2) onboarding has been removed.
  */
 export function OnboardingNavigator() {
   return (
     <Stack.Navigator
       screenOptions={STACK_OPTIONS}
-      initialRouteName="WelcomeV2"
+      initialRouteName="Splash"
     >
-      <Stack.Screen name="WelcomeV2" options={{ gestureEnabled: false }}>
+      <Stack.Screen name="Splash" options={{ gestureEnabled: false }}>
         {({ navigation }) => (
           <SlideEntry>
-            <WelcomeV2
-              onStartFirstScan={() => navigation.navigate('CameraTrustV2')}
+            <Splash
+              onGetStarted={() => navigation.navigate('AuthChoice')}
+              onSignIn={() => navigation.navigate('SignIn')}
+            />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AuthChoice">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AuthChoice
+              onAppleContinue={() => navigation.navigate('AskName')}
+              onGoogleContinue={() => navigation.navigate('AskName')}
+              onEmailContinue={() => navigation.navigate('AskName')}
               onSignIn={() => navigation.navigate('SignIn')}
             />
           </SlideEntry>
@@ -69,97 +85,133 @@ export function OnboardingNavigator() {
         {({ navigation }) => <SignInHost nav={navigation} />}
       </Stack.Screen>
 
-      <Stack.Screen name="CameraTrustV2">
+      <Stack.Screen name="AskName">
         {({ navigation }) => (
           <SlideEntry>
-            <CameraTrustV2
-              onPermissionGranted={() =>
-                navigation.navigate('GuidedFirstScanV2')
-              }
+            <AskName onNext={() => navigation.navigate('AskAge')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskAge">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskAge onNext={() => navigation.navigate('AskGender')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskGender">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskGender onNext={() => navigation.navigate('AskSkinType')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskSkinType">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskSkinType onNext={() => navigation.navigate('AskConcerns')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskConcerns">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskConcerns onNext={() => navigation.navigate('AskSensitivity')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskSensitivity">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskSensitivity
+              onNext={() => navigation.navigate('AskSunExposure')}
+            />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskSunExposure">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskSunExposure onNext={() => navigation.navigate('AskEffort')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskEffort">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskEffort onNext={() => navigation.navigate('AskGoal')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskGoal">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskGoal onNext={() => navigation.navigate('AskAttribution')} />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="AskAttribution">
+        {({ navigation }) => (
+          <SlideEntry>
+            <AskAttribution
+              onNext={() => navigation.navigate('Processing')}
+            />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="Processing" options={{ gestureEnabled: false }}>
+        {({ navigation }) => (
+          <SlideEntry replayOnFocus={false}>
+            <Processing
+              onDone={() => navigation.replace('ProfileSummary')}
+            />
+          </SlideEntry>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="ProfileSummary">
+        {({ navigation }) => (
+          <SlideEntry>
+            <ProfileSummary
+              onNext={() => navigation.navigate('Tutorial')}
             />
           </SlideEntry>
         )}
       </Stack.Screen>
 
       <Stack.Screen
-        name="GuidedFirstScanV2"
-        options={{ gestureEnabled: false, animation: 'fade' }}
+        name="Tutorial"
+        options={{ gestureEnabled: false, animation: 'slide_from_right' }}
       >
-        {({ navigation }) => (
-          <GuidedFirstScanV2
-            onCancel={() => navigation.goBack()}
-            onCaptured={() => navigation.navigate('ScanReviewV2')}
-          />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen
-        name="ScanReviewV2"
-        options={{ gestureEnabled: false }}
-      >
-        {({ navigation }) => (
-          <SlideEntry>
-            <ScanReviewV2
-              onApproved={() => navigation.navigate('BaselineRevealV2')}
-              onRetake={() =>
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'GuidedFirstScanV2' }],
-                })
-              }
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen
-        name="BaselineRevealV2"
-        options={{ gestureEnabled: false }}
-      >
-        {({ navigation }) => (
-          <SlideEntry>
-            <BaselineRevealV2
-              onContinue={() => navigation.navigate('TonightRoutineV2')}
-              onRetake={() =>
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'GuidedFirstScanV2' }],
-                })
-              }
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen
-        name="TonightRoutineV2"
-        options={{ gestureEnabled: false }}
-      >
-        {({ navigation }) => (
-          <SlideEntry>
-            <TonightRoutineV2
-              onContinue={() => navigation.navigate('SaveProgressV2')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen
-        name="SaveProgressV2"
-        options={{ gestureEnabled: false }}
-      >
-        {() => <SaveProgressHost />}
+        {() => <TutorialHost />}
       </Stack.Screen>
     </Stack.Navigator>
   );
 }
 
 /**
- * Returning-user sign-in handoff. Successful auth bypasses the new
- * onboarding because the backend already carries the user's profile
- * and scan history.
+ * Returning-user sign-in handoff. A successful sign-in (provider OR
+ * email+password) skips the quiz/tutorial because the backend already
+ * carries the user's profile and scan history. For this build (no real
+ * auth backend) every sign-in handler fires `finishOnboarding()` and
+ * resets into Tabs. "Create account" sends the user back to AuthChoice
+ * (new-user flow).
  */
-function SignInHost({ nav }: { nav: NativeStackNavigationProp<OnboardingStackParamList> }) {
+function SignInHost({
+  nav,
+}: {
+  nav: NativeStackNavigationProp<OnboardingStackParamList>;
+}) {
   const rootNav = useNavigation<NavigationProp<any>>();
   const finish = useAppStore((s) => s.finishOnboarding);
 
@@ -176,88 +228,41 @@ function SignInHost({ nav }: { nav: NativeStackNavigationProp<OnboardingStackPar
         onGoogleSignIn={completeSignIn}
         onEmailSignIn={completeSignIn}
         onForgotPassword={() => {
-          Alert.alert(
-            'Reset your password',
-            'Password reset is launching soon. In the meantime, email support@puraskin.com and we\'ll get you back in.',
-            [{ text: 'OK', style: 'default' }],
-          );
+          // eslint-disable-next-line no-console
+          console.log('[onboarding] TODO: forgot password flow');
         }}
-        onCreateAccount={() => nav.replace('WelcomeV2')}
+        onCreateAccount={() => nav.replace('AuthChoice')}
       />
     </SlideEntry>
   );
 }
 
 /**
- * Save Progress host — commits the captured Scan to history and
- * finalises the onboarding completion. Guest path follows the same
- * commit path without provider auth; the only difference is `withAuth`
- * on the terminal analytics event.
+ * TutorialHost wraps the product walkthrough and owns onboarding
+ * completion. Completing OR skipping the tutorial:
+ *
+ *   1. `finishOnboarding()` writes `onboardingComplete: true` → the
+ *      RootNavigator gate flips from OnboardingNavigator to TabNavigator.
+ *   2. `setHasSeenScanTutorial(true)` prevents the legacy camera-technique
+ *      tutorial from firing on top of the product tutorial just seen.
+ *   3. `rootNav.reset` to [Tabs, ScanModal] so the user lands directly in
+ *      the camera — Home has no meaning before a first scan exists.
  */
-function SaveProgressHost() {
+function TutorialHost() {
   const rootNav = useNavigation<NavigationProp<any>>();
   const finish = useAppStore((s) => s.finishOnboarding);
-  const addScan = useAppStore((s) => s.addScan);
-  const setScanResult = useAppStore((s) => s.setScanResult);
-  const setHasSeenScanTutorial = useAppStore((s) => s.setHasSeenScanTutorial);
-  const resetOnboardingV2 = useOnboardingV2((s) => s.resetOnboardingV2);
+  const markScanTutorialSeen = useAppStore((s) => s.setHasSeenScanTutorial);
 
-  const commitAndComplete = useCallback(
-    (withAuth: boolean) => {
-      const v2 = useOnboardingV2.getState();
-      // Commit the real Scan to history. The post-scan AI hydration
-      // pipeline (product matcher, routine recommendation) fires
-      // through addScan as usual — same path as a Home-tab scan.
-      if (v2.scanAnalysisResult) {
-        addScan(v2.scanAnalysisResult);
-        // Surface a minimal ScanResult so the post-onboarding screens
-        // can read latestResult without extra hydration.
-        const s = v2.scanAnalysisResult;
-        setScanResult({
-          photoUri: s.photoUri,
-          overallScore: s.overallScore,
-          zoneScores: {
-            forehead: 0,
-            tZone: 0,
-            chin: 0,
-            cheeks: 0,
-          },
-          findings: [],
-          aiReadout: s.summaryHeadline ?? '',
-          timestamp: s.capturedAt,
-          scanId: s.id,
-        });
-      }
-      setHasSeenScanTutorial(true);
-      finish();
-      onboardingV2.onboardingCompleted({ withAuth });
-      useOnboardingV2.getState().markOnboardingCompleted();
-      resetOnboardingV2();
-      rootNav.reset?.({ index: 0, routes: [{ name: 'Tabs' as never }] });
-    },
-    [
-      addScan,
-      setScanResult,
-      finish,
-      setHasSeenScanTutorial,
-      resetOnboardingV2,
-      rootNav,
-    ]
-  );
+  const handoff = useCallback(() => {
+    finish();
+    markScanTutorialSeen(true);
+    rootNav.reset?.({
+      index: 1,
+      routes: [{ name: 'Tabs' as never }, { name: 'ScanModal' as never }],
+    });
+  }, [finish, markScanTutorialSeen, rootNav]);
 
-  return (
-    <SlideEntry>
-      <SaveProgressV2
-        onAuthCompleted={() => commitAndComplete(true)}
-        onContinueAsGuest={() => commitAndComplete(false)}
-        onSignIn={() => {
-          // Bounce to provider sign-in. The returning-user host owns
-          // the reset to Tabs on its own success path.
-          rootNav.navigate('SignIn' as never);
-        }}
-      />
-    </SlideEntry>
-  );
+  return <Tutorial onComplete={handoff} onSkip={handoff} />;
 }
 
 const STACK_OPTIONS: NativeStackNavigationOptions = {

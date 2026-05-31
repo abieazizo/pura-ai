@@ -270,7 +270,7 @@ const rowStyles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: palette.hairline,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     marginBottom: 8,
     minHeight: 44,
   },
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   },
   tint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 26, 26, 0.45)',
+    backgroundColor: 'rgba(8, 10, 15, 0.45)',
   },
   sheet: {
     position: 'absolute',
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   applyBtnPressed: {
-    backgroundColor: '#0F0E0D',
+    backgroundColor: '#0A0C12',
   },
   applyLabel: {
     fontFamily: 'Inter-SemiBold',

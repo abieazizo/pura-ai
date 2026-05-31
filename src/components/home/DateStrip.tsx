@@ -176,7 +176,7 @@ const circles = StyleSheet.create({
   pastScanned: { backgroundColor: palette.sand },
   pastUnscanned: {
     borderWidth: 1,
-    borderColor: 'rgba(198,93,72,0.3)', // clay @ 30%
+    borderColor: 'rgba(20,124,255,0.3)', // clay @ 30%
     borderStyle: 'dashed',
   },
   todayScanned: { backgroundColor: palette.clay },

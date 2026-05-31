@@ -15,36 +15,42 @@ import type { TextStyle, ViewStyle } from 'react-native';
 // ---------------------------------------------------------------------------
 
 export const scanColors = {
-  background: '#FFFDF9',
-  warmBackground: '#FFF8F2',
+  background: '#FCFDFF',
+  warmBackground: '#F7FAFF',
   card: '#FFFFFF',
-  cardSoft: '#FFFAF5',
-  ink: '#17151A',
-  inkSoft: '#302D31',
-  body: '#6C6765',
-  muted: '#9D9590',
-  line: '#EEDFD4',
-  lineStrong: '#E3C9BB',
+  cardSoft: '#F7FAFF',
+  ink: '#080A0F',
+  inkSoft: '#1F2533',
+  body: '#5D6673',
+  muted: '#929BA8',
+  line: '#E5EAF1',
+  lineStrong: '#D4DCE8',
 
-  coral: '#E98973',
-  coralStrong: '#DF735C',
-  coralDark: '#A85A47',
-  coralWash: '#FBE7DF',
-  peachGlow: '#FFD9CC',
+  // Pura Blue intelligence — replaces the coral accent. Legacy
+  // `coral*` names retained.
+  coral: '#147CFF',
+  coralStrong: '#075FD1',
+  coralDark: '#063D8F',
+  coralWash: '#EAF4FF',
+  peachGlow: '#CFE3FF',
 
-  sage: '#96A487',
-  sageDeep: '#68745A',
-  sageWash: '#EEF0E8',
+  // Sage → success green (preserved semantic)
+  sage: '#20A67A',
+  sageDeep: '#188A65',
+  sageWash: '#E9F8F2',
 
-  lilac: '#B39AD0',
-  lilacDeep: '#785A99',
-  lilacWash: '#F2ECF8',
+  // Lilac → cyan (cool intelligence secondary)
+  lilac: '#5BB9FF',
+  lilacDeep: '#1487C9',
+  lilacWash: '#E7F8FF',
 
-  amber: '#D4A360',
-  amberDeep: '#9C713B',
-  amberWash: '#FAF0DF',
+  // Amber → warning (preserved semantic)
+  amber: '#C58A1D',
+  amberDeep: '#956712',
+  amberWash: '#FFF7E6',
 
-  danger: '#C87262',
+  // Danger red — must read as redness/irritation
+  danger: '#E24D4D',
   white: '#FFFFFF',
 } as const;
 
@@ -69,30 +75,34 @@ export interface ConcernVisualPaint {
 // web (where SVG opacity composites differently than on native). The
 // shapes are still soft and editorial — not clinical heatmaps.
 export const concernVisuals = {
+  // Texture — Pura Blue (headline AI metric)
   texture: {
     label: 'Texture',
-    tint: '#F19A86',
-    fill: 'rgba(241, 154, 134, 0.40)',
-    border: 'rgba(225, 116, 94, 0.85)',
-    glow: 'rgba(241, 154, 134, 0.30)',
-    wash: '#FBE7DF',
+    tint: '#5BB1FF',
+    fill: 'rgba(91, 177, 255, 0.38)',
+    border: 'rgba(20, 124, 255, 0.80)',
+    glow: 'rgba(20, 124, 255, 0.28)',
+    wash: '#EAF4FF',
   },
+  // Under-eyes — cool indigo/violet-blue (preserved cool semantic)
   under_eye_fatigue: {
     label: 'Under-eyes',
-    tint: '#AE93D0',
-    fill: 'rgba(174, 147, 208, 0.40)',
-    border: 'rgba(143, 104, 187, 0.78)',
-    glow: 'rgba(174, 147, 208, 0.28)',
-    wash: '#F2ECF8',
+    tint: '#7C8BE6',
+    fill: 'rgba(124, 139, 230, 0.40)',
+    border: 'rgba(80, 96, 200, 0.80)',
+    glow: 'rgba(124, 139, 230, 0.28)',
+    wash: '#EAEEFB',
   },
+  // Breakouts — danger red (must read clinically as breakouts)
   breakouts: {
     label: 'Breakouts',
-    tint: '#D6A25D',
-    fill: 'rgba(214, 162, 93, 0.38)',
-    border: 'rgba(187, 130, 55, 0.78)',
-    glow: 'rgba(214, 162, 93, 0.26)',
-    wash: '#FAF0DF',
+    tint: '#E97070',
+    fill: 'rgba(233, 112, 112, 0.40)',
+    border: 'rgba(208, 70, 70, 0.82)',
+    glow: 'rgba(233, 112, 112, 0.28)',
+    wash: '#FCEAEA',
   },
+  // Redness — must remain red
   redness: {
     label: 'Redness',
     tint: '#EC8179',
@@ -101,37 +111,41 @@ export const concernVisuals = {
     glow: 'rgba(236, 129, 121, 0.28)',
     wash: '#FBE6E1',
   },
+  // Dryness — cyan (water-adjacent cool tone)
   dryness: {
     label: 'Dryness',
-    tint: '#B5AC8E',
-    fill: 'rgba(181, 172, 142, 0.36)',
-    border: 'rgba(140, 128, 100, 0.74)',
-    glow: 'rgba(181, 172, 142, 0.24)',
-    wash: '#EDEAE0',
+    tint: '#5BD0FF',
+    fill: 'rgba(91, 208, 255, 0.34)',
+    border: 'rgba(24, 154, 218, 0.74)',
+    glow: 'rgba(91, 208, 255, 0.24)',
+    wash: '#E0F4FF',
   },
+  // Oil balance — success green (healthy balance)
   oil_balance: {
     label: 'Oil balance',
-    tint: '#A1AF8C',
-    fill: 'rgba(161, 175, 140, 0.36)',
-    border: 'rgba(122, 142, 100, 0.75)',
-    glow: 'rgba(161, 175, 140, 0.26)',
-    wash: '#EEF0E8',
+    tint: '#5BBE8F',
+    fill: 'rgba(91, 190, 143, 0.36)',
+    border: 'rgba(32, 166, 122, 0.78)',
+    glow: 'rgba(91, 190, 143, 0.26)',
+    wash: '#E5F4EC',
   },
+  // Dark marks — amber (pigmentation/warning)
   dark_marks: {
     label: 'Dark marks',
-    tint: '#BB907D',
-    fill: 'rgba(187, 144, 125, 0.38)',
-    border: 'rgba(153, 104, 84, 0.78)',
-    glow: 'rgba(187, 144, 125, 0.26)',
-    wash: '#F3E6DE',
+    tint: '#D8A24A',
+    fill: 'rgba(216, 162, 74, 0.38)',
+    border: 'rgba(168, 117, 30, 0.78)',
+    glow: 'rgba(216, 162, 74, 0.26)',
+    wash: '#FBEFD5',
   },
+  // Barrier support — success green (healthy barrier)
   barrier_stress: {
     label: 'Barrier support',
-    tint: '#92A27F',
-    fill: 'rgba(146, 162, 127, 0.36)',
-    border: 'rgba(105, 126, 85, 0.74)',
-    glow: 'rgba(146, 162, 127, 0.24)',
-    wash: '#E8EDE0',
+    tint: '#3FBE85',
+    fill: 'rgba(63, 190, 133, 0.36)',
+    border: 'rgba(24, 138, 101, 0.78)',
+    glow: 'rgba(63, 190, 133, 0.24)',
+    wash: '#E2F4EB',
   },
 } as const satisfies Record<string, ConcernVisualPaint>;
 
@@ -252,28 +266,28 @@ export const scanShadows = {
   // component wants the double-shadow effect it stacks two Views
   // with the `cardLift` and `cardDeep` shadows.
   card: {
-    shadowColor: '#35251E',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.12,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 14 },
     elevation: 6,
   } as ViewStyle,
   cardDeep: {
-    shadowColor: '#35251E',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.18,
     shadowRadius: 40,
     shadowOffset: { width: 0, height: 22 },
     elevation: 10,
   } as ViewStyle,
   glow: {
-    shadowColor: '#E98973',
-    shadowOpacity: 0.28,
+    shadowColor: '#147CFF',
+    shadowOpacity: 0.30,
     shadowRadius: 26,
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   } as ViewStyle,
   softLift: {
-    shadowColor: '#35251E',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0.06,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },

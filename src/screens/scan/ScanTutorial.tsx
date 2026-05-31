@@ -296,14 +296,14 @@ const lightingStyles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: 'rgba(198, 93, 72, 0.10)',
+    backgroundColor: 'rgba(20, 124, 255, 0.10)',
   },
   haloInner: {
     position: 'absolute',
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: 'rgba(198, 93, 72, 0.16)',
+    backgroundColor: 'rgba(20, 124, 255, 0.16)',
   },
 });
 
@@ -592,8 +592,8 @@ const deviceStyles = StyleSheet.create({
     height: '55%',
     borderRadius: 120,
     borderWidth: 1,
-    borderColor: 'rgba(250,247,244,0.5)',
-    backgroundColor: 'rgba(250,247,244,0.05)',
+    borderColor: 'rgba(252,253,255,0.5)',
+    backgroundColor: 'rgba(252,253,255,0.05)',
   },
   captureRing: {
     position: 'absolute',
@@ -683,5 +683,5 @@ const dotsStyles = StyleSheet.create({
     borderRadius: 3,
   },
   dotActive: { backgroundColor: palette.clay },
-  dotInactive: { backgroundColor: 'rgba(198,93,72,0.2)' },
+  dotInactive: { backgroundColor: 'rgba(20,124,255,0.2)' },
 });

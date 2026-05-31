@@ -104,7 +104,7 @@ export function RoutineStepCard({
         <View style={s.numWrap}>
           {step.completed ? (
             <View style={s.checkOn}>
-              <Check size={14} color="#FCFAF7" weight="bold" />
+              <Check size={14} color="#FFFFFF" weight="bold" />
             </View>
           ) : (
             <Text style={s.num} maxFontSizeMultiplier={1.1}>

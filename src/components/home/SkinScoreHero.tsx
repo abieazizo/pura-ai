@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
   rule: {
     marginTop: 20,
     height: 1,
-    backgroundColor: 'rgba(198,93,72,0.1)', // clay @ 10%
+    backgroundColor: 'rgba(20,124,255,0.1)', // clay @ 10%
   },
   readout: {
     marginTop: 16,

@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   },
   products: {
     gap: 8,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: palette.hairline,

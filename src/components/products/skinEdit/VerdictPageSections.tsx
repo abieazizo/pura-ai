@@ -109,7 +109,7 @@ function FaceDiagram({ region }: { region: string }) {
 const linkStyles = StyleSheet.create({
   card: {
     marginHorizontal: 20,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,
@@ -184,7 +184,7 @@ const placeStyles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     gap: 14,
   },
   guidance: {
@@ -250,7 +250,7 @@ const compatStyles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
   row: {
@@ -334,7 +334,7 @@ const worthStyles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 14,
@@ -427,7 +427,7 @@ const ingStyles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
   row: {
@@ -526,7 +526,7 @@ const altStyles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.hairline,
@@ -645,7 +645,7 @@ const ctaStyles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 16,
     paddingHorizontal: 20,
-    backgroundColor: 'rgba(250, 247, 244, 0.96)',
+    backgroundColor: 'rgba(252, 253, 255, 0.96)',
     borderTopWidth: 1,
     borderTopColor: palette.hairline,
     gap: 8,
@@ -658,7 +658,7 @@ const ctaStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryBtnPressed: {
-    backgroundColor: '#0F0E0D',
+    backgroundColor: '#0A0C12',
   },
   primaryLabel: {
     fontFamily: 'Inter-SemiBold',

@@ -127,7 +127,7 @@ export function TonightDecisionCard({
         ? `rgba(${hexToRgb(dx.signalStandard)}, 0.07)`
         : decision.state === 'TREATMENT_NIGHT'
           ? `rgba(${hexToRgb(dx.signalTreatment)}, 0.08)`
-          : 'rgba(198, 93, 72, 0.10)'; // recovery + check-in → terracotta
+          : 'rgba(20, 124, 255, 0.10)'; // recovery + check-in → terracotta
 
   const indicatorColor =
     decision.state === 'RESET_NIGHT'
@@ -153,7 +153,7 @@ export function TonightDecisionCard({
   return (
     <Animated.View style={[styles.card, dShadow.hero, containerStyle]}>
       <LinearGradient
-        colors={[washRgba, 'rgba(198, 93, 72, 0)']}
+        colors={[washRgba, 'rgba(20, 124, 255, 0)']}
         start={{ x: 0, y: 0.18 }}
         end={{ x: 0.55, y: 0.42 }}
         pointerEvents="none"

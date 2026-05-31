@@ -110,7 +110,7 @@ export function FindingCardV2({
   }, [selectGlow, selected]);
   const selectStyle = useAnimatedStyle(() => ({
     borderColor:
-      selectGlow.value > 0.5 ? withAlpha(sevColor, 0.55) : 'rgba(60,40,30,0.08)',
+      selectGlow.value > 0.5 ? withAlpha(sevColor, 0.55) : 'rgba(8,22,56,0.08)',
     shadowOpacity: selectGlow.value * 0.18,
   }));
 
@@ -205,11 +205,11 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(60,40,30,0.08)',
+    borderColor: 'rgba(8,22,56,0.08)',
     borderRadius: 18,
     padding: 18,
     marginVertical: 6,
-    shadowColor: '#35251E',
+    shadowColor: '#0A1A2F',
     shadowOpacity: 0,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   zoneLabel: {
     fontFamily: 'InstrumentSerif-Regular',
     fontSize: 16,
-    color: '#2A1E18',
+    color: '#05070B',
     letterSpacing: 0.1,
   },
   severityBadge: {
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 20,
-    color: '#2A1E18',
+    color: '#05070B',
     marginTop: 10,
     letterSpacing: -0.2,
   },
@@ -257,13 +257,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     lineHeight: 22,
-    color: '#4A3D35',
+    color: '#5D6673',
     marginTop: 6,
   },
   concernHint: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
-    color: 'rgba(60,40,30,0.5)',
+    color: 'rgba(8,22,56,0.5)',
     letterSpacing: 0.8,
     marginTop: 10,
     textTransform: 'uppercase',
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     letterSpacing: 0.8,
-    color: '#4A3D35',
+    color: '#5D6673',
     textTransform: 'uppercase',
   },
   expansion: {
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(60,40,30,0.10)',
+    backgroundColor: 'rgba(8,22,56,0.10)',
     marginTop: 14,
   },
   recommendation: {
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: 14,
     lineHeight: 22,
-    color: '#4A3D35',
+    color: '#5D6673',
     marginTop: 12,
   },
 });

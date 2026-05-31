@@ -120,10 +120,10 @@ export function PrimaryButton({
   };
 
   const styleMap: Record<PrimaryButtonVariant, { bg: string; fg: string; border?: string }> = {
-    terracotta: { bg: T.terracotta, fg: '#FCFAF7' },
-    ink:        { bg: T.ink, fg: '#FCFAF7' },
+    terracotta: { bg: T.terracotta, fg: '#FFFFFF' },
+    ink:        { bg: T.ink, fg: '#FFFFFF' },
     tonal:      { bg: T.surfaceRaised, fg: T.ink, border: T.lineStrong },
-    sage:       { bg: T.sage, fg: '#FCFAF7' },
+    sage:       { bg: T.sage, fg: '#FFFFFF' },
   };
   const m = styleMap[variant];
 

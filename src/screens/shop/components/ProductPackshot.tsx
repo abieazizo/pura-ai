@@ -49,7 +49,7 @@ const TONE_GRADIENTS: Record<
   },
   cream: {
     core: '#FFFEFB',
-    mid: '#FBF6F0',
+    mid: '#F7FAFF',
     rim: '#F3E9DD',
   },
   blush: {
@@ -116,7 +116,7 @@ export function ProductPackshot({
             cy={height - 14}
             rx={width * 0.34}
             ry={6}
-            fill="#3C2818"
+            fill="#0A1A2F"
             opacity={0.07}
           />
         ) : null}

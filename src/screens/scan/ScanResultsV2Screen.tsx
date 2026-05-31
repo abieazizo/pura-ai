@@ -434,17 +434,17 @@ const filterStyles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 99,
     borderWidth: 1,
-    borderColor: 'rgba(60,40,30,0.18)',
+    borderColor: 'rgba(8,22,56,0.18)',
     backgroundColor: 'transparent',
   },
   chipActive: {
-    backgroundColor: '#2A1E18',
-    borderColor: '#2A1E18',
+    backgroundColor: '#05070B',
+    borderColor: '#05070B',
   },
   chipText: {
     fontFamily: 'Inter-Medium',
     fontSize: 13,
-    color: '#4A3D35',
+    color: '#5D6673',
   },
   chipTextActive: {
     color: '#FFFFFF',
@@ -454,11 +454,11 @@ const filterStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FAF7F4',
+    backgroundColor: '#FCFDFF',
   },
   blank: {
     flex: 1,
-    backgroundColor: '#FAF7F4',
+    backgroundColor: '#FCFDFF',
   },
   navRow: {
     flexDirection: 'row',
@@ -471,14 +471,14 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(60,40,30,0.07)',
+    backgroundColor: 'rgba(8,22,56,0.07)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
     fontFamily: 'Inter-Medium',
     fontSize: 15,
-    color: '#4A3D35',
+    color: '#5D6673',
     lineHeight: 18,
   },
   scroll: {
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 22,
     lineHeight: 28,
-    color: '#2A1E18',
+    color: '#05070B',
     textAlign: 'center',
     letterSpacing: -0.2,
     maxWidth: 320,
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     lineHeight: 22,
-    color: '#4A3D35',
+    color: '#5D6673',
     textAlign: 'center',
     marginTop: 10,
     maxWidth: 340,
@@ -525,7 +525,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     letterSpacing: 1.1,
-    color: 'rgba(60,40,30,0.45)',
+    color: 'rgba(8,22,56,0.45)',
     textTransform: 'uppercase',
     marginBottom: 16,
     alignSelf: 'center',
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
   filterEmptyText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    color: 'rgba(60,40,30,0.45)',
+    color: 'rgba(8,22,56,0.45)',
     textAlign: 'center',
   },
   ctaWrap: {
@@ -552,10 +552,10 @@ const styles = StyleSheet.create({
   cta: {
     height: 56,
     borderRadius: 99,
-    backgroundColor: '#C65D48',
+    backgroundColor: '#147CFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#C65D48',
+    shadowColor: '#147CFF',
     shadowOpacity: 0.28,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },

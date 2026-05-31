@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 16,
     borderRadius: 22,
-    backgroundColor: '#FCFAF7',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: palette.hairline,
     paddingHorizontal: 18,
