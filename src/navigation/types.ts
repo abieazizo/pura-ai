@@ -103,6 +103,10 @@ export type HomeStackParamList = {
     liveCandidate?: LiveProductCandidate;
   };
   CategoryView: { kind: ProductsRowKind };
+  /** v38 — the editorial "Browse by concern" index reached from the
+   *  shop's single quiet browse line. A neutral catalog table of
+   *  contents (no personalization, no filter state). */
+  ConcernIndex: undefined;
 };
 
 /**
@@ -159,7 +163,6 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Tabs: undefined;
   ScanModal: { initialMode?: ScanModalMode } | undefined;
-  ProfileSheet: undefined;
   ProductDetailModal: { productId: string };
   /** v10.25 — dev-only AI status & smoke-test surface. Reachable by
    *  tapping the AISourceBadge that floats in dev builds. The route

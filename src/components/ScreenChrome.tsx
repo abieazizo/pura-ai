@@ -6,7 +6,8 @@ import { AvatarButton } from './AvatarButton';
 import { AIChip } from './AIChip';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
-import { useProfileSheet } from '@/hooks/useProfileSheet';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import type { RootStackParamList } from '@/navigation/types';
 import { layout, palette, space } from '@/theme';
 import { hapt } from '@/utils/haptics';
 
@@ -52,7 +53,13 @@ export function ScreenChrome({
 }: ScreenChromeProps) {
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
-  const { open: openProfile } = useProfileSheet();
+  const nav = useNavigation<NavigationProp<RootStackParamList>>();
+  // Legacy chrome chip. Its only live mount (the scan-result screen) hides
+  // the chip, so this rarely fires — but keep it pointed at the canonical
+  // Me tab rather than the deleted profile modal.
+  const openProfile = () => {
+    nav.navigate('Tabs', { screen: 'MeTab' } as never);
+  };
 
   // Resolve chip slot. If `chip` is passed, use it. Otherwise map the legacy
   // `showAvatar` boolean: undefined/true → 'ai' (new default), false → 'none'.

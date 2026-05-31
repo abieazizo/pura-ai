@@ -1,4 +1,5 @@
 export { PuraShopScreen } from './PuraShopScreen';
+export { ConcernIndexScreen } from './ConcernIndexScreen';
 export { useShopViewModel } from './useShopViewModel';
 export type {
   ShopConcernFilter,

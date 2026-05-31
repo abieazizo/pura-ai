@@ -36,6 +36,7 @@ import { usePuraSession } from '@/state/pura27/puraSession';
 import type {
   HomeStackParamList,
   RootStackParamList,
+  TabParamList,
 } from '@/navigation/types';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -93,8 +94,10 @@ export function HomeP27Screen() {
 
   const handleOpenProfile = useCallback(() => {
     hapt.select();
-    const root = (homeNav as any).getParent?.()?.getParent?.();
-    (root ?? homeNav).navigate?.('ProfileSheet' as never);
+    // The profile circle is a second entry point into the Me tab — not a
+    // modal. HomeStack sits inside the Tab navigator, so its parent IS the
+    // tab navigator; switching to MeTab reads as a natural tab change.
+    homeNav.getParent<NavigationProp<TabParamList>>()?.navigate('MeTab');
   }, [homeNav]);
 
   const handleSecondaryRecovery = useCallback(() => {

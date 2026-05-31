@@ -43,7 +43,11 @@ export function StatusSentence({
   onScan,
 }: StatusSentenceProps) {
   // ----- PRE-SCAN — an invitation, not a status. -----
-  if (!hasScan) {
+  // `matchedPct <= 0` is folded in with `!hasScan` deliberately: the
+  // post-scan line must NEVER render "0% matched" (a hard product rule).
+  // The view model already guarantees matchedPct >= 25 whenever hasScan
+  // is true, so this is belt-and-suspenders against a future scoring tweak.
+  if (!hasScan || matchedPct <= 0) {
     return (
       <Pressable
         onPress={onScan}

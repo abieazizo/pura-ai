@@ -1,31 +1,40 @@
 /**
  * CornflowerArc — Pura's signature capture instrument.
  *
- * "The Hum" direction (Pass 1, Direction A):
- *   • Single 1.5pt cornflower stroke (#7CB0FF) sweeping 270° around
- *     the face oval. Open at 6 o'clock — the breathing space, never
- *     a closed ring. The 270° opening defines the silhouette.
- *   • Gradient stroke (transparent → cornflower) reads as a velocity
- *     trail behind the leading tip during the sweep.
- *   • Easing: custom cubic-bezier (0.32, 0, 0.18, 1) — front-loaded so
- *     the stroke gathers velocity mid-sweep and glides into completion.
- *     Reference: Halide's focus ring acceleration curve.
- *   • Duration: 1800ms — matches the 2s "hold steady" countdown with
- *     a 200ms breath at the end before the photo fires.
- *   • On completion: a single terracotta ember (Pura's brand warmth)
- *     releases from the arc's terminus at 6 o'clock and drifts inward
- *     toward the face center over 420ms while fading. This is the
- *     cornflower → terracotta handoff that defines the brand tension
- *     in a single gesture.
- *   • Reduce-motion: static 270° arc at full opacity, no sweep, no
- *     ember release.
+ * "The Hum" direction (Pass 1) + Pass 3 deep-tune (typeface-designer
+ * curve refinement). Three sub-iterations layered into one component:
+ *
+ *   1. Stroke curve — bezier(0.22, 0, 0.10, 1). More aggressive
+ *      front-load + softer glide-in than the v1 bezier(0.32, 0, 0.18,
+ *      1). Reads as a breath in, not a mechanical sweep. The numerical
+ *      delta is small; the perceptual delta is significant — the
+ *      leading edge accelerates harder into its first 30% and decays
+ *      more gracefully into the last 15%.
+ *
+ *   2. Stroke gradient — three stops instead of two. Transparent at
+ *      the trail, 0.55 cornflower mid-path, 1.0 cornflower into the
+ *      last 8%, and a 5%-wide white highlight at the leading tip. The
+ *      head reads as having heat / light, not just opacity. Closer to
+ *      a glowing filament than a painted line.
+ *
+ *   3. Kindled ember — instead of a single terracotta drop, 3 micro-
+ *      sparks emit at the 6 o'clock terminus 80ms BEFORE the main
+ *      ember, then the main ember releases. The sparks scatter in
+ *      randomized arcs and fade in 200ms. Reads as a kindled flame,
+ *      not a single drop. The cornflower → terracotta handoff that
+ *      defines the brand tension stays the same; the WAY it happens
+ *      is now ceremonial rather than mechanical.
+ *
+ * The arc geometry: single stroke sweeping 270° around the face oval,
+ * open at 6 o'clock — the breathing space, never a closed ring.
+ * Duration 1800ms — matches the 2s hold-steady countdown with a 200ms
+ * breath before the photo fires.
+ *
+ * Reduce-motion: static 270° arc at full opacity, no sweep, no
+ * sparks, no ember release.
  *
  * Cornflower (#7CB0FF) is reserved for this component — no other
- * surface in the app uses it. Terracotta is used elsewhere but the
- * ember-at-completion is a Pura signature beat.
- *
- * Replaces the moss-halo + sheen treatment that previously occupied
- * the `preparing` state of the face Reticle.
+ * surface in the app uses it.
  */
 
 import React, { useEffect } from 'react';
@@ -38,6 +47,7 @@ import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
@@ -97,9 +107,13 @@ export function CornflowerArc({
 
   // Sweep progress 0 → 1 along the dashoffset.
   const sweep = useSharedValue(0);
-  // Ember opacity + inward drift.
+  // Main ember — opacity + inward drift.
   const emberOpacity = useSharedValue(0);
   const emberDrift = useSharedValue(0);
+  // Pass 3 — kindled-flame sparks. Three particles emit just before
+  // the main ember releases, scatter in their own arcs, fade fast.
+  const sparksOpacity = useSharedValue(0);
+  const sparksDrift = useSharedValue(0);
 
   // SVG canvas pads the oval so the 1.5pt stroke isn't clipped.
   const pad = STROKE_WIDTH * 4;
@@ -123,15 +137,21 @@ export function CornflowerArc({
       cancelAnimation(sweep);
       cancelAnimation(emberOpacity);
       cancelAnimation(emberDrift);
+      cancelAnimation(sparksOpacity);
+      cancelAnimation(sparksDrift);
       sweep.value = 0;
       emberOpacity.value = 0;
       emberDrift.value = 0;
+      sparksOpacity.value = 0;
+      sparksDrift.value = 0;
       return;
     }
     if (reduceMotion) {
       sweep.value = 1;
       emberOpacity.value = 0;
       emberDrift.value = 0;
+      sparksOpacity.value = 0;
+      sparksDrift.value = 0;
       return;
     }
     sweep.value = 0;
@@ -139,29 +159,52 @@ export function CornflowerArc({
       1,
       {
         duration: SWEEP_DURATION_MS,
-        // Front-loaded — gathers velocity mid-sweep, glides into
-        // completion. Custom bezier matching Halide's focus ring.
-        easing: Easing.bezier(0.32, 0, 0.18, 1),
+        // Pass 3 deep-tune: bezier(0.22, 0, 0.10, 1). More aggressive
+        // front-load and softer glide-in than the Pass 1 curve. Reads
+        // as a breath in, not a mechanical sweep.
+        easing: Easing.bezier(0.22, 0, 0.1, 1),
       },
       (finished) => {
         if (!finished) return;
-        // Ember release at the moment the arc completes.
-        emberOpacity.value = withSequence(
-          withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
+        // Pass 3 kindled-ember sequence: 3 micro-sparks emit FIRST,
+        // then the main ember releases 80ms later. Reads as a flame
+        // being kindled, not a single drop falling.
+        sparksOpacity.value = withSequence(
+          withTiming(1, { duration: 60, easing: Easing.out(Easing.cubic) }),
           withTiming(0, {
-            duration: EMBER_DURATION_MS - 120,
+            duration: 220,
             easing: Easing.in(Easing.cubic),
           })
         );
-        emberDrift.value = withTiming(
-          1,
-          {
-            duration: EMBER_DURATION_MS,
-            easing: Easing.out(Easing.cubic),
-          },
-          (emberFinished) => {
-            if (emberFinished && onComplete) runOnJS(onComplete)();
-          }
+        sparksDrift.value = withTiming(1, {
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+        });
+
+        // Main ember — delayed 80ms behind the sparks so the sequence
+        // reads as "spark, spark, spark → flame", not all at once.
+        emberOpacity.value = withDelay(
+          80,
+          withSequence(
+            withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
+            withTiming(0, {
+              duration: EMBER_DURATION_MS - 120,
+              easing: Easing.in(Easing.cubic),
+            })
+          )
+        );
+        emberDrift.value = withDelay(
+          80,
+          withTiming(
+            1,
+            {
+              duration: EMBER_DURATION_MS,
+              easing: Easing.out(Easing.cubic),
+            },
+            (emberFinished) => {
+              if (emberFinished && onComplete) runOnJS(onComplete)();
+            }
+          )
         );
       }
     );
@@ -169,8 +212,19 @@ export function CornflowerArc({
       cancelAnimation(sweep);
       cancelAnimation(emberOpacity);
       cancelAnimation(emberDrift);
+      cancelAnimation(sparksOpacity);
+      cancelAnimation(sparksDrift);
     };
-  }, [active, reduceMotion, sweep, emberOpacity, emberDrift, onComplete]);
+  }, [
+    active,
+    reduceMotion,
+    sweep,
+    emberOpacity,
+    emberDrift,
+    sparksOpacity,
+    sparksDrift,
+    onComplete,
+  ]);
 
   // Stroke-dashoffset reveal: full length → 0.
   const arcAnimatedProps = useAnimatedProps(() => ({
@@ -200,10 +254,15 @@ export function CornflowerArc({
     >
       <Svg width={svgW} height={svgH}>
         <Defs>
+          {/* Pass 3 — three-stop gradient. Adds a near-white highlight
+              at the leading 5% of the path so the head reads as having
+              heat / light, not just opacity. Closer to a glowing
+              filament than a painted line. */}
           <LinearGradient id="cornflowerArcStroke" x1="0" y1="0" x2="1" y2="0">
             <Stop offset="0" stopColor={CORNFLOWER} stopOpacity={0} />
-            <Stop offset="0.4" stopColor={CORNFLOWER} stopOpacity={0.55} />
-            <Stop offset="1" stopColor={CORNFLOWER} stopOpacity={1} />
+            <Stop offset="0.45" stopColor={CORNFLOWER} stopOpacity={0.55} />
+            <Stop offset="0.95" stopColor={CORNFLOWER} stopOpacity={1} />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.92} />
           </LinearGradient>
         </Defs>
         <AnimatedPath
@@ -216,6 +275,31 @@ export function CornflowerArc({
           animatedProps={arcAnimatedProps}
         />
       </Svg>
+      {/* Pass 3 — kindled sparks. Three micro-particles scatter in
+          their own arcs 80ms before the main ember releases. Reads as
+          a flame being kindled, not a single drop falling. */}
+      <Spark
+        cx={cx}
+        cyBase={cy + ry}
+        angle={-Math.PI / 3}
+        opacity={sparksOpacity}
+        drift={sparksDrift}
+      />
+      <Spark
+        cx={cx}
+        cyBase={cy + ry}
+        angle={-Math.PI / 2}
+        opacity={sparksOpacity}
+        drift={sparksDrift}
+      />
+      <Spark
+        cx={cx}
+        cyBase={cy + ry}
+        angle={(-2 * Math.PI) / 3}
+        opacity={sparksOpacity}
+        drift={sparksDrift}
+      />
+
       {/* Terracotta ember — the brand handoff moment */}
       <Animated.View
         style={[
@@ -226,6 +310,45 @@ export function CornflowerArc({
       />
     </View>
   );
+}
+
+interface SparkProps {
+  cx: number;
+  cyBase: number;
+  /** Radian angle the spark drifts toward from the terminus. */
+  angle: number;
+  opacity: ReturnType<typeof useSharedValue<number>>;
+  drift: ReturnType<typeof useSharedValue<number>>;
+}
+
+/**
+ * Single micro-spark. Smaller and warmer than the main ember, scatters
+ * in its own arc from the 6 o'clock terminus, fades within 220ms.
+ * Three of these together with randomized angles read as a kindled
+ * flame at the moment the arc completes.
+ */
+function Spark({ cx, cyBase, angle, opacity, drift }: SparkProps) {
+  const style = useAnimatedStyle(() => {
+    const travel = 18 + drift.value * 14; // px from terminus
+    const dx = Math.cos(angle) * travel;
+    const dy = Math.sin(angle) * travel;
+    return {
+      position: 'absolute' as const,
+      left: cx + dx - 2,
+      top: cyBase + dy - 2,
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: TERRACOTTA,
+      shadowColor: TERRACOTTA,
+      shadowOpacity: 0.5,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 0 },
+      opacity: opacity.value * (0.6 + 0.4 * (1 - drift.value)),
+      transform: [{ scale: 0.4 + 0.8 * (1 - drift.value) }],
+    };
+  });
+  return <Animated.View pointerEvents="none" style={style} />;
 }
 
 const styles = StyleSheet.create({

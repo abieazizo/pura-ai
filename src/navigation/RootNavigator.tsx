@@ -3,7 +3,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TabNavigator } from './TabNavigator';
 import { OnboardingNavigator } from './OnboardingNavigator';
 import { ScanModalStack } from './ScanModalStack';
-import { ProfileSheet } from '@/screens/profile/ProfileSheet';
 import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen';
 import { AIDiagnosticsScreen } from '@/components/dev/AIDiagnosticsScreen';
 import { ScanResultsStatesGallery } from '@/components/dev/ScanResultsStatesGallery';
@@ -45,16 +44,6 @@ export function RootNavigator() {
           presentation: 'fullScreenModal',
           animation: 'slide_from_bottom',
           animationDuration: 340,
-        }}
-      />
-
-      <Stack.Screen
-        name="ProfileSheet"
-        component={ProfileSheet}
-        options={{
-          presentation: 'transparentModal',
-          animation: 'fade',
-          animationDuration: 260,
         }}
       />
 

@@ -1,27 +1,37 @@
 /**
- * HeroProductCard — full-width featured recommendation.
+ * HeroProductCard — full-width featured recommendation. The shop's
+ * unambiguous first focal point.
  *
- * v36 — render through the canonical ProductPackshot.
- *   • The image stage is now `ProductPackshot` — the exact same
- *     renderer every mini/supporting card uses. This is what
- *     guarantees the photo paints (the prior v35 raw <Image> over a
- *     deep-blue LinearGradient left the stage as an empty blue void
- *     on web) and it gives the hero the luminous tonal backdrop that
- *     matches the rest of the storefront instead of a harsh blue fill.
- *   • Compact, balanced proportions: the card no longer floors at
- *     440pt. The image stage reads the product clearly; the plate
- *     holds brand + name + one reason row + price/add with breathing
- *     room and never clips.
- *   • Match orb + "match" claim render ONLY when the recommendation
- *     is backed by real personalization (`hasRealPersonalization`).
- *     With no scan it stays hidden — no fake precision, cleaner stage.
+ * v37 — the label becomes a designed moment, not a black pill.
+ *   • The old blurred dark "Tonight's #1" capsule floating in the
+ *     image corner is GONE. The label now leads the info plate as an
+ *     editorial kicker — a short hairline rule + the line set in
+ *     Instrument Serif *italic*. It rhymes with the upright serif
+ *     product name below it (italic eyebrow → roman headline), the
+ *     classic magazine pairing, and reads as intent rather than chrome.
+ *   • The label is honest and non-temporal: "Editor's pick" pre-scan,
+ *     "Your top match" once real personalization backs the pick,
+ *     "Top match" inside search. No "Tonight's" — the engine is not
+ *     time-of-day aware.
+ *   • The card is taller (its parent reclaimed the deleted filter
+ *     chrome's room), so the image stage is bigger AND the plate has
+ *     space for the kicker + a confident, larger serif name without
+ *     ever clipping.
+ *   • Rendered through the canonical `ProductPackshot` (same renderer
+ *     as every mini card) so the photo always paints over the luminous
+ *     tonal backdrop instead of a harsh fill.
+ *   • Match orb renders ONLY when the recommendation is backed by real
+ *     personalization (`hasRealPersonalization`). Pre-scan it stays
+ *     hidden — no fake precision, cleaner stage.
+ *   • The single Pura Blue accent budget for this screen is spent on
+ *     the status sentence's link, so the hero is deliberately
+ *     monochrome ink — no blue sparkle, no blue label.
  *   • Plus button is a sibling overlay (never nested inside the outer
  *     Pressable), zIndex 20.
  */
 
 import React from 'react';
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -32,8 +42,6 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { Sparkle } from 'phosphor-react-native';
-import { BlurView } from 'expo-blur';
 import {
   puraShop,
   puraShopRadius,
@@ -69,7 +77,7 @@ export function HeroProductCard({
   product,
   width,
   height,
-  badgeLabel = "Tonight's #1",
+  badgeLabel = "Editor's pick",
   matchPercent,
   factors,
   hasRealPersonalization = false,
@@ -92,9 +100,10 @@ export function HeroProductCard({
     });
   };
 
-  // Image stage ~53% of the card; the rest is the info plate. Floor
-  // keeps the bottle legible even on the shortest hero.
-  const imageH = Math.max(176, Math.round(height * 0.53));
+  // Image stage ~50% of the (now taller) card; the rest is the info
+  // plate. Even at 50% the absolute stage is bigger than the old card's,
+  // and the floor keeps the bottle generous on the shortest hero.
+  const imageH = Math.max(208, Math.round(height * 0.5));
 
   // The match claim is only honest when it's backed by real signal.
   const matchScore = matchPercent ?? 0;
@@ -129,28 +138,9 @@ export function HeroProductCard({
               accessibilityLabel={`${product.brand} ${product.name}`}
             />
 
-            {/* Tonight's #1 capsule */}
-            <View style={styles.badgeWrap} pointerEvents="none">
-              <View style={styles.badge}>
-                {Platform.OS === 'ios' ? (
-                  <BlurView
-                    intensity={40}
-                    tint="dark"
-                    style={StyleSheet.absoluteFill}
-                  />
-                ) : (
-                  <View
-                    style={[StyleSheet.absoluteFill, styles.badgeBgFallback]}
-                  />
-                )}
-                <Sparkle size={11} color={puraShop.heroSparkle} weight="fill" />
-                <Text style={styles.badgeText} maxFontSizeMultiplier={1.05}>
-                  {badgeLabel}
-                </Text>
-              </View>
-            </View>
-
-            {/* Match orb — only when the match is real. */}
+            {/* Match orb — only when the match is real. The label that
+                used to float here as a dark pill now leads the plate
+                below as an editorial kicker. */}
             {showMatch ? (
               <View style={styles.orbWrap} pointerEvents="none">
                 <MatchOrb percent={matchScore} size={ORB_SIZE} />
@@ -160,6 +150,19 @@ export function HeroProductCard({
 
           {/* Info plate */}
           <View style={styles.plate}>
+            {/* Editorial kicker — the "designed moment". A short rule +
+                the label in italic serif, leading the plate. */}
+            <View style={styles.kicker}>
+              <View style={styles.kickerRule} />
+              <Text
+                style={styles.kickerText}
+                maxFontSizeMultiplier={1.1}
+                numberOfLines={1}
+              >
+                {badgeLabel}
+              </Text>
+            </View>
+
             <Text style={styles.brand} maxFontSizeMultiplier={1.1} numberOfLines={1}>
               {product.brand.toUpperCase()}
             </Text>
@@ -238,31 +241,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: puraShop.borderWarm,
   },
-  badgeWrap: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    zIndex: 10,
-  },
-  badge: {
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 999,
-    overflow: 'hidden',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  badgeBgFallback: {
-    backgroundColor: puraShop.heroTagBg,
-    borderRadius: 999,
-  },
-  badgeText: {
-    color: puraShop.heroTagText,
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10.5,
-    letterSpacing: 0.4,
-  },
   orbWrap: {
     position: 'absolute',
     top: 12,
@@ -271,19 +249,44 @@ const styles = StyleSheet.create({
   },
   plate: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 13,
-    paddingBottom: 14,
+    paddingHorizontal: 18,
+    paddingTop: 15,
+    paddingBottom: 15,
     backgroundColor: puraShop.heroInfoBg,
+  },
+  // Editorial kicker — the label as a designed moment.
+  kicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginBottom: 10,
+  },
+  kickerRule: {
+    width: 18,
+    height: 1.5,
+    borderRadius: 1,
+    backgroundColor: puraShop.inkFaint,
+  },
+  kickerText: {
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 16,
+    lineHeight: 19,
+    letterSpacing: -0.1,
+    color: puraShop.ink,
   },
   brand: {
     ...puraShopType.brand,
     color: puraShop.inkSecondary,
   },
+  // Confident serif headline — larger than the shared heroProductSerif
+  // token so the hero's name carries the screen.
   name: {
-    ...puraShopType.heroProductSerif,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 26,
+    lineHeight: 29,
+    letterSpacing: -0.6,
     color: puraShop.ink,
-    marginTop: 4,
+    marginTop: 5,
   },
   benefit: {
     ...puraShopType.benefitLine,

@@ -115,23 +115,23 @@ const SUGGESTIONS: readonly Suggestion[] = [
   {
     id: 'barrier',
     numeral: 'I',
-    title: 'Your barrier, tonight',
-    meta: 'Read the scan',
-    prompt: 'What’s my skin barrier like tonight?',
+    title: 'What’s my skin barrier like right now?',
+    meta: 'Reading tonight’s scan',
+    prompt: 'What’s my skin barrier like right now?',
   },
   {
     id: 'pm-routine',
     numeral: 'II',
-    title: 'A calm PM routine',
-    meta: 'Three steps',
-    prompt: 'Build me a calm PM routine for tonight',
+    title: 'Build me an evening routine for active breakouts.',
+    meta: 'Three considered steps',
+    prompt: 'Build me an evening routine for active breakouts.',
   },
   {
-    id: 'serum',
+    id: 't-zone',
     numeral: 'III',
-    title: 'Whether your serum belongs',
-    meta: 'Check one product',
-    prompt: 'Can I use my serum tonight?',
+    title: 'Why does my T-zone feel oily by 2pm?',
+    meta: 'What Pura noticed',
+    prompt: 'Why does my T-zone feel oily by 2pm?',
   },
 ];
 
@@ -479,8 +479,6 @@ export function AssistantChatScreen() {
           >
             <EmptyState
               greeting={greetingName}
-              dateLabel={dateLabel}
-              observationLine={observationLine}
               suggestions={SUGGESTIONS}
               onPick={onPickSuggestion}
               reduceMotion={reduceMotion}
@@ -550,16 +548,12 @@ function Header({
 
 function EmptyState({
   greeting,
-  dateLabel,
-  observationLine,
   suggestions,
   onPick,
   reduceMotion,
   bottomInset,
 }: {
   greeting: string;
-  dateLabel: string;
-  observationLine: string;
   suggestions: readonly Suggestion[];
   onPick: (s: Suggestion) => void;
   reduceMotion: boolean;
@@ -579,58 +573,30 @@ function EmptyState({
         entering={
           reduceMotion
             ? undefined
-            : FadeInDown.duration(580).easing(Easing.out(Easing.cubic))
+            : FadeInDown.duration(560).easing(Easing.out(Easing.cubic))
         }
-        style={styles.emptyMastheadRow}
+        style={styles.emptyKickerRow}
       >
-        <Text style={styles.emptyMastheadKicker} maxFontSizeMultiplier={1.15}>
-          PURA · NO. 12
-        </Text>
-        <Text style={styles.emptyMastheadDate} maxFontSizeMultiplier={1.15}>
-          {dateLabel}
+        <Text style={styles.emptyKicker} maxFontSizeMultiplier={1.15}>
+          PURA · ASSIST
         </Text>
       </Animated.View>
-
-      <View style={styles.emptyMastheadRule} />
 
       <Animated.View
         entering={
           reduceMotion
             ? undefined
-            : FadeInDown.duration(620).delay(80).easing(Easing.out(Easing.cubic))
+            : FadeInDown.duration(640).delay(120).easing(Easing.out(Easing.cubic))
         }
         style={styles.emptyHeroBlock}
       >
-        <Text style={styles.emptyGreetingFirst} maxFontSizeMultiplier={1.15}>
-          An evening
+        <Text style={styles.emptyHeroLine1} maxFontSizeMultiplier={1.15}>
+          Ask me anything.
         </Text>
-        <Text style={styles.emptyGreetingMid} maxFontSizeMultiplier={1.15}>
-          with your
-        </Text>
-        <Text style={styles.emptyGreetingThird} maxFontSizeMultiplier={1.15}>
-          skin.
-        </Text>
-        <View style={styles.emptyBylineRow}>
-          <View style={styles.emptyBylineRule} />
-          <Text style={styles.emptyByline} maxFontSizeMultiplier={1.15}>
-            FOR {greeting.toUpperCase()} · IN PRIVATE
-          </Text>
-        </View>
-      </Animated.View>
-
-      <Animated.View
-        entering={
-          reduceMotion
-            ? undefined
-            : FadeInUp.duration(480).delay(220).easing(Easing.out(Easing.cubic))
-        }
-        style={styles.emptyObservationBlock}
-      >
-        <Text style={styles.emptyObservationLabel} maxFontSizeMultiplier={1.15}>
-          TONIGHT’S OBSERVATION
-        </Text>
-        <Text style={styles.emptyObservation} maxFontSizeMultiplier={1.2}>
-          {observationLine}
+        <Text style={styles.emptyHeroLine2} maxFontSizeMultiplier={1.15}>
+          I’ve been studying{' '}
+          <Text style={styles.emptyHeroItalic}>skin</Text>
+          {' '}for a while.
         </Text>
       </Animated.View>
 
@@ -638,19 +604,14 @@ function EmptyState({
         entering={
           reduceMotion
             ? undefined
-            : FadeInUp.duration(480).delay(320).easing(Easing.out(Easing.cubic))
+            : FadeInUp.duration(440).delay(300).easing(Easing.out(Easing.cubic))
         }
-        style={styles.contentsBlock}
+        style={styles.emptySuggestionsBlock}
       >
-        <View style={styles.contentsHeader}>
-          <Text style={styles.contentsLabel} maxFontSizeMultiplier={1.15}>
-            QUESTIONS WORTH ASKING
-          </Text>
-          <Text style={styles.contentsCount} maxFontSizeMultiplier={1.15}>
-            {String(suggestions.length).padStart(2, '0')}
-          </Text>
-        </View>
-        <View style={styles.contentsList}>
+        <Text style={styles.emptySuggestionsLabel} maxFontSizeMultiplier={1.15}>
+          {greeting ? `Tonight, ${greeting} — try one of these` : 'Try one of these'}
+        </Text>
+        <View style={styles.emptySuggestionsList}>
           {suggestions.map((s, i) => (
             <Animated.View
               key={s.id}
@@ -658,14 +619,14 @@ function EmptyState({
                 reduceMotion
                   ? undefined
                   : FadeInUp.duration(420)
-                      .delay(360 + i * 90)
+                      .delay(420 + i * 90)
                       .easing(Easing.out(Easing.cubic))
               }
             >
-              <ChapterRow
+              <QuestionRow
                 suggestion={s}
                 onPress={() => onPick(s)}
-                showTopRule={i === 0}
+                isLast={i === suggestions.length - 1}
               />
             </Animated.View>
           ))}
@@ -675,14 +636,14 @@ function EmptyState({
   );
 }
 
-function ChapterRow({
+function QuestionRow({
   suggestion,
   onPress,
-  showTopRule,
+  isLast,
 }: {
   suggestion: Suggestion;
   onPress: () => void;
-  showTopRule?: boolean;
+  isLast?: boolean;
 }) {
   return (
     <Pressable
@@ -690,25 +651,22 @@ function ChapterRow({
       accessibilityLabel={`${suggestion.title}. ${suggestion.meta}`}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.chapterRow,
-        showTopRule && styles.chapterRowFirst,
-        pressed && styles.chapterRowPressed,
+        styles.questionRow,
+        !isLast && styles.questionRowDivider,
+        pressed && styles.questionRowPressed,
       ]}
     >
-      <View style={styles.chapterNumeralCol}>
-        <Text style={styles.chapterNumeral} maxFontSizeMultiplier={1.15}>
-          {suggestion.numeral}
-        </Text>
-        <View style={styles.chapterNumeralMark} />
-      </View>
-      <View style={styles.chapterCopyCol}>
-        <Text style={styles.chapterTitle} maxFontSizeMultiplier={1.2}>
+      <View style={styles.questionCopy}>
+        <Text style={styles.questionTitle} maxFontSizeMultiplier={1.2}>
           {suggestion.title}
         </Text>
-        <Text style={styles.chapterMeta} maxFontSizeMultiplier={1.2}>
+        <Text style={styles.questionMeta} maxFontSizeMultiplier={1.2}>
           {suggestion.meta}
         </Text>
       </View>
+      <Text style={styles.questionArrow} maxFontSizeMultiplier={1.15}>
+        →
+      </Text>
     </Pressable>
   );
 }
@@ -1250,177 +1208,87 @@ const styles = StyleSheet.create({
     paddingHorizontal: puraSpace.screenX,
     paddingTop: 8,
   },
-  // ---- Masthead (editorial date line) ----
-  emptyMastheadRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    paddingTop: 4,
+  // ---- Editorial empty state — opening line + quiet menu ----
+  emptyKickerRow: {
+    paddingTop: 12,
+    paddingBottom: 36,
   },
-  emptyMastheadKicker: {
+  emptyKicker: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
     letterSpacing: 2.4,
+    color: puraColors.muted,
+  },
+  emptyHeroBlock: {
+    paddingBottom: 12,
+  },
+  emptyHeroLine1: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 38,
+    lineHeight: 44,
+    letterSpacing: -1.1,
+    color: puraColors.ink,
+  },
+  emptyHeroLine2: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 38,
+    lineHeight: 44,
+    letterSpacing: -1.1,
+    color: puraColors.body,
+    marginTop: 2,
+  },
+  emptyHeroItalic: {
+    fontFamily: 'InstrumentSerif-Italic',
     color: puraColors.clay,
   },
-  emptyMastheadDate: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 2.4,
+  emptySuggestionsBlock: {
+    marginTop: 56,
+  },
+  emptySuggestionsLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: -0.05,
     color: puraColors.muted,
+    marginBottom: 6,
   },
-  emptyMastheadRule: {
-    height: 1.5,
-    backgroundColor: puraColors.ink,
-    marginTop: 10,
-    marginBottom: 18,
-  },
-  emptyMastheadHairline: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: puraColors.ink,
-    marginTop: 4,
-    marginBottom: 28,
-  },
-
-  // ---- Hero ("An evening / with your skin" / byline) ----
-  emptyHeroBlock: {
-    paddingTop: 0,
-    paddingBottom: 8,
-  },
-  emptyGreetingFirst: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 50,
-    lineHeight: 52,
-    letterSpacing: -1.5,
-    color: puraColors.ink,
-  },
-  emptyGreetingMid: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 50,
-    lineHeight: 52,
-    letterSpacing: -1.5,
-    color: puraColors.ink,
-    marginTop: 0,
-    paddingLeft: 12,
-  },
-  emptyGreetingThird: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 58,
-    lineHeight: 60,
-    letterSpacing: -1.6,
-    color: puraColors.clayDeep,
-    marginTop: 0,
-    paddingLeft: 26,
-  },
-  emptyBylineRow: {
+  emptySuggestionsList: {},
+  questionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 18,
+    paddingVertical: 18,
+    gap: 12,
   },
-  emptyBylineRule: {
-    width: 22,
-    height: 1,
-    backgroundColor: puraColors.clayDeep,
-  },
-  emptyByline: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 10.5,
-    letterSpacing: 2.4,
-    color: puraColors.clayDeep,
-  },
-
-  // ---- Observation block ----
-  emptyObservationBlock: {
-    marginTop: 22,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: puraColors.lineSoft,
-  },
-  emptyObservationLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 2.4,
-    color: puraColors.muted,
-    marginBottom: 10,
-  },
-  emptyObservation: {
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 18,
-    lineHeight: 25,
-    color: puraColors.inkSecondary,
-    letterSpacing: -0.2,
-  },
-
-  // ---- Table of contents ----
-  contentsBlock: {
-    marginTop: 22,
-  },
-  contentsHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  contentsLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 2.4,
-    color: puraColors.muted,
-  },
-  contentsCount: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 16,
-    letterSpacing: 0.4,
-    color: puraColors.muted,
-  },
-  contentsList: {},
-  chapterRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 16,
+  questionRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: puraColors.line,
   },
-  chapterRowFirst: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: puraColors.line,
-  },
-  chapterRowPressed: {
+  questionRowPressed: {
     backgroundColor: puraColors.surfaceQuiet,
   },
-  chapterNumeralCol: {
-    width: 52,
-  },
-  chapterNumeral: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 26,
-    lineHeight: 28,
-    letterSpacing: 0.4,
-    color: puraColors.clayDeep,
-  },
-  chapterNumeralMark: {
-    width: 14,
-    height: 1,
-    backgroundColor: puraColors.clayDeep,
-    marginTop: 6,
-    opacity: 0.45,
-  },
-  chapterCopyCol: { flex: 1, paddingTop: 4 },
-  chapterTitle: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 19,
-    lineHeight: 24,
-    letterSpacing: -0.3,
+  questionCopy: { flex: 1 },
+  questionTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.2,
     color: puraColors.ink,
   },
-  chapterMeta: {
+  questionMeta: {
     fontFamily: 'Inter-Regular',
     fontSize: 12.5,
     lineHeight: 17,
     color: puraColors.muted,
     letterSpacing: 0.1,
     marginTop: 3,
+  },
+  questionArrow: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 22,
+    lineHeight: 24,
+    color: puraColors.clay,
+    width: 18,
+    textAlign: 'right',
   },
 
   // ---- Conversation list ----

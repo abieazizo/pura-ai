@@ -34,7 +34,7 @@ import { PlanScreen } from '@/screens/plan/PlanScreen';
 // on disk for archival reference but no longer mounted; nothing in the
 // app navigates to it.
 import { HomeP27Screen } from '@/screens/pura27';
-import { PuraShopScreen } from '@/screens/shop';
+import { PuraShopScreen, ConcernIndexScreen } from '@/screens/shop';
 import { MeScreen } from '@/screens/me';
 import { PuraRoutineScreen } from '@/screens/routine/pura/PuraRoutineScreen';
 import type {
@@ -65,6 +65,7 @@ function HomeStackScreen() {
       <HomeStack.Screen name="Products" component={PuraShopScreen} />
       <HomeStack.Screen name="ProductDetail" component={ProductDetailV25Screen} />
       <HomeStack.Screen name="CategoryView" component={CategoryView} />
+      <HomeStack.Screen name="ConcernIndex" component={ConcernIndexScreen} />
     </HomeStack.Navigator>
   );
 }
@@ -82,6 +83,7 @@ function ProductsStackScreen() {
       <ProductsStack.Screen name="Products" component={PuraShopScreen} />
       <ProductsStack.Screen name="ProductDetail" component={ProductDetailV25Screen} />
       <ProductsStack.Screen name="CategoryView" component={CategoryView} />
+      <ProductsStack.Screen name="ConcernIndex" component={ConcernIndexScreen} />
       <ProductsStack.Screen name="Routine" component={PuraRoutineScreen} />
     </ProductsStack.Navigator>
   );

@@ -29,7 +29,9 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Pressable,
   StyleSheet,
+  Text,
   View,
   useWindowDimensions,
   type NativeSyntheticEvent,
@@ -58,6 +60,7 @@ import { findShopProduct, type ShopCatalogProduct } from './shopCatalog';
 import { ShopHeader } from './components/ShopHeader';
 import { ShopSearchBar } from './components/ShopSearchBar';
 import { SectionHeader } from './components/SectionHeader';
+import { StatusSentence } from './components/StatusSentence';
 import { HeroProductCard } from './components/HeroProductCard';
 import { ProductCarousel } from './components/ProductCarousel';
 import { EmptyState } from './components/EmptyState';
@@ -75,15 +78,16 @@ type TabNav = NavigationProp<TabParamList>;
 function computeLayout(deviceWidth: number, deviceHeight: number) {
   const innerWidth = Math.max(280, deviceWidth - puraShopLayout.horizontalPadding * 2);
   const heroWidth = innerWidth;
-  // Hero height — compact and balanced. The image stage reads the
-  // product clearly and the plate (brand / name / one reason row /
-  // price-add footer) sits below it without dead space.
-  //   • Floor: 356 — covers image + plate at any width
-  //   • Ceiling: heroWidth * 1.02 OR 396, whichever is smaller —
-  //     keeps the card from stretching tall in a desktop browser.
+  // Hero height — the hero is now the unambiguous first focal point, so
+  // it is given the room the deleted filter chrome was hogging. Taller
+  // card → a bigger image stage AND a plate with space for the editorial
+  // kicker + a confident serif name, never cramped.
+  //   • Floor: 440 — comfortable image + kicker/brand/name/reason/footer
+  //   • Ceiling: heroWidth * 1.26 OR 486, whichever is smaller — keeps
+  //     the card from ballooning on a wide desktop browser.
   const heroHeight = Math.max(
-    356,
-    Math.min(396, Math.round(heroWidth * 1.02)),
+    440,
+    Math.min(486, Math.round(heroWidth * 1.26)),
   );
   const miniWidth =
     deviceWidth >= 410 ? 172 : deviceWidth >= 390 ? 164 : 156;
@@ -221,6 +225,10 @@ export function PuraShopScreen() {
     hapt.select();
     nav.navigate('CategoryView', { kind: 'new' });
   }, [nav]);
+  const openConcerns = useCallback(() => {
+    hapt.select();
+    nav.navigate('ConcernIndex');
+  }, [nav]);
   const openBag = useCallback(() => {
     hapt.select();
     tabNav.navigate('RoutineTab');
@@ -340,40 +348,57 @@ export function PuraShopScreen() {
             onSelect={applySuggestion}
           />
         ) : null}
-        {/* PASS 1 — DELETE. The three competing filter/navigation
-            systems that used to live here (skin-trait pills, concern
-            chip row, match-accuracy progress bar) are gone. The space
-            between search and hero is intentionally clear; Pass 2 fills
-            it with a single editorial status sentence. */}
+        {/* Status sentence — the single editorial line that replaced the
+            three competing filter rows. Hidden while searching (the query
+            field is the active surface then). Pre-scan: a scan invitation.
+            Post-scan: who the user is + how matched + a quiet Improve link. */}
+        {!isSearchActive ? (
+          <StatusSentence
+            hasScan={vm.status.hasScan}
+            concernLabel={vm.status.concernLabel}
+            skinTypeLabel={vm.status.skinTypeLabel}
+            matchedPct={vm.status.matchedPct}
+            onScan={openScan}
+          />
+        ) : null}
 
-        {/* Hero block */}
+        {/* Hero block — the unambiguous first focal point. No section
+            header announces it: the status sentence above sets identity,
+            and the hero's own editorial kicker ("Editor's pick" / "Your
+            top match" / "Top match") labels it. A header here would just
+            re-state what the status line and kicker already say. */}
         {vm.hero.featured ? (
-          <>
-            <SectionHeader
-              title="Best for your skin"
-              subline={vm.hero.subline}
-              onViewAll={
-                !isSearchActive
-                  ? () =>
-                      nav.navigate('CategoryView', { kind: 'best-for-you' })
-                  : undefined
-              }
+          <View style={styles.heroOuter}>
+            <HeroProductCard
+              product={vm.hero.featured.catalog}
+              matchPercent={vm.hero.featured.matchScore}
+              factors={vm.hero.featured.factors}
+              hasRealPersonalization={vm.hero.featured.hasRealPersonalization}
+              badgeLabel={vm.heroBadge}
+              width={layout.heroWidth}
+              height={layout.heroHeight}
+              isInRoutine={vm.hero.featured.isInRoutine}
+              onPress={() => openProduct(vm.hero.featured!.catalog.id)}
+              onAdd={() => handleQuickAdd(vm.hero.featured!.catalog.id)}
             />
-            <View style={styles.heroOuter}>
-              <HeroProductCard
-                product={vm.hero.featured.catalog}
-                matchPercent={vm.hero.featured.matchScore}
-                factors={vm.hero.featured.factors}
-                hasRealPersonalization={vm.hero.featured.hasRealPersonalization}
-                badgeLabel={vm.heroBadge}
-                width={layout.heroWidth}
-                height={layout.heroHeight}
-                isInRoutine={vm.hero.featured.isInRoutine}
-                onPress={() => openProduct(vm.hero.featured!.catalog.id)}
-                onAdd={() => handleQuickAdd(vm.hero.featured!.catalog.id)}
-              />
-            </View>
-          </>
+          </View>
+        ) : null}
+
+        {/* Browse by concern — the ONE quiet line that replaced the
+            concern chip row. Concern is navigation to a dedicated index,
+            never an in-place narrowing of this feed. Ink, not Pura Blue:
+            the screen's single accent is reserved for the status line. */}
+        {!isSearchActive ? (
+          <Pressable
+            onPress={openConcerns}
+            accessibilityRole="button"
+            accessibilityLabel="Browse the catalog by concern"
+            style={({ pressed }) => [styles.browseRow, pressed && styles.browsePressed]}
+          >
+            <Text style={styles.browseText} maxFontSizeMultiplier={1.2}>
+              Browse by concern  <Text style={styles.browseArrow}>→</Text>
+            </Text>
+          </Pressable>
         ) : null}
 
         {/* Empty state */}
@@ -528,6 +553,31 @@ const styles = StyleSheet.create({
   },
   heroOuter: {
     paddingHorizontal: puraShopLayout.horizontalPadding,
+  },
+  // The single quiet "Browse by concern →" line. A hairline above it
+  // reads as a doorway out of the feed into the concern index; the line
+  // itself is plain ink, never a chip and never the accent color.
+  browseRow: {
+    marginTop: 24,
+    marginBottom: 28,
+    marginHorizontal: puraShopLayout.horizontalPadding,
+    paddingTop: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: puraShop.border,
+  },
+  browsePressed: {
+    opacity: 0.55,
+  },
+  browseText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.1,
+    color: puraShop.ink,
+  },
+  browseArrow: {
+    fontFamily: 'Inter-SemiBold',
+    color: puraShop.inkSecondary,
   },
   emptyWrap: {
     marginTop: 8,

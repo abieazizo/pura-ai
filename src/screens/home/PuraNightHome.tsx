@@ -109,12 +109,9 @@ export function PuraNightHome() {
 
   const openProfile = () => {
     hapt.select();
-    // ProfileSheet is registered on the root navigator. The home tab
-    // lives inside the tab navigator, which sits inside the root, so
-    // we walk up two parents to reach it.
-    const parent = nav.getParent?.();
-    const root = parent?.getParent?.() ?? parent ?? nav;
-    root.navigate?.('ProfileSheet');
+    // The Me tab is the canonical personal surface. The home stack's parent
+    // is the tab navigator, so a single hop reads as a natural tab switch.
+    nav.getParent?.()?.navigate?.('MeTab');
   };
 
   const nightState = useMemo<HomeNightState>(

@@ -96,11 +96,25 @@ export interface ShopViewModel {
   isFilterEmpty: boolean;
   isSearchActive: boolean;
   /** 0..1 share of personalization-relevant profile fields filled.
-   *  Drives the ProfileMeter accuracy indicator + the "Improve" CTA. */
+   *  Surfaced as the ambient "% matched" inside the status sentence —
+   *  never as a progress bar. */
   profileAccuracy: number;
-  /** Hero badge label — flips to "Picked for you" when the hero is a
-   *  high-confidence personalized match. */
+  /** Hero kicker label — the hero's editorial eyebrow. Honest and
+   *  non-temporal: "Top match" (search), "Your top match" (earned
+   *  personalization), or "Editor's pick" (curated, pre-scan). */
   heroBadge: string;
+  /** Inputs for the single editorial status line that replaced the
+   *  three filter rows. The traits are *prose describing the user*,
+   *  not controls; the percent is ambient state, not a meter. */
+  status: {
+    hasScan: boolean;
+    /** Lowercased for mid-sentence prose, e.g. "active breakouts". */
+    concernLabel: string;
+    /** Lowercased for mid-sentence prose, e.g. "combination". */
+    skinTypeLabel: string;
+    /** 0..100 — how much personalization signal we hold. */
+    matchedPct: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -376,12 +390,30 @@ export function useShopViewModel(input: ShopViewModelInput): ShopViewModel {
     if (profile.routineTiming) accPts += 1;
     const profileAccuracy = Math.min(1, accPts / 8);
 
-    // ---------- Hero badge — flips to "Picked for you" when the
-    // recommendation is a high-confidence personalized match. ----------
-    const heroBadge =
-      featuredCard && featuredCard.matchScore >= 85 && featuredCard.factors.some((f) => f.kind !== 'baseline')
-        ? 'Picked for you'
-        : "Tonight's #1";
+    // ---------- Status sentence inputs ----------
+    // The single editorial line that replaced the three competing filter
+    // rows. Traits are lowercased for mid-sentence prose; matchedPct is
+    // the ambient personalization signal that used to be a progress bar.
+    const status = {
+      hasScan,
+      concernLabel: concernPillLabel.toLowerCase(),
+      skinTypeLabel: skinTypeLabel.toLowerCase(),
+      matchedPct: Math.round(profileAccuracy * 100),
+    };
+
+    // ---------- Hero kicker label — the hero's editorial "designed
+    // moment" eyebrow. Honest + non-temporal (the engine is NOT
+    // time-of-day aware, so never "Tonight's"):
+    //   • search       → "Top match"      (best hit for the query)
+    //   • real signal   → "Your top match" (earned personalization)
+    //   • otherwise     → "Editor's pick"  (curated, pre-scan)
+    const heroBadge = isSearchActive
+      ? 'Top match'
+      : featuredCard &&
+          featuredCard.hasRealPersonalization &&
+          featuredCard.factors.some((f) => f.kind !== 'baseline')
+        ? 'Your top match'
+        : "Editor's pick";
 
     return {
       greetingName: state.name && state.name.length > 0 ? state.name : null,
@@ -401,6 +433,7 @@ export function useShopViewModel(input: ShopViewModelInput): ShopViewModel {
       isSearchActive,
       profileAccuracy,
       heroBadge,
+      status,
     };
   }, [state, activeFilter, query, activeContextKey]);
 }

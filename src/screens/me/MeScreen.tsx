@@ -90,13 +90,12 @@ export function MeScreen() {
 
   const openProfileSheet = useCallback(() => {
     hapt.select();
-    nav.navigate('ProfileSheet');
-  }, [nav]);
+  }, []);
 
   const openSaved = useCallback(() => {
     hapt.select();
-    nav.navigate('ProfileSheet');
-  }, [nav]);
+    tabNav.navigate('RoutineTab' as never);
+  }, [tabNav]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>

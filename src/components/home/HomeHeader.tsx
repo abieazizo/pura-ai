@@ -1,7 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { PuraMark } from '@/components/PuraMark';
-import { useProfileSheet } from '@/hooks/useProfileSheet';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import type { TabParamList } from '@/navigation/types';
 import { palette, radius, space } from '@/theme';
 
 export interface HomeHeaderProps {
@@ -16,7 +17,8 @@ export interface HomeHeaderProps {
  * into the user's own space, which is where the score "lives".
  */
 export function HomeHeader({ score }: HomeHeaderProps) {
-  const { open } = useProfileSheet();
+  const nav = useNavigation<NavigationProp<TabParamList>>();
+  const open = () => nav.navigate('MeTab');
 
   return (
     <View style={styles.row}>

@@ -1223,11 +1223,17 @@ export const puraShop = {
   pricePillBorder:  'rgba(8, 22, 56, 0.08)',
   pricePillText:    '#080A0F',
 
-  // ----- Plus / Add button — black with restraint -----
-  plusBg:           '#05070B',
-  plusBgPressed:    '#1A1F2A',
+  // ----- Add button — light, blue-accented. NOT a black filled circle.
+  // Idle is a white disc with a blue hairline ring + blue glyph; the
+  // accent blooms only on press. Confirmed settles to success green.
+  // (Do not reintroduce a dark idle fill here — it reads as a void.) -----
+  addBg:            '#FFFFFF',
+  addBorder:        'rgba(20, 124, 255, 0.34)',
+  addIcon:          '#147CFF',
+  addActiveBg:      '#147CFF',
+  addActiveIcon:    '#FFFFFF',
   plusBgConfirmed:  '#188A65',
-  plusIcon:         '#FFFFFF',
+  addConfirmedIcon: '#FFFFFF',
 
   // ----- Bag badge — Pura Blue -----
   badgeBg:          '#147CFF',

@@ -1,6 +1,8 @@
 /**
- * ShopSearchBar — luminous white pill with a refined coral disc and
- * optional clear-text affordance.
+ * ShopSearchBar — luminous white pill. Sparkle lead-in, live query,
+ * optional inline clear-text affordance. No trailing submit disc:
+ * search is live/debounced and the keyboard's search key submits, so a
+ * filled circular CTA was dead weight (and read as a dark void).
  *
  * • Real focus state — border subtly intensifies when the field is
  *   focused (no glossy oversized sphere; restrained per the brief).
@@ -16,8 +18,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
-import { MagnifyingGlass, Sparkle, X } from 'phosphor-react-native';
+import { Sparkle, X } from 'phosphor-react-native';
 import {
   puraShop,
   puraShopLayout,
@@ -37,7 +38,6 @@ export interface ShopSearchBarProps {
 }
 
 const SEARCH_HEIGHT = 54;
-const CTA_SIZE = 34;
 
 export function ShopSearchBar({
   value,
@@ -109,32 +109,6 @@ export function ShopSearchBar({
             <X size={14} color={puraShop.inkSecondary} weight="bold" />
           </Pressable>
         ) : null}
-        <Pressable
-          onPress={onSubmit}
-          accessibilityRole="button"
-          accessibilityLabel="Run search"
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && { opacity: 0.88, transform: [{ scale: 0.95 }] },
-          ]}
-          hitSlop={6}
-        >
-          <Svg
-            width={CTA_SIZE}
-            height={CTA_SIZE}
-            viewBox="0 0 100 100"
-            style={StyleSheet.absoluteFill}
-          >
-            <Defs>
-              <RadialGradient id="ctaGlow" cx="38%" cy="30%" rx="62%" ry="62%">
-                <Stop offset="0%" stopColor={puraShop.ink} stopOpacity={1} />
-                <Stop offset="100%" stopColor="#34302C" stopOpacity={1} />
-              </RadialGradient>
-            </Defs>
-            <Circle cx={50} cy={50} r={50} fill="url(#ctaGlow)" />
-          </Svg>
-          <MagnifyingGlass size={15} color={puraShop.white} weight="bold" />
-        </Pressable>
       </View>
     </View>
   );
@@ -151,7 +125,7 @@ const styles = StyleSheet.create({
     backgroundColor: puraShop.searchBg,
     borderWidth: 1,
     paddingLeft: 18,
-    paddingRight: 8,
+    paddingRight: 18,
     flexDirection: 'row',
     alignItems: 'center',
     ...puraShopShadow.search,
@@ -174,13 +148,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 6,
-  },
-  cta: {
-    width: CTA_SIZE,
-    height: CTA_SIZE,
-    borderRadius: CTA_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
   },
 });
