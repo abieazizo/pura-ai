@@ -275,38 +275,20 @@ export const FINDING_TYPE_TO_ZONE: Record<FindingType, ScanZoneKey> = {
 // / score / settle / reveal) but only four carry text.
 // ------------------------------------------------------------------
 
-// v18.10 \u2014 final loading copy. Per the v18.10 brief: header reads
-// "Analyzing your scan", and the rotating subtext is the simplest
-// possible consumer-facing sequence:
-//   \u2022 "This takes a few seconds"
-//   \u2022 "Preparing your results"
-//   \u2022 "Matching products for your skin"
-//   \u2022 "Almost ready"
-// Long-running fallback: "Still working \u2014 thanks for waiting".
-// Every prior technical phrase ("Aligning features", "Reading skin
-// zones", "Checking texture and tone", "Mapping visible concerns")
-// is gone.
+// v35 Pass-1 \u2014 analyzing captions move from process-narration voice
+// ("Mapping your skin zones...") to "Practitioner's Notes" voice
+// ("Reading the surface.", "Where the cheekbones turn.") \u2014 see
+// ANALYZING_BEATS_PRACTITIONER in src/copy/scanMicroCopy.ts for the
+// full direction spec.
 //
-// v19.16 \u2014 wired to the canonical micro-copy constants in
-// `src/copy/scanMicroCopy.ts`. The rotating loading sequence
-// (LOADING_MESSAGES) maps onto the analyzing beats; the slow-state
-// fallback uses SLOW_LOADING_MESSAGE. Every other consumer of
-// scan loading copy now imports from the same canonical module
-// so wording stays consistent across screens.
-import {
-  LOADING_MESSAGES,
-  SLOW_LOADING_MESSAGE,
-} from '@/copy/scanMicroCopy';
+// LOADING_MESSAGES is intentionally left untouched as the canonical
+// consumer-facing rotating loader copy \u2014 it's still used by other
+// surfaces (per CLAUDE.md). This file rebinds CAPTION_COPY (the
+// CINEMATIC ANALYZING SCREEN's caption strip) to the new voice
+// without disturbing the canonical constant.
+import { ANALYZING_BEATS_PRACTITIONER } from '@/copy/scanMicroCopy';
 
-export const CAPTION_COPY = {
-  preflight: LOADING_MESSAGES[0], // "Mapping your skin zones..."
-  locate: LOADING_MESSAGES[0],
-  partition: LOADING_MESSAGES[1], // "Identifying your top concerns..."
-  detect: LOADING_MESSAGES[2], // "Finding products matched to your skin..."
-  score: LOADING_MESSAGES[3], // "Building your personalized plan..."
-  waiting: SLOW_LOADING_MESSAGE,
-  reveal: 'Ready.',
-} as const;
+export const CAPTION_COPY = ANALYZING_BEATS_PRACTITIONER;
 
 // ------------------------------------------------------------------
 // VoiceOver announcements \u2014 mirror the friendly caption copy.

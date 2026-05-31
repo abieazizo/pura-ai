@@ -51,3 +51,40 @@ export const SCAN_LOW_CONFIDENCE_MESSAGE =
  * choreography wants to type-narrow against the rotating set.
  */
 export type LoadingMessage = (typeof LOADING_MESSAGES)[number];
+
+/**
+ * v35 Pass-1 — the analyzing screen's mid-flight captions, in the
+ * "Practitioner's Notes" voice. Replaces the LOADING_MESSAGES
+ * aliases that previously narrated the AI process step-by-step
+ * ("Mapping your skin zones..."). The voice here is observational —
+ * a high-end facialist narrating to themselves as they read your
+ * skin, not a loading screen describing system work. Quiet
+ * authority, anatomical without clinical, specific without medical.
+ *
+ * Beat → caption mapping (matches useAnalysisChoreography beats):
+ *   preflight  → before the analysis starts (post-capture hold)
+ *   locate     → BEAT 2 — first read of the surface
+ *   partition  → BEAT 3 — registering distinct zones
+ *   detect     → BEAT 4 — surfacing findings
+ *   score      → BEAT 5 — the breath before the verdict
+ *   waiting    → slow-state fallback (>5s)
+ *   reveal     → BEAT 7 — the single roman word that lands the moment
+ *
+ * Each line is single-sentence, ≤7 words, no trailing ellipses.
+ * Pass 5 (Copy & Voice) will deep-tune each line word-for-word; this
+ * is the first-pass implementation of the chosen direction.
+ *
+ * LOADING_MESSAGES is intentionally left intact for any other surface
+ * that still consumes the original aliases (per the CLAUDE.md
+ * canonical-constants rule). This new constant is screen-specific to
+ * the cinematic analyzing flow.
+ */
+export const ANALYZING_BEATS_PRACTITIONER = {
+  preflight: 'Holding the photo steady.',
+  locate: 'Reading the surface.',
+  partition: 'Where the cheekbones turn.',
+  detect: 'A few areas asking for attention.',
+  score: 'Pulling it together.',
+  waiting: 'Still reading. A moment.',
+  reveal: 'Ready.',
+} as const;
