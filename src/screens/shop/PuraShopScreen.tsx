@@ -1,35 +1,22 @@
 /**
- * Pura Shop — Tonight's Edit.
+ * Pura Shop — the storefront destination.
  *
- * Pass-1 editorial rebuild. The shop reads as the user's personal
- * editor's note:
+ * Mobile layout:
+ *   1. Header (scroll-parallaxed)
+ *   2. Search (live-filters product carousels)
+ *   3. Skin profile chips
+ *   4. Concern filter chips
+ *   5. Full-width personalized hero recommendation
+ *   6. "Complete tonight's routine" — stable supporting carousel
+ *   7. Search results OR "Breakout essentials" — concern-aware carousel
  *
- *   EDIT NO. ##  ―――  Calm + Repair
- *   The Edit
+ * Atmospheric morning-light glow fades as the user scrolls; a fine
+ * hairline separator appears beneath the top chrome once the hero
+ * has cleared the screen. The "Added to tonight's routine" toast
+ * floats above the dock when a product is added, with one-tap Undo.
  *
- *   For tonight's chin activity            (italic-serif scan reason)
- *   ╭────────────────────────────────╮     (full-bleed warm wash)
- *   │       [hero packshot]   N°01   │
- *   ╰────────────────────────────────╯
- *   BRAND
- *   Hero Product Name                       (serif, headline scale)
- *   Built for skin that's forgotten…        (italic essence)
- *   $price · Add to tonight →               (quiet baseline)
- *
- *   ―― Pairs with tonight ―――
- *   Complete the routine.
- *   editor's note line
- *   01  [thumb]  BRAND  Name  reason  $14  Add →
- *   02  …
- *
- *   ―― Picked for the theme ―――
- *   …
- *
- * The filter chips, skin-context strip, and profile-accuracy meter
- * from the v32 layout are intentionally gone — they made the shop
- * read as a search interface. The few users who need to filter by
- * concern reach it through the editorial section titles (each
- * supporting block is a concern-aware curation).
+ * All product imagery is rendered via `ProductPackshot`, which only
+ * accepts real catalog packshot assets.
  */
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
@@ -37,6 +24,8 @@ import {
   StyleSheet,
   View,
   useWindowDimensions,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
 import Animated, {
   interpolate,
@@ -59,70 +48,51 @@ import type { HomeStackParamList, TabParamList } from '@/navigation/types';
 import {
   useShopViewModel,
   type ShopConcernFilter,
+  type ShopSkinContextPill,
 } from './useShopViewModel';
 import { findShopProduct, type ShopCatalogProduct } from './shopCatalog';
-import { EditorialShopHeader } from './components/EditorialShopHeader';
-import { ScanSignalStrip, type ScanSignal } from './components/ScanSignalStrip';
-import { Colophon } from './components/Colophon';
-import { EditorialHero } from './components/EditorialHero';
-import {
-  EditorialSection,
-  EditorialIndexRow,
-} from './components/EditorialSection';
+import { ShopHeader } from './components/ShopHeader';
 import { ShopSearchBar } from './components/ShopSearchBar';
-import { SearchSuggestionsPanel } from './components/SearchSuggestionsPanel';
+import { SkinProfileStrip } from './components/SkinProfileStrip';
+import { ConcernFilterRow } from './components/ConcernFilterRow';
+import { SectionHeader } from './components/SectionHeader';
+import { HeroProductCard } from './components/HeroProductCard';
+import { ProductCarousel } from './components/ProductCarousel';
 import { EmptyState } from './components/EmptyState';
 import { AddedToRoutineToast } from './components/AddedToRoutineToast';
+import { ProfileMeter } from './components/ProfileMeter';
+import { SearchSuggestionsPanel } from './components/SearchSuggestionsPanel';
 import { useDebouncedValue } from './searchUtils';
 
 type Nav = NavigationProp<HomeStackParamList>;
 type TabNav = NavigationProp<TabParamList>;
 
+// ---------------------------------------------------------------------------
+// Responsive layout — pure functions of viewport dimensions.
+// ---------------------------------------------------------------------------
+
+function computeLayout(deviceWidth: number, deviceHeight: number) {
+  const innerWidth = Math.max(280, deviceWidth - puraShopLayout.horizontalPadding * 2);
+  const heroWidth = innerWidth;
+  // Hero height — bounded so the plate (brand / name / benefit /
+  // matched-for tags / price-add footer) is always fully visible.
+  //   • Floor: 440 — covers the plate + image at any width
+  //   • Ceiling: heroWidth * 1.22 OR 520, whichever is smaller —
+  //     prevents the card from getting "tall window" stretched when
+  //     the app runs in a desktop browser (where deviceHeight may
+  //     be 1000+ px).
+  const heroHeight = Math.max(
+    440,
+    Math.min(520, Math.round(heroWidth * 1.22)),
+  );
+  const miniWidth =
+    deviceWidth >= 410 ? 172 : deviceWidth >= 390 ? 164 : 156;
+  return { heroWidth, heroHeight, miniWidth };
+}
+
 interface ToastState {
   product: ShopCatalogProduct | null;
   tick: number;
-}
-
-// ---------------------------------------------------------------------------
-// Editorial helpers — issue number + theme derived from scan state.
-// ---------------------------------------------------------------------------
-
-function deriveIssueNumber(scansCount: number, latestDayNumber: number | null): number {
-  if (latestDayNumber && latestDayNumber > 0) return latestDayNumber;
-  if (scansCount > 0) return scansCount;
-  return 1;
-}
-
-function deriveIssueTheme(filter: ShopConcernFilter): string {
-  switch (filter) {
-    case 'breakouts':
-      return 'Calm + Clear';
-    case 'hydration':
-      return 'Replenish';
-    case 'marks':
-      return 'Even Tone';
-    case 'barrier':
-      return 'Barrier Week';
-    default:
-      return 'Tonight';
-  }
-}
-
-function deriveScanReason(subline: string | undefined, concernActive: ShopConcernFilter): string {
-  // The view model's `subline` is already a sentence describing why
-  // this product matched ("Matched to your dehydrated T-zone."). We
-  // rewrite it as an italic-serif fragment fit for an editorial band.
-  if (!subline) return 'Hand-picked for the skin you brought tonight.';
-  // If subline starts with "Top match for", keep it. Otherwise prefix
-  // with a softer editorial verb.
-  if (/^Top match/i.test(subline)) return subline;
-  if (/^Filtered/i.test(subline)) {
-    return concernActive === 'all'
-      ? 'For tonight’s state of your skin.'
-      : `For your ${deriveIssueTheme(concernActive).toLowerCase()} focus.`;
-  }
-  if (/^Editor/i.test(subline)) return 'An editor’s pick — scan to make it yours.';
-  return subline;
 }
 
 export function PuraShopScreen() {
@@ -132,37 +102,39 @@ export function PuraShopScreen() {
   const tabNav = useNavigation<TabNav>();
 
   const [filter, setFilter] = useState<ShopConcernFilter>('all');
+  const [contextKey, setContextKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  // Session-only recent searches, capped at 5. (We deliberately don't
+  // persist to AsyncStorage from this screen — that wiring lives in
+  // `useAppStore` and is touched by other subsystems.)
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  // Debounce so the view model recomputes once per typing-pause
+  // instead of once per keystroke (~110ms is the sweet spot — short
+  // enough to feel live, long enough to skip intermediate states).
   const debouncedQuery = useDebouncedValue(query, 110);
   const [toast, setToast] = useState<ToastState>({ product: null, tick: 0 });
 
   const vm = useShopViewModel({
     activeFilter: filter,
     query: debouncedQuery,
-    activeContextKey: null,
+    activeContextKey: contextKey,
   });
 
   const addToRoutine = useAppStore((s) => s.addUserRoutineProduct);
   const removeFromRoutine = useAppStore((s) => s.removeUserRoutineProduct);
-  const scansCount = useAppStore((s) => s.scans.length);
-  const latestScanDay = useAppStore(
-    (s) => (s.scans.length > 0 ? s.scans[s.scans.length - 1].dayNumber : null),
-  );
-  const userInitial = useAppStore(
-    (s) => s.user?.initials?.[0] ?? s.user?.name?.[0] ?? s.name?.[0] ?? null,
-  );
 
-  const innerWidth = Math.max(
-    280,
-    deviceWidth - puraShopLayout.horizontalPadding * 2,
+  const layout = useMemo(
+    () => computeLayout(deviceWidth, deviceHeight),
+    [deviceWidth, deviceHeight],
   );
 
   const bottomClearance =
     puraShopLayout.dockBarHeight + insets.bottom + 36;
 
   // ---------- Scroll-driven progress ----------
+  // 0 at top, 1 once the user has scrolled past ~280px (roughly past
+  // the hero block). Drives the atmosphere fade + header parallax.
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
@@ -187,6 +159,9 @@ export function PuraShopScreen() {
   );
 
   const tickRef = useRef(0);
+  // Tracks whether the toast's product was the current hero pick.
+  // Drives the bundle CTA — only the hero-add gets the "Complete
+  // routine" affordance because that's the high-intent moment.
   const [lastAddedWasHero, setLastAddedWasHero] = useState(false);
 
   const showAddedToast = useCallback((id: string, isHero: boolean) => {
@@ -217,9 +192,13 @@ export function PuraShopScreen() {
   }, []);
 
   // Bundle add — fires the supporting "Complete tonight's routine"
-  // products in one shot when the hero was just added.
+  // products in one shot. Wired only when the toast's product is the
+  // current hero pick AND none of the supporting products are already
+  // in the routine.
   const completeIdsNotInRoutine = useMemo(() => {
-    return vm.complete.filter((c) => !c.isInRoutine).map((c) => c.catalog.id);
+    return vm.complete
+      .filter((c) => !c.isInRoutine)
+      .map((c) => c.catalog.id);
   }, [vm.complete]);
   const handleBundleAdd = useCallback(() => {
     for (const id of completeIdsNotInRoutine) {
@@ -236,6 +215,15 @@ export function PuraShopScreen() {
     };
   }, [toast.product, lastAddedWasHero, completeIdsNotInRoutine, handleBundleAdd]);
 
+  const onSelectFilter = useCallback((next: ShopConcernFilter) => {
+    hapt.select();
+    setFilter(next);
+  }, []);
+  const onSelectContext = useCallback((next: ShopSkinContextPill) => {
+    hapt.select();
+    setContextKey(next.key);
+    if (next.concernKey) setFilter(next.concernKey);
+  }, []);
   const openSaved = useCallback(() => {
     hapt.select();
     nav.navigate('CategoryView', { kind: 'new' });
@@ -244,6 +232,15 @@ export function PuraShopScreen() {
     hapt.select();
     tabNav.navigate('RoutineTab');
   }, [tabNav]);
+  const openScan = useCallback(() => {
+    hapt.select();
+    // Routine → Plan → Scan path exists in HomeStack; the most direct
+    // way is the global ScanModal route via the root navigator.
+    const root = (nav as any).getParent?.();
+    if (root?.navigate) {
+      root.navigate('ScanModal');
+    }
+  }, [nav]);
   const clearSearch = useCallback(() => {
     hapt.select();
     setQuery('');
@@ -252,6 +249,7 @@ export function PuraShopScreen() {
     hapt.select();
     setFilter('all');
     setQuery('');
+    setContextKey(null);
   }, []);
 
   const isSearchActive = vm.isSearchActive;
@@ -262,15 +260,14 @@ export function PuraShopScreen() {
       setQuery(term);
       setRecentSearches((prev) => {
         const cleaned = term.trim();
-        const next = [
-          cleaned,
-          ...prev.filter((t) => t.toLowerCase() !== cleaned.toLowerCase()),
-        ];
+        const next = [cleaned, ...prev.filter((t) => t.toLowerCase() !== cleaned.toLowerCase())];
         return next.slice(0, 5);
       });
     },
     [],
   );
+  // Once the debounced query lands on a non-empty term that produced
+  // at least one search result, remember it for future suggestions.
   React.useEffect(() => {
     const q = debouncedQuery.trim();
     if (q.length < 2) return;
@@ -282,28 +279,13 @@ export function PuraShopScreen() {
     });
   }, [debouncedQuery, vm.searchResults.length]);
 
-  const issueNumber = deriveIssueNumber(scansCount, latestScanDay);
-  const issueTheme = deriveIssueTheme(filter);
-  const scanReason = deriveScanReason(vm.hero.subline, filter);
-
-  // Scan signals — italic-serif row between search and hero. Derived
-  // from the view model's filter chips (already concern-aware) so the
-  // strip is honest about what the scan called out.
-  const scanSignals: ScanSignal[] = scansCount > 0
-    ? vm.filterChips
-        .filter((c) => c.key !== 'all')
-        .slice(0, 4)
-        .map((c) => ({
-          key: c.key,
-          label: c.label.toLowerCase(),
-          active: filter === c.key,
-        }))
-    : [];
-
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
 
+      {/* Atmospheric warm glow — fades as the user scrolls deep into
+          the storefront. Sits behind everything; never repainted on
+          scroll (only its opacity tweens). */}
       <Animated.View
         style={[
           styles.atmosphere,
@@ -320,11 +302,11 @@ export function PuraShopScreen() {
         >
           <Defs>
             <RadialGradient id="canvasGlow" cx="50%" cy="0%" rx="80%" ry="100%">
-              <Stop offset="0%" stopColor={puraShop.blush} stopOpacity={0.22} />
+              <Stop offset="0%" stopColor={puraShop.blush} stopOpacity={0.42} />
               <Stop
                 offset="55%"
                 stopColor={puraShop.coralSoft}
-                stopOpacity={0.10}
+                stopOpacity={0.18}
               />
               <Stop offset="100%" stopColor={puraShop.canvas} stopOpacity={0} />
             </RadialGradient>
@@ -341,12 +323,9 @@ export function PuraShopScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {/* Editorial masthead */}
+        {/* Top chrome */}
         <ParallaxHeader scrollY={scrollY}>
-          <EditorialShopHeader
-            issueNumber={issueNumber}
-            issueTheme={issueTheme}
-            userInitial={userInitial}
+          <ShopHeader
             savedCount={vm.savedCount}
             bagCount={vm.bagBadgeCount}
             onPressSaved={openSaved}
@@ -361,6 +340,8 @@ export function PuraShopScreen() {
           onFocusChange={setSearchFocused}
         />
 
+        {/* Suggestions panel — surfaces when the field is focused
+            AND empty. Disappears the moment the user types. */}
         {searchFocused && !isSearchActive ? (
           <SearchSuggestionsPanel
             recent={recentSearches}
@@ -368,39 +349,52 @@ export function PuraShopScreen() {
             onSelect={applySuggestion}
           />
         ) : null}
-
-        {/* Scan signals — bridge between search and hero */}
-        <ScanSignalStrip
-          signals={scanSignals}
-          onSelect={(key) => {
-            hapt.select();
-            setFilter(key as ShopConcernFilter);
-          }}
+        <SkinProfileStrip
+          pills={vm.contextPills}
+          onSelect={onSelectContext}
+        />
+        <ConcernFilterRow
+          chips={vm.filterChips}
+          active={vm.activeFilter}
+          onSelect={onSelectFilter}
         />
 
-        {/* Hero — single editorial recommendation */}
+        {/* Profile completeness — visible signal that the page is
+            personalized, and a one-tap path to tighten the fit. */}
+        {!isSearchActive ? (
+          <ProfileMeter
+            accuracy={vm.profileAccuracy}
+            onImprove={openScan}
+          />
+        ) : null}
+
+        {/* Hero block */}
         {vm.hero.featured ? (
-          <View style={styles.heroBlock}>
-            <EditorialHero
-              product={vm.hero.featured.catalog}
-              factors={vm.hero.featured.factors}
-              scanReason={scanReason}
-              issueNumber={issueNumber}
-              userInitial={userInitial}
-              primaryConcernLabel={
-                vm.hero.featured.catalog.concernTags?.[0] ?? filter
+          <>
+            <SectionHeader
+              title="Best for your skin"
+              subline={vm.hero.subline}
+              onViewAll={
+                !isSearchActive
+                  ? () =>
+                      nav.navigate('CategoryView', { kind: 'best-for-you' })
+                  : undefined
               }
-              alternates={vm.complete
-                .filter((c) => c.catalog.id !== vm.hero.featured!.catalog.id)
-                .slice(0, 2)
-                .map((c) => c.catalog)}
-              width={innerWidth}
-              isInRoutine={vm.hero.featured.isInRoutine}
-              onPress={() => openProduct(vm.hero.featured!.catalog.id)}
-              onPressAlternate={(id) => openProduct(id)}
-              onAdd={() => handleQuickAdd(vm.hero.featured!.catalog.id)}
             />
-          </View>
+            <View style={styles.heroOuter}>
+              <HeroProductCard
+                product={vm.hero.featured.catalog}
+                matchPercent={vm.hero.featured.matchScore}
+                factors={vm.hero.featured.factors}
+                badgeLabel={vm.heroBadge}
+                width={layout.heroWidth}
+                height={layout.heroHeight}
+                isInRoutine={vm.hero.featured.isInRoutine}
+                onPress={() => openProduct(vm.hero.featured!.catalog.id)}
+                onAdd={() => handleQuickAdd(vm.hero.featured!.catalog.id)}
+              />
+            </View>
+          </>
         ) : null}
 
         {/* Empty state */}
@@ -427,94 +421,66 @@ export function PuraShopScreen() {
           </View>
         ) : null}
 
-        {/* Pairs with tonight — round-2 Pass 9 coherence fix: exclude
-            both the hero's product AND the alternates already named
-            in the hero's "Also tonight" row, so users never see the
-            same product twice across hero + pairs. */}
-        {(() => {
-          if (isSearchActive) return null;
-          const heroId = vm.hero.featured?.catalog.id;
-          const heroAltIds = vm.complete
-            .filter((c) => c.catalog.id !== heroId)
-            .slice(0, 2)
-            .map((c) => c.catalog.id);
-          const excluded = new Set([heroId, ...heroAltIds].filter(Boolean));
-          const pairs = vm.complete.filter(
-            (c) => !excluded.has(c.catalog.id),
-          );
-          if (pairs.length === 0) return null;
-          return (
-            <EditorialSection
-              kicker="Pairs with tonight"
-              title="Complete the routine."
-              credit="CURATED BY NORA · biochemist"
-              note="Quiet supports for the steps before and after your hero."
-            >
-              {pairs.slice(0, 4).map((card, i, arr) => (
-                <EditorialIndexRow
-                  key={card.catalog.id}
-                  index={i + 1}
-                  product={card.catalog}
-                  reason={
-                    card.factors[0]?.label
-                      ? `Pairs because ${card.factors[0].label.toLowerCase()}.`
-                      : 'A safe companion to your hero.'
-                  }
-                  isInRoutine={card.isInRoutine}
-                  isLast={i === arr.length - 1}
-                  onPress={() => openProduct(card.catalog.id)}
-                  onAdd={() => handleQuickAdd(card.catalog.id)}
-                />
-              ))}
-            </EditorialSection>
-          );
-        })()}
-
-        {/* Search results */}
-        {isSearchActive && vm.searchResults.length > 0 ? (
-          <EditorialSection
-            kicker={`You searched`}
-            title={`“${query.trim()}”`}
-            note={`${vm.searchResults.length} product${
-              vm.searchResults.length === 1 ? '' : 's'
-            } in this season's edit.`}
-          >
-            {vm.searchResults.slice(0, 8).map((card, i, arr) => (
-              <EditorialIndexRow
-                key={card.catalog.id}
-                index={i + 1}
-                product={card.catalog}
-                reason={
-                  card.factors[0]?.label ?? 'Matched to your query.'
-                }
-                isInRoutine={card.isInRoutine}
-                isLast={i === arr.length - 1}
-                onPress={() => openProduct(card.catalog.id)}
-                onAdd={() => handleQuickAdd(card.catalog.id)}
-              />
-            ))}
-          </EditorialSection>
+        {/* Complete tonight's routine */}
+        {!isSearchActive && vm.complete.length > 0 ? (
+          <>
+            <SectionHeader
+              title="Complete tonight’s routine"
+              subline="Pairs safely with your pick"
+            />
+            <ProductCarousel
+              cards={vm.complete}
+              miniWidth={layout.miniWidth}
+              onOpenProduct={openProduct}
+              onQuickAdd={handleQuickAdd}
+            />
+          </>
         ) : null}
 
-        {/* The "Picked for the theme" listing was removed in pass 7 —
-            it duplicated the purpose of "Pairs with tonight". The shop
-            now reads as: hero → one supporting list → end. Restraint
-            is a luxury signal. The full edit is reachable from
-            individual section actions. */}
-
-        {/* Colophon — round-2 Pass 10. The shop closes like a real
-            indie magazine, with an editor credit + city + year. */}
-        <Colophon
-          issueNumber={issueNumber}
-          userInitial={userInitial}
-          dateStamp={(() => {
-            const d = new Date();
-            const m = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-            return `${d.getDate()} ${m[d.getMonth()]} ${String(d.getFullYear() % 100).padStart(2,'0')}`;
-          })()}
-        />
+        {/* Search results OR Breakout essentials */}
+        {isSearchActive ? (
+          vm.searchResults.length > 0 ? (
+            <>
+              <SectionHeader
+                title="Search results"
+                subline={`${vm.searchResults.length} product${
+                  vm.searchResults.length === 1 ? '' : 's'
+                } match “${query.trim()}”`}
+              />
+              <ProductCarousel
+                cards={vm.searchResults}
+                miniWidth={layout.miniWidth}
+                highlightTokens={debouncedQuery
+                  .trim()
+                  .split(/\s+/)
+                  .filter((t) => t.length >= 2)}
+                onOpenProduct={openProduct}
+                onQuickAdd={handleQuickAdd}
+              />
+            </>
+          ) : null
+        ) : vm.breakoutEssentials.length > 0 ? (
+          <>
+            <SectionHeader
+              title="Breakout essentials"
+              subline="Targeted picks for clear, calm skin"
+              onViewAll={() =>
+                nav.navigate('CategoryView', { kind: 'essentials' })
+              }
+            />
+            <ProductCarousel
+              cards={vm.breakoutEssentials}
+              miniWidth={layout.miniWidth}
+              onOpenProduct={openProduct}
+              onQuickAdd={handleQuickAdd}
+            />
+          </>
+        ) : null}
       </Animated.ScrollView>
 
+      {/* Added-to-routine toast — floats above the dock. When the
+          hero was just added, the toast surfaces a "Complete routine"
+          bundle CTA that adds the supporting pair in one shot. */}
       <AddedToRoutineToast
         product={toast.product}
         tick={toast.tick}
@@ -529,8 +495,8 @@ export function PuraShopScreen() {
 
 // ---------------------------------------------------------------------------
 // ParallaxHeader — gentle scale + opacity on the wordmark as the user
-// scrolls. Keeps the header feeling alive without a full collapsing-header
-// structure.
+// scrolls. Keeps the header feeling "alive" without resorting to a
+// full collapsing-header structure.
 // ---------------------------------------------------------------------------
 
 function ParallaxHeader({
@@ -581,9 +547,8 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 0,
   },
-  heroBlock: {
+  heroOuter: {
     paddingHorizontal: puraShopLayout.horizontalPadding,
-    marginTop: 12,
   },
   emptyWrap: {
     marginTop: 8,

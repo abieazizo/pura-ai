@@ -3,6 +3,12 @@
   "buildCommand": "node scripts/bundle-functions.mjs && npx expo export -p web && node scripts/patch-web-index.js",
   "outputDirectory": "dist",
   "framework": null,
+  "functions": {
+    "api/proxy/[method].js": {
+      "memory": 1024,
+      "maxDuration": 90
+    }
+  },
   "rewrites": [
     {
       "source": "/__pura_ai__/:method",

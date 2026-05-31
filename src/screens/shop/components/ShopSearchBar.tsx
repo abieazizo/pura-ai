@@ -1,43 +1,43 @@
 /**
- * ShopSearchBar — pass 2 rebuild.
+ * ShopSearchBar — luminous white pill with a refined coral disc and
+ * optional clear-text affordance.
  *
- * Museum-catalog inquiry field. Hairline-bordered, no fill, lowercase
- * MagnifyingGlass at refined weight, italic-serif placeholder. No
- * rainbow sparkle. No CTA disc — the keyboard's return key submits.
- *
- * The bar lives within an editorial container with a small kicker
- * label above ("LOOK FOR") so the search field reads as a step in the
- * publication, not a top-of-page utility.
+ * • Real focus state — border subtly intensifies when the field is
+ *   focused (no glossy oversized sphere; restrained per the brief).
+ * • Clear button appears only when there's text; tapping clears the
+ *   query and re-focuses the input.
+ * • Sparkle leading icon hints "AI search" without overclaiming.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
-  Text,
   TextInput,
   View,
 } from 'react-native';
-import { MagnifyingGlass, X } from 'phosphor-react-native';
-import { puraShop, puraShopLayout } from '@/theme';
-import { useReduceMotion } from '@/hooks/useReduceMotion';
-
-const PLACEHOLDERS = [
-  'an ingredient, a brand, a concern',
-  'a calmer evening',
-  'a quiet barrier moisturizer',
-  'something with ceramides',
-  'a gentle exfoliant for tonight',
-  'a sunscreen that disappears',
-] as const;
+import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
+import { MagnifyingGlass, Sparkle, X } from 'phosphor-react-native';
+import {
+  puraShop,
+  puraShopLayout,
+  puraShopRadius,
+  puraShopShadow,
+} from '@/theme';
 
 export interface ShopSearchBarProps {
   value: string;
   onChangeText: (s: string) => void;
   onSubmit?: () => void;
+  /** Rendered as a quiet inline clear-button when defined. */
   onClear?: () => void;
+  /** Called when the field gains / loses focus. Used by the parent to
+   *  render the suggestions panel (recent + popular). */
   onFocusChange?: (focused: boolean) => void;
 }
+
+const SEARCH_HEIGHT = 54;
+const CTA_SIZE = 34;
 
 export function ShopSearchBar({
   value,
@@ -48,22 +48,6 @@ export function ShopSearchBar({
 }: ShopSearchBarProps) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<TextInput | null>(null);
-  const reduceMotion = useReduceMotion();
-
-  // Rotating placeholder — cycles every 4s through curated inquiries
-  // unless the user has focused or typed. Reduces motion automatically.
-  const [phIndex, setPhIndex] = useState(0);
-  useEffect(() => {
-    if (reduceMotion) return;
-    if (focused) return;
-    if (value.length > 0) return;
-    const id = setInterval(() => {
-      setPhIndex((i) => (i + 1) % PLACEHOLDERS.length);
-    }, 4000);
-    return () => clearInterval(id);
-  }, [focused, value, reduceMotion]);
-
-  const placeholder = PLACEHOLDERS[phIndex];
 
   const handleFocus = () => {
     setFocused(true);
@@ -76,23 +60,20 @@ export function ShopSearchBar({
 
   return (
     <View style={styles.outer}>
-      <View style={styles.kickerRow}>
-        <Text style={styles.kicker} maxFontSizeMultiplier={1.05}>
-          ASK THE EDIT
-        </Text>
-        <View style={styles.rule} />
-      </View>
-
       <View
         style={[
           styles.bar,
-          focused && styles.barFocused,
+          {
+            borderColor: focused
+              ? puraShop.searchBorderFocus
+              : puraShop.searchBorder,
+          },
         ]}
       >
-        <MagnifyingGlass
-          size={16}
-          color={puraShop.inkSecondary}
-          weight="regular"
+        <Sparkle
+          size={20}
+          color={puraShop.searchSparkle}
+          weight="fill"
           style={styles.leadingIcon}
         />
         <TextInput
@@ -102,8 +83,8 @@ export function ShopSearchBar({
           onSubmitEditing={onSubmit}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          placeholder={placeholder}
-          placeholderTextColor={puraShop.inkMuted}
+          placeholder="Search products, ingredients, brands…"
+          placeholderTextColor={puraShop.searchPlaceholder}
           returnKeyType="search"
           style={styles.input}
           accessibilityLabel="Search products, ingredients, or brands"
@@ -125,9 +106,35 @@ export function ShopSearchBar({
               pressed && { opacity: 0.7 },
             ]}
           >
-            <X size={12} color={puraShop.inkMuted} weight="bold" />
+            <X size={14} color={puraShop.inkSecondary} weight="bold" />
           </Pressable>
         ) : null}
+        <Pressable
+          onPress={onSubmit}
+          accessibilityRole="button"
+          accessibilityLabel="Run search"
+          style={({ pressed }) => [
+            styles.cta,
+            pressed && { opacity: 0.88, transform: [{ scale: 0.95 }] },
+          ]}
+          hitSlop={6}
+        >
+          <Svg
+            width={CTA_SIZE}
+            height={CTA_SIZE}
+            viewBox="0 0 100 100"
+            style={StyleSheet.absoluteFill}
+          >
+            <Defs>
+              <RadialGradient id="ctaGlow" cx="38%" cy="30%" rx="62%" ry="62%">
+                <Stop offset="0%" stopColor={puraShop.ink} stopOpacity={1} />
+                <Stop offset="100%" stopColor="#34302C" stopOpacity={1} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={50} cy={50} r={50} fill="url(#ctaGlow)" />
+          </Svg>
+          <MagnifyingGlass size={15} color={puraShop.white} weight="bold" />
+        </Pressable>
       </View>
     </View>
   );
@@ -136,53 +143,44 @@ export function ShopSearchBar({
 const styles = StyleSheet.create({
   outer: {
     paddingHorizontal: puraShopLayout.horizontalPadding,
-    marginBottom: 22,
-  },
-  kickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  kicker: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9.5,
-    letterSpacing: 2.2,
-    color: puraShop.inkMuted,
-  },
-  rule: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: puraShop.borderWarm,
+    marginBottom: 18,
   },
   bar: {
-    height: 44,
-    borderBottomWidth: 1,
-    borderBottomColor: puraShop.borderWarm,
-    paddingLeft: 0,
-    paddingRight: 0,
+    height: SEARCH_HEIGHT,
+    borderRadius: puraShopRadius.search,
+    backgroundColor: puraShop.searchBg,
+    borderWidth: 1,
+    paddingLeft: 18,
+    paddingRight: 8,
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  barFocused: {
-    borderBottomColor: puraShop.ink,
+    ...puraShopShadow.search,
   },
   leadingIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 18,
+    fontFamily: 'Inter-Regular',
+    fontSize: 15.5,
     color: puraShop.ink,
     paddingVertical: 0,
-    letterSpacing: -0.1,
   },
   clearBtn: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: puraShop.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 6,
+  },
+  cta: {
+    width: CTA_SIZE,
+    height: CTA_SIZE,
+    borderRadius: CTA_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
 });
