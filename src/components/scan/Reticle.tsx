@@ -31,6 +31,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { palette, radius } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { CornflowerArc } from '@/components/scan/CornflowerArc';
 
 export type ReticleMode = 'face' | 'product' | 'barcode';
 
@@ -65,14 +66,12 @@ export function Reticle({
   const reduceMotion = useReduceMotion();
   const pulse = useSharedValue(0);
   const scanLine = useSharedValue(0);
-  const sheen = useSharedValue(0);
 
-  // Continuous gentle pulse on the reticle border opacity.
+  // Continuous gentle pulse on the reticle border opacity (idle state).
   useEffect(() => {
     if (reduceMotion) {
       pulse.value = 0.5;
       scanLine.value = 0;
-      sheen.value = 0;
       return;
     }
     pulse.value = withRepeat(
@@ -81,29 +80,13 @@ export function Reticle({
       true
     );
     return () => cancelAnimation(pulse);
-  }, [reduceMotion, pulse, scanLine, sheen]);
+  }, [reduceMotion, pulse, scanLine]);
 
-  // v11.7 — sheen pulse only animates while preparing. Slow 1.6s
-  // sweep that travels across the oval rim by mapping into a halo
-  // ring opacity.
-  useEffect(() => {
-    if (frameState !== 'preparing') {
-      cancelAnimation(sheen);
-      sheen.value = 0;
-      return;
-    }
-    if (reduceMotion) {
-      sheen.value = 1;
-      return;
-    }
-    sheen.value = 0;
-    sheen.value = withRepeat(
-      withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true
-    );
-    return () => cancelAnimation(sheen);
-  }, [frameState, reduceMotion, sheen]);
+  // v35 Pass-1 — the old `sheen` shared value drove the moss halo
+  // pulse during `preparing`. CornflowerArc now owns the preparing
+  // state's animation entirely (its own internal sweep + ember
+  // timing). The sheen value, its useEffect, and its style are
+  // intentionally removed.
 
   // Barcode scan line.
   useEffect(() => {
@@ -124,30 +107,22 @@ export function Reticle({
     opacity: 0.4 + 0.2 * pulse.value,
   }));
 
-  const sheenStyle = useAnimatedStyle(() => ({
-    opacity: 0.25 + 0.55 * sheen.value,
-    transform: [{ scale: 1.0 + 0.04 * sheen.value }],
-  }));
-
   // Tone preset: only face mode flips between idle and preparing;
   // product and barcode keep the clean clay stroke at all times
   // (those modes never enter a countdown).
+  //
+  // v35 Pass-1 — preparing state is now THE signature moment. The
+  // moss halo + sheen treatment is retired in favor of CornflowerArc
+  // (see ../CornflowerArc.tsx for the full design spec). The oval
+  // itself recedes (cornflower at 18% opacity, 1pt) so the arc leads
+  // the eye. Idle stays untouched — clay stroke + gentle pulse.
   const isFacePreparing = mode === 'face' && frameState === 'preparing';
-  const tonePreset = isFacePreparing
-    ? {
-        borderColor: palette.mossDeep,
-        borderWidth: 2,
-        haloEnabled: true,
-        haloColor: palette.mossDeep,
-        haloIntensity: 0.45,
-      }
-    : {
-        borderColor: palette.clay,
-        borderWidth: STROKE,
-        haloEnabled: false,
-        haloColor: palette.clay,
-        haloIntensity: 0,
-      };
+  const tonePreset = {
+    borderColor: isFacePreparing
+      ? 'rgba(124, 176, 255, 0.18)' // cornflower @ 18% — oval recedes, arc leads
+      : palette.clay,
+    borderWidth: isFacePreparing ? 1 : STROKE,
+  };
 
   // v11.9 — face oval scales to its container with a fixed 1.3:1
   // height:width aspect ratio (matches a natural portrait face). The
@@ -183,26 +158,15 @@ export function Reticle({
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {mode === 'face' ? (
         <Animated.View style={[styles.center, pulseStyle]}>
-          {/* Soft outer halo only when preparing. Sits BEHIND the oval
-              and grows with the sheen pulse so the commit moment reads
-              as expensive premium light, not a neon outline. */}
-          {tonePreset.haloEnabled ? (
-            <Animated.View
-              style={[
-                styles.halo,
-                {
-                  width: faceW + 24,
-                  height: faceH + 24,
-                  borderRadius: (faceW + 24) / 2,
-                  shadowColor: tonePreset.haloColor,
-                  shadowOpacity: tonePreset.haloIntensity,
-                  shadowRadius: 16,
-                  elevation: 10,
-                  borderColor: tonePreset.haloColor,
-                  borderWidth: 1,
-                },
-                sheenStyle,
-              ]}
+          {/* v35 Pass-1 — CornflowerArc replaces the moss halo for
+              the preparing state. The signature instrument: 1.5pt
+              cornflower stroke sweeping 270° around the oval over
+              1.8s, releasing a terracotta ember at completion. */}
+          {isFacePreparing ? (
+            <CornflowerArc
+              ovalWidth={faceW}
+              ovalHeight={faceH}
+              active={isFacePreparing}
             />
           ) : null}
           <View
@@ -316,14 +280,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // v11.7 — halo behind the oval. Position absolute so its size doesn't
-  // push the oval. Inherits sheen scale from sheenStyle. Only renders
-  // while preparing.
-  halo: {
-    position: 'absolute',
-    backgroundColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-  },
+  // v35 Pass-1 — the old `halo` style supported the moss-halo
+  // sheen during `preparing`. CornflowerArc owns that role now.
   scanLine: {
     position: 'absolute',
     top: 0,
