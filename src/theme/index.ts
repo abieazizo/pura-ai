@@ -44,6 +44,14 @@ export {
   puraShopSpace,
   puraShopShadow,
   puraShopLayout,
+  // puraAssist — "Pura Assist" Home + conversation surface tokens.
+  // Consumed only by the new Home (AI Assist landing) and the
+  // conversation screen + the animated face mesh.
+  puraAssist,
+  puraAssistType,
+  puraAssistRadius,
+  puraAssistShadow,
+  puraAssistLayout,
 } from './tokens';
 // puraRoutine — Routine + Progress tokens. Consumed only by the
 // routine domain (components/routine, screens/routine, services).
@@ -70,6 +78,7 @@ export type {
   Pura26Token,
   Pura27Token,
   PuraShopToken,
+  PuraAssistToken,
 } from './tokens';
 export { ThemeProvider } from './ThemeProvider';
 export { useTheme } from './useTheme';

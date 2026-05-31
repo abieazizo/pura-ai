@@ -18,10 +18,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import {
-  Sparkle,
   User as UserIcon,
   Bell,
   Lock,
@@ -30,7 +28,6 @@ import {
   Info,
   CaretRight,
   SignOut,
-  ArrowRight,
   Heart,
   CalendarCheck,
 } from 'phosphor-react-native';
@@ -40,7 +37,6 @@ import {
   puraShopType,
   puraShopRadius,
   puraShopSpace,
-  puraShopShadow,
   puraShopLayout,
 } from '@/theme';
 import { useAppStore } from '@/store/useAppStore';
@@ -77,11 +73,6 @@ export function MeScreen() {
   );
 
   const routineCount = routineMorning + routineEvening;
-
-  const openAssistant = useCallback(() => {
-    hapt.select();
-    tabNav.navigate('AssistantTab' as never);
-  }, [tabNav]);
 
   const openRoutine = useCallback(() => {
     hapt.select();
@@ -144,42 +135,9 @@ export function MeScreen() {
           </Text>
         </View>
 
-        {/* AI Assist hero — editorial card with warm brand wash + inline arrow */}
-        <Pressable
-          onPress={openAssistant}
-          accessibilityRole="button"
-          accessibilityLabel="Open AI Assist — your skin coach"
-          style={({ pressed }) => [
-            styles.assistCard,
-            pressed && { opacity: 0.96, transform: [{ scale: 0.992 }] },
-          ]}
-        >
-          <LinearGradient
-            colors={[puraShop.coralSoft, puraShop.surface]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <View style={styles.assistCardInner}>
-            <View style={styles.assistEyebrowRow}>
-              <Sparkle size={14} color={puraShop.coralDeep} weight="fill" />
-              <Text style={styles.assistEyebrow} maxFontSizeMultiplier={1.1}>
-                YOUR PURA COACH
-              </Text>
-            </View>
-            <Text style={styles.assistHeadline} maxFontSizeMultiplier={1.15}>
-              Ask anything about{'\n'}your skin or routine.
-            </Text>
-            <View style={styles.assistFooter}>
-              <Text style={styles.assistFooterLabel} maxFontSizeMultiplier={1.15}>
-                Open AI Assist
-              </Text>
-              <View style={styles.assistArrow}>
-                <ArrowRight size={14} color={puraShop.white} weight="bold" />
-              </View>
-            </View>
-          </View>
-        </Pressable>
+        {/* v32 — AI Assist is no longer reached from Me. The Home tab IS
+            the Pura Assist landing surface; its input dock opens the
+            conversation. (The old editorial hero lived here.) */}
 
         {/* Quiet shortcuts — typographic, not chip-grid */}
         <View style={styles.shortcutBlock}>
@@ -391,64 +349,6 @@ const styles = StyleSheet.create({
     ...puraShopType.sectionSub,
     color: puraShop.sectionSub,
     marginTop: 6,
-  },
-  assistCard: {
-    marginHorizontal: puraShopLayout.horizontalPadding,
-    borderRadius: puraShopRadius.card,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: puraShop.borderWarm,
-    ...puraShopShadow.card,
-  },
-  assistCardInner: {
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 18,
-  },
-  assistEyebrowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  assistEyebrow: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10.5,
-    color: puraShop.coralDeep,
-    letterSpacing: 2,
-  },
-  assistHeadline: {
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 26,
-    lineHeight: 30,
-    letterSpacing: -0.6,
-    color: puraShop.ink,
-    marginTop: 12,
-  },
-  assistFooter: {
-    marginTop: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: puraShop.ink,
-    paddingLeft: 18,
-    paddingRight: 6,
-    height: 40,
-    borderRadius: 20,
-    gap: 12,
-  },
-  assistFooterLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-    color: puraShop.white,
-    letterSpacing: -0.1,
-  },
-  assistArrow: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: puraShop.coralDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   shortcutBlock: {
     marginTop: 22,

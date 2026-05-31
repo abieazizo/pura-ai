@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TabNavigator } from './TabNavigator';
 import { OnboardingNavigator } from './OnboardingNavigator';
 import { ScanModalStack } from './ScanModalStack';
+import { PuraAssistConversationScreen } from '@/screens/assistant/PuraAssistConversationScreen';
 import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen';
 import { AIDiagnosticsScreen } from '@/components/dev/AIDiagnosticsScreen';
 import { ScanResultsStatesGallery } from '@/components/dev/ScanResultsStatesGallery';
@@ -55,6 +56,18 @@ export function RootNavigator() {
           presentation: 'fullScreenModal',
           animation: 'slide_from_bottom',
           animationDuration: 340,
+        }}
+      />
+
+      {/* v32 — Pura Assist conversation. Root-level so it covers the
+          floating tab dock (the reference shows no tab bar in
+          conversation). Opened from the Home tab's input dock. */}
+      <Stack.Screen
+        name="AssistChat"
+        component={PuraAssistConversationScreen}
+        options={{
+          animation: 'slide_from_right',
+          animationDuration: 320,
         }}
       />
 

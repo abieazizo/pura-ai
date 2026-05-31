@@ -8,11 +8,16 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#05070B"
+      "backgroundColor": "#FCFDFF",
+      "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.pura.ai",
+      "splash": {
+        "backgroundColor": "#FCFDFF",
+        "resizeMode": "contain"
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Pura AI uses your camera to scan your skin and track progress over time.",
         "NSPhotoLibraryUsageDescription": "Pura AI needs access to your photos to save and compare skin progress images.",

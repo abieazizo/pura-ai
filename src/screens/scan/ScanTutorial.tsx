@@ -30,7 +30,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -81,7 +81,15 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
   // against runtimes that don't drive mount animations to completion
   // (observed on web), which would otherwise leave the cards and the
   // Begin CTA stuck at opacity 0 — trapping the user on this screen.
-  const [settled, setSettled] = useState(false);
+  //
+  // Initialised true up-front on web / reduce-motion so the static state
+  // paints from the very first frame — no flash of the opacity-0 animated
+  // state, and the Animated.Views (and their never-completing web
+  // animations) are never created there. Native starts false and lets the
+  // entrance animation play, with the settle timer below as a backstop.
+  const [settled, setSettled] = useState(
+    () => reduceMotion || Platform.OS === 'web'
+  );
 
   // Shared values per card — flip rotation and opacity.
   const cardA = useSharedValue(0);
@@ -90,7 +98,15 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
   const cta = useSharedValue(0);
 
   useEffect(() => {
-    if (reduceMotion) {
+    // Render the final, fully-visible state immediately — no entrance
+    // animation — when motion is reduced OR on web. On web the Reanimated 4
+    // worklets runtime does not drive these mount `withTiming` animations to
+    // completion: they spin every frame without ever reaching 1, which both
+    // (a) leaves the cards and Begin CTA stuck at opacity 0 — trapping the
+    // user — and (b) starves the main thread with a perpetual rAF loop. We
+    // skip them entirely there. Native (New Arch + worklets) runs the
+    // animation normally, with the settle timer below as a universal net.
+    if (reduceMotion || Platform.OS === 'web') {
       cardA.value = 1;
       cardB.value = 1;
       cardC.value = 1;

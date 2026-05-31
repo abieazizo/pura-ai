@@ -33,7 +33,11 @@ import { PlanScreen } from '@/screens/plan/PlanScreen';
 // destination). The earlier clinical pura27 ProductsScreen is preserved
 // on disk for archival reference but no longer mounted; nothing in the
 // app navigates to it.
-import { HomeP27Screen } from '@/screens/pura27';
+// v32 — the Home tab IS the Pura Assist landing surface. The pura27
+// nightly Home (`HomeP27Screen` in '@/screens/pura27') is preserved on
+// disk for archival reference but no longer mounted as the primary Home
+// destination.
+import { PuraAssistHomeScreen } from '@/screens/assistant/PuraAssistHomeScreen';
 import { PuraShopScreen, ConcernIndexScreen } from '@/screens/shop';
 import { MeScreen } from '@/screens/me';
 import { PuraRoutineScreen } from '@/screens/routine/pura/PuraRoutineScreen';
@@ -59,7 +63,7 @@ const ProductsStack = createNativeStackNavigator<HomeStackParamList>();
 function HomeStackScreen() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
-      <HomeStack.Screen name="Home" component={HomeP27Screen} />
+      <HomeStack.Screen name="Home" component={PuraAssistHomeScreen} />
       <HomeStack.Screen name="Plan" component={PlanScreen} />
       <HomeStack.Screen name="Routine" component={PuraRoutineScreen} />
       <HomeStack.Screen name="Products" component={PuraShopScreen} />

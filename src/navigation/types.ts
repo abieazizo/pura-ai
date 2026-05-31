@@ -164,6 +164,13 @@ export type RootStackParamList = {
   Tabs: undefined;
   ScanModal: { initialMode?: ScanModalMode } | undefined;
   ProductDetailModal: { productId: string };
+  /**
+   * v32 — the Pura Assist conversation. A root-level route so it covers
+   * the floating tab dock (the reference shows no tab bar in
+   * conversation). Opened from the Home tab's input dock; `initialMessage`
+   * optionally pre-sends a question (e.g. a deep link / quick action).
+   */
+  AssistChat: { initialMessage?: string } | undefined;
   /** v10.25 — dev-only AI status & smoke-test surface. Reachable by
    *  tapping the AISourceBadge that floats in dev builds. The route
    *  is registered unconditionally; in production no UI surfaces a

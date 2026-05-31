@@ -1478,3 +1478,193 @@ export const puraShopLayout = {
   /** Minimum tappable size for any interactive control. */
   minTouchTarget: 44,
 } as const;
+
+// ---------------------------------------------------------------------------
+// puraAssist — "Pura Assist" surface tokens (v32).
+//
+// The redesigned Home tab IS the AI Assist landing surface, and the
+// conversation screen it opens. Both read EXCLUSIVELY from this namespace
+// (plus the shared `InstrumentSerif` / `Inter` font families) so no hex
+// literal lives outside theme/tokens.ts (per CLAUDE.md). Porcelain white
+// + Pura Blue + ink, with a green positive-signal accent and a single
+// purple reserved for the Routine quick-action eyebrow.
+// ---------------------------------------------------------------------------
+
+export const puraAssist = {
+  // ----- Surfaces -----
+  bg:            '#FCFDFF',  // porcelain page
+  surface:       '#FFFFFF',  // cards, input bar
+  cardSubBg:     '#F5F5F7',  // nested "Tonight" sub-card inside an answer
+
+  // ----- Ink scale -----
+  ink:           '#080A0F',
+  muted:         '#6E6E73',  // secondary copy
+  veryMuted:     '#8E8E93',  // placeholders, tertiary metadata
+
+  // ----- Pura Blue (intelligence accent) -----
+  blue:          '#147CFF',
+  blueDeep:      '#075FD1',
+  blueText:      '#063D8F',  // legible blue text on blue tints
+  blue05:        'rgba(20, 124, 255, 0.05)',  // reading-your-scan card bg
+  blue08:        'rgba(20, 124, 255, 0.08)',  // scan-ready pill, follow-up chips
+  blue12:        'rgba(20, 124, 255, 0.12)',  // icon chips
+  blue15:        'rgba(20, 124, 255, 0.15)',  // reading-your-scan card border
+  blueWireframe: '#147CFF',  // animated face mesh stroke
+
+  // ----- Green positive-signal accent -----
+  // iOS system green, used for the live "scan ready" dot + the Routine
+  // signal row. Brighter than the app's clinical success green (#20A67A)
+  // on purpose: it reads as a fresh, alive status light on the Assist
+  // surface rather than a chart series color.
+  green:         '#34C759',
+  green10:       'rgba(52, 199, 89, 0.10)',
+  greenText:     '#1E8E43',
+
+  // ----- Purple (Routine quick-action eyebrow only) -----
+  purple:        '#6E56CF',
+  purple10:      'rgba(110, 86, 207, 0.10)',
+  purpleText:    '#4B3C9E',
+
+  // ----- Structure -----
+  border:        '#E5EAF1',
+  hairline:      'rgba(8, 22, 56, 0.06)',
+
+  // ----- Inverse -----
+  white:         '#FFFFFF',
+  onBlue:        '#FFFFFF',  // up-arrow glyph on the send button
+} as const;
+
+export type PuraAssistToken = keyof typeof puraAssist;
+
+export const puraAssistType = {
+  // Editorial hero — "Your skin has context now."
+  heroSerif: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 36,
+    lineHeight: 39,
+    letterSpacing: -1.0,
+  },
+  headerTitle: {
+    fontFamily: SANS_SEMI,
+    fontSize: 17,
+    lineHeight: 21,
+    letterSpacing: -0.3,
+  },
+  headerSub: {
+    fontFamily: SANS_REG,
+    fontSize: 12.5,
+    lineHeight: 16,
+  },
+  subhead: {
+    fontFamily: SANS_REG,
+    fontSize: 15,
+    lineHeight: 22,
+    letterSpacing: -0.1,
+  },
+  // Assistant answer body — generous, readable.
+  answerBody: {
+    fontFamily: SANS_REG,
+    fontSize: 17,
+    lineHeight: 25,
+    letterSpacing: -0.2,
+  },
+  eyebrow: {
+    fontFamily: SANS_SEMI,
+    fontSize: 10.5,
+    lineHeight: 13,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase' as const,
+  },
+  cardTitle: {
+    fontFamily: SANS_SEMI,
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  quickAction: {
+    fontFamily: SANS_SEMI,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.2,
+  },
+  signalLabel: {
+    fontFamily: SANS_SEMI,
+    fontSize: 13.5,
+    lineHeight: 17,
+    letterSpacing: -0.1,
+  },
+  signalValue: {
+    fontFamily: SANS_MED,
+    fontSize: 13.5,
+    lineHeight: 17,
+    letterSpacing: -0.1,
+  },
+  chip: {
+    fontFamily: SANS_MED,
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: -0.1,
+  },
+  attribution: {
+    fontFamily: SANS_MED,
+    fontSize: 12,
+    lineHeight: 15,
+    letterSpacing: 0.1,
+  },
+  timestamp: {
+    fontFamily: SANS_MED,
+    fontSize: 12,
+    lineHeight: 15,
+    letterSpacing: 0.2,
+  },
+  inputText: {
+    fontFamily: SANS_REG,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.1,
+  },
+  subCardLabel: {
+    fontFamily: SANS_SEMI,
+    fontSize: 13.5,
+    lineHeight: 18,
+    letterSpacing: -0.1,
+  },
+  subCardMeta: {
+    fontFamily: SANS_REG,
+    fontSize: 12.5,
+    lineHeight: 16,
+  },
+} as const satisfies Record<string, TextStyle>;
+
+export const puraAssistRadius = {
+  card: 12,
+  quickAction: 14,
+  iconChip: 10,
+  input: 16,
+  pill: 999,
+  bubble: 22,
+  bubbleTail: 6,
+} as const;
+
+export const puraAssistShadow = {
+  card: {
+    shadowColor: '#0A1A2F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  input: {
+    shadowColor: '#0A1A2F',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+} as const satisfies Record<string, ViewStyle>;
+
+export const puraAssistLayout = {
+  screenPadding: 20,
+  /** Floating tab bar clearance the scroll content must leave. */
+  dockClearance: 66,
+} as const;
