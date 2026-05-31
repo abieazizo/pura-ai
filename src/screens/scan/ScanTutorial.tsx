@@ -1,149 +1,149 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+/**
+ * ScanTutorial — first-run scan intro.
+ *
+ * v35 Pass 2 (Reject & Rebuild) — The Question Card direction.
+ *
+ * Previous: 4-page horizontal pager with lighting illustration, zones
+ * animation, video placeholder, tap-to-adjust loop. Each page had a
+ * headline, subhead, and bullet list. Heavy, didactic, generic
+ * onboarding voice.
+ *
+ * The Question Card: a single screen where three paper-textured cards
+ * flip into view in sequence, each carrying ONE of Pura's three
+ * user-promise questions. After all three land, a single Instrument
+ * Serif "Begin." CTA fades in. That's the entire tutorial. The
+ * editorial restraint IS the brand statement.
+ *
+ *   Card 1 (0.2s)  — "What matters about your skin today?"
+ *   Card 2 (0.7s)  — "What should you do tonight?"
+ *   Card 3 (1.2s)  — "What should you buy — if anything?"
+ *   Begin. (2.1s)  — single italic CTA
+ *
+ * Lighting / zone / tap-adjust teaching previously delivered here is
+ * deferred to in-context coaching during the actual scan flow
+ * (CameraTrust + scan instruction caption). The first impression
+ * teaches the user WHY they're scanning, not HOW; the camera screen
+ * teaches the HOW at the moment it matters.
+ *
+ * Existing prop API preserved (`onComplete`, `onDismiss`) so callers
+ * don't break.
+ */
+
+import React, { useEffect, useMemo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
-  withSequence,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import {
-  X,
-  Sun,
-  HandPointing,
-  CameraSlash,
-  Scan,
-  Lock,
-  ClockClockwise,
-  Record,
-  Timer,
-  Sparkle,
-  PencilSimple,
-  type IconProps as PhosphorIconProps,
-} from 'phosphor-react-native';
-import { DeviceFrame } from '@/components/scan/DeviceFrame';
-import { TutorialTextBlock, type TutorialBullet } from '@/components/scan/TutorialTextBlock';
-import { PuraMark } from '@/components/PuraMark';
+import { X } from 'phosphor-react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { hapt } from '@/utils/haptics';
 import { palette, space } from '@/theme';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 export interface ScanTutorialProps {
-  /** Called when user presses "Start scanning." on page 4. */
+  /** Called when user presses "Begin." */
   onComplete: () => void;
-  /** Called when user taps × or swipes down. Does NOT mark tutorial seen. */
+  /** Called when user taps ×. Does NOT mark tutorial seen. */
   onDismiss: () => void;
 }
 
-const PAGE_COUNT = 4;
+interface CardSpec {
+  index: 0 | 1 | 2;
+  question: string;
+  /** Delay before this card flips in (ms from mount). */
+  delay: number;
+}
 
-type PageIndex = 0 | 1 | 2 | 3;
+const CARDS: ReadonlyArray<CardSpec> = [
+  { index: 0, question: 'What matters about your skin today?', delay: 200 },
+  { index: 1, question: 'What should you do tonight?',         delay: 700 },
+  { index: 2, question: 'What should you buy — if anything?',  delay: 1200 },
+];
 
-/**
- * First-run scan tutorial (§3). Four horizontally paged slides. Own dots,
- * own Next button, own × exit. Pages 2 and 4 render real React animations
- * inside a DeviceFrame. Page 3 is meant to play a looping video of the scan
- * in progress; if the asset is missing the placeholder is a pulsing capture
- * ring over a warm scrim — clearly called out in the delivery message.
- */
+// Total entrance time = last card delay + flip duration; CTA fades in just
+// after the last card lands.
+const FLIP_DURATION = 600;
+const CTA_DELAY = CARDS[2].delay + FLIP_DURATION - 100;
+
 export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
-  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const listRef = useRef<FlatList<PageIndex>>(null);
-  const [page, setPage] = useState<PageIndex>(0);
+  const reduceMotion = useReduceMotion();
 
-  const pages: PageIndex[] = [0, 1, 2, 3];
+  // Shared values per card — flip rotation and opacity.
+  const cardA = useSharedValue(0);
+  const cardB = useSharedValue(0);
+  const cardC = useSharedValue(0);
+  const cta = useSharedValue(0);
 
-  // Programmatic `scrollToIndex` does not reliably fire
-  // `onMomentumScrollEnd` on every platform (especially web and some
-  // Android devices), so we never blocked page-state updates on the
-  // scroll event. The Next button now advances state directly; the
-  // scroll listener still updates state when the user swipes
-  // horizontally with their finger.
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (width <= 0) return;
-    const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-    const clamped = Math.max(0, Math.min(3, idx)) as PageIndex;
-    if (clamped !== page) {
-      setPage(clamped);
-      hapt.select();
-    }
-  };
-
-  const advanceTo = (target: PageIndex) => {
-    setPage(target);
-    // Try the animated scroll; some platforms throw if the list
-    // hasn't measured yet, so fall back to a non-animated jump.
-    try {
-      listRef.current?.scrollToIndex({ index: target, animated: true });
-    } catch {
-      listRef.current?.scrollToIndex({ index: target, animated: false });
-    }
-  };
-
-  const next = () => {
-    if (page === 3) {
-      hapt.success();
-      onComplete();
+  useEffect(() => {
+    if (reduceMotion) {
+      cardA.value = 1;
+      cardB.value = 1;
+      cardC.value = 1;
+      cta.value = 1;
       return;
     }
+    const flip = (sv: typeof cardA, delay: number) => {
+      sv.value = withDelay(
+        delay,
+        withTiming(1, {
+          duration: FLIP_DURATION,
+          easing: Easing.bezier(0.16, 0.84, 0.28, 1),
+        })
+      );
+    };
+    flip(cardA, CARDS[0].delay);
+    flip(cardB, CARDS[1].delay);
+    flip(cardC, CARDS[2].delay);
+    cta.value = withDelay(
+      CTA_DELAY,
+      withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) })
+    );
+    return () => {
+      cancelAnimation(cardA);
+      cancelAnimation(cardB);
+      cancelAnimation(cardC);
+      cancelAnimation(cta);
+    };
+  }, [reduceMotion, cardA, cardB, cardC, cta]);
+
+  const ctaStyle = useAnimatedStyle(() => ({
+    opacity: cta.value,
+    transform: [{ translateY: (1 - cta.value) * 8 }],
+  }));
+
+  const close = () => {
     hapt.select();
-    advanceTo((page + 1) as PageIndex);
+    onDismiss();
   };
 
-  const renderItem = ({ item }: { item: PageIndex }) => (
-    <View style={{ width }}>
-      <TutorialPage index={item} width={width} />
-    </View>
-  );
-
-  const skipToScan = () => {
-    hapt.select();
+  const begin = () => {
+    hapt.success();
     onComplete();
   };
+
+  const sharedValues = useMemo(
+    () => [cardA, cardB, cardC] as const,
+    [cardA, cardB, cardC]
+  );
 
   return (
     <View style={styles.root}>
       <StatusBar style="dark" />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        {/* Top bar — Skip on the left jumps the user straight to the camera
-            (marks the tutorial seen). × on the right closes the whole
-            scan modal without marking seen (§3.1). Both have to be
-            obvious; users reported getting trapped here when only the
-            Next-paged path was offered. */}
+        {/* Single close affordance — top right. No Skip; the tutorial
+            takes ~2 seconds total so there's nothing to skip past. */}
         <View style={styles.topBar}>
+          <View style={{ width: 44 }} />
           <Pressable
-            onPress={skipToScan}
-            accessibilityRole="button"
-            accessibilityLabel="Skip tutorial and start scanning"
-            hitSlop={10}
-            style={({ pressed }) => [
-              styles.skipBtn,
-              pressed && { opacity: 0.75 },
-            ]}
-          >
-            <Text style={styles.skipText} maxFontSizeMultiplier={1.2}>
-              Skip
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              hapt.select();
-              onDismiss();
-            }}
+            onPress={close}
             accessibilityRole="button"
             accessibilityLabel="Close tutorial"
             hitSlop={10}
@@ -153,347 +153,73 @@ export function ScanTutorial({ onComplete, onDismiss }: ScanTutorialProps) {
           </Pressable>
         </View>
 
-        <View style={styles.pagerWrap}>
-          <FlatList
-            ref={listRef}
-            data={pages}
-            keyExtractor={(p) => `tut-${p}`}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={handleScroll}
-            scrollEventThrottle={16}
-            renderItem={renderItem}
-            getItemLayout={(_data, index) => ({
-              length: width,
-              offset: width * index,
-              index,
-            })}
-            onScrollToIndexFailed={(info) => {
-              const wait = new Promise<void>((resolve) => setTimeout(resolve, 50));
-              wait.then(() => {
-                listRef.current?.scrollToIndex({
-                  index: info.index,
-                  animated: true,
-                });
-              });
-            }}
-            style={styles.pager}
-          />
+        {/* Cards — stacked vertically, center-justified. Each carries
+            one of Pura's three user-promise questions. */}
+        <View style={styles.stack}>
+          {CARDS.map((spec, i) => (
+            <QuestionCard
+              key={spec.index}
+              question={spec.question}
+              progress={sharedValues[i]}
+              index={spec.index}
+            />
+          ))}
         </View>
 
-        <View
+        {/* Begin CTA — fades in after the third card lands. */}
+        <Animated.View
           style={[
             styles.footer,
             { paddingBottom: Math.max(24, insets.bottom + 12) },
+            ctaStyle,
           ]}
         >
-          <Dots page={page} />
-          <View style={{ height: 16 }} />
           <PrimaryButton
-            label={page === 3 ? 'Start scanning.' : 'Next'}
-            onPress={next}
-            serif={page === 3}
+            label="Begin."
+            onPress={begin}
+            serif
             tone="accent"
-            accessibilityLabel={
-              page === 3 ? 'Start scanning' : `Next, page ${page + 2} of 4`
-            }
+            accessibilityLabel="Begin scan"
           />
-        </View>
+        </Animated.View>
       </SafeAreaView>
     </View>
   );
 }
 
-// ---------- Pages ----------
+// ---------- Single question card ----------
 
-function TutorialPage({ index, width }: { index: PageIndex; width: number }) {
-  const body = PAGE_BODIES[index];
-  return (
-    <View style={styles.page}>
-      <View style={styles.stage}>
-        {index === 0 ? <StageLighting width={width} /> : null}
-        {index === 1 ? <StageFourZones /> : null}
-        {index === 2 ? <StageVideoPlaceholder /> : null}
-        {index === 3 ? <StageTapToAdjust /> : null}
-      </View>
-      <TutorialTextBlock
-        headline={body.headline}
-        subhead={body.subhead}
-        bullets={body.bullets}
-      />
-    </View>
-  );
+interface QuestionCardProps {
+  question: string;
+  progress: ReturnType<typeof useSharedValue<number>>;
+  index: number;
 }
 
-// ---------- Page bodies ----------
-
-const PAGE_BODIES: Array<{
-  headline: string;
-  subhead: string;
-  bullets: TutorialBullet[];
-}> = [
-  {
-    headline: 'Good light. Clean lens. Thirty seconds.',
-    subhead: 'The better the scan, the better I can read you.',
-    bullets: [
-      { Icon: Sun as React.FC<PhosphorIconProps>, label: 'Soft, natural light' },
-      { Icon: HandPointing as React.FC<PhosphorIconProps>, label: 'Steady hand for thirty seconds' },
-      { Icon: CameraSlash as React.FC<PhosphorIconProps>, label: "Wipe the lens if it's smudged" },
-    ],
-  },
-  {
-    headline: 'I read four zones.',
-    subhead: 'Chin, T-zone, forehead, cheeks — each scored and tracked.',
-    bullets: [
-      { Icon: Scan as React.FC<PhosphorIconProps>, label: 'Zones are identified' },
-      { Icon: Lock as React.FC<PhosphorIconProps>, label: 'Everything stays on your device' },
-      { Icon: ClockClockwise as React.FC<PhosphorIconProps>, label: 'Results in under a minute' },
-    ],
-  },
-  {
-    headline: "Here's how it works.",
-    subhead: "Tap the ring. Hold still. I'll handle the rest.",
-    bullets: [
-      { Icon: Record as React.FC<PhosphorIconProps>, label: 'Tap the ring to capture' },
-      { Icon: Timer as React.FC<PhosphorIconProps>, label: 'Hold for thirty seconds' },
-      { Icon: Sparkle as React.FC<PhosphorIconProps>, label: 'I score each zone in seconds' },
-    ],
-  },
-  {
-    headline: 'Adjust if I miss.',
-    subhead: 'Tap any zone to refine. I learn from your edits.',
-    bullets: [
-      { Icon: HandPointing as React.FC<PhosphorIconProps>, label: 'Tap a zone to review' },
-      { Icon: PencilSimple as React.FC<PhosphorIconProps>, label: 'Edit if I got it wrong' },
-      { Icon: Sparkle as React.FC<PhosphorIconProps>, label: 'The next scan gets sharper' },
-    ],
-  },
-];
-
-// ---------- MediaStages ----------
-
-/**
- * Page 1 — lighting stage. A warm radial blush wash with a large
- * duotone sun icon at its center. Speaks directly to "good light"
- * without invoking the brand cornflower-blue water drop (which only
- * belongs on the scan arc gauge).
- */
-function StageLighting({ width }: { width: number }) {
-  const stageWidth = Math.min(320, width - 48);
-  return (
-    <View style={[styles.lighting, { width: stageWidth }]}>
-      <View style={lightingStyles.halo} />
-      <View style={lightingStyles.haloInner} />
-      <Sun size={92} color={palette.clay} weight="duotone" />
-    </View>
-  );
-}
-
-const lightingStyles = StyleSheet.create({
-  halo: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(20, 124, 255, 0.10)',
-  },
-  haloInner: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(20, 124, 255, 0.16)',
-  },
-});
-
-/**
- * Page 2 — four-zone animation inside a DeviceFrame. Zone labels pulse in
- * sequence (opacity 0→1→0.7→1, scale 0.96→1), one per 800ms.
- */
-function StageFourZones() {
-  return (
-    <DeviceFrame>
-      <View style={deviceStyles.photoStage}>
-        {/* Ambient "face area" — warm neutral panel, no actual photo. */}
-        <View style={deviceStyles.facePanel} />
-        {/* Four pulsing zone labels anchored around the face panel. */}
-        <ZonePulse label="FOREHEAD" top="14%" left="34%" delay={0} />
-        <ZonePulse label="T-ZONE" top="34%" left="38%" delay={800} />
-        <ZonePulse label="CHIN" top="76%" left="40%" delay={1600} />
-        <ZonePulse label="CHEEKS" top="48%" left="14%" delay={2400} />
-      </View>
-    </DeviceFrame>
-  );
-}
-
-function ZonePulse({
-  label,
-  top,
-  left,
-  delay,
-}: {
-  label: string;
-  top: string;
-  left: string;
-  delay: number;
-}) {
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    progress.value = withRepeat(
-      withSequence(
-        withTiming(0, { duration: delay }),
-        withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) }),
-        withTiming(0.7, { duration: 220, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) }),
-        withTiming(0, { duration: 3200 - delay })
-      ),
-      -1,
-      false
-    );
-    return () => cancelAnimation(progress);
-  }, [delay, progress]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ scale: 0.96 + 0.04 * progress.value }],
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        zoneStyles.chip,
-        { top: top as any, left: left as any },
-        style,
-      ]}
-    >
-      <Text style={zoneStyles.chipText}>{label}</Text>
-    </Animated.View>
-  );
-}
-
-/**
- * Page 3 — video placeholder. Real asset is `assets/videos/scan-demo.mp4`
- * (not shipped). Until the asset exists we render a pulsing capture-ring
- * demo inside a DeviceFrame — enough to teach the interaction without
- * pretending to play a video.
- */
-function StageVideoPlaceholder() {
-  const pulse = useSharedValue(0);
-  useEffect(() => {
-    pulse.value = withRepeat(
-      withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true
-    );
-    return () => cancelAnimation(pulse);
-  }, [pulse]);
-
-  const ringStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 0.9 + 0.08 * pulse.value }],
-    opacity: 0.4 + 0.4 * pulse.value,
-  }));
-
-  return (
-    <DeviceFrame>
-      <View style={deviceStyles.videoBg}>
-        <View style={deviceStyles.videoFacePanel} />
-        <Animated.View
-          style={[
-            deviceStyles.captureRing,
-            { borderColor: palette.clay },
-            ringStyle,
-          ]}
-        />
-        <View style={deviceStyles.captureInner} />
-      </View>
-    </DeviceFrame>
-  );
-}
-
-/**
- * Page 4 — tap-to-adjust loop. A finger glyph slides to a zone row, the row
- * expands, collapses, and the finger retracts. 4-second loop.
- */
-function StageTapToAdjust() {
-  const phase = useSharedValue(0);
-  useEffect(() => {
-    phase.value = withRepeat(
-      withSequence(
-        withTiming(0, { duration: 400 }),
-        withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) }), // finger arrives
-        withTiming(2, { duration: 600, easing: Easing.out(Easing.cubic) }), // row expands
-        withTiming(3, { duration: 1400 }), // hold expanded
-        withTiming(4, { duration: 500, easing: Easing.inOut(Easing.ease) }), // collapse
-        withTiming(5, { duration: 500 }) // finger leaves
-      ),
-      -1,
-      false
-    );
-    return () => cancelAnimation(phase);
-  }, [phase]);
-
-  const fingerStyle = useAnimatedStyle(() => {
-    // Clamp movement between 0 and 1 ("arrived") and back to 0.
-    const arrived = Math.min(1, Math.max(0, phase.value));
-    const leaving = phase.value >= 4 ? Math.min(1, phase.value - 4) : 0;
-    const visible = arrived - leaving;
+function QuestionCard({ question, progress, index }: QuestionCardProps) {
+  const style = useAnimatedStyle(() => {
+    // Flip animation: rotateX from -42° to 0°, opacity 0→1, translateY
+    // 10pt → 0. Reads as a paper card landing on a desk, not a flat fade.
+    const rot = -42 + 42 * progress.value;
     return {
-      opacity: Math.max(0, Math.min(1, visible)),
+      opacity: progress.value,
       transform: [
-        { translateX: (1 - arrived) * 120 + leaving * 60 },
-        { translateY: (1 - arrived) * 40 + leaving * 20 },
+        { perspective: 800 },
+        { rotateX: `${rot}deg` },
+        { translateY: (1 - progress.value) * 10 },
       ],
     };
   });
 
-  const expandStyle = useAnimatedStyle(() => {
-    const expanded =
-      phase.value < 2
-        ? 0
-        : phase.value < 4
-        ? Math.min(1, phase.value - 2)
-        : Math.max(0, 1 - (phase.value - 3));
-    return {
-      height: 60 + expanded * 120,
-      opacity: 1,
-    };
-  });
-
   return (
-    <DeviceFrame>
-      <View style={deviceStyles.tapBg}>
-        <Animated.View style={[deviceStyles.zoneRow, expandStyle]}>
-          <Text style={deviceStyles.zoneRowLabel}>CHIN</Text>
-          <View style={deviceStyles.zoneRowBody}>
-            <Text style={deviceStyles.zoneRowText} numberOfLines={3}>
-              A little more oily than yesterday. Keep the BHA steady.
-            </Text>
-          </View>
-        </Animated.View>
-        <Animated.View style={[deviceStyles.fingerWrap, fingerStyle]}>
-          <View style={deviceStyles.fingerTip} />
-        </Animated.View>
+    <Animated.View style={[cardStyles.card, style]}>
+      {/* Small terracotta order pip — quiet brand mark on each card. */}
+      <View style={cardStyles.pip}>
+        <Text style={cardStyles.pipText}>{index + 1}</Text>
       </View>
-    </DeviceFrame>
-  );
-}
-
-// ---------- Dots ----------
-
-function Dots({ page }: { page: PageIndex }) {
-  return (
-    <View style={dotsStyles.row}>
-      {[0, 1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={[
-            dotsStyles.dot,
-            i === page ? dotsStyles.dotActive : dotsStyles.dotInactive,
-          ]}
-        />
-      ))}
-    </View>
+      <Text style={cardStyles.question} maxFontSizeMultiplier={1.15}>
+        {question}
+      </Text>
+    </Animated.View>
   );
 }
 
@@ -510,20 +236,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  skipBtn: {
-    minWidth: 44,
-    height: 44,
-    paddingHorizontal: 14,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  skipText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    color: palette.ink,
-    letterSpacing: -0.1,
-  },
   closeBtn: {
     width: 44,
     height: 44,
@@ -532,156 +244,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // pagerWrap takes the leftover vertical space; its `flex: 1` plus
-  // `minHeight: 0` lets the FlatList shrink on short phones so the
-  // footer (Next / Start scanning) never gets pushed off screen.
-  pagerWrap: {
+  stack: {
     flex: 1,
-    minHeight: 0,
-  },
-  pager: { flex: 1 },
-  page: {
-    flex: 1,
-  },
-  stage: {
-    flex: 0.55,
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: space.lg,
+    justifyContent: 'center',
+    gap: 16,
   },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 4,
     backgroundColor: palette.bg,
   },
-  lighting: {
-    aspectRatio: 1,
-    backgroundColor: palette.sandPaper,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });
 
-const deviceStyles = StyleSheet.create({
-  photoStage: {
-    flex: 1,
-    backgroundColor: palette.clayPaper,
-    position: 'relative',
+const cardStyles = StyleSheet.create({
+  // Paper card — warm off-white, soft drop shadow, tight border.
+  card: {
+    backgroundColor: '#FCFAF6',
+    borderRadius: 14,
+    paddingVertical: 22,
+    paddingHorizontal: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(20, 16, 12, 0.08)',
+    shadowColor: '#1B130B',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+    gap: 10,
   },
-  facePanel: {
-    position: 'absolute',
-    top: '18%',
-    left: '22%',
-    width: '56%',
-    height: '64%',
-    borderRadius: 100,
-    backgroundColor: palette.sandPaper,
-    opacity: 0.7,
-  },
-  videoBg: {
-    flex: 1,
-    backgroundColor: palette.ink,
+  pip: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(201, 122, 90, 0.14)', // terracotta wash
     alignItems: 'center',
     justifyContent: 'center',
   },
-  videoFacePanel: {
-    position: 'absolute',
-    top: '20%',
-    width: '60%',
-    height: '55%',
-    borderRadius: 120,
-    borderWidth: 1,
-    borderColor: 'rgba(252,253,255,0.5)',
-    backgroundColor: 'rgba(252,253,255,0.05)',
-  },
-  captureRing: {
-    position: 'absolute',
-    bottom: '12%',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 2,
-  },
-  captureInner: {
-    position: 'absolute',
-    bottom: '12%',
-    marginBottom: 12,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: palette.bg,
-  },
-  tapBg: {
-    flex: 1,
-    backgroundColor: palette.bg,
-    paddingTop: 60,
-    paddingHorizontal: 16,
-  },
-  zoneRow: {
-    backgroundColor: palette.sandPaper,
-    borderRadius: 16,
-    padding: 16,
-    overflow: 'hidden',
-  },
-  zoneRowLabel: {
+  pipText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
-    letterSpacing: 1.32,
-    color: palette.clay,
+    color: '#C97A5A', // terracotta
+    letterSpacing: 0.2,
   },
-  zoneRowBody: { marginTop: 12 },
-  zoneRowText: {
+  question: {
     fontFamily: 'InstrumentSerif-Italic',
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.5,
     color: palette.ink,
   },
-  fingerWrap: {
-    position: 'absolute',
-    bottom: 40,
-    right: 40,
-    width: 40,
-    height: 56,
-    alignItems: 'center',
-  },
-  fingerTip: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: palette.clay,
-    backgroundColor: palette.bg,
-  },
-});
-
-const zoneStyles = StyleSheet.create({
-  chip: {
-    position: 'absolute',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: palette.ink,
-  },
-  chipText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: palette.bg,
-  },
-});
-
-const dotsStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  dotActive: { backgroundColor: palette.clay },
-  dotInactive: { backgroundColor: 'rgba(20,124,255,0.2)' },
 });
