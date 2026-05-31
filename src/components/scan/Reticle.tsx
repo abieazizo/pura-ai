@@ -66,12 +66,21 @@ export function Reticle({
   const reduceMotion = useReduceMotion();
   const pulse = useSharedValue(0);
   const scanLine = useSharedValue(0);
+  // v35 Pass-1 — State 2 "The Breath". Idle face mode adds a single
+  // terracotta dot below the face oval that pulses on a 3.5s inhale/
+  // exhale rhythm. Sets the ceremony's tempo BEFORE the user knows
+  // they're being scanned — invitation to slow down. Initial pick
+  // implementation: dot is added, oval stays. Pass 2 may push further
+  // by removing instruction copy and reducing oval opacity if the
+  // breath dot proves to be sufficient anchor on its own.
+  const breathPulse = useSharedValue(0);
 
   // Continuous gentle pulse on the reticle border opacity (idle state).
   useEffect(() => {
     if (reduceMotion) {
       pulse.value = 0.5;
       scanLine.value = 0;
+      breathPulse.value = 0.7;
       return;
     }
     pulse.value = withRepeat(
@@ -79,8 +88,16 @@ export function Reticle({
       -1,
       true
     );
-    return () => cancelAnimation(pulse);
-  }, [reduceMotion, pulse, scanLine]);
+    breathPulse.value = withRepeat(
+      withTiming(1, { duration: 3500, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+    return () => {
+      cancelAnimation(pulse);
+      cancelAnimation(breathPulse);
+    };
+  }, [reduceMotion, pulse, scanLine, breathPulse]);
 
   // v35 Pass-1 — the old `sheen` shared value drove the moss halo
   // pulse during `preparing`. CornflowerArc now owns the preparing
@@ -105,6 +122,13 @@ export function Reticle({
 
   const pulseStyle = useAnimatedStyle(() => ({
     opacity: 0.4 + 0.2 * pulse.value,
+  }));
+
+  // The Breath dot — inhale: dot grows + brightens. Exhale: recedes
+  // + softens. Drives both opacity and scale on the same 3.5s phase.
+  const breathDotStyle = useAnimatedStyle(() => ({
+    opacity: 0.42 + 0.46 * breathPulse.value,
+    transform: [{ scale: 0.82 + 0.28 * breathPulse.value }],
   }));
 
   // Tone preset: only face mode flips between idle and preparing;
@@ -178,6 +202,22 @@ export function Reticle({
               borderColor: tonePreset.borderColor,
             }}
           />
+
+          {/* v35 Pass-1 — "The Breath" idle dot. Only renders in the
+              IDLE state (preparing has its own signature instrument).
+              Positioned below the oval, terracotta, pulses on a 3.5s
+              breath rhythm. Sets the ceremony's tempo without saying
+              a word. */}
+          {!isFacePreparing ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.breathDot,
+                { top: faceH / 2 + 32 },
+                breathDotStyle,
+              ]}
+            />
+          ) : null}
         </Animated.View>
       ) : null}
 
@@ -282,6 +322,20 @@ const styles = StyleSheet.create({
   },
   // v35 Pass-1 — the old `halo` style supported the moss-halo
   // sheen during `preparing`. CornflowerArc owns that role now.
+  // "The Breath" idle dot — terracotta, soft warm glow, sits
+  // centered below the face oval.
+  breathDot: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#C97A5A', // terracotta — Pura's brand warmth
+    shadowColor: '#C97A5A',
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
   scanLine: {
     position: 'absolute',
     top: 0,
