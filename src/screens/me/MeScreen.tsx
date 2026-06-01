@@ -1,11 +1,14 @@
 /**
  * Me — the personal tab.
  *
- * v30.1 editorial rebuild. Reads from the existing app store (no new
- * state). Promotes AI Assist to a real editorial hero, drops generic
- * zero-state tiles in favour of a quiet typographic action row, and
- * replaces the boxed bordered settings list with a hairline list that
- * matches the Welcome / Camera Tutorial typography family.
+ * v30.1 editorial rebuild, amended in v32. Reads from the existing app
+ * store (no new state). The AI Assist hero that once lived here was
+ * REMOVED in v32 — the Home tab is now the Pura Assist landing surface
+ * and the only entry point into conversation (its input dock opens the
+ * AssistChat route; see the note further down). Me keeps a quiet
+ * typographic action row instead of generic zero-state tiles, and a
+ * hairline settings list matching the Welcome / Camera Tutorial
+ * typography family.
  */
 
 import React, { useCallback } from 'react';
