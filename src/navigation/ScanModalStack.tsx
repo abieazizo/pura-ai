@@ -9,12 +9,15 @@ import { ScanCaptureScreen } from '@/screens/scan/ScanCaptureScreen';
 import { ScanAnalyzingScreen } from '@/screens/scan/ScanAnalyzingScreen';
 import { ScanAnalyzingFaceScreen } from '@/screens/scan/ScanAnalyzing';
 import { ScanResultsFaceScreen } from '@/screens/scan/ScanResultsFaceScreen';
+import { ScanRevealScreen } from '@/screens/scan/reveal/ScanRevealScreen';
+import { ScanBuildCeremony } from '@/screens/scan/reveal/ScanBuildCeremony';
 import { ScanResultDetailScreen } from '@/screens/scan/ScanResultDetailScreen';
 import { ScanResultsProductScreen } from '@/screens/scan/ScanResultsProductScreen';
 import { BarcodeAnalyzingScreen } from '@/screens/scan/BarcodeAnalyzingScreen';
 import { BarcodeResultScreen } from '@/screens/scan/BarcodeResultScreen';
 import { AuthChoice } from '@/screens/onboarding/AuthChoice';
 import { useAppStore } from '@/store/useAppStore';
+import { selectSkinState } from '@/state/canonical';
 import type { RootStackParamList, ScanStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<ScanStackParamList>();
@@ -46,6 +49,16 @@ export function ScanModalStack({ route }: any) {
 
       <Stack.Screen name="ScanResultsFace">
         {({ route: r }) => <ScanResultsFaceScreen scanId={r.params.scanId} />}
+      </Stack.Screen>
+
+      {/* Post-scan reveal arc — surfaces 2–6 pager, then surface 7 ceremony.
+          The face analyze step hands off into ScanReveal (see
+          AnalyzingScreenHost.handleComplete). */}
+      <Stack.Screen name="ScanReveal">
+        {() => <RevealScreenHost />}
+      </Stack.Screen>
+      <Stack.Screen name="ScanCeremony">
+        {() => <CeremonyScreenHost />}
       </Stack.Screen>
 
       {/* Post-scan account save — offered once after the first scan. */}
@@ -237,7 +250,13 @@ function AnalyzingScreenHost() {
   // in the future.
   const handleComplete = useCallback(
     (scanId: string) => {
-      scanNav.replace('ScanResultsFace', { scanId });
+      // Face analyze complete → hand off into the reveal arc (surfaces
+      // 2–6). The reveal host resolves the canonical SkinState from the
+      // just-saved scan. The reveal arc now replaces ScanResultsFace as
+      // the post-scan destination; ScanResultsFace stays registered as the
+      // defensive fallback (RevealScreenHost replaces into it if a
+      // SkinState somehow can't be resolved).
+      scanNav.replace('ScanReveal', { scanId });
     },
     [scanNav]
   );
@@ -292,4 +311,109 @@ function AnalyzingScreenHost() {
   };
 
   return <ScanAnalyzingScreen onDone={onDone} onCancel={handleCancel} />;
+}
+
+// ---------------------------------------------------------------------------
+// Reveal arc hosts — surfaces 2–6 (pager) and surface 7 (ceremony).
+// ---------------------------------------------------------------------------
+
+/**
+ * Post-analysis reveal pager (surfaces 2–6: Skin Map → Focus → Insights →
+ * Plan → Ready). Resolves the canonical SkinState from the just-saved scan
+ * (per CLAUDE.md: screens read FROM canonical state, never recompose AI
+ * output inline) and feeds it — plus the captured photo — to
+ * ScanRevealScreen.
+ *
+ *   • "Build my routine" → ScanCeremony (surface 7)
+ *   • "Skip for now" / header exit → close the modal to Home. The scan is
+ *     already saved to history; the reveal arc IS the post-scan results
+ *     experience, so skipping just declines the routine build.
+ *
+ * Defensive fallback: a freshly-added scan always resolves a SkinState, but
+ * if it somehow can't (e.g. corrupted persisted state), we replace into the
+ * legacy ScanResultsFace screen so the user is never stranded on a blank.
+ */
+function RevealScreenHost() {
+  const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
+  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<ScanStackParamList, 'ScanReveal'>>();
+  const { scanId } = route.params;
+
+  // Resolve canonical SkinState + the captured photo from the store once.
+  const resolved = React.useMemo(() => {
+    const scans = useAppStore.getState().scans;
+    const idx = scans.findIndex((s) => s.id === scanId);
+    if (idx < 0) {
+      return { skinState: null, photoUri: undefined as string | undefined };
+    }
+    const scan = scans[idx];
+    const previous = idx > 0 ? scans[idx - 1] : undefined;
+    return {
+      skinState: selectSkinState(scan, previous, scans),
+      photoUri: scan.photoUri,
+    };
+  }, [scanId]);
+
+  const closeToHome = useCallback(() => {
+    rootNav.getParent()?.goBack();
+  }, [rootNav]);
+
+  // Defensive fallback — no canonical state → legacy results screen.
+  React.useEffect(() => {
+    if (!resolved.skinState) {
+      scanNav.replace('ScanResultsFace', { scanId });
+    }
+  }, [resolved.skinState, scanNav, scanId]);
+
+  if (!resolved.skinState) return null;
+
+  return (
+    <ScanRevealScreen
+      skinState={resolved.skinState}
+      photoUri={resolved.photoUri}
+      initialStep={0}
+      onExit={closeToHome}
+      onBuildRoutine={() => scanNav.navigate('ScanCeremony', { scanId })}
+      onSkip={closeToHome}
+    />
+  );
+}
+
+/**
+ * Build Ceremony host (surface 7). The deterministic ~13s build commits the
+ * routine + flips routine lifecycle to 'active' internally; on completion we
+ * navigate the ROOT to Tabs/RoutineTab — one atomic dispatch that both
+ * dismisses this modal and focuses the Routine tab, where PuraRoutineScreen
+ * renders the populated landing page (surface 8) for the freshly-built
+ * routine.
+ *
+ * `onHowItWorks` is the footer "How Pura chooses" link; it opens the
+ * assistant rather than the tab handoff, so tapping it mid-build can't
+ * short-circuit the ceremony into the routine page.
+ */
+function CeremonyScreenHost() {
+  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<ScanStackParamList, 'ScanCeremony'>>();
+  const { scanId } = route.params;
+
+  const goToRoutineTab = useCallback(() => {
+    // Navigating the root to Tabs/RoutineTab pops this modal off the root
+    // stack and focuses the Routine tab in one move (same nested-navigation
+    // pattern as BarcodeResultScreen's jump to ProductsTab).
+    rootNav.getParent()?.navigate('Tabs', { screen: 'RoutineTab' });
+  }, [rootNav]);
+
+  const openHowItWorks = useCallback(() => {
+    rootNav.getParent()?.navigate('AssistChat', {
+      initialMessage: 'How does Pura choose my products?',
+    });
+  }, [rootNav]);
+
+  return (
+    <ScanBuildCeremony
+      scanId={scanId}
+      onComplete={goToRoutineTab}
+      onHowItWorks={openHowItWorks}
+    />
+  );
 }

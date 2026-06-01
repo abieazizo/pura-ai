@@ -133,6 +133,16 @@ export type ScanStackParamList = {
   ScanCapture: { initialMode?: ScanModalMode } | undefined;
   ScanAnalyzing: { photoUri: string; mode: 'face' | 'product' };
   ScanResultsFace: { scanId: string };
+  /** Post-scan reveal arc (surfaces 2–6: Skin Map → Focus → Insights →
+   *  Plan → Ready). The face analyze step hands off here instead of
+   *  straight to ScanResultsFace; the host resolves the canonical
+   *  SkinState from `scanId`. "Build my routine" advances to ScanCeremony;
+   *  "Skip for now" / exit closes the modal (the scan is already saved). */
+  ScanReveal: { scanId: string };
+  /** Reveal-arc surface 7 — the deterministic ~13s Build Ceremony. Commits
+   *  the routine + flips routine lifecycle to 'active' internally, then
+   *  hands off to the Routine tab (surface 8). */
+  ScanCeremony: { scanId: string };
   /** Post-scan account save ("Save your skin profile"), offered once after
    *  the first scan completes. Renders the repurposed AuthChoice screen. */
   SaveProfile: undefined;

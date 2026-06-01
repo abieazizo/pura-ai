@@ -97,7 +97,8 @@ export function OnboardingNavigator() {
  * `onDone`. We branch on the freshly-written flag (read imperatively so the
  * closure never goes stale):
  *
- *   • granted → finish onboarding and reset the root into the scan camera.
+ *   • granted → finish onboarding (the gate swaps Onboarding → Tabs) and
+ *               present `ScanModal` over Tabs so the user lands in the camera.
  *               `setHasSeenScanTutorial(true)` is preserved for parity with
  *               the old hand-off (no live consumer gates on it today).
  *   • denied  → replace with the CameraDenied fallback, so the blank
@@ -108,7 +109,11 @@ function CameraPermissionHost({
 }: {
   nav: NativeStackNavigationProp<OnboardingStackParamList>;
 }) {
-  const rootNav = useNavigation<NavigationProp<any>>();
+  // `useNavigation()` inside this screen returns the ONBOARDING stack, not the
+  // root — its parent is the root stack that owns `Tabs` and the always-mounted
+  // `ScanModal`. (The old code named this `rootNav` and reset it directly,
+  // which is what broke.)
+  const onboardingNav = useNavigation<NavigationProp<any>>();
   const finish = useAppStore((s) => s.finishOnboarding);
   const markScanTutorialSeen = useAppStore((s) => s.setHasSeenScanTutorial);
 
@@ -117,13 +122,28 @@ function CameraPermissionHost({
       nav.replace('CameraDenied');
       return;
     }
-    finish();
+    // Grab the ROOT navigator before finishing. It stays valid across the gate
+    // swap (the root never unmounts), while this onboarding screen tears down.
+    const rootNav = onboardingNav.getParent();
+
+    finish();                 // flips `onboardingComplete`
     markScanTutorialSeen(true);
-    rootNav.reset?.({
-      index: 1,
-      routes: [{ name: 'Tabs' as never }, { name: 'ScanModal' as never }],
+
+    // `finish()` makes the RootNavigator gate swap Onboarding → Tabs on its
+    // own (the canonical react-navigation auth-flow pattern). We therefore do
+    // NOT name `Tabs` in a reset: it isn't a valid root route until that gate
+    // re-render flushes, which is exactly what made the old
+    // `reset({ routes: [{ name: 'Tabs' }, { name: 'ScanModal' }] })` throw
+    // "RESET … was not handled by any navigator".
+    //
+    // Instead we just present the camera (`ScanModal` — an always-mounted root
+    // sibling) over the freshly-shown Tabs. Deferred one frame so the gate
+    // commits Tabs as the base screen FIRST; presenting before that would drop
+    // Tabs from the root stack and strand the user when they close the camera.
+    requestAnimationFrame(() => {
+      rootNav?.navigate('ScanModal', { initialMode: 'face' });
     });
-  }, [nav, finish, markScanTutorialSeen, rootNav]);
+  }, [nav, finish, markScanTutorialSeen, onboardingNav]);
 
   return (
     <SlideEntry replayOnFocus={false}>
@@ -138,13 +158,16 @@ function CameraPermissionHost({
  * a future scan works without re-prompting (the OS permission persists).
  */
 function CameraDeniedHost() {
-  const rootNav = useNavigation<NavigationProp<any>>();
   const finish = useAppStore((s) => s.finishOnboarding);
 
+  // `finish()` flips `onboardingComplete`; the RootNavigator gate reads that
+  // and swaps Onboarding → Tabs automatically. No manual reset — the old
+  // `reset({ routes: [{ name: 'Tabs' }] })` named a route this onboarding
+  // stack doesn't own and only seemed to work because the gate did the real
+  // navigation.
   const skip = useCallback(() => {
     finish();
-    rootNav.reset?.({ index: 0, routes: [{ name: 'Tabs' as never }] });
-  }, [finish, rootNav]);
+  }, [finish]);
 
   return (
     <SlideEntry>
@@ -166,13 +189,13 @@ function SignInHost({
 }: {
   nav: NativeStackNavigationProp<OnboardingStackParamList>;
 }) {
-  const rootNav = useNavigation<NavigationProp<any>>();
   const finish = useAppStore((s) => s.finishOnboarding);
 
+  // Same gate-driven swap as above: finishing onboarding lands the returning
+  // user on Tabs without a manual root reset.
   const completeSignIn = useCallback(() => {
     finish();
-    rootNav.reset?.({ index: 0, routes: [{ name: 'Tabs' as never }] });
-  }, [finish, rootNav]);
+  }, [finish]);
 
   return (
     <SlideEntry>

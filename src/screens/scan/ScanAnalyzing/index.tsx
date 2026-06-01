@@ -40,10 +40,8 @@ import type { Scan } from '@/types';
 import { MAX_TOTAL_WAIT } from './constants';
 import { ErrorState, type ErrorStateReason } from './components/ErrorState';
 import { scanToScanResult } from './lib/scanToResult';
-import {
-  AnalysisLoadingSlide,
-  type LoadingStage,
-} from '@/components/scan-results/AnalysisLoadingSlide';
+import { type LoadingStage } from '@/components/scan-results/AnalysisLoadingSlide';
+import { RevealAnalyzingSlide } from '@/screens/scan/reveal/RevealAnalyzingSlide';
 import { RetakeRequiredScreen } from '@/components/scan-results/RetakeRequiredScreen';
 import { LimitedScanInterstitial } from '@/components/scan-results/LimitedScanInterstitial';
 import { ScanServiceErrorScreen } from '@/components/scan-results/ScanServiceErrorScreen';
@@ -505,9 +503,13 @@ export function ScanAnalyzingFaceScreen({
     );
   }
 
-  // Default — the live analyzing experience.
+  // Default — the live analyzing experience. This is reveal-arc surface 1:
+  // the reveal-styled analyzing slide (PURA eyebrow · "1 of 6" · face mesh ·
+  // 150px progress ring · status checklist). The quality-gate state machine
+  // above is unchanged — this only swaps the visual that `loadingStage`
+  // drives, so retake / limited / error outcomes are unaffected.
   return (
-    <AnalysisLoadingSlide
+    <RevealAnalyzingSlide
       photoUri={photoUri}
       stage={loadingStage}
       onCancel={handleCancel}
