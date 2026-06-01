@@ -136,8 +136,6 @@ export type ProgressStackParamList = {
 export type ScanModalMode = 'face' | 'product' | 'barcode';
 
 export type ScanStackParamList = {
-  /** First-run tutorial. Conditionally initial when `hasSeenScanTutorial === false`. */
-  ScanTutorial: undefined;
   ScanCapture: { initialMode?: ScanModalMode } | undefined;
   ScanAnalyzing: { photoUri: string; mode: 'face' | 'product' };
   ScanResultsFace: { scanId: string };

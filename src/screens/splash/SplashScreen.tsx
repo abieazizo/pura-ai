@@ -3,7 +3,9 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Svg, {
   Defs,
+  Ellipse,
   LinearGradient as SvgLinearGradient,
+  RadialGradient as SvgRadialGradient,
   Stop,
   Text as SvgText,
 } from 'react-native-svg';
@@ -27,33 +29,33 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 /**
  * SplashScreen — "Cast in Glass".
  *
- * Three acts over 3000ms on one unbroken Porcelain (#FCFDFF) canvas:
+ * A big, grounded serif wordmark on one unbroken Porcelain (#FCFDFF) canvas —
+ * an object made of dark glass resting on a lit surface, not text in a void.
+ *
  *   ACT 1 (0–1100ms)   ASSEMBLY. Each letter of "Pura" arrives from depth —
  *                      from below, tilted back, behind the screen plane — and
- *                      settles on Apple's decelerate curve. Letters stagger
- *                      60ms apart, so the word feels assembled, not faded. A
- *                      single Light haptic fires the instant the word lands.
- *   ACT 2 (1100–2200)  HOLD. The wordmark breathes — a 1.5% scale pulse with a
- *                      synced ambient-shadow shift — so it reads as a material
- *                      object, not a frozen frame. A slow `systemReady` simply
- *                      extends this breathing hold; nothing ever spins.
- *   ACT 3 (2200–3000)  EXIT. The word drifts up 12px, scales up 2%, and fades
- *                      to zero. onReady() fires on the clean Porcelain frame, so
- *                      Home (the same canvas) takes over on an invisible seam.
+ *                      settles on Apple's decelerate curve, staggered 60ms
+ *                      apart. A soft contact shadow grows underneath as the
+ *                      letters land. A single Light haptic fires on the land.
+ *   ACT 2 (1100–2200)  HOLD. One specular highlight rakes left→right across the
+ *                      letterforms (the "cast in glass" tell — light travelling
+ *                      over the surface), while the word breathes a 1% pulse. A
+ *                      slow `systemReady` simply extends the breathing hold.
+ *   ACT 3 (2200–3000)  EXIT. The word drifts up, scales 2%, and fades to zero;
+ *                      the floor shadow fades with it. onReady() fires on the
+ *                      clean Porcelain frame so Home takes over on an invisible
+ *                      seam.
  *
  * Depth is faked, not rendered (no Three.js). Per-letter `perspective` +
- * `rotateX` sell the 3D tilt. React Native's transform array has no
- * `translateZ`, so the "behind the plane" recession is carried by scale
- * (0.90 → 1.0) — the apparent size change a true z-translation would produce
- * under perspective:1200.
+ * `rotateX` sell the tilt; the "behind the plane" recession is carried by scale
+ * (0.88 → 1.0). Each glyph is an SVG <Text> with a vertical Ink→warm gradient
+ * fill and a porcelain top-edge rim. The light-sweep is a second, sheen-filled
+ * SVG glyph whose OPACITY is pulsed, staggered letter-to-letter — a glint that
+ * crosses the word using only opacity animation (no animated SVG fills), so it
+ * renders identically and reliably on device.
  *
- * Each glyph is an SVG <Text> with a vertical Ink→warm gradient fill and a 1px
- * Porcelain top-edge highlight (the "glass" tell), wrapped in two shadow Views:
- * a tight contact shadow and a wide ambient one. Layered, not a single drop.
- *
- * Reduce Motion: assembly becomes a staggered opacity fade (no perspective, no
- * tilt, no recession); the hold sits perfectly still; exit is a plain fade; no
- * haptic.
+ * Reduce Motion: assembly becomes a staggered opacity fade (no tilt, no
+ * recession); the hold sits still with no sweep; exit is a plain fade; no haptic.
  *
  * Contract (unchanged): mounts at app root; calls onReady() exactly once when
  * the ceremony has played its minimum AND `systemReady` is true.
@@ -65,8 +67,11 @@ export interface SplashScreenProps {
 }
 
 const PORCELAIN = palette.bg; // #FCFDFF — identical to Home's canvas
-const INK_TOP = '#080A0F'; // gradient head (Ink)
-const INK_BOTTOM = '#1A1417'; // gradient foot (warmer near-black)
+const INK_TOP = '#070910'; // gradient head (cool near-black)
+const INK_MID = '#161019'; // gradient body
+const INK_BOTTOM = '#2E2330'; // gradient foot (warmer, lifted)
+const SHEEN = '#FFFFFF'; // specular highlight colour
+const FLOOR = '#0A0B10'; // grounding contact-shadow colour
 const LETTERS = ['P', 'u', 'r', 'a'] as const;
 const FONT = 'InstrumentSerif-Regular';
 
@@ -77,6 +82,8 @@ const ASSEMBLE_END = 1100;
 const HOLD_END = 2200;
 const HOLD_DUR = HOLD_END - ASSEMBLE_END;
 const EXIT_DUR = 800;
+const SWEEP_DELAY = 140; // after the land, before the glint starts
+const SWEEP_DUR = 920; // one pass across the word
 
 // Timeline (ms) — reduce-motion path.
 const R_ASSEMBLE_DUR = 400;
@@ -91,9 +98,9 @@ const BREATHE = Easing.inOut(Easing.ease);
 
 // Depth / entrance.
 const PERSPECTIVE = 1200;
-const ENTER_TY = 24; // px below final
-const ENTER_RX = 20; // deg tilted forward
-const ENTER_SCALE = 0.9; // ≈ translateZ -120 under perspective:1200
+const ENTER_TY = 30; // px below final
+const ENTER_RX = 22; // deg tilted forward
+const ENTER_SCALE = 0.88; // ≈ translateZ recession under perspective:1200
 
 // Approx glyph advance (em) so each SVG box can paint on frame 1, before the
 // transparent sizer's onLayout reports the exact advance width.
@@ -102,10 +109,22 @@ const ADVANCE: Record<string, number> = { P: 0.56, u: 0.5, r: 0.4, a: 0.5 };
 // Tight contact shadow — letters resting on a surface.
 const CONTACT = {
   shadowColor: '#000000',
-  shadowOpacity: 0.08,
-  shadowRadius: 4,
-  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 5,
+  shadowOffset: { width: 0, height: 3 },
 } as const;
+
+// Per-letter glint envelope — peaks when the travelling sweep reaches letter i.
+// Worklet: runs on the UI thread inside useAnimatedStyle.
+function glintAt(s: number, index: number, count: number): number {
+  'worklet';
+  if (s <= 0 || s >= 1) return 0;
+  const center = (index + 0.5) / count;
+  const half = 0.34;
+  const g = 1 - Math.abs(s - center) / half;
+  if (g <= 0) return 0;
+  return Math.sin(Math.min(g, 1) * (Math.PI / 2)) * 0.92;
+}
 
 function Letter({
   char,
@@ -115,6 +134,7 @@ function Letter({
   track,
   reduceMotion,
   breath,
+  sweep,
 }: {
   char: string;
   index: number;
@@ -123,6 +143,7 @@ function Letter({
   track: number;
   reduceMotion: boolean;
   breath: SharedValue<number>;
+  sweep: SharedValue<number>;
 }) {
   const enter = useSharedValue(0);
   const [w, setW] = useState(() =>
@@ -156,13 +177,20 @@ function Letter({
   // Wide ambient shadow — atmospheric depth; its offset breathes with the word.
   const ambientStyle = useAnimatedStyle(() => ({
     shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 + 2 * breath.value },
+    shadowOpacity: 0.05,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 14 + 2 * breath.value },
   }));
+
+  // Specular glint — the sheen glyph fades in then out as the sweep crosses.
+  const sheenStyle = useAnimatedStyle(() => {
+    if (reduceMotion) return { opacity: 0 };
+    return { opacity: glintAt(sweep.value, index, LETTERS.length) };
+  });
 
   const baseline = fontSize; // centers cap-height glyph within boxH (= 1.3·fontSize)
   const gid = `puraGlyph-${char}-${index}`;
+  const sid = `puraSheen-${char}-${index}`;
 
   return (
     <Animated.View
@@ -192,18 +220,19 @@ function Letter({
               <Defs>
                 <SvgLinearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
                   <Stop offset="0" stopColor={INK_TOP} />
+                  <Stop offset="0.56" stopColor={INK_MID} />
                   <Stop offset="1" stopColor={INK_BOTTOM} />
                 </SvgLinearGradient>
               </Defs>
-              {/* 1px Porcelain top-edge highlight — sits behind, peeks above. */}
+              {/* Porcelain top-edge rim — sits behind, peeks above the glyph. */}
               <SvgText
                 x={w / 2}
-                y={baseline - 1}
+                y={baseline - 1.5}
                 fontFamily={FONT}
                 fontSize={fontSize}
                 textAnchor="middle"
                 fill={PORCELAIN}
-                fillOpacity={0.08}
+                fillOpacity={0.5}
               >
                 {char}
               </SvgText>
@@ -218,6 +247,32 @@ function Letter({
                 {char}
               </SvgText>
             </Svg>
+            {/* Specular sheen overlay — a diagonal highlight band clipped to the
+                glyph; its opacity is pulsed (see sheenStyle) to cross the word. */}
+            <Animated.View
+              style={[styles.glyphSvg, sheenStyle]}
+              pointerEvents="none"
+            >
+              <Svg width={w} height={boxH}>
+                <Defs>
+                  <SvgLinearGradient id={sid} x1="0" y1="0" x2="1" y2="0.55">
+                    <Stop offset="0.30" stopColor={SHEEN} stopOpacity={0} />
+                    <Stop offset="0.50" stopColor={SHEEN} stopOpacity={0.95} />
+                    <Stop offset="0.70" stopColor={SHEEN} stopOpacity={0} />
+                  </SvgLinearGradient>
+                </Defs>
+                <SvgText
+                  x={w / 2}
+                  y={baseline}
+                  fontFamily={FONT}
+                  fontSize={fontSize}
+                  textAnchor="middle"
+                  fill={`url(#${sid})`}
+                >
+                  {char}
+                </SvgText>
+              </Svg>
+            </Animated.View>
           </View>
         </View>
       </Animated.View>
@@ -240,11 +295,19 @@ export function SplashScreen({ onReady, systemReady = true }: SplashScreenProps)
 
   const breath = useSharedValue(0);
   const exit = useSharedValue(0);
+  const sweep = useSharedValue(0); // 0→1 once, drives the specular glint
+  const assembled = useSharedValue(0); // 0→1 over Act 1, grounds the floor shadow
 
-  const fontSize = Math.round(Math.min(width / 390, 1.1) * 88);
+  // Bold, confident scale — the wordmark fills the frame instead of hiding in it.
+  const fontSize = Math.round(Math.min(width / 390, 1) * 150);
   const boxH = Math.round(fontSize * 1.3);
   const track = -Math.round(fontSize * 0.012); // hair-tight wordmark tracking
   const wordTop = Math.round(height * 0.44 - boxH / 2);
+
+  // Grounding contact shadow geometry.
+  const floorW = Math.round(fontSize * 1.5);
+  const floorH = Math.round(fontSize * 0.32);
+  const floorTop = Math.round(height * 0.44 + fontSize * 0.2);
 
   const fire = useCallback(() => {
     if (firedRef.current) return;
@@ -268,11 +331,17 @@ export function SplashScreen({ onReady, systemReady = true }: SplashScreenProps)
     };
   }, [fontReady]);
 
-  // ACT 1 → ACT 2 — assembly plays, then the word lands and begins to breathe.
+  // ACT 1 → ACT 2 — assembly plays, the floor grounds, then the word lands,
+  // breathes, and the specular glint sweeps across once.
   useEffect(() => {
     if (!fontReady) return;
     earliestExitRef.current =
       Date.now() + (reduceMotion ? R_HOLD_END : HOLD_END);
+
+    assembled.value = withTiming(1, {
+      duration: reduceMotion ? R_ASSEMBLE_END : ASSEMBLE_END,
+      easing: reduceMotion ? BREATHE : ENTER,
+    });
 
     const landAt = reduceMotion ? R_ASSEMBLE_END : ASSEMBLE_END;
     const toHold = setTimeout(() => {
@@ -288,12 +357,16 @@ export function SplashScreen({ onReady, systemReady = true }: SplashScreenProps)
           -1,
           false
         );
+        sweep.value = withDelay(
+          SWEEP_DELAY,
+          withTiming(1, { duration: SWEEP_DUR, easing: BREATHE })
+        );
       }
       setPhase('hold');
     }, landAt);
 
     return () => clearTimeout(toHold);
-  }, [fontReady, reduceMotion, breath]);
+  }, [fontReady, reduceMotion, breath, sweep, assembled]);
 
   // ACT 3 — exit once the hold has played its minimum AND the app is ready.
   useEffect(() => {
@@ -325,32 +398,62 @@ export function SplashScreen({ onReady, systemReady = true }: SplashScreenProps)
     return {
       opacity: 1 - e,
       transform: [
-        { translateY: -12 * e },
-        { scale: (1 + 0.015 * breath.value) * (1 + 0.02 * e) },
+        { translateY: -14 * e },
+        { scale: (1 + 0.01 * breath.value) * (1 + 0.02 * e) },
       ],
     };
   });
 
+  // Floor lands with the letters and fades out on exit.
+  const floorStyle = useAnimatedStyle(() => ({
+    opacity: assembled.value * (1 - exit.value),
+  }));
+
   return (
     <View style={styles.root}>
       <StatusBar style="dark" />
+      <Animated.View
+        style={[
+          styles.floor,
+          { top: floorTop, width: floorW, height: floorH, marginLeft: -floorW / 2 },
+          floorStyle,
+        ]}
+        pointerEvents="none"
+      >
+        <Svg width={floorW} height={floorH}>
+          <Defs>
+            <SvgRadialGradient id="puraFloor" cx="50%" cy="50%" r="50%">
+              <Stop offset="0" stopColor={FLOOR} stopOpacity={0.22} />
+              <Stop offset="0.7" stopColor={FLOOR} stopOpacity={0} />
+            </SvgRadialGradient>
+          </Defs>
+          <Ellipse
+            cx={floorW / 2}
+            cy={floorH / 2}
+            rx={floorW / 2}
+            ry={floorH / 2}
+            fill="url(#puraFloor)"
+          />
+        </Svg>
+      </Animated.View>
       <Animated.View
         style={[styles.word, { top: wordTop, height: boxH }, wordStyle]}
         pointerEvents="none"
       >
         {fontReady &&
           LETTERS.map((c, i) => (
-          <Letter
-            key={`${c}-${i}`}
-            char={c}
-            index={i}
-            fontSize={fontSize}
-            boxH={boxH}
-            track={track}
-            reduceMotion={reduceMotion}
-            breath={breath}
-          />
-        ))}
+            <Letter
+              key={`${c}-${i}`}
+              char={c}
+              index={i}
+              fontSize={fontSize}
+              boxH={boxH}
+              track={track}
+              reduceMotion={reduceMotion}
+              breath={breath}
+              sweep={sweep}
+            />
+          ))}
       </Animated.View>
     </View>
   );
@@ -360,6 +463,10 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: PORCELAIN, // Porcelain from frame 0, all the way into Home
+  },
+  floor: {
+    position: 'absolute',
+    left: '50%',
   },
   word: {
     position: 'absolute',

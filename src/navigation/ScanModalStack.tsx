@@ -11,7 +11,6 @@ import { ScanAnalyzingFaceScreen } from '@/screens/scan/ScanAnalyzing';
 import { ScanResultsFaceScreen } from '@/screens/scan/ScanResultsFaceScreen';
 import { ScanResultDetailScreen } from '@/screens/scan/ScanResultDetailScreen';
 import { ScanResultsProductScreen } from '@/screens/scan/ScanResultsProductScreen';
-import { ScanTutorial } from '@/screens/scan/ScanTutorial';
 import { BarcodeAnalyzingScreen } from '@/screens/scan/BarcodeAnalyzingScreen';
 import { BarcodeResultScreen } from '@/screens/scan/BarcodeResultScreen';
 import { useAppStore } from '@/store/useAppStore';
@@ -20,31 +19,22 @@ import type { RootStackParamList, ScanStackParamList } from './types';
 const Stack = createNativeStackNavigator<ScanStackParamList>();
 
 /**
- * v6 scan modal stack. First-time users land on ScanTutorial. Once the
- * tutorial is complete the next scan opens directly to ScanCapture. The
- * help button on the camera can re-open ScanTutorial; that path does not
- * alter the seen flag.
+ * v6 scan modal stack. Tapping the Scan tab opens directly to
+ * ScanCapture — the camera viewfinder is the whole interaction. There is
+ * no first-run interstitial in front of the camera.
  */
 export function ScanModalStack({ route }: any) {
   const initialMode = route?.params?.initialMode ?? 'face';
-  const hasSeenScanTutorial = useAppStore((s) => s.hasSeenScanTutorial);
-  const initialRouteName: keyof ScanStackParamList = hasSeenScanTutorial
-    ? 'ScanCapture'
-    : 'ScanTutorial';
 
   return (
     <Stack.Navigator
-      initialRouteName={initialRouteName}
+      initialRouteName="ScanCapture"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
         gestureEnabled: false,
       }}
     >
-      <Stack.Screen name="ScanTutorial" options={{ animation: 'fade' }}>
-        {() => <TutorialScreenHost />}
-      </Stack.Screen>
-
       <Stack.Screen name="ScanCapture" initialParams={{ initialMode }}>
         {() => <CaptureScreenHost />}
       </Stack.Screen>
@@ -126,29 +116,6 @@ function BarcodeResultHost() {
   );
 }
 
-/**
- * Tutorial host. "Start scanning." marks the tutorial seen and replaces to
- * the camera. × / swipe-down dismiss closes the whole ScanModal without
- * marking seen, per §3.1.
- */
-function TutorialScreenHost() {
-  const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
-  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
-  const setHasSeenScanTutorial = useAppStore((s) => s.setHasSeenScanTutorial);
-
-  const handleComplete = useCallback(() => {
-    setHasSeenScanTutorial(true);
-    scanNav.replace('ScanCapture');
-  }, [scanNav, setHasSeenScanTutorial]);
-
-  const handleDismiss = useCallback(() => {
-    // Do NOT set the flag here (§3.1). Simply close the whole scan modal.
-    rootNav.getParent()?.goBack();
-  }, [rootNav]);
-
-  return <ScanTutorial onComplete={handleComplete} onDismiss={handleDismiss} />;
-}
-
 function CaptureScreenHost() {
   const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
@@ -169,10 +136,11 @@ function CaptureScreenHost() {
       onBarcodeScanned={(barcodeValue) => {
         scanNav.replace('BarcodeAnalyzing', { barcodeValue });
       }}
-      // ? button on the camera — opens the tutorial without resetting the
-      // seen flag (§3.1). Uses `push` so the camera stays in the stack and
-      // a dismiss returns to it.
-      onOpenHelp={() => scanNav.navigate('ScanTutorial')}
+      // The camera's "?" control used to re-open the first-run tutorial,
+      // which has been removed. No-op for now; the control itself is slated
+      // for removal from the camera screen in a follow-up (out of scope for
+      // this routing fix, which must not modify the camera screen).
+      onOpenHelp={() => {}}
     />
   );
 }
