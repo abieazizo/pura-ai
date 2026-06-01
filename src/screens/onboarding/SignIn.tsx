@@ -26,7 +26,7 @@ import {
   GoogleLogo,
   Lock,
 } from 'phosphor-react-native';
-import { PuraMark } from '@/components/PuraMark';
+import { PuraGlyph } from '@/components/PuraGlyph';
 import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
@@ -153,7 +153,7 @@ export function SignIn({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.markWrap}>
-            <PuraMark variant="idle" size={56} />
+            <PuraGlyph size={56} tone="ink" ring />
           </View>
 
           <Animated.Text

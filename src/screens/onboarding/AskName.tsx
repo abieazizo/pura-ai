@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from 'react-native';
@@ -13,7 +15,6 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
 import {
   QuestionHeadline,
   QuestionSubhead,
@@ -27,9 +28,14 @@ export interface AskNameProps {
 }
 
 /**
- * AskName (§3.2). Single borderless input styled as Instrument Serif 40pt,
- * with an animated clay underline that strengthens on focus. Continue is
- * enabled at length ≥ 2.
+ * Screen 2 — Name (optional).
+ *
+ * The only thing we ask before the scan, and even this is skippable. No
+ * progress bar (the flow is three screens — a progress bar would be
+ * theater). A "Skip" affordance sits top-right; the rounded input matches
+ * the AI Assist composer rather than a bare underline.
+ *
+ * Continue (name ≥ 2 chars) and Skip both advance to the camera primer.
  */
 export function AskName({ onNext }: AskNameProps) {
   const insets = useSafeAreaInsets();
@@ -38,23 +44,40 @@ export function AskName({ onNext }: AskNameProps) {
   const [value, setValue] = useState(storedName);
   const focus = useSharedValue(storedName ? 1 : 0);
 
-  // v10.7 — underline tint moved from the v5 terracotta rgba to cool
-  // palette tokens. Focused = clay (brand accent); unfocused = hairline.
-  const underlineStyle = useAnimatedStyle(() => ({
-    backgroundColor: focus.value > 0.5 ? palette.clay : palette.hairline,
+  const fieldStyle = useAnimatedStyle(() => ({
+    borderColor: focus.value > 0.5 ? palette.clay : palette.hairline,
   }));
 
   const canContinue = value.trim().length >= 2;
+
   const submit = () => {
     if (!canContinue) return;
     setName(value.trim());
     onNext();
   };
 
+  const skip = () => {
+    // Optional: keep whatever name is already stored, just move on.
+    onNext();
+  };
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="dark" />
-      <OnboardingHeader currentStep={1} totalSteps={11} />
+
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={skip}
+          accessibilityRole="button"
+          accessibilityLabel="Skip"
+          hitSlop={10}
+          style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.skipText} maxFontSizeMultiplier={1.2}>
+            Skip
+          </Text>
+        </Pressable>
+      </View>
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -65,7 +88,7 @@ export function AskName({ onNext }: AskNameProps) {
           I'll use your name sparingly — I'm not that kind of app.
         </QuestionSubhead>
 
-        <View style={styles.inputWrap}>
+        <Animated.View style={[styles.field, fieldStyle]}>
           <TextInput
             value={value}
             onChangeText={setValue}
@@ -77,18 +100,17 @@ export function AskName({ onNext }: AskNameProps) {
             maxLength={40}
             returnKeyType="done"
             onFocus={() => {
-              focus.value = withTiming(1, { duration: 300 });
+              focus.value = withTiming(1, { duration: 220 });
             }}
             onBlur={() => {
               focus.value = withTiming(value.length > 0 ? 1 : 0, {
-                duration: 300,
+                duration: 220,
               });
             }}
             onSubmitEditing={submit}
             style={styles.input}
           />
-          <Animated.View style={[styles.underline, underlineStyle]} />
-        </View>
+        </Animated.View>
 
         <View style={styles.spacer} />
 
@@ -107,21 +129,38 @@ export function AskName({ onNext }: AskNameProps) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   flex: { flex: 1 },
-  inputWrap: {
+  topBar: {
+    height: 44,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  skipBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  skipText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: palette.clay,
+    letterSpacing: 0.1,
+  },
+  field: {
     marginHorizontal: 24,
-    marginTop: 32,
+    marginTop: 28,
+    height: 56,
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: palette.bg,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
   },
   input: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 40,
-    lineHeight: 44,
+    fontFamily: 'Inter-Regular',
+    fontSize: 17,
     color: palette.ink,
-    paddingVertical: 8,
-    paddingHorizontal: 0,
-  },
-  underline: {
-    height: 1,
-    alignSelf: 'stretch',
+    padding: 0,
   },
   spacer: { flex: 1 },
 });

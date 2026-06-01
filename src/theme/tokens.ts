@@ -1493,6 +1493,7 @@ export const puraShopLayout = {
 export const puraAssist = {
   // ----- Surfaces -----
   bg:            '#FCFDFF',  // porcelain page
+  bgClear:       'rgba(252, 253, 255, 0)',  // transparent page — start of the bottom fade behind the ask dock
   surface:       '#FFFFFF',  // cards, input bar
   cardSubBg:     '#F5F5F7',  // nested "Tonight" sub-card inside an answer
 
@@ -1665,6 +1666,335 @@ export const puraAssistShadow = {
 
 export const puraAssistLayout = {
   screenPadding: 20,
+  /** Floating tab bar clearance the scroll content must leave. */
+  dockClearance: 66,
+} as const;
+
+// ===========================================================================
+// puraReveal — the post-scan reveal → routine-build → routine-landing arc.
+// Eight surfaces (analyzing, skin map, focus areas, insights, skin plan,
+// ready, build ceremony, populated routine) share this one namespace so the
+// editorial serif ramp, the concern/zone palette, and the build-card states
+// all stay in lockstep. Per CLAUDE.md, hex literals live ONLY in this file —
+// these values are the single source of truth for the reveal arc.
+// ===========================================================================
+export const puraReveal = {
+  // ----- Surfaces -----
+  bg:            '#FCFDFF',  // porcelain page
+  surface:       '#FFFFFF',  // cards
+  porcelain:     '#EFF4FB',  // soft cool fill — icon circles, sparkle disc
+  porcelainDeep: '#E6EEF8',  // completed build-card / "tonight" sub-fill
+
+  // ----- Ink scale -----
+  ink:           '#080A0F',
+  muted:         '#5D6673',
+  veryMuted:     '#929BA8',
+
+  // ----- Pura Blue (intelligence accent) -----
+  blue:          '#147CFF',
+  blueDeep:      '#075FD1',
+  blueText:      '#063D8F',  // legible blue text on blue tints
+  blue05:        'rgba(20, 124, 255, 0.05)',
+  blue08:        'rgba(20, 124, 255, 0.08)',  // building-card tint bg
+  blue12:        'rgba(20, 124, 255, 0.12)',  // icon chips, ring track fill
+  blue15:        'rgba(20, 124, 255, 0.15)',  // building-card 1px border
+  meshStroke:    'rgba(255, 255, 255, 0.82)',  // analyzing face mesh overlay
+
+  // ----- CTA -----
+  ctaInk:        '#05070B',  // full-width "Build my routine" button fill
+  onInk:         '#FFFFFF',  // CTA label
+
+  // ----- Concern / zone palette (skin map overlays + tag chips) -----
+  // base = chip text + zone stroke; Soft = chip fill; Wash = face overlay.
+  oil:           '#4A7C59',  // sage — forehead/cheek oil
+  oilSoft:       'rgba(74, 124, 89, 0.12)',
+  oilWash:       'rgba(74, 124, 89, 0.34)',
+  redness:       '#D2666C',  // pink-coral — nose redness
+  rednessSoft:   'rgba(210, 102, 108, 0.12)',
+  rednessWash:   'rgba(210, 102, 108, 0.34)',
+  darkCircles:   '#7D6FCB',  // lavender — under-eye fatigue
+  darkCirclesSoft: 'rgba(125, 111, 203, 0.12)',
+  darkCirclesWash: 'rgba(125, 111, 203, 0.34)',
+  spots:         '#C97D4F',  // peach — chin spots
+  spotsSoft:     'rgba(201, 125, 79, 0.12)',
+  spotsWash:     'rgba(201, 125, 79, 0.34)',
+  texture:       '#147CFF',  // blue — texture
+  textureSoft:   'rgba(20, 124, 255, 0.12)',
+  textureWash:   'rgba(20, 124, 255, 0.30)',
+
+  // ----- Priority pill tones (focus-area cards) -----
+  priorityHigh:     '#D2666C',
+  priorityHighBg:   'rgba(210, 102, 108, 0.12)',
+  priorityMedium:   '#C58A1D',
+  priorityMediumBg: 'rgba(197, 138, 29, 0.14)',
+  priorityLow:      '#20A67A',
+  priorityLowBg:    'rgba(32, 166, 122, 0.12)',
+
+  // ----- Insight icon tones (Personalized Insights cards) -----
+  insightBarrier:   '#147CFF',  // blue droplet — Barrier Support
+  insightOil:       '#4A7C59',  // sage leaf — Oil Balance
+  insightClarity:   '#C58A1D',  // amber star — Clarity Boost
+
+  // ----- Progress / structure -----
+  ringTrack:     '#E5EAF1',  // circular progress-ring track
+  border:        '#E5EAF1',
+  hairline:      'rgba(8, 22, 56, 0.06)',
+  divider:       '#EEF1F5',  // pillar dividers, connecting line track
+  connector:     'rgba(20, 124, 255, 0.30)',  // thin line linking routine steps
+
+  // ----- Positive signal (build complete / step done) -----
+  done:          '#20A67A',
+  doneSoft:      'rgba(32, 166, 122, 0.12)',
+
+  white:         '#FFFFFF',
+} as const;
+
+export type PuraRevealToken = keyof typeof puraReveal;
+
+export const puraRevealType = {
+  // ----- Eyebrow + step counter -----
+  eyebrow: {
+    fontFamily: SANS_SEMI,
+    fontSize: 10.5,
+    lineHeight: 13,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase' as const,
+  },
+  stepCounter: {
+    fontFamily: SANS_MED,
+    fontSize: 12.5,
+    lineHeight: 16,
+    letterSpacing: 0.3,
+  },
+
+  // ----- Editorial display (Instrument Serif) -----
+  displayTitle: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 34,
+    lineHeight: 37,
+    letterSpacing: -0.8,
+  },
+  displayItalic: {
+    fontFamily: SERIF_ITALIC,
+    fontSize: 34,
+    lineHeight: 37,
+    letterSpacing: -0.5,
+  },
+  sectionTitle: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 28,
+    lineHeight: 31,
+    letterSpacing: -0.6,
+  },
+  focusPhrase: {
+    fontFamily: SERIF,
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.2,
+  },
+
+  // ----- Skin Plan pillars -----
+  pillarNumber: {
+    fontFamily: SERIF_ITALIC,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: 0,
+  },
+  pillarName: {
+    fontFamily: SANS_SEMI,
+    fontSize: 19,
+    lineHeight: 23,
+    letterSpacing: -0.3,
+  },
+  pillarDesc: {
+    fontFamily: SANS_REG,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: -0.1,
+  },
+
+  // ----- Progress ring -----
+  ringNumber: {
+    fontFamily: SANS_BOLD,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: -0.6,
+  },
+  ringPercent: {
+    fontFamily: SANS_SEMI,
+    fontSize: 15,
+    lineHeight: 18,
+    letterSpacing: 0,
+  },
+
+  // ----- Build ceremony -----
+  ceremonyHero: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 26,
+    lineHeight: 31,
+    letterSpacing: -0.5,
+  },
+  ceremonyHeroItalic: {
+    fontFamily: SERIF_ITALIC,
+    fontSize: 26,
+    lineHeight: 31,
+    letterSpacing: -0.3,
+  },
+  buildStatusLine: {
+    fontFamily: SANS_MED,
+    fontSize: 13.5,
+    lineHeight: 18,
+    letterSpacing: -0.1,
+  },
+
+  // ----- Cards & meta -----
+  concernName: {
+    fontFamily: SANS_SEMI,
+    fontSize: 17,
+    lineHeight: 21,
+    letterSpacing: -0.2,
+  },
+  cardTitle: {
+    fontFamily: SANS_SEMI,
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: -0.2,
+  },
+  body: {
+    fontFamily: SANS_REG,
+    fontSize: 15,
+    lineHeight: 23,
+    letterSpacing: -0.1,
+  },
+  productName: {
+    fontFamily: SERIF,
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+  },
+  brandCaps: {
+    fontFamily: SANS_SEMI,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase' as const,
+  },
+  guidance: {
+    fontFamily: SERIF_ITALIC,
+    fontSize: 14,
+    lineHeight: 19,
+    letterSpacing: -0.1,
+  },
+  tag: {
+    fontFamily: SANS_MED,
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: -0.1,
+  },
+  priorityPill: {
+    fontFamily: SANS_SEMI,
+    fontSize: 11,
+    lineHeight: 13,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase' as const,
+  },
+  stepMeta: {
+    fontFamily: SANS_MED,
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: -0.1,
+  },
+  statusItem: {
+    fontFamily: SANS_MED,
+    fontSize: 13.5,
+    lineHeight: 18,
+    letterSpacing: -0.1,
+  },
+  tip: {
+    fontFamily: SANS_REG,
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: -0.1,
+  },
+  dateLabel: {
+    fontFamily: SANS_MED,
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: 0.1,
+  },
+  cta: {
+    fontFamily: SANS_SEMI,
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.2,
+  },
+  link: {
+    fontFamily: SANS_MED,
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.1,
+  },
+} as const satisfies Record<string, TextStyle>;
+
+export const puraRevealRadius = {
+  card: 18,
+  cardLg: 22,
+  cta: 28,
+  pill: 999,
+  chip: 999,
+  thumb: 12,
+  iconCircle: 999,
+  ring: 999,
+} as const;
+
+export const puraRevealShadow = {
+  // Soft resting shadow for reveal cards.
+  card: {
+    shadowColor: '#0A1A2F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  // Elevated floating "Next" button.
+  float: {
+    shadowColor: '#0A1A2F',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  // Full-width Ink CTA.
+  cta: {
+    shadowColor: '#05070B',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+} as const satisfies Record<string, ViewStyle>;
+
+export const puraRevealLayout = {
+  screenPadding: 22,
+  maxContentWidth: 440,
+  cardGap: 14,
+  /** Circular analyzing progress ring. */
+  ringSize: 150,
+  ringStroke: 8,
+  /** Product thumbnail on ceremony / routine cards. */
+  thumb: 80,
+  ceremonyThumb: 40,
+  /** Insight sparkle disc + per-card outline icon. */
+  sparkleDisc: 120,
+  insightIcon: 64,
+  /** Ready-screen icon circles. */
+  readyIcon: 56,
+  /** Skin-map / focus close-up imagery. */
+  focusImage: 140,
+  /** Build-ceremony card heights per state. */
+  buildCardIdle: 80,
+  buildCardActive: 180,
+  buildCardDone: 110,
   /** Floating tab bar clearance the scroll content must leave. */
   dockClearance: 66,
 } as const;

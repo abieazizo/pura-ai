@@ -9,52 +9,30 @@ export type ProductsRowKind =
   | 'essentials';
 
 /**
- * Question-first onboarding. The active arc is the questionnaire:
- * Splash → AuthChoice → Ask* → Processing → ProfileSummary → Tutorial,
- * which then hands off into the scan camera. Returning users take
+ * Scan-first onboarding. Exactly three screens precede the camera:
+ * Splash → AskName → CameraPrimer → CameraPermission, which hands off into
+ * the scan camera (or CameraDenied on refusal). Returning users take
  * Splash → SignIn → Tabs.
  *
- * Routes whose screens still exist on disk but are not mounted are kept
- * in the legacy section below for type back-compat. DO NOT navigate to
- * them from new code.
+ * The questionnaire arc (AuthChoice / AskAge / AskGender / AskSkinType /
+ * AskConcerns / AskSensitivity / AskSunExposure / AskEffort / AskGoal /
+ * AskAttribution / Processing / ProfileSummary / Tutorial) and the dead
+ * V1/V2 graveyard (Welcome, Paywall, ReviewAsk, AskSkinBehavior,
+ * AskLifestyle, FirstScanInvitation, PlanReveal, NotificationPermission,
+ * and the entire onboarding/v2 tree) were DELETED in the scan-first
+ * rebuild — both their screen files and their routes. AuthChoice survives
+ * off this stack: it is repurposed as the post-scan "Save your skin
+ * profile" screen.
  */
 export type OnboardingStackParamList = {
-  // ---- Active question-first arc ----
+  // ---- Active scan-first arc (three screens before the camera) ----
   Splash: undefined;
-  AuthChoice: undefined;
+  AskName: undefined;
+  CameraPrimer: undefined;
+  CameraPermission: undefined;
+  CameraDenied: undefined;
   /** Returning-user provider sign-in. */
   SignIn: undefined;
-  AskName: undefined;
-  AskAge: undefined;
-  AskGender: undefined;
-  AskSkinType: undefined;
-  AskConcerns: undefined;
-  AskSensitivity: undefined;
-  AskSunExposure: undefined;
-  AskEffort: undefined;
-  AskGoal: undefined;
-  AskAttribution: undefined;
-  Processing: undefined;
-  ProfileSummary: undefined;
-  Tutorial: undefined;
-
-  // ---- Kept on disk, not mounted (type back-compat only). DO NOT
-  //      navigate to these from new code. ----
-  Paywall: undefined;
-  ReviewAsk: undefined;
-  AskSkinBehavior: undefined;
-  AskLifestyle: undefined;
-  FirstScanInvitation: undefined;
-  PlanReveal: undefined;
-  // Scan-first (V2) survivors — unreachable. The 7 mounted V2 screens
-  // (Welcome / CameraTrust / GuidedFirstScan / ScanReview / BaselineReveal
-  // / TonightRoutine / SaveProgress) were deleted when the questionnaire
-  // was restored.
-  PrimaryGoalV2: undefined;
-  ProcessingV2: undefined;
-  SafetyCalibrationV2: undefined;
-  RoutineSimplicityV2: undefined;
-  PlanRevealV2: undefined;
 };
 
 export type TabParamList = {
@@ -119,6 +97,22 @@ export type RoutineStackParamList = {
   Routine: undefined;
 };
 
+/**
+ * Me tab stack. The Me screen is the root; each ACCOUNT / SUPPORT row
+ * pushes one of the settings destinations. Mounted as a nested stack
+ * inside `MeTab` (see TabNavigator) so the floating dock — which keys
+ * active state off the tab route name — stays correct while these push.
+ */
+export type MeStackParamList = {
+  Me: undefined;
+  SkinProfileSettings: undefined;
+  NotificationSettings: undefined;
+  PrivacySettings: undefined;
+  AppearanceSettings: undefined;
+  HelpSupport: undefined;
+  About: undefined;
+};
+
 export type AssistantStackParamList = {
   Assistant: undefined;
 };
@@ -139,6 +133,9 @@ export type ScanStackParamList = {
   ScanCapture: { initialMode?: ScanModalMode } | undefined;
   ScanAnalyzing: { photoUri: string; mode: 'face' | 'product' };
   ScanResultsFace: { scanId: string };
+  /** Post-scan account save ("Save your skin profile"), offered once after
+   *  the first scan completes. Renders the repurposed AuthChoice screen. */
+  SaveProfile: undefined;
   /** v19.0 — Layer 2 of the result split. Reached from the Overview
    *  screen via "See full skin map". Renders the face-focused crop
    *  + concern chips + insight panel + premium overlay. */
@@ -177,4 +174,8 @@ export type RootStackParamList = {
   /** Dev-only gallery rendering each scan-result state with fixtures.
    *  Reachable from AIDiagnostics; never linked from user surfaces. */
   ScanResultsStatesDev: undefined;
+  /** Dev-only gallery for the post-scan reveal arc (screens 1–6). Param
+   *  selects which surface to render pixel-clean for screenshots; absent =
+   *  tappable index. Reachable from AIDiagnostics; never linked in prod. */
+  ScanRevealDev: { surface?: 1 | 2 | 3 | 4 | 5 | 6 | 'pager' | 'ceremony' | 'routine' } | undefined;
 };

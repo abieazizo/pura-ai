@@ -39,6 +39,7 @@ import {
   defaultTimeOfDayForNow,
   todayDateKey,
   resolveStepAvailability,
+  selectTonightDoneTypes,
 } from '@/state/routine/routineStore';
 import { useAppStore, useLatestScan, useLatestResult } from '@/store/useAppStore';
 import { useRoutineFocus } from '@/state/v26/routineFocus';
@@ -58,7 +59,6 @@ import {
   RoutineBuildingView,
   RoutineReadyView,
   RoutineReviewView,
-  DailyRoutineView,
   RoutineSessionView,
   RoutineCompletionView,
   ProgressView,
@@ -66,6 +66,7 @@ import {
   Body,
   QuietTextButton,
 } from '@/components/routine/pura';
+import { RoutineLandingView } from '@/screens/scan/reveal/RoutineLandingView';
 import type { RootStackParamList } from '@/navigation/types';
 import type { RoutineStep, RoutineTimeOfDay } from '@/types/routine';
 import { hapt } from '@/utils/haptics';
@@ -90,6 +91,7 @@ export function PuraRoutineScreen() {
     skippedStepIds,
     selectedTimeOfDay,
     todaySession,
+    tonightChecklist,
   } = useRoutineStore(
     useShallow((s) => ({
       lifecycle: s.lifecycle,
@@ -100,6 +102,7 @@ export function PuraRoutineScreen() {
       skippedStepIds: s.skippedStepIds,
       selectedTimeOfDay: s.selectedTimeOfDay,
       todaySession: s.todaySession,
+      tonightChecklist: s.tonightChecklist,
     })),
   );
 
@@ -114,6 +117,7 @@ export function PuraRoutineScreen() {
   const skipSessionStep = useRoutineStore((s) => s.skipSessionStep);
   const endSession = useRoutineStore((s) => s.endSession);
   const setRoutine = useRoutineStore((s) => s.setRoutine);
+  const toggleTonightStep = useRoutineStore((s) => s.toggleTonightStep);
 
   // Derive the correct lifecycle when no routine exists yet.
   useEffect(() => {
@@ -406,6 +410,24 @@ export function PuraRoutineScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lifecycle]);
 
+  // Active routine → the populated landing page (reveal-arc surface 8). It
+  // owns its own chrome, so it returns before the shared header/scroll shell.
+  if (lifecycle === 'active' && routine) {
+    return (
+      <RoutineLandingView
+        routine={routine}
+        doneTypes={selectTonightDoneTypes(tonightChecklist)}
+        onToggleStep={toggleTonightStep}
+        onEdit={() => setLifecycle('confirming_products')}
+        onHowItWorks={() =>
+          nav.navigate('AssistChat', {
+            initialMessage: 'How did you choose these products for me?',
+          })
+        }
+      />
+    );
+  }
+
   const bottomPad = insets.bottom + SP.dockClearance;
 
   return (
@@ -511,20 +533,6 @@ export function PuraRoutineScreen() {
             session={todaySession}
             onViewProgress={handleViewProgress}
             onDone={handleDone}
-          />
-        ) : lifecycle === 'active' && routine ? (
-          <DailyRoutineView
-            routine={routine}
-            confirmedOwnedIds={confirmedOwnedProductIds}
-            skippedStepIds={skippedStepIds}
-            selectedTimeOfDay={selectedTimeOfDay}
-            onChangeTimeOfDay={handleChangeTimeOfDay}
-            todaySession={todaySession}
-            canStart={canStart}
-            onStart={handleStartSession}
-            onContinue={handleStartSession}
-            onOpenProgress={handleViewProgress}
-            onStepPress={handleStartSession}
           />
         ) : null}
       </ScrollView>

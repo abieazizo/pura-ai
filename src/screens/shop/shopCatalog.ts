@@ -74,6 +74,7 @@ const PACKSHOT = {
   beautyOfJoseonRelief: require('../../../assets/shop-packshots/beauty-of-joseon-relief-sun.jpg'),
   anuaHeartleaf: require('../../../assets/shop-packshots/anua-heartleaf.jpg'),
   supergoopUnseen: require('../../../assets/products/supergoop-unseen.jpg'),
+  kiehlsUltraFacialCream: require('../../../assets/products/kiehls-ultra-facial-cream.jpg'),
 };
 
 // ---------------------------------------------------------------------------
@@ -218,6 +219,23 @@ export const SHOP_CATALOG: ShopCatalogProduct[] = [
     badge: { label: 'Bestseller', tone: 'bestseller' },
     concernTags: ['bright', 'hydration'],
     affinityHint: 76,
+  },
+  {
+    id: 'kiehls-ultra-facial-cream',
+    brand: "Kiehl's",
+    name: 'Ultra Facial Cream',
+    shortName: 'Ultra Facial Cream',
+    catalogPackshot: PACKSHOT.kiehlsUltraFacialCream,
+    packshotTone: 'mist',
+    category: 'moisturizer',
+    price: 32,
+    rating: 4.7,
+    reviewCount: 15800,
+    benefitLine: '24-hour barrier hydration',
+    usageLine: 'AM / PM · Daily',
+    badge: { label: 'Barrier care', tone: 'sage' },
+    concernTags: ['hydration', 'barrier'],
+    affinityHint: 84,
   },
 ];
 

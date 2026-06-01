@@ -22,7 +22,7 @@ import {
   GoogleLogo,
   ShieldCheck,
 } from 'phosphor-react-native';
-import { PuraMark } from '@/components/PuraMark';
+import { PuraGlyph } from '@/components/PuraGlyph';
 import { hapt } from '@/utils/haptics';
 import { palette } from '@/theme';
 
@@ -39,16 +39,16 @@ export interface AuthChoiceProps {
 }
 
 /**
- * AuthChoice (v10.6) — the front door's trusted entry.
+ * AuthChoice — the post-scan "Save your skin profile" screen.
  *
- * Replaces the previous text-link "Sign in" TODO on Splash with a proper
- * auth architecture. Apple first on iOS (platform convention), Google
- * second, Email third. A single "Already have an account? Sign in."
- * footer handles returning users.
+ * Account creation moved AFTER the first scan in the scan-first rebuild:
+ * the user scans, sees results, THEN is offered Apple / Google / Email to
+ * save their profile, or "Continue without saving" for anonymous on-device
+ * storage. It is no longer the onboarding front door. The brand mark is the
+ * typographic PuraGlyph — the raster droplet was removed from this surface.
  *
- * Copy intentionally short. A trust line ("Privacy-first. On-device
- * scans.") sits below the three buttons — not hidden in a legal link —
- * because that's the actual product promise.
+ * Apple first on iOS (platform convention), Google second, Email third. A
+ * "Already have an account? Sign in." footer handles returning users.
  *
  * Entrance: mark fades in at 0ms, headline at 80ms, buttons cascade at
  * 200ms / 260ms / 320ms. Each button has a spring-scaled press state.
@@ -136,7 +136,7 @@ export function AuthChoice({
 
       <View style={styles.center}>
         <Animated.View style={markStyle}>
-          <PuraMark variant="idle" size={84} glow />
+          <PuraGlyph size={72} tone="ink" ring />
         </Animated.View>
 
         <View style={{ height: 28 }} />
@@ -192,7 +192,7 @@ export function AuthChoice({
             <Pressable
               onPress={tap(onContinueAsGuest)}
               accessibilityRole="button"
-              accessibilityLabel="Continue without an account"
+              accessibilityLabel="Continue without saving"
               style={({ pressed }) => [
                 styles.guestRow,
                 pressed && { opacity: 0.7 },
@@ -200,7 +200,7 @@ export function AuthChoice({
               hitSlop={8}
             >
               <Text style={styles.guestLabel} maxFontSizeMultiplier={1.15}>
-                Not now
+                Continue without saving
               </Text>
             </Pressable>
           ) : null}

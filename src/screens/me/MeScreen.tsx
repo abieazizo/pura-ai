@@ -46,14 +46,14 @@ import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { hapt } from '@/utils/haptics';
 import { profileSheet as profileStrings } from '@/copy/strings';
-import type { RootStackParamList, TabParamList } from '@/navigation/types';
+import type { MeStackParamList, TabParamList } from '@/navigation/types';
 
-type RootNav = NavigationProp<RootStackParamList>;
+type MeNav = NavigationProp<MeStackParamList>;
 type TabNav = NavigationProp<TabParamList>;
 
 export function MeScreen() {
   const insets = useSafeAreaInsets();
-  const nav = useNavigation<RootNav>();
+  const meNav = useNavigation<MeNav>();
   const tabNav = useNavigation<TabNav>();
   const {
     name,
@@ -82,9 +82,13 @@ export function MeScreen() {
     tabNav.navigate('RoutineTab' as never);
   }, [tabNav]);
 
-  const openProfileSheet = useCallback(() => {
-    hapt.select();
-  }, []);
+  const goTo = useCallback(
+    (route: keyof MeStackParamList) => {
+      hapt.select();
+      meNav.navigate(route as never);
+    },
+    [meNav],
+  );
 
   const openSaved = useCallback(() => {
     hapt.select();
@@ -111,7 +115,7 @@ export function MeScreen() {
             Me
           </Text>
           <Pressable
-            onPress={openProfileSheet}
+            onPress={() => goTo('SkinProfileSettings')}
             accessibilityRole="button"
             accessibilityLabel="Open profile"
             hitSlop={8}
@@ -167,22 +171,22 @@ export function MeScreen() {
           <ListRow
             icon={<UserIcon size={17} color={puraShop.inkSecondary} weight="duotone" />}
             label={profileStrings.rows.skinProfile}
-            onPress={openProfileSheet}
+            onPress={() => goTo('SkinProfileSettings')}
           />
           <ListRow
             icon={<Bell size={17} color={puraShop.inkSecondary} weight="duotone" />}
             label={profileStrings.rows.notifications}
-            onPress={openProfileSheet}
+            onPress={() => goTo('NotificationSettings')}
           />
           <ListRow
             icon={<Lock size={17} color={puraShop.inkSecondary} weight="duotone" />}
             label={profileStrings.rows.privacy}
-            onPress={openProfileSheet}
+            onPress={() => goTo('PrivacySettings')}
           />
           <ListRow
             icon={<Moon size={17} color={puraShop.inkSecondary} weight="duotone" />}
             label={profileStrings.rows.appearance}
-            onPress={openProfileSheet}
+            onPress={() => goTo('AppearanceSettings')}
             last
           />
         </View>
@@ -195,12 +199,12 @@ export function MeScreen() {
           <ListRow
             icon={<Question size={17} color={puraShop.inkSecondary} weight="duotone" />}
             label={profileStrings.rows.help}
-            onPress={openProfileSheet}
+            onPress={() => goTo('HelpSupport')}
           />
           <ListRow
             icon={<Info size={17} color={puraShop.inkSecondary} weight="duotone" />}
             label={profileStrings.rows.about}
-            onPress={openProfileSheet}
+            onPress={() => goTo('About')}
             last
           />
         </View>

@@ -1,13 +1,17 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
-import {
-  QuestionHeadline,
-  QuestionSubhead,
-} from '@/components/onboarding/Headline';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
+import { PuraGlyph } from '@/components/PuraGlyph';
 import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { palette } from '@/theme';
 
 export interface CameraPrimerProps {
@@ -15,137 +19,134 @@ export interface CameraPrimerProps {
 }
 
 /**
- * Camera primer (§2.6). Editorial header + a rendered-in-our-style mock of
- * the iOS permission dialog. Tapping Continue advances to CameraPermission,
- * which fires the real system prompt.
+ * Screen 3 — Pre-camera-permission (onboarding rebuild).
+ *
+ * The honest hand-off before the system prompt. A centered, editorial beat:
+ * a small typographic Pura mark, the headline, and a privacy promise. No
+ * fake iOS dialog mock (that pantomimed the system sheet), no progress bar.
+ *
+ *   (P)                                    ← PuraGlyph (Instrument Serif)
+ *
+ *   Now, the scan.                         ← Instrument Serif headline
+ *   Pura uses your camera to read your     ← Inter subhead, generous leading
+ *   skin in detail — texture, tone,
+ *   hydration, barrier health. Scans live
+ *   on your device. Nothing leaves.
+ *
+ *   [ Continue ]                           ← Ink CTA → CameraPermission
+ *
+ * Continue fires the real system camera prompt on the next screen
+ * (CameraPermission). The droplet `PuraMark` that used to brand this
+ * surface was replaced with `PuraGlyph` in this rebuild.
  */
 export function CameraPrimer({ onContinue }: CameraPrimerProps) {
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
+
+  const glyphOp = useSharedValue(0);
+  const glyphScale = useSharedValue(reduceMotion ? 1 : 0.92);
+  const headOp = useSharedValue(0);
+  const headY = useSharedValue(reduceMotion ? 0 : 12);
+  const subOp = useSharedValue(0);
+  const ctaOp = useSharedValue(0);
+  const ctaY = useSharedValue(reduceMotion ? 0 : 10);
+
+  useEffect(() => {
+    const easeOut = Easing.out(Easing.cubic);
+    if (reduceMotion) {
+      glyphOp.value = 1;
+      glyphScale.value = 1;
+      headOp.value = 1;
+      headY.value = 0;
+      subOp.value = 1;
+      ctaOp.value = 1;
+      ctaY.value = 0;
+      return;
+    }
+    glyphOp.value = withTiming(1, { duration: 360, easing: easeOut });
+    glyphScale.value = withTiming(1, { duration: 360, easing: easeOut });
+    headOp.value = withDelay(120, withTiming(1, { duration: 420, easing: easeOut }));
+    headY.value = withDelay(120, withTiming(0, { duration: 420, easing: easeOut }));
+    subOp.value = withDelay(240, withTiming(1, { duration: 420, easing: easeOut }));
+    ctaOp.value = withDelay(420, withTiming(1, { duration: 420, easing: easeOut }));
+    ctaY.value = withDelay(420, withTiming(0, { duration: 420, easing: easeOut }));
+  }, [reduceMotion, glyphOp, glyphScale, headOp, headY, subOp, ctaOp, ctaY]);
+
+  const glyphStyle = useAnimatedStyle(() => ({
+    opacity: glyphOp.value,
+    transform: [{ scale: glyphScale.value }],
+  }));
+  const headStyle = useAnimatedStyle(() => ({
+    opacity: headOp.value,
+    transform: [{ translateY: headY.value }],
+  }));
+  const subStyle = useAnimatedStyle(() => ({ opacity: subOp.value }));
+  const ctaStyle = useAnimatedStyle(() => ({
+    opacity: ctaOp.value,
+    transform: [{ translateY: ctaY.value }],
+  }));
+
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <OnboardingHeader currentStep={null} />
 
-      <View style={styles.flex}>
-        <QuestionHeadline>I'll need your camera.</QuestionHeadline>
-        <QuestionSubhead>
-          Thirty seconds a day. Everything stays on your phone — I never send
-          your face anywhere.
-        </QuestionSubhead>
+      <View style={styles.body}>
+        <Animated.View style={[styles.glyphWrap, glyphStyle]}>
+          <PuraGlyph size={60} tone="ink" ring />
+        </Animated.View>
 
-        <View style={styles.mockWrap}>
-          <PermissionMock
-            title='"Pura" Would Like to Access the Camera'
-            body="For daily skin scans. Stored only on this device."
-          />
-        </View>
+        <Animated.Text
+          style={[styles.headline, headStyle]}
+          maxFontSizeMultiplier={1.15}
+          accessibilityRole="header"
+        >
+          Now, the scan.
+        </Animated.Text>
+
+        <Animated.Text style={[styles.sub, subStyle]} maxFontSizeMultiplier={1.25}>
+          Pura uses your camera to read your skin in detail — texture, tone,
+          hydration, barrier health. Scans live on your device. Nothing leaves.
+        </Animated.Text>
       </View>
 
-      <View style={[styles.ctaWrap, { paddingBottom: insets.bottom + 40 }]}>
-        <OnboardingPrimaryButton label="Continue." onPress={onContinue} />
-      </View>
+      <Animated.View
+        style={[styles.ctaWrap, ctaStyle, { paddingBottom: insets.bottom + 24 }]}
+      >
+        <OnboardingPrimaryButton label="Continue" onPress={onContinue} />
+      </Animated.View>
     </SafeAreaView>
-  );
-}
-
-/**
- * Visual-only iOS permission dialog (§2.6). Two buttons are visual — the
- * real system prompt is fired on the next screen. Paper tone, never stock
- * iOS grey. Inter at dialog sizes.
- */
-export function PermissionMock({ title, body }: { title: string; body: string }) {
-  return (
-    <View style={mock.card}>
-      <View style={mock.inner}>
-        <Text style={mock.title} maxFontSizeMultiplier={1.2}>
-          {title}
-        </Text>
-        <Text style={mock.body} maxFontSizeMultiplier={1.2}>
-          {body}
-        </Text>
-      </View>
-      <View style={mock.divider} />
-      <View style={mock.buttons}>
-        <View style={[mock.buttonSlot, mock.buttonSlotRightBorder]}>
-          <Text style={mock.dontAllow}>Don't Allow</Text>
-        </View>
-        <View style={mock.buttonSlot}>
-          <Text style={mock.allow}>Allow</Text>
-        </View>
-      </View>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
-  flex: { flex: 1 },
-  mockWrap: {
-    alignItems: 'center',
-    marginTop: 40,
-  },
-  ctaWrap: {
-    paddingTop: 12,
-  },
-});
-
-// v10.7 — the permission-mock card + its body / divider / border
-// colors moved from the v5 warm-ink rgba set to palette tokens, so
-// the CameraPrimer preview matches the rest of the cool-palette front
-// door instead of reading as a faintly-sepia iOS sheet.
-const mock = StyleSheet.create({
-  card: {
-    width: 280,
-    backgroundColor: palette.bg,
-    borderWidth: 1,
-    borderColor: palette.hairline,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  inner: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  title: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
-    lineHeight: 20,
-    color: palette.ink,
-    textAlign: 'center',
-  },
   body: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 18,
-    color: palette.inkSecondary,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: palette.hairline,
-  },
-  buttons: {
-    flexDirection: 'row',
-    height: 44,
-  },
-  buttonSlot: {
     flex: 1,
+    paddingHorizontal: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonSlotRightBorder: {
-    borderRightWidth: 1,
-    borderRightColor: palette.hairline,
+  glyphWrap: {
+    marginBottom: 28,
   },
-  dontAllow: {
+  headline: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.6,
+    color: palette.ink,
+    textAlign: 'center',
+  },
+  sub: {
     fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    color: palette.clay,
+    fontSize: 16,
+    lineHeight: 26,
+    color: palette.inkSecondary,
+    textAlign: 'center',
+    marginTop: 16,
+    maxWidth: 330,
   },
-  allow: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
-    color: palette.clay,
+  ctaWrap: {
+    paddingTop: 8,
   },
 });

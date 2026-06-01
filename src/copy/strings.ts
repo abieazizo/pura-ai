@@ -302,6 +302,171 @@ export const profileSheet = {
   devResetAll: 'Wipe all data',
 };
 
+/**
+ * Copy for the Me-tab settings destinations (Skin profile, Notifications,
+ * Privacy, Appearance, Help, About). One source of truth so the screens
+ * never embed strings inline.
+ */
+export const meSettings = {
+  // ----- Skin profile -----
+  skinProfile: {
+    title: 'Skin profile',
+    intro: 'This is what Pura uses to read your scans and match products. Update it any time — your next scan will use it.',
+    notSet: 'Not set',
+    sections: {
+      skinType: 'Skin type',
+      concerns: 'Top concerns',
+      concernsHint: 'Choose up to 3',
+      sensitivity: 'Reactivity',
+      goal: 'Goal this cycle',
+      sun: 'Sun exposure',
+      effort: 'Routine effort',
+      age: 'Age range',
+      hormones: 'Hormonal context',
+      optionalHint: 'Optional',
+    },
+    concernsCapped: 'Up to 3 keeps your plan focused.',
+    skinType: {
+      oily: 'Oily',
+      dry: 'Dry',
+      combination: 'Combination',
+      balanced: 'Balanced',
+      not_sure: 'Not sure',
+    },
+    sensitivity: {
+      very: 'Very reactive',
+      somewhat: 'Somewhat reactive',
+      not: 'Not very reactive',
+      unsure: 'Not sure',
+    },
+    goal: {
+      clear: 'Clearer skin',
+      calm: 'Calmer skin',
+      smoother: 'Smoother texture',
+      bright: 'Brighter tone',
+      barrier: 'Stronger barrier',
+    },
+    sun: {
+      rarely: 'Mostly indoors',
+      sometimes: 'Mixed',
+      often: 'Outdoors often',
+      unsure: 'It changes',
+    },
+    effort: {
+      minimal: 'Minimal',
+      moderate: 'Balanced',
+      enthusiast: 'Advanced',
+      'decide-for-me': 'Decide for me',
+    },
+    age: {
+      under_18: 'Under 18',
+      '18-24': '18–24',
+      '25-34': '25–34',
+      '35-44': '35–44',
+      '45-54': '45–54',
+      '55+': '55+',
+      prefer_not_to_say: 'Prefer not to say',
+    },
+    hormones: {
+      none: 'None right now',
+      cycle: 'Monthly cycle',
+      pregnancy_postpartum: 'Pregnancy / postpartum',
+      menopause: 'Menopause',
+      hrt: 'HRT',
+      prefer_not_to_say: 'Prefer not to say',
+    },
+    concerns: ['Breakouts', 'Redness', 'Dryness', 'Texture', 'Dark spots', 'Dullness', 'Oiliness', 'Sensitivity'],
+  },
+
+  // ----- Notifications -----
+  notifications: {
+    title: 'Notifications',
+    intro: 'Pura keeps it to one gentle nudge — a nightly reminder to scan in similar light so your comparisons stay honest.',
+    reminderLabel: 'Nightly scan reminder',
+    reminderMeta: (time: string) => `Every evening at ${time}`,
+    reminderMetaOff: 'Off',
+    timeLabel: 'Reminder time',
+    unavailable: "Reminders aren't available on this device. They work on the iOS and Android app.",
+    deniedTitle: 'Notifications are off',
+    deniedBody: 'Turn them on for Pura in your device Settings, then flip this back on.',
+  },
+
+  // ----- Privacy -----
+  privacy: {
+    title: 'Privacy',
+    intro: 'Your skin is personal. Here is exactly how Pura handles it.',
+    points: [
+      {
+        title: 'Scans are read on your device',
+        body: 'Your face scans are analyzed locally. Photos stay on your phone — they are not uploaded to a server.',
+      },
+      {
+        title: 'Your profile stays on your phone',
+        body: 'Skin type, concerns, routine, and history are stored locally on this device, not in the cloud.',
+      },
+      {
+        title: 'No selling your data',
+        body: 'Pura does not sell or share your skin data with advertisers. Ever.',
+      },
+    ],
+    dataTitle: 'Your data',
+    eraseLabel: 'Erase all my data',
+    eraseMeta: 'Deletes your profile, scans, routine, and history from this device.',
+    eraseConfirmTitle: 'Erase all data?',
+    eraseConfirmBody: 'This permanently deletes your profile, scans, routine, and saved products from this device. This cannot be undone.',
+    eraseConfirmCta: 'Erase everything',
+    cancel: 'Cancel',
+  },
+
+  // ----- Appearance -----
+  appearance: {
+    title: 'Appearance',
+    // Honest framing: Pura ships a single light theme by design. We do not
+    // fake a dark toggle that wouldn't actually repaint the app.
+    themeLabel: 'Theme',
+    themeValue: 'Light',
+    themeNote: 'Pura is designed as one calm, luminous light experience. A dark theme isn’t available yet.',
+    lightingTitle: 'Scan lighting',
+    lightingLabel: 'Lighting Assist',
+    lightingMeta: 'Adds a soft on-screen glow during face scans so low light still reads clearly.',
+  },
+
+  // ----- Help & support -----
+  help: {
+    title: 'Help & support',
+    intro: 'Quick answers to the things people ask most.',
+    faqs: [
+      {
+        q: 'How does the skin scan work?',
+        a: 'Point the front camera at your face in even light. Pura reads your skin zones on-device and turns them into a score, your top concerns, and one clear next step.',
+      },
+      {
+        q: 'How often should I scan?',
+        a: 'Once a night is plenty. Use similar lighting each time so week-to-week comparisons mean something.',
+      },
+      {
+        q: 'Why did my score change?',
+        a: 'Scores move with lighting, hydration, and real change. Pura weighs trends over single scans, so one off-night won’t define your progress.',
+      },
+      {
+        q: 'How are products matched to me?',
+        a: 'Pura filters the catalog against your skin profile and latest scan first, then explains why the top pick fits. You’re always shown the reasoning, never just a star rating.',
+      },
+    ],
+    moreTitle: 'Still stuck?',
+    moreBody: 'More support options are on the way. For now, the answers above cover the most common questions.',
+  },
+
+  // ----- About -----
+  about: {
+    title: 'About',
+    tagline: 'Skincare that knows what it’s looking at.',
+    versionLabel: 'Version',
+    mission: 'Pura is a trusted skin coach, not a chatbot demo. Every session answers three things: what matters about your skin today, what to do next, and what to buy — if anything.',
+    madeWith: 'Made with care for your skin.',
+  },
+} as const;
+
 export const zoneStatusLabel = {
   active: 'ACTIVE',
   monitor: 'MONITOR',

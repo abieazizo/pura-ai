@@ -13,6 +13,7 @@ import { ScanResultDetailScreen } from '@/screens/scan/ScanResultDetailScreen';
 import { ScanResultsProductScreen } from '@/screens/scan/ScanResultsProductScreen';
 import { BarcodeAnalyzingScreen } from '@/screens/scan/BarcodeAnalyzingScreen';
 import { BarcodeResultScreen } from '@/screens/scan/BarcodeResultScreen';
+import { AuthChoice } from '@/screens/onboarding/AuthChoice';
 import { useAppStore } from '@/store/useAppStore';
 import type { RootStackParamList, ScanStackParamList } from './types';
 
@@ -45,6 +46,11 @@ export function ScanModalStack({ route }: any) {
 
       <Stack.Screen name="ScanResultsFace">
         {({ route: r }) => <ScanResultsFaceScreen scanId={r.params.scanId} />}
+      </Stack.Screen>
+
+      {/* Post-scan account save — offered once after the first scan. */}
+      <Stack.Screen name="SaveProfile">
+        {() => <SaveProfileHost />}
       </Stack.Screen>
 
       {/* v19.0 — Layer 2 detail screen reached from "See full skin map". */}
@@ -112,6 +118,33 @@ function BarcodeResultHost() {
       onScanAgain={() => {
         scanNav.replace('ScanCapture', { initialMode: 'barcode' });
       }}
+    />
+  );
+}
+
+/**
+ * Post-scan "Save your skin profile" host. Offered once, after the user's
+ * first scan results (gated in ScanResultsFaceScreen). With no real auth
+ * backend in this build, every account action — and "Continue without
+ * saving" — marks the offer consumed and closes the modal to Home; real
+ * Apple / Google / email account link-up is a backend follow-up.
+ */
+function SaveProfileHost() {
+  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const markOffered = useAppStore((s) => s.markAccountSaveOffered);
+
+  const finishToHome = useCallback(() => {
+    markOffered();
+    rootNav.getParent()?.goBack();
+  }, [markOffered, rootNav]);
+
+  return (
+    <AuthChoice
+      onAppleContinue={finishToHome}
+      onGoogleContinue={finishToHome}
+      onEmailContinue={finishToHome}
+      onSignIn={finishToHome}
+      onContinueAsGuest={finishToHome}
     />
   );
 }

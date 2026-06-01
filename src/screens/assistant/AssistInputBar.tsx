@@ -22,7 +22,7 @@ import {
   View,
   type TextInputProps,
 } from 'react-native';
-import { ArrowUp, Plus } from 'phosphor-react-native';
+import { ArrowUp, Sparkle } from 'phosphor-react-native';
 import {
   puraAssist,
   puraAssistRadius,
@@ -47,7 +47,6 @@ interface ComposerProps extends CommonProps {
   value: string;
   onChangeText: (t: string) => void;
   onSend: () => void;
-  onPlus?: () => void;
   inputRef?: React.RefObject<TextInput | null>;
   onFocus?: TextInputProps['onFocus'];
 }
@@ -57,10 +56,15 @@ export type AssistInputBarProps = LauncherProps | ComposerProps;
 export function AssistInputBar(props: AssistInputBarProps) {
   const canSend = props.mode === 'composer' && props.value.trim().length > 0;
 
-  // ----- The three regions: plus / field / send. ------------------------
-  const plus = (
-    <View style={styles.plus} accessible={false} pointerEvents="none">
-      <Plus size={20} color={puraAssist.veryMuted} weight="bold" />
+  // ----- The three regions: AI badge / field / send. --------------------
+  // The leading badge is the standing "you're talking to Pura's AI" signal —
+  // identical on the launcher (Home) and the composer (conversation) so the
+  // two bars stay pixel-matched. Decorative only; the bar itself carries the
+  // press affordance and accessibility label.
+  const aiBadge = (
+    <View style={styles.aiBadge} accessible={false} pointerEvents="none">
+      <Sparkle size={13} color={puraAssist.blue} weight="fill" />
+      <Text style={styles.aiBadgeLabel}>AI</Text>
     </View>
   );
 
@@ -81,7 +85,7 @@ export function AssistInputBar(props: AssistInputBarProps) {
           onPress={props.onOpen}
           style={({ pressed }) => [styles.bar, pressed && styles.barPressed]}
         >
-          {plus}
+          {aiBadge}
           <Text style={styles.placeholder} numberOfLines={1}>
             {PLACEHOLDER}
           </Text>
@@ -95,15 +99,7 @@ export function AssistInputBar(props: AssistInputBarProps) {
   return (
     <View style={[styles.dock, dockInset(props.bottomInset)]} pointerEvents="box-none">
       <View style={styles.bar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Attach"
-          hitSlop={8}
-          onPress={props.onPlus}
-          style={({ pressed }) => [styles.plus, pressed && { opacity: 0.5 }]}
-        >
-          <Plus size={20} color={puraAssist.veryMuted} weight="bold" />
-        </Pressable>
+        {aiBadge}
         <TextInput
           ref={props.inputRef as React.RefObject<TextInput>}
           style={styles.input}
@@ -167,11 +163,19 @@ const styles = StyleSheet.create({
     opacity: 0.96,
     transform: [{ scale: 0.995 }],
   },
-  plus: {
-    width: 34,
-    height: 34,
+  aiBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 3,
+    height: 26,
+    paddingHorizontal: 9,
+    marginLeft: 2,
+    borderRadius: puraAssistRadius.pill,
+    backgroundColor: puraAssist.blue12,
+  },
+  aiBadgeLabel: {
+    ...puraAssistType.eyebrow,
+    color: puraAssist.blueText,
   },
   placeholder: {
     flex: 1,

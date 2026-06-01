@@ -75,6 +75,13 @@ export interface AppState {
    *  The first add-to-morning/evening from AddToRoutineSheet triggers
    *  the contextual request, then this flag prevents re-prompting. */
   hasPromptedNotifications: boolean;
+  /** Notifications settings page — the user's intent for the nightly
+   *  scan reminder. `routineRemindersEnabled` is the persisted toggle
+   *  state; `routineReminderTime` is the time of day (24h) the reminder
+   *  fires. The OS schedule is best-effort (see lib/routineReminder); this
+   *  is the source of truth for what the UI shows. */
+  routineRemindersEnabled: boolean;
+  routineReminderTime: { hour: number; minute: number };
 
   onboardingComplete: boolean;
   name: string;
@@ -169,6 +176,12 @@ export interface AppState {
   subscriptionStatus: 'trial' | 'active' | 'none';
   hasAskedForReview: boolean;
   cameraDenied: boolean;
+  /**
+   * v-rebuild — true once the one-time post-scan "Save your skin profile"
+   * screen has been shown (whether the user created an account or continued
+   * without saving). Gates the offer so it appears only after the first scan.
+   */
+  accountSaveOffered: boolean;
 
   contextualTodayNote: string | null;
   priceTier: 'drugstore' | 'mid' | 'prestige' | null;
@@ -345,6 +358,8 @@ export interface AppState {
   setAppearance: (mode: AppearanceMode) => void;
   setHasSeenScanTutorial: (seen: boolean) => void;
   setHasPromptedNotifications: (prompted: boolean) => void;
+  setRoutineRemindersEnabled: (enabled: boolean) => void;
+  setRoutineReminderTime: (time: { hour: number; minute: number }) => void;
   /** v10.13 — user-routine actions. Idempotent (no-op if productId is
    *  already in the target slot); moving from one slot to another is
    *  explicit via `moveUserRoutineProduct`. */
@@ -370,6 +385,7 @@ export interface AppState {
   setSubscriptionStatus: (s: AppState['subscriptionStatus']) => void;
   setHasAskedForReview: (seen: boolean) => void;
   setCameraDenied: (denied: boolean) => void;
+  markAccountSaveOffered: () => void;
 
   setContextualTodayNote: (note: string | null) => void;
   setPriceTier: (tier: AppState['priceTier']) => void;
@@ -481,6 +497,10 @@ const blankState = {
   appearance: 'light' as AppearanceMode,
   hasSeenScanTutorial: false,
   hasPromptedNotifications: false,
+  // Nightly scan reminder defaults: off until the user opts in, 9:30 PM
+  // to match the existing "See you tonight at 9:30 PM" routine copy.
+  routineRemindersEnabled: false,
+  routineReminderTime: { hour: 21, minute: 30 },
   onboardingComplete: false,
   name: '',
   age: null as number | null,
@@ -500,6 +520,7 @@ const blankState = {
   subscriptionStatus: 'none' as AppState['subscriptionStatus'],
   hasAskedForReview: false,
   cameraDenied: false,
+  accountSaveOffered: false,
   contextualTodayNote: null as string | null,
   priceTier: null as AppState['priceTier'],
   routineFitback: null as AppState['routineFitback'],
@@ -718,6 +739,10 @@ export const useAppStore = create<AppState>()(
       setHasSeenScanTutorial: (seen) => set({ hasSeenScanTutorial: seen }),
       setHasPromptedNotifications: (prompted) =>
         set({ hasPromptedNotifications: prompted }),
+      setRoutineRemindersEnabled: (routineRemindersEnabled) =>
+        set({ routineRemindersEnabled }),
+      setRoutineReminderTime: (routineReminderTime) =>
+        set({ routineReminderTime }),
 
       addUserRoutineProduct: (slot, productId) =>
         set((state) => {
@@ -774,6 +799,7 @@ export const useAppStore = create<AppState>()(
       setSubscriptionStatus: (subscriptionStatus) => set({ subscriptionStatus }),
       setHasAskedForReview: (hasAskedForReview) => set({ hasAskedForReview }),
       setCameraDenied: (cameraDenied) => set({ cameraDenied }),
+      markAccountSaveOffered: () => set({ accountSaveOffered: true }),
 
       setContextualTodayNote: (contextualTodayNote) => set({ contextualTodayNote }),
       setPriceTier: (priceTier) => set({ priceTier }),
@@ -941,6 +967,8 @@ export const useAppStore = create<AppState>()(
         appearance: state.appearance,
         hasSeenScanTutorial: state.hasSeenScanTutorial,
         hasPromptedNotifications: state.hasPromptedNotifications,
+        routineRemindersEnabled: state.routineRemindersEnabled,
+        routineReminderTime: state.routineReminderTime,
         onboardingComplete: state.onboardingComplete,
         name: state.name,
         age: state.age,
@@ -960,6 +988,7 @@ export const useAppStore = create<AppState>()(
         subscriptionStatus: state.subscriptionStatus,
         hasAskedForReview: state.hasAskedForReview,
         cameraDenied: state.cameraDenied,
+        accountSaveOffered: state.accountSaveOffered,
         contextualTodayNote: state.contextualTodayNote,
         priceTier: state.priceTier,
         routineFitback: state.routineFitback,

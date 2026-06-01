@@ -40,9 +40,18 @@ import { PlanScreen } from '@/screens/plan/PlanScreen';
 import { PuraAssistHomeScreen } from '@/screens/assistant/PuraAssistHomeScreen';
 import { PuraShopScreen, ConcernIndexScreen } from '@/screens/shop';
 import { MeScreen } from '@/screens/me';
+import {
+  SkinProfileScreen,
+  NotificationSettingsScreen,
+  PrivacyScreen,
+  AppearanceScreen,
+  HelpScreen,
+  AboutScreen,
+} from '@/screens/me/settings';
 import { PuraRoutineScreen } from '@/screens/routine/pura/PuraRoutineScreen';
 import type {
   HomeStackParamList,
+  MeStackParamList,
   RootStackParamList,
   TabParamList,
 } from './types';
@@ -50,6 +59,7 @@ import type {
 const Tab = createBottomTabNavigator<TabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 const ProductsStack = createNativeStackNavigator<HomeStackParamList>();
+const MeStack = createNativeStackNavigator<MeStackParamList>();
 
 /**
  * Home stack — Plan, Routine, and Product destinations are all reachable
@@ -93,6 +103,29 @@ function ProductsStackScreen() {
   );
 }
 
+/**
+ * Me stack — the personal tab and its settings destinations. Each
+ * ACCOUNT / SUPPORT row on MeScreen pushes one of these. Nesting them
+ * here (rather than at the root) keeps the floating dock's Me tab
+ * highlighted while a settings page is open.
+ */
+function MeStackScreen() {
+  return (
+    <MeStack.Navigator screenOptions={{ headerShown: false }}>
+      <MeStack.Screen name="Me" component={MeScreen} />
+      <MeStack.Screen name="SkinProfileSettings" component={SkinProfileScreen} />
+      <MeStack.Screen
+        name="NotificationSettings"
+        component={NotificationSettingsScreen}
+      />
+      <MeStack.Screen name="PrivacySettings" component={PrivacyScreen} />
+      <MeStack.Screen name="AppearanceSettings" component={AppearanceScreen} />
+      <MeStack.Screen name="HelpSupport" component={HelpScreen} />
+      <MeStack.Screen name="About" component={AboutScreen} />
+    </MeStack.Navigator>
+  );
+}
+
 function ScanTabPlaceholder() {
   return <View />;
 }
@@ -127,7 +160,7 @@ export function TabNavigator() {
       />
 
       <Tab.Screen name="RoutineTab" component={PuraRoutineScreen} />
-      <Tab.Screen name="MeTab" component={MeScreen} />
+      <Tab.Screen name="MeTab" component={MeStackScreen} />
       {/* Registered but hidden from the floating dock — see comment above. */}
       <Tab.Screen name="AssistantTab" component={AssistantV25Screen} />
     </Tab.Navigator>

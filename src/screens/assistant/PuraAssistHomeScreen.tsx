@@ -25,6 +25,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path } from 'react-native-svg';
 import {
   ArrowRight,
@@ -167,23 +168,29 @@ export function PuraAssistHomeScreen() {
     : 'Take a 30-second scan to personalize everything Pura tells you.';
 
   const orbWidth = width - puraAssistLayout.screenPadding * 2;
-  const dockGap = puraAssistLayout.dockClearance + Math.max(insets.bottom, 8);
+  // The ask dock is laid out in-flow at the bottom of the scene (which the
+  // navigator already insets above the floating tab bar), so the ScrollView
+  // fills only the space ABOVE the dock and clips its content there. Nothing
+  // scrolls behind the bar; a short fade just above it dissolves the last
+  // line of content into the page instead of hard-cutting a quick-action card.
+  const fadeHeight = 44;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       <ScrollView
+        style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: puraAssistLayout.screenPadding,
           paddingTop: 8,
-          paddingBottom: dockGap + 96,
+          paddingBottom: fadeHeight + 12,
         }}
       >
         {/* ---- Header ---- */}
         <View style={styles.header}>
           <View style={styles.headerCopy}>
-            <Text style={styles.headerTitle}>Pura Assist</Text>
+            <Text style={styles.headerTitle}>Home</Text>
             <Text style={styles.headerSub}>Scan-aware skincare AI</Text>
           </View>
           <Pressable
@@ -308,8 +315,15 @@ export function PuraAssistHomeScreen() {
         </View>
       </ScrollView>
 
-      {/* ---- Input dock — floats above the tab dock; tapping opens chat. ---- */}
-      <View style={[styles.inputDock, { bottom: dockGap }]} pointerEvents="box-none">
+      {/* ---- Ask dock — in-flow on solid page just above the tab bar. The
+           fade above it dissolves the scroll content's last line into the
+           page so the bar never hard-cuts a quick-action card. ---- */}
+      <View style={styles.dockBar} pointerEvents="box-none">
+        <LinearGradient
+          pointerEvents="none"
+          colors={[puraAssist.bgClear, puraAssist.bg]}
+          style={[styles.dockFade, { height: fadeHeight, top: -fadeHeight }]}
+        />
         <AssistInputBar mode="launcher" onOpen={openConversation} bottomInset={0} />
       </View>
     </View>
@@ -476,7 +490,13 @@ const styles = StyleSheet.create({
     ...puraAssistType.quickAction,
     color: puraAssist.ink,
   },
-  inputDock: {
+  scroll: {
+    flex: 1,
+  },
+  dockBar: {
+    backgroundColor: puraAssist.bg,
+  },
+  dockFade: {
     position: 'absolute',
     left: 0,
     right: 0,

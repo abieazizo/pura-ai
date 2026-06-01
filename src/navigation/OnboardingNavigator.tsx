@@ -8,204 +8,158 @@ import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { SlideEntry } from '@/components/onboarding/SlideEntry';
 import { Splash } from '@/screens/onboarding/Splash';
-import { AuthChoice } from '@/screens/onboarding/AuthChoice';
-import { SignIn } from '@/screens/onboarding/SignIn';
-import { Tutorial } from '@/screens/onboarding/Tutorial';
 import { AskName } from '@/screens/onboarding/AskName';
-import { AskAge } from '@/screens/onboarding/AskAge';
-import { AskGender } from '@/screens/onboarding/AskGender';
-import { AskSkinType } from '@/screens/onboarding/AskSkinType';
-import { AskConcerns } from '@/screens/onboarding/AskConcerns';
-import { AskSensitivity } from '@/screens/onboarding/AskSensitivity';
-import { AskSunExposure } from '@/screens/onboarding/AskSunExposure';
-import { AskEffort } from '@/screens/onboarding/AskEffort';
-import { AskGoal } from '@/screens/onboarding/AskGoal';
-import { AskAttribution } from '@/screens/onboarding/AskAttribution';
-import { Processing } from '@/screens/onboarding/Processing';
-import { ProfileSummary } from '@/screens/onboarding/ProfileSummary';
+import { CameraPrimer } from '@/screens/onboarding/CameraPrimer';
+import { CameraPermission } from '@/screens/onboarding/CameraPermission';
+import { CameraDenied } from '@/screens/onboarding/CameraDenied';
+import { SignIn } from '@/screens/onboarding/SignIn';
 import { useAppStore } from '@/store/useAppStore';
 import type { OnboardingStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 
 /**
- * Question-first onboarding navigator (restored).
+ * Scan-first onboarding navigator (rebuild).
  *
- *   Splash
- *     → AuthChoice            (new user) / SignIn (returning user)
- *     → AskName → AskAge → AskGender → AskSkinType → AskConcerns
- *     → AskSensitivity → AskSunExposure → AskEffort → AskGoal
- *     → AskAttribution
- *     → Processing            (profile calibration; honest checklist)
- *     → ProfileSummary
- *     → Tutorial              (product walkthrough; complete or skip)
- *         → finishOnboarding + setHasSeenScanTutorial(true)
- *         → root resets to [Tabs, ScanModal] — user lands in the camera
+ * Exactly three screens stand between launch and the camera. The face scan
+ * auto-detects skin type, concerns, dryness, redness and texture, so the
+ * old 11-question quiz — which manually asked what the scan already reads —
+ * was deleted. The deferred-but-useful context (age, gender, sun, effort,
+ * goal) now lives as optional fields in Me → Skin profile, and account
+ * creation moved to AFTER the first scan.
+ *
+ *   Splash             (Screen 1 — Welcome; one promise, one action)
+ *     → AskName        (Screen 2 — optional name, skippable)
+ *     → CameraPrimer   (Screen 3 — "Now, the scan." privacy promise)
+ *     → CameraPermission   (fires the real system prompt; renders no UI)
+ *         • granted → finishOnboarding + root reset to [Tabs, ScanModal]
+ *                     so the user lands directly in the camera
+ *         • denied  → CameraDenied (calm fallback: Open Settings / Skip)
  *
  * Returning user: Splash → SignIn → Tabs.
  *
- * Camera and notification permissions are requested contextually (at the
- * first scan capture and the first routine schedule, respectively), not
- * up front. The ReviewAsk + Paywall steps are intentionally omitted from
- * this flow.
- *
- * The scan-first (V2) onboarding has been removed.
+ * The questionnaire arc (AuthChoice / AskAge / AskGender / AskSkinType /
+ * AskConcerns / AskSensitivity / AskSunExposure / AskEffort / AskGoal /
+ * AskAttribution / Processing / ProfileSummary / Tutorial) was removed in
+ * this rebuild. AuthChoice survives off-stack — it is repurposed as the
+ * post-scan "Save your skin profile" screen.
  */
 export function OnboardingNavigator() {
   return (
-    <Stack.Navigator
-      screenOptions={STACK_OPTIONS}
-      initialRouteName="Splash"
-    >
+    <Stack.Navigator screenOptions={STACK_OPTIONS} initialRouteName="Splash">
       <Stack.Screen name="Splash" options={{ gestureEnabled: false }}>
         {({ navigation }) => (
           <SlideEntry>
             <Splash
-              onGetStarted={() => navigation.navigate('AuthChoice')}
+              onGetStarted={() => navigation.navigate('AskName')}
               onSignIn={() => navigation.navigate('SignIn')}
             />
           </SlideEntry>
         )}
-      </Stack.Screen>
-
-      <Stack.Screen name="AuthChoice">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AuthChoice
-              onAppleContinue={() => navigation.navigate('AskName')}
-              onGoogleContinue={() => navigation.navigate('AskName')}
-              onEmailContinue={() => navigation.navigate('AskName')}
-              onSignIn={() => navigation.navigate('SignIn')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="SignIn">
-        {({ navigation }) => <SignInHost nav={navigation} />}
       </Stack.Screen>
 
       <Stack.Screen name="AskName">
         {({ navigation }) => (
           <SlideEntry>
-            <AskName onNext={() => navigation.navigate('AskAge')} />
+            <AskName onNext={() => navigation.navigate('CameraPrimer')} />
           </SlideEntry>
         )}
       </Stack.Screen>
 
-      <Stack.Screen name="AskAge">
+      <Stack.Screen name="CameraPrimer">
         {({ navigation }) => (
           <SlideEntry>
-            <AskAge onNext={() => navigation.navigate('AskGender')} />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="AskGender">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskGender onNext={() => navigation.navigate('AskSkinType')} />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="AskSkinType">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskSkinType onNext={() => navigation.navigate('AskConcerns')} />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="AskConcerns">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskConcerns onNext={() => navigation.navigate('AskSensitivity')} />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="AskSensitivity">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskSensitivity
-              onNext={() => navigation.navigate('AskSunExposure')}
+            <CameraPrimer
+              onContinue={() => navigation.navigate('CameraPermission')}
             />
           </SlideEntry>
         )}
       </Stack.Screen>
 
-      <Stack.Screen name="AskSunExposure">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskSunExposure onNext={() => navigation.navigate('AskEffort')} />
-          </SlideEntry>
-        )}
+      <Stack.Screen name="CameraPermission" options={{ gestureEnabled: false }}>
+        {({ navigation }) => <CameraPermissionHost nav={navigation} />}
       </Stack.Screen>
 
-      <Stack.Screen name="AskEffort">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskEffort onNext={() => navigation.navigate('AskGoal')} />
-          </SlideEntry>
-        )}
+      <Stack.Screen name="CameraDenied" options={{ gestureEnabled: false }}>
+        {() => <CameraDeniedHost />}
       </Stack.Screen>
 
-      <Stack.Screen name="AskGoal">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskGoal onNext={() => navigation.navigate('AskAttribution')} />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="AskAttribution">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskAttribution
-              onNext={() => navigation.navigate('Processing')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="Processing" options={{ gestureEnabled: false }}>
-        {({ navigation }) => (
-          <SlideEntry replayOnFocus={false}>
-            <Processing
-              onDone={() => navigation.replace('ProfileSummary')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="ProfileSummary">
-        {({ navigation }) => (
-          <SlideEntry>
-            <ProfileSummary
-              onNext={() => navigation.navigate('Tutorial')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen
-        name="Tutorial"
-        options={{ gestureEnabled: false, animation: 'slide_from_right' }}
-      >
-        {() => <TutorialHost />}
+      <Stack.Screen name="SignIn">
+        {({ navigation }) => <SignInHost nav={navigation} />}
       </Stack.Screen>
     </Stack.Navigator>
   );
 }
 
 /**
+ * Camera-permission step. `CameraPermission` renders no UI — it fires the
+ * system prompt on mount, records `cameraDenied` in the store, then calls
+ * `onDone`. We branch on the freshly-written flag (read imperatively so the
+ * closure never goes stale):
+ *
+ *   • granted → finish onboarding and reset the root into the scan camera.
+ *               `setHasSeenScanTutorial(true)` is preserved for parity with
+ *               the old hand-off (no live consumer gates on it today).
+ *   • denied  → replace with the CameraDenied fallback, so the blank
+ *               permission screen never lingers in the back stack.
+ */
+function CameraPermissionHost({
+  nav,
+}: {
+  nav: NativeStackNavigationProp<OnboardingStackParamList>;
+}) {
+  const rootNav = useNavigation<NavigationProp<any>>();
+  const finish = useAppStore((s) => s.finishOnboarding);
+  const markScanTutorialSeen = useAppStore((s) => s.setHasSeenScanTutorial);
+
+  const handleDone = useCallback(() => {
+    if (useAppStore.getState().cameraDenied) {
+      nav.replace('CameraDenied');
+      return;
+    }
+    finish();
+    markScanTutorialSeen(true);
+    rootNav.reset?.({
+      index: 1,
+      routes: [{ name: 'Tabs' as never }, { name: 'ScanModal' as never }],
+    });
+  }, [nav, finish, markScanTutorialSeen, rootNav]);
+
+  return (
+    <SlideEntry replayOnFocus={false}>
+      <CameraPermission onDone={handleDone} />
+    </SlideEntry>
+  );
+}
+
+/**
+ * Camera-denied fallback host. "Skip for now" finishes onboarding with no
+ * scan and lands the user on Home; if they later grant access from Settings,
+ * a future scan works without re-prompting (the OS permission persists).
+ */
+function CameraDeniedHost() {
+  const rootNav = useNavigation<NavigationProp<any>>();
+  const finish = useAppStore((s) => s.finishOnboarding);
+
+  const skip = useCallback(() => {
+    finish();
+    rootNav.reset?.({ index: 0, routes: [{ name: 'Tabs' as never }] });
+  }, [finish, rootNav]);
+
+  return (
+    <SlideEntry>
+      <CameraDenied onSkip={skip} />
+    </SlideEntry>
+  );
+}
+
+/**
  * Returning-user sign-in handoff. A successful sign-in (provider OR
- * email+password) skips the quiz/tutorial because the backend already
+ * email+password) skips the new-user flow because the backend already
  * carries the user's profile and scan history. For this build (no real
- * auth backend) every sign-in handler fires `finishOnboarding()` and
- * resets into Tabs. "Create account" sends the user back to AuthChoice
- * (new-user flow).
+ * auth backend) every sign-in handler fires `finishOnboarding()` and resets
+ * into Tabs. "Create account" drops the user into the new-user flow at
+ * AskName (account creation now happens AFTER the first scan).
  */
 function SignInHost({
   nav,
@@ -231,38 +185,10 @@ function SignInHost({
           // eslint-disable-next-line no-console
           console.log('[onboarding] TODO: forgot password flow');
         }}
-        onCreateAccount={() => nav.replace('AuthChoice')}
+        onCreateAccount={() => nav.replace('AskName')}
       />
     </SlideEntry>
   );
-}
-
-/**
- * TutorialHost wraps the product walkthrough and owns onboarding
- * completion. Completing OR skipping the tutorial:
- *
- *   1. `finishOnboarding()` writes `onboardingComplete: true` → the
- *      RootNavigator gate flips from OnboardingNavigator to TabNavigator.
- *   2. `setHasSeenScanTutorial(true)` prevents the legacy camera-technique
- *      tutorial from firing on top of the product tutorial just seen.
- *   3. `rootNav.reset` to [Tabs, ScanModal] so the user lands directly in
- *      the camera — Home has no meaning before a first scan exists.
- */
-function TutorialHost() {
-  const rootNav = useNavigation<NavigationProp<any>>();
-  const finish = useAppStore((s) => s.finishOnboarding);
-  const markScanTutorialSeen = useAppStore((s) => s.setHasSeenScanTutorial);
-
-  const handoff = useCallback(() => {
-    finish();
-    markScanTutorialSeen(true);
-    rootNav.reset?.({
-      index: 1,
-      routes: [{ name: 'Tabs' as never }, { name: 'ScanModal' as never }],
-    });
-  }, [finish, markScanTutorialSeen, rootNav]);
-
-  return <Tutorial onComplete={handoff} onSkip={handoff} />;
 }
 
 const STACK_OPTIONS: NativeStackNavigationOptions = {

@@ -21,7 +21,7 @@ import { StyleSheet, View } from 'react-native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@/store/useAppStore';
-import type { RootStackParamList } from '@/navigation/types';
+import type { RootStackParamList, ScanStackParamList } from '@/navigation/types';
 import {
   classifyFindingsPresence,
   selectSupportedInsights,
@@ -49,6 +49,7 @@ export function ScanResultsFaceScreen({
 }: ScanResultsFaceScreenProps) {
   const scans = useAppStore((s) => s.scans);
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const scanNav = useNavigation<NavigationProp<ScanStackParamList>>();
   const scan = scans.find((s) => s.id === scanId) ?? scans[scans.length - 1];
 
   const session = useScanResultsSession();
@@ -152,6 +153,19 @@ export function ScanResultsFaceScreen({
     rootNav.getParent()?.goBack();
   }, [resetSession, rootNav]);
 
+  // One-time post-scan account save. The first time the user leaves a
+  // results screen, offer "Save your skin profile" (the repurposed
+  // AuthChoice) before closing the modal; `accountSaveOffered` makes it a
+  // once-only nudge. Every subsequent close goes straight Home.
+  const handleResultsClose = useCallback(() => {
+    if (!useAppStore.getState().accountSaveOffered) {
+      resetSession();
+      scanNav.navigate('SaveProfile');
+      return;
+    }
+    exitToHome();
+  }, [resetSession, scanNav, exitToHome]);
+
   const goRetake = useCallback(() => {
     hapt.tap();
     resetSession();
@@ -203,7 +217,7 @@ export function ScanResultsFaceScreen({
     }
     return (
       <ScanResultsErrorBoundary onRetake={goRetake} onClose={exitToHome}>
-        <ScanResultsV2Screen scanId={scan.id} onClose={exitToHome} />
+        <ScanResultsV2Screen scanId={scan.id} onClose={handleResultsClose} />
       </ScanResultsErrorBoundary>
     );
   }

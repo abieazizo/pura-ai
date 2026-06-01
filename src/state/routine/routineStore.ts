@@ -58,6 +58,14 @@ interface RoutineStoreState {
   // Lightweight session history for consistency display.
   recentSessions: RoutineSessionRecord[];
 
+  /**
+   * Inline "tonight's routine" checklist for the active landing page.
+   * Per-pillar completion, keyed to a local date so it self-resets each
+   * day. Distinct from the focused-session flow (`todaySession`): this is
+   * the casual at-a-glance check-off, not a guided step-by-step run.
+   */
+  tonightChecklist: { dateKey: string; doneTypes: RoutineStepType[] } | null;
+
   // Actions
   setLifecycle: (next: RoutineLifecycleState) => void;
   startBuild: (scanId: string) => void;
@@ -83,6 +91,8 @@ interface RoutineStoreState {
   skipSessionStep: (stepId: string) => void;
   endSession: (status: 'complete' | 'abandoned') => void;
   resetSession: () => void;
+  /** Toggle a pillar's done state on the tonight checklist (date self-rolls). */
+  toggleTonightStep: (type: RoutineStepType) => void;
   /** Hard reset — used when a fresh scan arrives and the user accepts an update. */
   clearAll: () => void;
 }
@@ -98,6 +108,7 @@ const initial = {
   selectedTimeOfDay: 'evening' as RoutineTimeOfDay,
   todaySession: null,
   recentSessions: [] as RoutineSessionRecord[],
+  tonightChecklist: null as { dateKey: string; doneTypes: RoutineStepType[] } | null,
 };
 
 export const useRoutineStore = create<RoutineStoreState>()(
@@ -231,6 +242,8 @@ export const useRoutineStore = create<RoutineStoreState>()(
           // routine don't carry over to a new plan.
           confirmedOwnedProductIds: {},
           skippedStepIds: {},
+          // A new routine starts the nightly checklist fresh.
+          tonightChecklist: null,
         }),
 
       failBuild: (reason) =>
@@ -353,6 +366,19 @@ export const useRoutineStore = create<RoutineStoreState>()(
           todaySession: null,
         })),
 
+      toggleTonightStep: (type) =>
+        set((state) => {
+          const today = todayDateKey();
+          const base =
+            state.tonightChecklist && state.tonightChecklist.dateKey === today
+              ? state.tonightChecklist.doneTypes
+              : [];
+          const doneTypes = base.includes(type)
+            ? base.filter((t) => t !== type)
+            : [...base, type];
+          return { tonightChecklist: { dateKey: today, doneTypes } };
+        }),
+
       clearAll: () => set({ ...initial }),
     }),
     {
@@ -367,6 +393,7 @@ export const useRoutineStore = create<RoutineStoreState>()(
         selectedTimeOfDay: state.selectedTimeOfDay,
         todaySession: state.todaySession,
         recentSessions: state.recentSessions,
+        tonightChecklist: state.tonightChecklist,
       }),
       version: 1,
     },
@@ -472,6 +499,22 @@ export function todayDateKey(date: Date = new Date()): string {
 export function defaultTimeOfDayForNow(date: Date = new Date()): RoutineTimeOfDay {
   const h = date.getHours();
   return h >= 4 && h < 16 ? 'morning' : 'evening';
+}
+
+/**
+ * The pillar types checked off on tonight's routine, valid only for the
+ * current local day. A checklist from a prior day reads as empty (it will
+ * be overwritten on the next toggle), so the landing page always starts
+ * each day clean without a separate reset pass.
+ */
+export function selectTonightDoneTypes(
+  checklist: { dateKey: string; doneTypes: RoutineStepType[] } | null,
+  date: Date = new Date(),
+): RoutineStepType[] {
+  if (checklist && checklist.dateKey === todayDateKey(date)) {
+    return checklist.doneTypes;
+  }
+  return [];
 }
 
 /**

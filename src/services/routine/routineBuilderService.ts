@@ -306,6 +306,52 @@ function buildDeterministicRoutine(
   };
 }
 
+/**
+ * Ceremony build — the deterministic four-pillar starter routine the
+ * post-scan Build Ceremony commits. Always Cleanse → Treat → Moisturize
+ * → Protect (matching the reveal's "Your Skin Plan" promise), product-
+ * matched from the catalog with no network call, so the ceremony can
+ * never hang on a dead AI proxy. The committed routine and the cards the
+ * ceremony animates derive from this one object.
+ */
+export function buildCeremonyRoutine(args: {
+  scanId: string;
+  limitedByScan?: boolean;
+}): CustomRoutine {
+  const { scanId, limitedByScan = false } = args;
+  const baseSteps: RoutineStep[] = [
+    makeStep('cleanse', 1, 'both', [], false),
+    makeStep('treat', 2, 'evening', [], false),
+    makeStep('hydrate', 3, 'both', [], false),
+    makeStep('protect', 4, 'morning', [], false),
+  ];
+  const morningSteps = baseSteps
+    .filter((s) => s.timing === 'morning' || s.timing === 'both')
+    .map((s, i) => ({ ...s, order: i + 1 }));
+  const eveningSteps = baseSteps
+    .filter((s) => s.timing === 'evening' || s.timing === 'both')
+    .map((s, i) => ({ ...s, order: i + 1 }));
+  return {
+    id: `routine-${scanId}-${Date.now()}`,
+    scanId,
+    createdAt: new Date().toISOString(),
+    status: 'ready_to_review',
+    morningSteps,
+    eveningSteps,
+    explanation: [
+      'Four steps, in the order your skin uses them',
+      'Each one matched to your scan',
+      limitedByScan
+        ? 'Kept gentle while your scan settles in'
+        : 'Balanced for visible results, not aggression',
+    ],
+    excludedDirections: [],
+    canStartMorning: false,
+    canStartEvening: false,
+    limitedByScan,
+  };
+}
+
 function makeStep(
   type: RoutineStep['type'],
   order: number,

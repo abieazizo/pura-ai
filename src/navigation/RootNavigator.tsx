@@ -7,6 +7,7 @@ import { PuraAssistConversationScreen } from '@/screens/assistant/PuraAssistConv
 import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen';
 import { AIDiagnosticsScreen } from '@/components/dev/AIDiagnosticsScreen';
 import { ScanResultsStatesGallery } from '@/components/dev/ScanResultsStatesGallery';
+import { RevealDevGallery } from '@/components/dev/RevealDevGallery';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { RootStackParamList } from './types';
@@ -99,6 +100,18 @@ export function RootNavigator() {
       <Stack.Screen
         name="ScanResultsStatesDev"
         component={ScanResultsStatesGallery}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
+          animationDuration: 280,
+        }}
+      />
+
+      {/* Dev-only reveal-arc gallery (screens 1–6). Param-driven; reachable
+          from AIDiagnostics and the preview harness. No prod entry point. */}
+      <Stack.Screen
+        name="ScanRevealDev"
+        component={RevealDevGallery}
         options={{
           presentation: 'modal',
           animation: 'slide_from_bottom',

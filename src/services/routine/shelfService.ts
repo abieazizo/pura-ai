@@ -29,6 +29,7 @@ const PRODUCT_ID_TO_STEP_TYPE: Record<string, RoutineStepType> = {
   'anua-heartleaf': 'cleanse',
   'the-ordinary-lactic-acid': 'treat',
   'supergoop-unseen': 'protect',
+  'kiehls-ultra-facial-cream': 'hydrate',
 };
 
 export function stepTypeForCatalogProduct(p: ShopCatalogProduct): RoutineStepType {
