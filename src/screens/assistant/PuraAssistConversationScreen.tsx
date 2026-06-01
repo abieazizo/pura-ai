@@ -76,7 +76,7 @@ import { askAssistant } from '@/api/assistant';
 import type { AssistantMessage } from '@/types';
 import { useAssistSignal } from '@/state/assistSignal';
 import type { RootStackParamList } from '@/navigation/types';
-import { AssistantFace } from './AssistantFace';
+import { AssistantFace3D } from './AssistantFace3D';
 import { AssistInputBar } from './AssistInputBar';
 
 // ---------------------------------------------------------------------------
@@ -457,7 +457,7 @@ function ReadingScanCard({
           <Text style={styles.scanNoScan}>{noScanLine}</Text>
         )}
       </View>
-      <AssistantFace thinking={thinking} size={52} />
+      <AssistantFace3D thinking={thinking} size={56} subdued={!scanReady} />
     </View>
   );
 }
