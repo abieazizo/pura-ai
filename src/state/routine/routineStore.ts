@@ -59,12 +59,13 @@ interface RoutineStoreState {
   recentSessions: RoutineSessionRecord[];
 
   /**
-   * Inline "tonight's routine" checklist for the active landing page.
-   * Per-pillar completion, keyed to a local date so it self-resets each
-   * day. Distinct from the focused-session flow (`todaySession`): this is
-   * the casual at-a-glance check-off, not a guided step-by-step run.
+   * Inline daily completion for the active routine page. Keyed by step id
+   * and tracked separately for the morning and evening lists (the two
+   * lists can hold steps that share an id), scoped to a local date so it
+   * self-resets each day. Distinct from the focused-session flow
+   * (`todaySession`): this is the casual at-a-glance check-off.
    */
-  tonightChecklist: { dateKey: string; doneTypes: RoutineStepType[] } | null;
+  dailyChecklist: { dateKey: string; morning: string[]; evening: string[] } | null;
 
   // Actions
   setLifecycle: (next: RoutineLifecycleState) => void;
@@ -91,8 +92,14 @@ interface RoutineStoreState {
   skipSessionStep: (stepId: string) => void;
   endSession: (status: 'complete' | 'abandoned') => void;
   resetSession: () => void;
-  /** Toggle a pillar's done state on the tonight checklist (date self-rolls). */
-  toggleTonightStep: (type: RoutineStepType) => void;
+  /** Toggle a step's done state on the daily checklist (date self-rolls). */
+  toggleStepComplete: (timeOfDay: RoutineTimeOfDay, stepId: string) => void;
+  /** Reorder a step within the given list (edit mode drag-and-drop). */
+  reorderSteps: (timeOfDay: RoutineTimeOfDay, from: number, to: number) => void;
+  /** Remove a step from the given list (edit mode delete). */
+  removeRoutineStep: (timeOfDay: RoutineTimeOfDay, stepId: string) => void;
+  /** Append a freshly built step to the given list (edit mode add). */
+  addRoutineStep: (timeOfDay: RoutineTimeOfDay, step: RoutineStep) => void;
   /** Hard reset — used when a fresh scan arrives and the user accepts an update. */
   clearAll: () => void;
 }
@@ -108,7 +115,11 @@ const initial = {
   selectedTimeOfDay: 'evening' as RoutineTimeOfDay,
   todaySession: null,
   recentSessions: [] as RoutineSessionRecord[],
-  tonightChecklist: null as { dateKey: string; doneTypes: RoutineStepType[] } | null,
+  dailyChecklist: null as {
+    dateKey: string;
+    morning: string[];
+    evening: string[];
+  } | null,
 };
 
 export const useRoutineStore = create<RoutineStoreState>()(
@@ -242,8 +253,8 @@ export const useRoutineStore = create<RoutineStoreState>()(
           // routine don't carry over to a new plan.
           confirmedOwnedProductIds: {},
           skippedStepIds: {},
-          // A new routine starts the nightly checklist fresh.
-          tonightChecklist: null,
+          // A new routine starts the daily checklist fresh.
+          dailyChecklist: null,
         }),
 
       failBuild: (reason) =>
@@ -366,17 +377,92 @@ export const useRoutineStore = create<RoutineStoreState>()(
           todaySession: null,
         })),
 
-      toggleTonightStep: (type) =>
+      toggleStepComplete: (timeOfDay, stepId) =>
         set((state) => {
           const today = todayDateKey();
           const base =
-            state.tonightChecklist && state.tonightChecklist.dateKey === today
-              ? state.tonightChecklist.doneTypes
-              : [];
-          const doneTypes = base.includes(type)
-            ? base.filter((t) => t !== type)
-            : [...base, type];
-          return { tonightChecklist: { dateKey: today, doneTypes } };
+            state.dailyChecklist && state.dailyChecklist.dateKey === today
+              ? state.dailyChecklist
+              : { dateKey: today, morning: [] as string[], evening: [] as string[] };
+          const list = timeOfDay === 'morning' ? base.morning : base.evening;
+          const nextList = list.includes(stepId)
+            ? list.filter((id) => id !== stepId)
+            : [...list, stepId];
+          const next =
+            timeOfDay === 'morning'
+              ? { dateKey: today, morning: nextList, evening: base.evening }
+              : { dateKey: today, morning: base.morning, evening: nextList };
+          return { dailyChecklist: next };
+        }),
+
+      reorderSteps: (timeOfDay, from, to) =>
+        set((state) => {
+          if (!state.routine) return state;
+          const steps =
+            timeOfDay === 'morning'
+              ? state.routine.morningSteps
+              : state.routine.eveningSteps;
+          if (
+            from < 0 ||
+            from >= steps.length ||
+            to < 0 ||
+            to >= steps.length ||
+            from === to
+          ) {
+            return state;
+          }
+          const arr = steps.slice();
+          const [moved] = arr.splice(from, 1);
+          arr.splice(to, 0, moved);
+          const patch =
+            timeOfDay === 'morning'
+              ? { morningSteps: renumber(arr) }
+              : { eveningSteps: renumber(arr) };
+          return { routine: { ...state.routine, ...patch } };
+        }),
+
+      removeRoutineStep: (timeOfDay, stepId) =>
+        set((state) => {
+          if (!state.routine) return state;
+          const steps =
+            timeOfDay === 'morning'
+              ? state.routine.morningSteps
+              : state.routine.eveningSteps;
+          const nextSteps = renumber(steps.filter((s) => s.id !== stepId));
+          if (nextSteps.length === steps.length) return state;
+          const patch =
+            timeOfDay === 'morning'
+              ? { morningSteps: nextSteps }
+              : { eveningSteps: nextSteps };
+          let dailyChecklist = state.dailyChecklist;
+          if (dailyChecklist) {
+            dailyChecklist =
+              timeOfDay === 'morning'
+                ? {
+                    ...dailyChecklist,
+                    morning: dailyChecklist.morning.filter((id) => id !== stepId),
+                  }
+                : {
+                    ...dailyChecklist,
+                    evening: dailyChecklist.evening.filter((id) => id !== stepId),
+                  };
+          }
+          return { routine: { ...state.routine, ...patch }, dailyChecklist };
+        }),
+
+      addRoutineStep: (timeOfDay, step) =>
+        set((state) => {
+          if (!state.routine) return state;
+          const steps =
+            timeOfDay === 'morning'
+              ? state.routine.morningSteps
+              : state.routine.eveningSteps;
+          if (steps.some((s) => s.type === step.type)) return state;
+          const patch =
+            timeOfDay === 'morning'
+              ? { morningSteps: renumber([...steps, step]) }
+              : { eveningSteps: renumber([...steps, step]) };
+          return { routine: { ...state.routine, ...patch } };
         }),
 
       clearAll: () => set({ ...initial }),
@@ -393,12 +479,17 @@ export const useRoutineStore = create<RoutineStoreState>()(
         selectedTimeOfDay: state.selectedTimeOfDay,
         todaySession: state.todaySession,
         recentSessions: state.recentSessions,
-        tonightChecklist: state.tonightChecklist,
+        dailyChecklist: state.dailyChecklist,
       }),
       version: 1,
     },
   ),
 );
+
+/** Reassign 1-based `order` after an insert/remove/reorder. */
+function renumber(steps: RoutineStep[]): RoutineStep[] {
+  return steps.map((s, i) => ({ ...s, order: i + 1 }));
+}
 
 function stageHistoryUpTo(stage: RoutineBuildStage): RoutineBuildStage[] {
   const order: RoutineBuildStage[] = [
@@ -502,17 +593,18 @@ export function defaultTimeOfDayForNow(date: Date = new Date()): RoutineTimeOfDa
 }
 
 /**
- * The pillar types checked off on tonight's routine, valid only for the
+ * The step ids checked off for a given time of day, valid only for the
  * current local day. A checklist from a prior day reads as empty (it will
  * be overwritten on the next toggle), so the landing page always starts
  * each day clean without a separate reset pass.
  */
-export function selectTonightDoneTypes(
-  checklist: { dateKey: string; doneTypes: RoutineStepType[] } | null,
+export function selectDailyDoneIds(
+  checklist: { dateKey: string; morning: string[]; evening: string[] } | null,
+  timeOfDay: RoutineTimeOfDay,
   date: Date = new Date(),
-): RoutineStepType[] {
+): string[] {
   if (checklist && checklist.dateKey === todayDateKey(date)) {
-    return checklist.doneTypes;
+    return timeOfDay === 'morning' ? checklist.morning : checklist.evening;
   }
   return [];
 }

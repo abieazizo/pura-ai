@@ -2,23 +2,23 @@
  * NotificationSettingsScreen — the single nightly scan reminder.
  *
  * Pura keeps notifications to one gentle nudge. The toggle is honest:
- * it only flips on when the OS actually accepts the scheduled
- * reminder (see `scheduleScanReminder`), and surfaces the calm denied
- * / unavailable copy otherwise rather than pretending it worked.
+ *   • native — it only flips on when the OS actually accepts the
+ *              scheduled reminder; a denied permission surfaces the
+ *              calm "blocked" state with a deep link to Settings.
+ *   • web    — there's no OS scheduler, so we let the user set their
+ *              preference but say plainly it won't ring in the preview.
+ *
+ * The status card always reflects the real state, an iOS-style preview
+ * shows exactly what arrives, and the promise card sets the frequency
+ * expectation up front.
  */
 
-import React, { useCallback, useState } from 'react';
-import {
-  Alert,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import { Bell } from 'phosphor-react-native';
 
-import { puraShop, puraShopType, puraShopRadius, puraShopLayout } from '@/theme';
+import { puraShop, puraShopType, puraShopRadius } from '@/theme';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { hapt } from '@/utils/haptics';
@@ -31,6 +31,15 @@ import {
 } from '@/lib/routineReminder';
 
 import { SettingsScaffold } from './SettingsScaffold';
+import {
+  ChipGroup,
+  NoticeCard,
+  SettingsCard,
+  SettingsSection,
+  ToggleRow,
+  type ChipOption,
+  type NoticeTone,
+} from './SettingsKit';
 
 const C = meSettings.notifications;
 
@@ -41,6 +50,15 @@ const TIME_PRESETS: readonly ReminderTime[] = [
   { hour: 21, minute: 30 },
   { hour: 22, minute: 0 },
 ];
+
+const timeKey = (t: ReminderTime) => `${t.hour}:${t.minute}`;
+
+const TIME_OPTIONS: readonly ChipOption[] = TIME_PRESETS.map((t) => ({
+  value: timeKey(t),
+  label: formatReminderTime(t),
+}));
+
+type Status = 'on' | 'off' | 'blocked' | 'unavailable';
 
 export function NotificationSettingsScreen() {
   const { enabled, time, setEnabled, setTime } = useAppStore(
@@ -54,110 +72,146 @@ export function NotificationSettingsScreen() {
 
   const isWeb = Platform.OS === 'web';
   const [busy, setBusy] = useState(false);
+  const [permDenied, setPermDenied] = useState(false);
+
+  // Native: read whether the user has hard-denied notifications so we can
+  // show the "blocked" recovery rather than a toggle that silently fails.
+  useEffect(() => {
+    if (isWeb) return;
+    let active = true;
+    Notifications.getPermissionsAsync()
+      .then((s) => {
+        if (active) setPermDenied(!s.granted && !s.canAskAgain);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isWeb]);
+
+  const status: Status = isWeb
+    ? 'unavailable'
+    : permDenied
+    ? 'blocked'
+    : enabled
+    ? 'on'
+    : 'off';
+
+  const openSettings = useCallback(() => {
+    Linking.openSettings().catch(() => {});
+  }, []);
 
   const onToggle = useCallback(
     async (next: boolean) => {
-      hapt.select();
+      // Web has no OS scheduler — persist the preference honestly without
+      // pretending it was scheduled.
+      if (isWeb) {
+        setEnabled(next);
+        return;
+      }
       if (next) {
         setBusy(true);
         const ok = await scheduleScanReminder(time);
         setBusy(false);
         if (ok) {
+          setPermDenied(false);
           setEnabled(true);
         } else {
-          Alert.alert(C.deniedTitle, C.deniedBody);
+          // Couldn't schedule — almost always a denied permission.
+          setPermDenied(true);
         }
       } else {
         await cancelScanReminder();
         setEnabled(false);
       }
     },
-    [time, setEnabled],
+    [isWeb, time, setEnabled],
   );
 
   const pickTime = useCallback(
-    async (t: ReminderTime) => {
+    async (key: string) => {
+      const preset = TIME_PRESETS.find((t) => timeKey(t) === key);
+      if (!preset) return;
       hapt.select();
-      setTime(t);
-      if (enabled) {
-        await scheduleScanReminder(t);
+      setTime(preset);
+      if (enabled && !isWeb) {
+        await scheduleScanReminder(preset);
       }
     },
-    [enabled, setTime],
+    [enabled, isWeb, setTime],
   );
+
+  const statusTone: NoticeTone =
+    status === 'on' ? 'success' : status === 'blocked' ? 'warning' : 'neutral';
+  const statusCard =
+    status === 'on'
+      ? { title: C.status.onTitle, body: C.status.onBody }
+      : status === 'blocked'
+      ? {
+          title: C.status.blockedTitle,
+          body: C.status.blockedBody,
+          cta: C.status.blockedCta,
+          onPressCta: openSettings,
+        }
+      : status === 'unavailable'
+      ? { title: C.status.unavailableTitle, body: C.status.unavailableBody }
+      : { title: C.status.offTitle, body: C.status.offBody };
 
   return (
     <SettingsScaffold title={C.title} intro={C.intro}>
       <View style={styles.body}>
-        {isWeb ? (
-          <View style={styles.noteCard}>
-            <Text style={styles.noteText} maxFontSizeMultiplier={1.3}>
-              {C.unavailable}
-            </Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.card}>
-              <View style={styles.row}>
-                <View style={styles.rowText}>
-                  <Text style={styles.rowLabel} maxFontSizeMultiplier={1.2}>
-                    {C.reminderLabel}
-                  </Text>
-                  <Text style={styles.rowMeta} maxFontSizeMultiplier={1.25}>
-                    {enabled
-                      ? C.reminderMeta(formatReminderTime(time))
-                      : C.reminderMetaOff}
-                  </Text>
-                </View>
-                <Switch
-                  value={enabled}
-                  onValueChange={onToggle}
-                  disabled={busy}
-                  trackColor={{ false: puraShop.inkFaint, true: puraShop.coral }}
-                  thumbColor={puraShop.white}
-                  ios_backgroundColor={puraShop.inkFaint}
-                />
-              </View>
-            </View>
+        <View style={styles.block}>
+          <NoticeCard tone={statusTone} {...statusCard} />
+        </View>
 
-            {enabled ? (
-              <View style={styles.timeBlock}>
-                <Text style={styles.timeLabel} maxFontSizeMultiplier={1.2}>
-                  {C.timeLabel}
+        <SettingsCard style={styles.block}>
+          <ToggleRow
+            label={C.reminderLabel}
+            meta={
+              enabled ? C.reminderMeta(formatReminderTime(time)) : C.reminderMetaOff
+            }
+            value={enabled}
+            disabled={busy}
+            onValueChange={onToggle}
+          />
+        </SettingsCard>
+
+        {enabled ? (
+          <SettingsSection title={C.timeLabel}>
+            <ChipGroup
+              mode="single"
+              options={TIME_OPTIONS}
+              value={timeKey(time)}
+              onChange={pickTime}
+            />
+          </SettingsSection>
+        ) : null}
+
+        <SettingsSection title={C.preview.label}>
+          <View style={styles.preview}>
+            <View style={styles.previewIcon}>
+              <Bell size={16} color={puraShop.white} weight="fill" />
+            </View>
+            <View style={styles.previewText}>
+              <View style={styles.previewTopRow}>
+                <Text style={styles.previewApp} maxFontSizeMultiplier={1.1}>
+                  {C.preview.appName}
                 </Text>
-                <View style={styles.chipWrap}>
-                  {TIME_PRESETS.map((t) => {
-                    const active =
-                      t.hour === time.hour && t.minute === time.minute;
-                    return (
-                      <Pressable
-                        key={`${t.hour}:${t.minute}`}
-                        onPress={() => pickTime(t)}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                        style={({ pressed }) => [
-                          styles.chip,
-                          active && styles.chipActive,
-                          pressed && styles.chipPressed,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            active && styles.chipTextActive,
-                          ]}
-                          maxFontSizeMultiplier={1.2}
-                        >
-                          {formatReminderTime(t)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <Text style={styles.previewNow} maxFontSizeMultiplier={1.1}>
+                  {C.preview.now}
+                </Text>
               </View>
-            ) : null}
-          </>
-        )}
+              <Text style={styles.previewTitle} maxFontSizeMultiplier={1.2}>
+                {C.preview.title}
+              </Text>
+              <Text style={styles.previewBody} maxFontSizeMultiplier={1.25}>
+                {C.preview.body}
+              </Text>
+            </View>
+          </View>
+        </SettingsSection>
+
+        <NoticeCard tone="info" title={C.promiseTitle} body={C.promiseBody} />
       </View>
     </SettingsScaffold>
   );
@@ -165,81 +219,53 @@ export function NotificationSettingsScreen() {
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: puraShopLayout.horizontalPadding,
+    paddingHorizontal: 20,
   },
-  card: {
-    backgroundColor: puraShop.surface,
-    borderRadius: puraShopRadius.card,
+  block: {
+    marginBottom: 22,
+  },
+  preview: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: puraShop.surfaceWarm,
+    borderRadius: puraShopRadius.cardSmall,
     borderWidth: 1,
     borderColor: puraShop.cardBorder,
-    overflow: 'hidden',
+    padding: 14,
   },
-  row: {
-    flexDirection: 'row',
+  previewIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: puraShop.coral,
     alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    justifyContent: 'center',
   },
-  rowText: {
+  previewText: {
     flex: 1,
+    gap: 3,
   },
-  rowLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
-    color: puraShop.ink,
-    letterSpacing: -0.15,
-  },
-  rowMeta: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12.5,
-    color: puraShop.inkMuted,
-    marginTop: 3,
-  },
-  timeBlock: {
-    marginTop: 24,
-  },
-  timeLabel: {
-    ...puraShopType.supportingProductSerif,
-    color: puraShop.ink,
-    marginBottom: 12,
-  },
-  chipWrap: {
+  previewTopRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: puraShopRadius.chip,
-    backgroundColor: puraShop.surface,
-    borderWidth: 1,
-    borderColor: puraShop.cardBorder,
+  previewApp: {
+    ...puraShopType.tagLabel,
+    color: puraShop.inkMuted,
   },
-  chipActive: {
-    backgroundColor: puraShop.coralSoft,
-    borderColor: puraShop.coral,
+  previewNow: {
+    ...puraShopType.meta,
+    color: puraShop.inkFaint,
   },
-  chipPressed: {
-    opacity: 0.8,
-  },
-  chipText: {
+  previewTitle: {
     ...puraShopType.chipLabel,
     color: puraShop.ink,
+    fontSize: 14.5,
   },
-  chipTextActive: {
-    color: puraShop.coralDeep,
-  },
-  noteCard: {
-    backgroundColor: puraShop.surfaceWarm,
-    borderRadius: puraShopRadius.card,
-    borderWidth: 1,
-    borderColor: puraShop.cardBorder,
-    padding: 18,
-  },
-  noteText: {
-    ...puraShopType.benefitLine,
+  previewBody: {
+    ...puraShopType.meta,
     color: puraShop.inkSecondary,
+    lineHeight: 17,
   },
 });

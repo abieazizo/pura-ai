@@ -24,8 +24,16 @@ import { ScanRevealScreen } from '@/screens/scan/reveal/ScanRevealScreen';
 import { RevealAnalyzingSlide } from '@/screens/scan/reveal/RevealAnalyzingSlide';
 import { ScanBuildCeremony } from '@/screens/scan/reveal/ScanBuildCeremony';
 import { RoutineLandingView } from '@/screens/scan/reveal/RoutineLandingView';
-import { buildCeremonyRoutine } from '@/services/routine/routineBuilderService';
-import type { CustomRoutine, RoutineStepType } from '@/types/routine';
+import {
+  buildCeremonyRoutine,
+  buildSingleStep,
+} from '@/services/routine/routineBuilderService';
+import {
+  pillarKeyToStepType,
+  type CustomRoutine,
+  type PillarKey,
+  type RoutineTimeOfDay,
+} from '@/types/routine';
 
 type Surface = 1 | 2 | 3 | 4 | 5 | 6 | 'pager' | 'ceremony' | 'routine';
 type Nav = NativeStackNavigationProp<RootStackParamList, 'ScanRevealDev'>;
@@ -53,17 +61,64 @@ export function RevealDevGallery() {
   const noop = () => {};
 
   // Surface 8 renders the populated landing page off a deterministic routine
-  // (no scan / store needed) with local check-off state so the dev surface is
-  // fully interactive in isolation.
-  const routineRef = React.useRef<CustomRoutine | null>(null);
-  if (!routineRef.current) {
-    routineRef.current = buildCeremonyRoutine({ scanId: 'dev-routine-scan' });
-  }
-  const [devDoneTypes, setDevDoneTypes] = React.useState<RoutineStepType[]>([]);
-  const toggleDev = (t: RoutineStepType) =>
-    setDevDoneTypes((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t],
-    );
+  // (no scan / store needed) with fully local, mutable state so the dev
+  // surface is interactive in isolation — reorder, remove, add, complete.
+  const [devRoutine, setDevRoutine] = React.useState<CustomRoutine>(() =>
+    buildCeremonyRoutine({ scanId: 'dev-routine-scan' }),
+  );
+  const [devTimeOfDay, setDevTimeOfDay] = React.useState<RoutineTimeOfDay>('evening');
+  const [devDone, setDevDone] = React.useState<{ morning: string[]; evening: string[] }>({
+    morning: [],
+    evening: [],
+  });
+
+  const devReorder = (from: number, to: number) =>
+    setDevRoutine((r) => {
+      const steps = devTimeOfDay === 'morning' ? r.morningSteps : r.eveningSteps;
+      if (from < 0 || to < 0 || from >= steps.length || to >= steps.length || from === to) {
+        return r;
+      }
+      const arr = steps.slice();
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      const renum = arr.map((s, i) => ({ ...s, order: i + 1 }));
+      return devTimeOfDay === 'morning'
+        ? { ...r, morningSteps: renum }
+        : { ...r, eveningSteps: renum };
+    });
+
+  const devRemove = (stepId: string) =>
+    setDevRoutine((r) => {
+      const steps = devTimeOfDay === 'morning' ? r.morningSteps : r.eveningSteps;
+      const next = steps
+        .filter((s) => s.id !== stepId)
+        .map((s, i) => ({ ...s, order: i + 1 }));
+      return devTimeOfDay === 'morning'
+        ? { ...r, morningSteps: next }
+        : { ...r, eveningSteps: next };
+    });
+
+  const devAdd = (pillar: PillarKey) =>
+    setDevRoutine((r) => {
+      const steps = devTimeOfDay === 'morning' ? r.morningSteps : r.eveningSteps;
+      if (steps.some((s) => s.type === pillarKeyToStepType(pillar))) return r;
+      const next = [...steps, buildSingleStep(pillar, devTimeOfDay)].map((s, i) => ({
+        ...s,
+        order: i + 1,
+      }));
+      return devTimeOfDay === 'morning'
+        ? { ...r, morningSteps: next }
+        : { ...r, eveningSteps: next };
+    });
+
+  const devToggle = (stepId: string) =>
+    setDevDone((d) => {
+      const list = devTimeOfDay === 'morning' ? d.morning : d.evening;
+      const next = list.includes(stepId)
+        ? list.filter((x) => x !== stepId)
+        : [...list, stepId];
+      return devTimeOfDay === 'morning' ? { ...d, morning: next } : { ...d, evening: next };
+    });
 
   if (surface === 1) {
     return <RevealAnalyzingSlide stage="ai_result_returned" onCancel={toIndex} />;
@@ -80,10 +135,14 @@ export function RevealDevGallery() {
   if (surface === 'routine') {
     return (
       <RoutineLandingView
-        routine={routineRef.current}
-        doneTypes={devDoneTypes}
-        onToggleStep={toggleDev}
-        onEdit={toIndex}
+        routine={devRoutine}
+        timeOfDay={devTimeOfDay}
+        onChangeTimeOfDay={setDevTimeOfDay}
+        doneIds={devTimeOfDay === 'morning' ? devDone.morning : devDone.evening}
+        onToggleComplete={devToggle}
+        onReorder={devReorder}
+        onRemoveStep={devRemove}
+        onAddStep={devAdd}
         onHowItWorks={toIndex}
       />
     );

@@ -38,6 +38,36 @@ export type RoutineTimeOfDay = 'morning' | 'evening';
 export type RoutineStepType = 'cleanse' | 'treat' | 'hydrate' | 'protect';
 
 // ---------------------------------------------------------------------------
+// Pillars (the user-facing routine vocabulary)
+// ---------------------------------------------------------------------------
+
+/**
+ * The four routine pillars as the user sees them. Distinct from
+ * `RoutineStepType` on exactly one axis: the moisturize pillar maps to
+ * the `hydrate` step type internally. Keep the maps below as the single
+ * bridge between the two vocabularies so neither leaks into the other.
+ */
+export type PillarKey = 'cleanse' | 'treat' | 'moisturize' | 'protect';
+
+export type PillarSelection = Record<PillarKey, boolean>;
+
+/** Canonical pillar order. Cleanse → Treat → Moisturize → Protect. */
+export const PILLAR_KEYS: readonly PillarKey[] = [
+  'cleanse',
+  'treat',
+  'moisturize',
+  'protect',
+] as const;
+
+export function pillarKeyToStepType(key: PillarKey): RoutineStepType {
+  return key === 'moisturize' ? 'hydrate' : key;
+}
+
+export function stepTypeToPillarKey(type: RoutineStepType): PillarKey {
+  return type === 'hydrate' ? 'moisturize' : type;
+}
+
+// ---------------------------------------------------------------------------
 // Product / availability
 // ---------------------------------------------------------------------------
 

@@ -9,7 +9,22 @@ import * as Haptics from 'expo-haptics';
  * All calls swallow errors — haptics are a nice-to-have.
  */
 
-const safe = (fn: () => Promise<unknown>) => fn().catch(() => {});
+// v28 — app-wide haptics switch. Mirrored from the persisted
+// `hapticsEnabled` store preference via __setHapticsEnabled (called from
+// useAppStore's subscription). When false, every hapt.* call — including
+// the delayed beats fired from setTimeout — becomes a silent no-op.
+// Defaults on so haptics work in the window before the store hydrates.
+let _hapticsEnabled = true;
+
+/** @internal Synced from useAppStore. Not for UI use. */
+export function __setHapticsEnabled(enabled: boolean): void {
+  _hapticsEnabled = enabled;
+}
+
+const safe = (fn: () => Promise<unknown>) => {
+  if (!_hapticsEnabled) return;
+  fn().catch(() => {});
+};
 
 export const hapt = {
   /** Light UI tap — primary button press, mark press, tab press. */

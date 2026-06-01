@@ -30,6 +30,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import Animated, {
   Easing,
+  FadeIn,
+  FadeOut,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
@@ -45,7 +47,14 @@ import {
   puraRevealShadow,
   puraRevealType,
 } from '@/theme/tokens';
-import type { CustomRoutine, RoutineProduct, RoutineStepType } from '@/types/routine';
+import type {
+  CustomRoutine,
+  PillarSelection,
+  RoutineProduct,
+  RoutineStepType,
+} from '@/types/routine';
+import { stepTypeToPillarKey } from '@/types/routine';
+import { PillarIcon } from '@/components/routine/pillarIdentity';
 import { buildCeremonyRoutine } from '@/services/routine/routineBuilderService';
 import { useRoutineStore } from '@/state/routine/routineStore';
 import { findShopProduct } from '@/screens/shop/shopCatalog';
@@ -59,24 +68,27 @@ import { RevealLink } from './revealChrome';
 const CARD_BUILD_MS = 3000;
 const CARD_GAP_MS = 200;
 const FINAL_BEAT_MS = 700;
+/** Six status phrases per pillar, crossfading once every 500ms across the 3s build. */
+const STATUS_STEP_MS = 500;
+const STATUS_COUNT = 6;
+
 /** Card i begins building at i * (build + gap). */
-const START_MS = [0, 1, 2, 3].map((i) => i * (CARD_BUILD_MS + CARD_GAP_MS));
-const FINAL_AT = START_MS[3] + CARD_BUILD_MS; // 12600
-const NAVIGATE_AT = FINAL_AT + FINAL_BEAT_MS; // 13300
+function cardStartMs(i: number): number {
+  return i * (CARD_BUILD_MS + CARD_GAP_MS);
+}
 
 type CardState = 'idle' | 'building' | 'done';
 
 interface PillarMeta {
   type: RoutineStepType;
-  index: string;
-  /** Hero lead-in shown while this pillar builds. */
+  /** Hero lead-in shown while this pillar builds (uniform across pillars). */
   heroLead: string;
   /** Hero key noun, rendered in Pura Blue italic. */
   heroNoun: string;
   /** Pillar name shown on the building card (serif). */
   buildingName: string;
-  /** Three status lines with concrete numbers — never generic "Searching…". */
-  status: readonly [string, string, string];
+  /** Six rolling status lines with concrete numbers — never generic "Searching…". */
+  status: readonly string[];
 }
 
 const PILLAR_ORDER: RoutineStepType[] = ['cleanse', 'treat', 'hydrate', 'protect'];
@@ -84,49 +96,57 @@ const PILLAR_ORDER: RoutineStepType[] = ['cleanse', 'treat', 'hydrate', 'protect
 const PILLAR_META: Record<RoutineStepType, PillarMeta> = {
   cleanse: {
     type: 'cleanse',
-    index: '01',
     heroLead: 'Choosing your ',
     heroNoun: 'cleanser',
     buildingName: 'Cleanse',
     status: [
-      'Comparing 840 cleansers…',
-      'Cross-checking for sensitivities…',
+      'Reading your barrier profile...',
+      'Filtering 847 cleansers...',
+      'Cross-checking pH range...',
+      'Matching to your sensitivity...',
+      'Checking ingredient compatibility...',
       'Found your match.',
     ],
   },
   treat: {
     type: 'treat',
-    index: '02',
-    heroLead: 'Selecting your ',
+    heroLead: 'Choosing your ',
     heroNoun: 'treatment',
     buildingName: 'Treat',
     status: [
-      'Weighing 612 treatments…',
-      'Checking strength for your barrier…',
+      'Reading your focus areas...',
+      'Filtering 1,240 treatments...',
+      'Matching to your texture goals...',
+      'Calibrating to your barrier strength...',
+      'Checking actives compatibility...',
       'Found your match.',
     ],
   },
   hydrate: {
     type: 'hydrate',
-    index: '03',
-    heroLead: 'Matching your ',
+    heroLead: 'Choosing your ',
     heroNoun: 'moisturizer',
     buildingName: 'Moisturize',
     status: [
-      'Comparing 530 moisturizers…',
-      'Matching to your hydration needs…',
+      'Reading your hydration signal...',
+      'Filtering 612 moisturizers...',
+      'Matching to your skin type...',
+      'Cross-checking with treatment layer...',
+      'Checking texture preference...',
       'Found your match.',
     ],
   },
   protect: {
     type: 'protect',
-    index: '04',
-    heroLead: 'Locking in your ',
+    heroLead: 'Choosing your ',
     heroNoun: 'SPF',
     buildingName: 'Protect',
     status: [
-      'Scanning 470 daily SPFs…',
-      'Confirming no white cast…',
+      'Reading your sun exposure profile...',
+      'Filtering 318 SPFs...',
+      'Matching to your skin tone...',
+      'Checking texture compatibility...',
+      'Verifying daily wearability...',
       'Found your match.',
     ],
   },
@@ -141,7 +161,10 @@ interface CeremonyCard {
 export interface ScanBuildCeremonyProps {
   scanId: string;
   limitedByScan?: boolean;
-  /** Called ~13.3s in, after the routine is committed to the store. */
+  /** Pillars the user chose in the picker. Omitted = all four. The
+   *  ceremony builds, animates, and commits ONLY these pillars. */
+  selection?: PillarSelection;
+  /** Called after the routine is committed to the store. */
   onComplete: () => void;
   onHowItWorks?: () => void;
 }
@@ -149,6 +172,7 @@ export interface ScanBuildCeremonyProps {
 export function ScanBuildCeremony({
   scanId,
   limitedByScan,
+  selection,
   onComplete,
   onHowItWorks,
 }: ScanBuildCeremonyProps) {
@@ -158,23 +182,37 @@ export function ScanBuildCeremony({
   // Build once. The committed routine and the animated cards share this.
   const routineRef = React.useRef<CustomRoutine | null>(null);
   if (!routineRef.current) {
-    routineRef.current = buildCeremonyRoutine({ scanId, limitedByScan });
+    routineRef.current = buildCeremonyRoutine({ scanId, limitedByScan, selection });
   }
   const routine = routineRef.current;
+
+  // The pillars to animate, in canonical order, filtered to the user's
+  // selection. Defensive fallback to all four if somehow empty.
+  const selectedTypes = React.useMemo<RoutineStepType[]>(() => {
+    const list = PILLAR_ORDER.filter(
+      (t) => !selection || selection[stepTypeToPillarKey(t)] !== false,
+    );
+    return list.length > 0 ? list : PILLAR_ORDER;
+  }, [selection]);
+  const cardCount = selectedTypes.length;
+
+  // Timeline derived from the number of selected pillars (3s per card).
+  const finalAt = cardStartMs(cardCount - 1) + CARD_BUILD_MS;
+  const navigateAt = finalAt + FINAL_BEAT_MS;
 
   const cards: CeremonyCard[] = React.useMemo(() => {
     const byType = new Map<RoutineStepType, RoutineProduct | undefined>();
     for (const s of [...routine.morningSteps, ...routine.eveningSteps]) {
       if (!byType.has(s.type)) byType.set(s.type, s.product);
     }
-    return PILLAR_ORDER.map((type) => {
+    return selectedTypes.map((type) => {
       const product = byType.get(type);
       const catalog = product ? findShopProduct(product.id) : undefined;
       return { meta: PILLAR_META[type], product, packshot: catalog?.catalogPackshot };
     });
-  }, [routine]);
+  }, [routine, selectedTypes]);
 
-  const [states, setStates] = React.useState<CardState[]>(['idle', 'idle', 'idle', 'idle']);
+  const [states, setStates] = React.useState<CardState[]>(() => selectedTypes.map(() => 'idle'));
   const [statusStep, setStatusStep] = React.useState(0);
   const [heroIndex, setHeroIndex] = React.useState(0);
   const [finalBeat, setFinalBeat] = React.useState(false);
@@ -190,7 +228,8 @@ export function ScanBuildCeremony({
   React.useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    START_MS.forEach((start, i) => {
+    selectedTypes.forEach((_type, i) => {
+      const start = cardStartMs(i);
       timers.push(
         setTimeout(() => {
           setStates((prev) => prev.map((s, idx) => (idx === i ? 'building' : s)));
@@ -198,13 +237,15 @@ export function ScanBuildCeremony({
           setStatusStep(0);
           progress.value = 0;
           progress.value = withTiming(1, {
-            duration: CARD_BUILD_MS - 150,
-            easing: Easing.linear,
+            duration: CARD_BUILD_MS - 120,
+            easing: Easing.out(Easing.cubic),
           });
         }, start),
       );
-      timers.push(setTimeout(() => setStatusStep(1), start + 1000));
-      timers.push(setTimeout(() => setStatusStep(2), start + 2000));
+      // Roll the six status phrases, one crossfade every 500ms.
+      for (let j = 1; j < STATUS_COUNT; j += 1) {
+        timers.push(setTimeout(() => setStatusStep(j), start + j * STATUS_STEP_MS));
+      }
       timers.push(
         setTimeout(() => {
           setStates((prev) => prev.map((s, idx) => (idx === i ? 'done' : s)));
@@ -220,7 +261,7 @@ export function ScanBuildCeremony({
         const store = useRoutineStore.getState();
         store.completeBuild(routine);
         store.setLifecycle('active');
-      }, FINAL_AT),
+      }, finalAt),
     );
 
     timers.push(
@@ -228,7 +269,7 @@ export function ScanBuildCeremony({
         if (firedRef.current) return;
         firedRef.current = true;
         onCompleteRef.current();
-      }, NAVIGATE_AT),
+      }, navigateAt),
     );
 
     return () => {
@@ -246,7 +287,7 @@ export function ScanBuildCeremony({
   }, [heroIndex, finalBeat]);
 
   const heroStyle = useAnimatedStyle(() => ({ opacity: heroOp.value }));
-  const heroMeta = PILLAR_META[PILLAR_ORDER[heroIndex]];
+  const heroMeta = PILLAR_META[selectedTypes[Math.min(heroIndex, cardCount - 1)]];
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -342,19 +383,26 @@ function BuildCard({
       ? { backgroundColor: puraReveal.porcelainDeep, borderColor: 'transparent' }
       : { backgroundColor: puraReveal.surface, borderColor: puraReveal.border };
 
-  const numberColor = isIdle(state) ? puraReveal.veryMuted : puraReveal.blue;
+  const isIdleState = state === 'idle';
+  const statusIdx = Math.min(statusStep, meta.status.length - 1);
+  const statusDone = statusIdx >= STATUS_COUNT - 1;
 
   return (
     <Animated.View style={[styles.card, containerTone, cardStyle]}>
       <View style={styles.cardRow}>
-        <Text style={[puraRevealType.pillarNumber, { color: numberColor }, styles.cardNumber]}>
-          {meta.index}
-        </Text>
+        <View style={styles.cardIcon}>
+          <PillarIcon pillar={stepTypeToPillarKey(meta.type)} size={44} />
+        </View>
 
-        {state === 'idle' ? (
-          <View style={styles.idleRight}>
+        {isIdleState ? (
+          <>
+            <View style={styles.idleBody}>
+              <Text style={[puraRevealType.productName, { color: puraReveal.muted }]}>
+                {meta.buildingName}
+              </Text>
+            </View>
             <Lock size={16} weight="regular" color={puraReveal.veryMuted} />
-          </View>
+          </>
         ) : null}
 
         {isBuilding ? (
@@ -362,15 +410,21 @@ function BuildCard({
             <Text style={[puraRevealType.productName, { color: puraReveal.ink }]}>
               {meta.buildingName}
             </Text>
-            <Text
-              style={[
-                puraRevealType.buildStatusLine,
-                { color: statusStep >= 2 ? puraReveal.done : puraReveal.muted },
-                styles.statusLine,
-              ]}
-            >
-              {meta.status[statusStep]}
-            </Text>
+            <View style={styles.statusWrap}>
+              <Animated.Text
+                key={statusIdx}
+                entering={FadeIn.duration(220)}
+                exiting={FadeOut.duration(160)}
+                numberOfLines={1}
+                style={[
+                  puraRevealType.buildStatusLine,
+                  styles.statusAbs,
+                  { color: statusDone ? puraReveal.done : puraReveal.muted },
+                ]}
+              >
+                {meta.status[statusIdx]}
+              </Animated.Text>
+            </View>
           </View>
         ) : null}
 
@@ -406,10 +460,6 @@ function BuildCard({
       ) : null}
     </Animated.View>
   );
-}
-
-function isIdle(s: CardState): boolean {
-  return s === 'idle';
 }
 
 /** Blue checkmark badge — scales 0.7 → 1.0 on appearance. */
@@ -472,19 +522,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  cardNumber: {
-    width: 42,
+  cardIcon: {
+    marginRight: 14,
   },
-  idleRight: {
+  idleBody: {
     flex: 1,
-    alignItems: 'flex-end',
   },
   buildingBody: {
     flex: 1,
     gap: 8,
   },
-  statusLine: {
-    marginTop: 2,
+  statusWrap: {
+    height: 18,
+    justifyContent: 'center',
+  },
+  statusAbs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
   },
   doneBody: {
     flex: 1,

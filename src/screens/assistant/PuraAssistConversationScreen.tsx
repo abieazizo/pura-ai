@@ -76,7 +76,7 @@ import { askAssistant } from '@/api/assistant';
 import type { AssistantMessage } from '@/types';
 import { useAssistSignal } from '@/state/assistSignal';
 import type { RootStackParamList } from '@/navigation/types';
-import { AssistantFace3D } from './AssistantFace3D';
+import { AssistantFaceLive, type AssistantFaceState } from './AssistantFaceLive';
 import { AssistInputBar } from './AssistInputBar';
 
 // ---------------------------------------------------------------------------
@@ -107,6 +107,34 @@ function clock(ms: number): string {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+// Map the boolean "thinking" signal onto the face's three-state machine: the
+// falling edge (thinking → done) holds a brief 'landing' beat before idle, so
+// the face can play its settle/pop instead of snapping back.
+const LANDING_MS = 600;
+
+function useFaceState(thinking: boolean): AssistantFaceState {
+  const [faceState, setFaceState] = useState<AssistantFaceState>(
+    thinking ? 'thinking' : 'idle',
+  );
+  const wasThinking = useRef(thinking);
+  useEffect(() => {
+    const was = wasThinking.current;
+    wasThinking.current = thinking;
+    if (thinking) {
+      setFaceState('thinking');
+      return;
+    }
+    if (was) {
+      setFaceState('landing');
+      const t = setTimeout(() => setFaceState('idle'), LANDING_MS);
+      return () => clearTimeout(t);
+    }
+    setFaceState('idle');
+    return undefined;
+  }, [thinking]);
+  return faceState;
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +454,7 @@ function ReadingScanCard({
   noScanLine: string;
   thinking: boolean;
 }) {
+  const faceState = useFaceState(thinking);
   return (
     <View style={styles.scanCard}>
       <View style={styles.scanCardCopy}>
@@ -457,7 +486,9 @@ function ReadingScanCard({
           <Text style={styles.scanNoScan}>{noScanLine}</Text>
         )}
       </View>
-      <AssistantFace3D thinking={thinking} size={56} subdued={!scanReady} />
+      <View style={styles.faceWrap}>
+        <AssistantFaceLive state={faceState} subdued={!scanReady} />
+      </View>
     </View>
   );
 }
@@ -872,6 +903,14 @@ const styles = StyleSheet.create({
   scanNoScan: {
     ...puraAssistType.subCardMeta,
     color: puraAssist.muted,
+  },
+  // Reserve the max (thinking) footprint so the face grows in place without
+  // nudging the card layout; the 56px idle face sits centred within.
+  faceWrap: {
+    width: 92,
+    height: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ---- Conversation list ----

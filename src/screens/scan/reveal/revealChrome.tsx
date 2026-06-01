@@ -107,24 +107,41 @@ export function RevealCTA({
   onPress,
   icon,
   style,
+  disabled = false,
 }: {
   label: string;
   onPress: () => void;
   icon?: React.ReactNode;
   style?: ViewStyle;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={() => {
+        if (disabled) return;
         hapt.tap();
         onPress();
       }}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed, style]}
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [
+        styles.cta,
+        disabled && styles.ctaDisabled,
+        !disabled && pressed && styles.ctaPressed,
+        style,
+      ]}
     >
-      <Text style={[puraRevealType.cta, { color: puraReveal.onInk }]}>{label}</Text>
-      {icon}
+      <Text
+        style={[
+          puraRevealType.cta,
+          { color: disabled ? puraReveal.veryMuted : puraReveal.onInk },
+        ]}
+      >
+        {label}
+      </Text>
+      {disabled ? null : icon}
     </Pressable>
   );
 }
@@ -224,6 +241,11 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: puraRevealRadius.cta,
     ...puraRevealShadow.cta,
+  },
+  ctaDisabled: {
+    backgroundColor: puraReveal.ringTrack,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   ctaPressed: {
     opacity: 0.92,

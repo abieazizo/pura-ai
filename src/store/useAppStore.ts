@@ -261,6 +261,24 @@ export interface AppState {
    */
   lightingAssistEnabled: boolean;
 
+  /**
+   * v28 — Appearance & accessibility preferences (Settings ▸ Appearance).
+   *
+   * `hapticsEnabled` gates ALL haptic feedback app-wide. Wired into
+   * src/utils/haptics.ts through a module-level mirror kept in sync by a
+   * store subscription at the bottom of this file, so every `hapt.*` call
+   * becomes a silent no-op when the user turns haptics off. Defaults on.
+   *
+   * `motionPreference` lets the user force reduced motion regardless of the
+   * OS setting. 'system' (default) defers to the OS Reduce Motion flag;
+   * 'reduced' forces the static / calm animation variants. Consumed by
+   * src/hooks/useReduceMotion.ts. We deliberately expose only these two
+   * honest states: the single boolean every animation consults cannot
+   * distinguish a third "off" mode, so offering one would be fake precision.
+   */
+  hapticsEnabled: boolean;
+  motionPreference: 'system' | 'reduced';
+
   // v7.7 — scan analyzing choreography state. Transient except for
   // `latestResult`, which is persisted so returning users can see their last
   // reveal if they re-enter the stack without re-scanning.
@@ -396,6 +414,9 @@ export interface AppState {
   setHasSeenProductsScrollHint: (seen: boolean) => void;
   /** v19.11 — front-camera lighting assist toggle. */
   setLightingAssistEnabled: (enabled: boolean) => void;
+  /** v28 — appearance & accessibility setters. */
+  setHapticsEnabled: (enabled: boolean) => void;
+  setMotionPreference: (pref: 'system' | 'reduced') => void;
   /**
    * v26 — Set / clear the tonight completion timestamp. Passing
    * `null` reopens the nightly loop (e.g. user un-checks a step and
@@ -442,6 +463,23 @@ export interface AppState {
   setActiveIrritation: (v: AppState['activeIrritation']) => void;
   setPregnancyCaution: (v: AppState['pregnancyCaution']) => void;
   setAvoidIngredients: (next: string[]) => void;
+
+  /**
+   * v28 — Privacy ▸ Your data. Real, scoped deletions wired to the
+   * Privacy trust center. Each clears only its own slice of persisted
+   * state (the persist middleware writes through on the next tick):
+   *   • clearScanHistory   — scans, the last reveal, and the AI hydration
+   *                          derived from scans; keeps profile + routine.
+   *   • clearAssistantChat — the assistant thread + Decision Room thread.
+   *   • resetSkinProfile   — the editable skin answers + safety prefs;
+   *                          keeps scans, history, and routine.
+   *   • eraseAllData       — full reset to blank (same shape as signOut);
+   *                          the root navigator returns to onboarding.
+   */
+  clearScanHistory: () => void;
+  clearAssistantChat: () => void;
+  resetSkinProfile: () => void;
+  eraseAllData: () => void;
 
   finishOnboarding: () => void;
   signOut: () => void;
@@ -539,6 +577,11 @@ const blankState = {
   // explicitly from the scan UI; the preference persists from
   // there.
   lightingAssistEnabled: false,
+
+  // v28 — appearance & accessibility prefs. Haptics on by default;
+  // motion follows the OS until the user explicitly overrides it.
+  hapticsEnabled: true,
+  motionPreference: 'system' as 'system' | 'reduced',
 
   // v18.9 — safety profile defaults: every field neutral so users
   // who never opt in get the standard recommendation experience.
@@ -811,6 +854,9 @@ export const useAppStore = create<AppState>()(
       // v19.11 — Lighting Assist setter.
       setLightingAssistEnabled: (lightingAssistEnabled) =>
         set({ lightingAssistEnabled }),
+      // v28 — appearance & accessibility setters.
+      setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
+      setMotionPreference: (motionPreference) => set({ motionPreference }),
       // v26 — Tonight completion setter.
       setTonightCompleteAt: (tonightCompleteAt) => set({ tonightCompleteAt }),
       setRoutineSessionV26: (routineSessionV26) =>
@@ -909,6 +955,43 @@ export const useAppStore = create<AppState>()(
       setPregnancyCaution: (v) => set({ pregnancyCaution: v }),
       setAvoidIngredients: (next) => set({ avoidIngredients: next }),
 
+      // v28 — Privacy ▸ Your data. Real, scoped deletions. Every one
+      // writes blank values into the persisted store, so AsyncStorage
+      // reflects the deletion on the next persist tick.
+      clearScanHistory: () =>
+        set({
+          scans: [],
+          latestResult: null,
+          inFlightScan: null,
+          aiTopMatches: [],
+          aiRoutine: null,
+          aiProgress: null,
+          aiScoreExplanation: null,
+          routineSessionV26: null,
+          tonightCompleteAt: null,
+        }),
+      clearAssistantChat: () =>
+        set({ messages: [], decisionConversation: [] }),
+      resetSkinProfile: () =>
+        set({
+          skinType: null,
+          concerns: [],
+          sensitivity: null,
+          goal: null,
+          sunExposure: null,
+          effort: null,
+          ageRange: null,
+          agePreferNotToSay: false,
+          hormoneContext: null,
+          fragranceSensitive: null,
+          pregnancyCaution: null,
+          avoidIngredients: [],
+          skinConditions: [],
+          prescriptionFlag: null,
+          activeIrritation: null,
+        }),
+      eraseAllData: () => set({ ...blankState }),
+
       finishOnboarding: () => {
         const s = get();
         const rawName = (s.name ?? '').trim();
@@ -1003,6 +1086,10 @@ export const useAppStore = create<AppState>()(
         // carries across sessions.
         lightingAssistEnabled: state.lightingAssistEnabled,
 
+        // v28 — persist appearance & accessibility prefs.
+        hapticsEnabled: state.hapticsEnabled,
+        motionPreference: state.motionPreference,
+
         // v18.9 — persist the safety profile so flagged users keep
         // gentler recommendations across sessions.
         skinConditions: state.skinConditions,
@@ -1050,6 +1137,16 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+// v28 — keep the app-wide haptics mute flag in sync with the persisted
+// `hapticsEnabled` preference. haptics.ts holds a module-level mirror (it
+// runs outside React/store context), so we push the value in here: once
+// now with the default/already-rehydrated value, then on every change.
+// The async persist rehydration fires a store update too, so a user who
+// disabled haptics last session has them muted as soon as storage loads.
+import { __setHapticsEnabled } from '@/utils/haptics';
+__setHapticsEnabled(useAppStore.getState().hapticsEnabled);
+useAppStore.subscribe((s) => __setHapticsEnabled(s.hapticsEnabled));
 
 // v10.14 — `resetCompletedBeforeToday` helper + `selectNextMorningStep`
 // selector + `useRoutine` / `useActions` hooks were all removed.

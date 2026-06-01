@@ -39,13 +39,14 @@ import {
   defaultTimeOfDayForNow,
   todayDateKey,
   resolveStepAvailability,
-  selectTonightDoneTypes,
+  selectDailyDoneIds,
 } from '@/state/routine/routineStore';
 import { useAppStore, useLatestScan, useLatestResult } from '@/store/useAppStore';
 import { useRoutineFocus } from '@/state/v26/routineFocus';
 import {
   startRoutineBuild,
   reduceToOwnedOnly,
+  buildSingleStep,
 } from '@/services/routine/routineBuilderService';
 import {
   canGenerateRoutineFromScan,
@@ -68,7 +69,7 @@ import {
 } from '@/components/routine/pura';
 import { RoutineLandingView } from '@/screens/scan/reveal/RoutineLandingView';
 import type { RootStackParamList } from '@/navigation/types';
-import type { RoutineStep, RoutineTimeOfDay } from '@/types/routine';
+import type { PillarKey, RoutineStep, RoutineTimeOfDay } from '@/types/routine';
 import { hapt } from '@/utils/haptics';
 
 type Nav = NavigationProp<RootStackParamList>;
@@ -91,7 +92,7 @@ export function PuraRoutineScreen() {
     skippedStepIds,
     selectedTimeOfDay,
     todaySession,
-    tonightChecklist,
+    dailyChecklist,
   } = useRoutineStore(
     useShallow((s) => ({
       lifecycle: s.lifecycle,
@@ -102,7 +103,7 @@ export function PuraRoutineScreen() {
       skippedStepIds: s.skippedStepIds,
       selectedTimeOfDay: s.selectedTimeOfDay,
       todaySession: s.todaySession,
-      tonightChecklist: s.tonightChecklist,
+      dailyChecklist: s.dailyChecklist,
     })),
   );
 
@@ -117,7 +118,10 @@ export function PuraRoutineScreen() {
   const skipSessionStep = useRoutineStore((s) => s.skipSessionStep);
   const endSession = useRoutineStore((s) => s.endSession);
   const setRoutine = useRoutineStore((s) => s.setRoutine);
-  const toggleTonightStep = useRoutineStore((s) => s.toggleTonightStep);
+  const toggleStepComplete = useRoutineStore((s) => s.toggleStepComplete);
+  const reorderSteps = useRoutineStore((s) => s.reorderSteps);
+  const removeRoutineStep = useRoutineStore((s) => s.removeRoutineStep);
+  const addRoutineStep = useRoutineStore((s) => s.addRoutineStep);
 
   // Derive the correct lifecycle when no routine exists yet.
   useEffect(() => {
@@ -261,6 +265,41 @@ export function PuraRoutineScreen() {
     },
     [setSelectedTimeOfDay],
   );
+
+  const handleToggleComplete = useCallback(
+    (stepId: string) => {
+      toggleStepComplete(selectedTimeOfDay, stepId);
+    },
+    [toggleStepComplete, selectedTimeOfDay],
+  );
+
+  const handleReorder = useCallback(
+    (from: number, to: number) => {
+      reorderSteps(selectedTimeOfDay, from, to);
+    },
+    [reorderSteps, selectedTimeOfDay],
+  );
+
+  const handleRemoveStep = useCallback(
+    (stepId: string) => {
+      removeRoutineStep(selectedTimeOfDay, stepId);
+    },
+    [removeRoutineStep, selectedTimeOfDay],
+  );
+
+  const handleAddStep = useCallback(
+    (pillar: PillarKey) => {
+      const step = buildSingleStep(pillar, selectedTimeOfDay);
+      addRoutineStep(selectedTimeOfDay, step);
+    },
+    [addRoutineStep, selectedTimeOfDay],
+  );
+
+  const handleHowItWorks = useCallback(() => {
+    nav.navigate('AssistChat', {
+      initialMessage: 'How did you choose these products for me?',
+    });
+  }, [nav]);
 
   const handleUseRoutine = useCallback(() => {
     hapt.tap();
@@ -416,14 +455,14 @@ export function PuraRoutineScreen() {
     return (
       <RoutineLandingView
         routine={routine}
-        doneTypes={selectTonightDoneTypes(tonightChecklist)}
-        onToggleStep={toggleTonightStep}
-        onEdit={() => setLifecycle('confirming_products')}
-        onHowItWorks={() =>
-          nav.navigate('AssistChat', {
-            initialMessage: 'How did you choose these products for me?',
-          })
-        }
+        timeOfDay={selectedTimeOfDay}
+        onChangeTimeOfDay={handleChangeTimeOfDay}
+        doneIds={selectDailyDoneIds(dailyChecklist, selectedTimeOfDay)}
+        onToggleComplete={handleToggleComplete}
+        onReorder={handleReorder}
+        onRemoveStep={handleRemoveStep}
+        onAddStep={handleAddStep}
+        onHowItWorks={handleHowItWorks}
       />
     );
   }

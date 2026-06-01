@@ -10,6 +10,7 @@ import { ScanAnalyzingScreen } from '@/screens/scan/ScanAnalyzingScreen';
 import { ScanAnalyzingFaceScreen } from '@/screens/scan/ScanAnalyzing';
 import { ScanResultsFaceScreen } from '@/screens/scan/ScanResultsFaceScreen';
 import { ScanRevealScreen } from '@/screens/scan/reveal/ScanRevealScreen';
+import { BuildRoutinePicker } from '@/screens/scan/reveal/BuildRoutinePicker';
 import { ScanBuildCeremony } from '@/screens/scan/reveal/ScanBuildCeremony';
 import { ScanResultDetailScreen } from '@/screens/scan/ScanResultDetailScreen';
 import { ScanResultsProductScreen } from '@/screens/scan/ScanResultsProductScreen';
@@ -56,6 +57,9 @@ export function ScanModalStack({ route }: any) {
           AnalyzingScreenHost.handleComplete). */}
       <Stack.Screen name="ScanReveal">
         {() => <RevealScreenHost />}
+      </Stack.Screen>
+      <Stack.Screen name="BuildRoutinePicker">
+        {() => <BuildRoutinePickerHost />}
       </Stack.Screen>
       <Stack.Screen name="ScanCeremony">
         {() => <CeremonyScreenHost />}
@@ -373,8 +377,27 @@ function RevealScreenHost() {
       photoUri={resolved.photoUri}
       initialStep={0}
       onExit={closeToHome}
-      onBuildRoutine={() => scanNav.navigate('ScanCeremony', { scanId })}
+      onBuildRoutine={() => scanNav.navigate('BuildRoutinePicker', { scanId })}
       onSkip={closeToHome}
+    />
+  );
+}
+
+/**
+ * Pre-build pillar picker host (surface 6.5). The Ready screen's "Build
+ * my routine" lands here; the picker's CTA carries the user's pillar
+ * selection into the ceremony. Back returns to the reveal pager.
+ */
+function BuildRoutinePickerHost() {
+  const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
+  const route = useRoute<RouteProp<ScanStackParamList, 'BuildRoutinePicker'>>();
+  const { scanId } = route.params;
+
+  return (
+    <BuildRoutinePicker
+      scanId={scanId}
+      onBack={() => scanNav.goBack()}
+      onBuild={(selection) => scanNav.navigate('ScanCeremony', { scanId, selection })}
     />
   );
 }
@@ -394,7 +417,7 @@ function RevealScreenHost() {
 function CeremonyScreenHost() {
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<ScanStackParamList, 'ScanCeremony'>>();
-  const { scanId } = route.params;
+  const { scanId, selection } = route.params;
 
   const goToRoutineTab = useCallback(() => {
     // Navigating the root to Tabs/RoutineTab pops this modal off the root
@@ -412,6 +435,7 @@ function CeremonyScreenHost() {
   return (
     <ScanBuildCeremony
       scanId={scanId}
+      selection={selection}
       onComplete={goToRoutineTab}
       onHowItWorks={openHowItWorks}
     />

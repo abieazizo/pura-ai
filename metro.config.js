@@ -5,14 +5,6 @@ const path = require('node:path');
 
 const config = getDefaultConfig(__dirname);
 
-// 3D assets (expo-three / GLTFLoader) — allow bundling local .glb/.gltf files.
-// Remote RPM avatars are fetched at runtime and don't need this, but it lets
-// a local fallback avatar be `require()`d if one is ever added.
-config.resolver = config.resolver || {};
-config.resolver.assetExts = Array.from(
-  new Set([...(config.resolver.assetExts || []), 'glb', 'gltf']),
-);
-
 /**
  * v10.39 — IN-PROCESS AI HANDLERS.
  *

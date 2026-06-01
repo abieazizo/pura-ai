@@ -1746,6 +1746,14 @@ export const puraReveal = {
   done:          '#20A67A',
   doneSoft:      'rgba(32, 166, 122, 0.12)',
 
+  // ----- Pillar accents (routine pillars: cleanse/treat = blue (reuse blue/
+  // blue12), moisturize = sage (reuse oil/oilSoft), protect = amber) -----
+  amberPillar:     '#C97D2C',
+  amberPillarSoft: 'rgba(201, 125, 44, 0.12)',
+
+  // Soft red used by the routine edit-mode delete affordance.
+  dangerSoft:    '#D2666C',
+
   white:         '#FFFFFF',
 } as const;
 

@@ -1,5 +1,6 @@
 import type { Product, ProductTint } from '@/types';
 import type { BarcodeResolution, LiveProductCandidate } from '@/ai/ai-contracts';
+import type { PillarSelection } from '@/types/routine';
 
 export type ProductsRowKind =
   | 'best-for-you'
@@ -139,10 +140,16 @@ export type ScanStackParamList = {
    *  SkinState from `scanId`. "Build my routine" advances to ScanCeremony;
    *  "Skip for now" / exit closes the modal (the scan is already saved). */
   ScanReveal: { scanId: string };
+  /** Reveal-arc surface 6.5 — the pre-build pillar picker. The user
+   *  chooses which of the four pillars to include before the ceremony.
+   *  "Build my routine" on the Ready screen routes here; this screen's
+   *  CTA carries the selection into ScanCeremony. */
+  BuildRoutinePicker: { scanId: string };
   /** Reveal-arc surface 7 — the deterministic ~13s Build Ceremony. Commits
    *  the routine + flips routine lifecycle to 'active' internally, then
-   *  hands off to the Routine tab (surface 8). */
-  ScanCeremony: { scanId: string };
+   *  hands off to the Routine tab (surface 8). `selection` filters which
+   *  pillars are built/animated; omitted = all four. */
+  ScanCeremony: { scanId: string; selection?: PillarSelection };
   /** Post-scan account save ("Save your skin profile"), offered once after
    *  the first scan completes. Renders the repurposed AuthChoice screen. */
   SaveProfile: undefined;

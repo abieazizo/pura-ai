@@ -308,24 +308,59 @@ export const profileSheet = {
  * never embed strings inline.
  */
 export const meSettings = {
+  // ----- Shared save feedback (used across all settings pages) -----
+  saved: {
+    justNow: 'Saved just now',
+    toast: 'Saved.',
+    toastNextScan: 'Saved. Your next scan will use this.',
+    done: 'Done.',
+    undo: 'Undo',
+  },
+
   // ----- Skin profile -----
   skinProfile: {
     title: 'Skin profile',
-    intro: 'This is what Pura uses to read your scans and match products. Update it any time — your next scan will use it.',
+    intro: 'This is what Pura reads your scans against and matches products to. Update it any time — your next scan uses it.',
     notSet: 'Not set',
+    // Completion summary card.
+    completion: {
+      heading: 'Profile strength',
+      affectsLink: 'What this affects',
+      countTemplate: (done: number, total: number) => `${done} of ${total} answered`,
+      low: 'A fuller profile sharpens every scan and product match.',
+      mid: 'Looking good. A couple more answers and your matches get sharper.',
+      high: 'Your profile is rich — scans and matches are tuned to you.',
+    },
+    // "What this affects" sheet.
+    affectsSheet: {
+      title: 'What your profile affects',
+      body: 'Pura uses these answers to read your scans and rank products:',
+      bullets: [
+        'How your skin score is interpreted',
+        'Which concerns Pura watches most closely',
+        'How safety cautions — like fragrance or pregnancy — shape matches',
+        'How gentle or active your routine should be',
+      ],
+      footnote: 'Nothing here is required. Skip anything and Pura still works.',
+    },
     sections: {
       skinType: 'Skin type',
       concerns: 'Top concerns',
-      concernsHint: 'Choose up to 3',
+      concernsHint: 'Choose up to 3, in order',
       sensitivity: 'Reactivity',
       goal: 'Goal this cycle',
       sun: 'Sun exposure',
       effort: 'Routine effort',
+      preferences: 'Product preferences',
+      preferencesHint: 'Pura weighs these in every match',
       age: 'Age range',
       hormones: 'Hormonal context',
       optionalHint: 'Optional',
     },
-    concernsCapped: 'Up to 3 keeps your plan focused.',
+    // Ranked-concern badges.
+    rank: { primary: 'Primary', secondary: 'Secondary', watching: 'Watching' },
+    concernsRankedHint: 'Order matters — your first pick leads your plan.',
+    concernsCapped: 'Three keeps your plan focused. Remove one to swap.',
     skinType: {
       oily: 'Oily',
       dry: 'Dry',
@@ -333,11 +368,24 @@ export const meSettings = {
       balanced: 'Balanced',
       not_sure: 'Not sure',
     },
+    skinTypeHelp: {
+      oily: 'Pura leans toward lightweight, non-greasy textures and oil control.',
+      dry: 'Pura favors richer moisture and a gentler cleanse.',
+      combination: 'Pura balances oil control where you shine with comfort where you’re dry.',
+      balanced: 'Pura keeps things simple and protective — no over-correcting.',
+      not_sure: 'That’s fine — your scans help Pura learn your skin over time.',
+    },
     sensitivity: {
       very: 'Very reactive',
       somewhat: 'Somewhat reactive',
       not: 'Not very reactive',
       unsure: 'Not sure',
+    },
+    sensitivityHelp: {
+      very: 'Pura introduces actives slowly and steers around common irritants.',
+      somewhat: 'Pura eases into stronger actives and watches for reactions.',
+      not: 'Pura can suggest more active ingredients with less ramp-up.',
+      unsure: 'Pura starts gentle until your scans show how you react.',
     },
     goal: {
       clear: 'Clearer skin',
@@ -346,6 +394,8 @@ export const meSettings = {
       bright: 'Brighter tone',
       barrier: 'Stronger barrier',
     },
+    goalInsight: (label: string) =>
+      `Pura steers tonight’s plan and your matches toward ${label.toLowerCase()}.`,
     sun: {
       rarely: 'Mostly indoors',
       sometimes: 'Mixed',
@@ -357,6 +407,12 @@ export const meSettings = {
       moderate: 'Balanced',
       enthusiast: 'Advanced',
       'decide-for-me': 'Decide for me',
+    },
+    effortHelp: {
+      minimal: 'A short, high-impact routine — the fewest steps that work.',
+      moderate: 'A balanced morning and evening routine.',
+      enthusiast: 'Room for targeted actives and extra steps.',
+      'decide-for-me': 'Pura picks the routine depth for you.',
     },
     age: {
       under_18: 'Under 18',
@@ -375,60 +431,190 @@ export const meSettings = {
       hrt: 'HRT',
       prefer_not_to_say: 'Prefer not to say',
     },
+    hormonesNote: 'Optional and private. This only refines ingredient cautions, like keeping picks pregnancy-safe.',
     concerns: ['Breakouts', 'Redness', 'Dryness', 'Texture', 'Dark spots', 'Dullness', 'Oiliness', 'Sensitivity'],
+    // Product preferences — mapped to real safety fields Pura already reads.
+    preferences: {
+      fragranceFree: 'Fragrance-free',
+      pregnancySafe: 'Pregnancy-safe only',
+      avoidEssentialOils: 'Avoid essential oils',
+      avoidAlcohol: 'Avoid drying alcohols',
+      note: 'Pura factors these into every product match and routine suggestion.',
+    },
+    // Profile management controls.
+    controls: {
+      title: 'Manage profile',
+      privacyLabel: 'How Pura uses this',
+      privacyMeta: 'See exactly what’s stored and what leaves your device.',
+      exportLabel: 'Export my profile',
+      exportMeta: 'Download your profile and scan summary as a JSON file.',
+      resetLabel: 'Reset skin profile',
+      resetMeta: 'Clears the answers above. Your scans and history stay.',
+      resetConfirmTitle: 'Reset skin profile?',
+      resetConfirmBody: 'This clears your skin type, concerns, goal, and preferences. Your scans and history are kept, and you can refill it any time.',
+      resetConfirmCta: 'Reset profile',
+      cancel: 'Cancel',
+    },
   },
 
   // ----- Notifications -----
   notifications: {
     title: 'Notifications',
-    intro: 'Pura keeps it to one gentle nudge — a nightly reminder to scan in similar light so your comparisons stay honest.',
+    intro: 'Pura keeps it to one gentle nudge — a nightly reminder to scan in similar light so your week-to-week comparisons stay honest.',
+    // Status card: reflects the real permission / platform state.
+    status: {
+      onTitle: 'Notifications on',
+      onBody: 'You’ll get your nightly reminder at the time below.',
+      offTitle: 'Reminder is off',
+      offBody: 'Turn it on to get one gentle nudge each evening.',
+      blockedTitle: 'Notifications are blocked',
+      blockedBody: 'Pura can’t send reminders until you allow notifications in your device Settings.',
+      blockedCta: 'Open device Settings',
+      unavailableTitle: 'Reminders live in the app',
+      unavailableBody: 'Notifications are delivered by the Pura iOS and Android app. On the web preview you can set your preference, but it won’t ring here.',
+    },
     reminderLabel: 'Nightly scan reminder',
     reminderMeta: (time: string) => `Every evening at ${time}`,
     reminderMetaOff: 'Off',
     timeLabel: 'Reminder time',
-    unavailable: "Reminders aren't available on this device. They work on the iOS and Android app.",
+    // iOS-style notification preview.
+    preview: {
+      label: 'Preview',
+      appName: 'PURA',
+      now: 'now',
+      title: 'Time for tonight’s scan',
+      body: 'Same light, same spot. Let’s see how your skin’s doing.',
+    },
+    // Gentle-promise card.
+    promiseTitle: 'Our promise',
+    promiseBody: 'One reminder a night — that’s the most Pura will ever send. No streak guilt, no badges, no nagging. Turn it off any time.',
+    // Legacy keys retained for safety.
+    unavailable: 'Reminders aren’t available on this device. They work in the iOS and Android app.',
     deniedTitle: 'Notifications are off',
     deniedBody: 'Turn them on for Pura in your device Settings, then flip this back on.',
   },
 
   // ----- Privacy -----
+  // Honest trust center. NOTE: face scans ARE sent to a cloud AI to be
+  // analyzed (see src/api/scan.ts). Copy here must never claim photos
+  // "stay on your phone" or are "analyzed locally" — that would be false.
   privacy: {
     title: 'Privacy',
-    intro: 'Your skin is personal. Here is exactly how Pura handles it.',
-    points: [
+    intro: 'Your skin is personal. Here’s exactly what Pura stores, what leaves your device, and what you can erase.',
+    summary: 'Your profile, scans, and history live on this device. To read a scan, the photo is sent securely to our AI, analyzed, and not kept as a raw image — never sold, never handed to advertisers.',
+    // "What Pura stores" inventory.
+    storesTitle: 'What Pura stores',
+    stores: [
       {
-        title: 'Scans are read on your device',
-        body: 'Your face scans are analyzed locally. Photos stay on your phone — they are not uploaded to a server.',
+        label: 'Skin profile',
+        meta: 'On this device',
+        detail: 'Your skin type, concerns, goal, and product preferences. Stored locally and sent alongside a scan so your results are personalized.',
       },
       {
-        title: 'Your profile stays on your phone',
-        body: 'Skin type, concerns, routine, and history are stored locally on this device, not in the cloud.',
+        label: 'Scan history',
+        meta: 'On this device',
+        detail: 'Your skin scores, findings, and analyzed results over time. Kept locally so you can see progress.',
       },
       {
-        title: 'No selling your data',
-        body: 'Pura does not sell or share your skin data with advertisers. Ever.',
+        label: 'Scan photos',
+        meta: 'Sent to be analyzed',
+        detail: 'To read your skin, each photo is sent securely to our AI provider and analyzed. It is not stored as a raw image on our servers — the result, not the photo, is what’s saved on your device.',
+      },
+      {
+        label: 'Routine & saved products',
+        meta: 'On this device',
+        detail: 'The products in your routine and your saved list. Stored locally.',
+      },
+      {
+        label: 'Assistant chat',
+        meta: 'On this device',
+        detail: 'Your conversation with the Pura assistant, stored locally so it survives a restart. Messages you send are processed by the same AI to answer you.',
       },
     ],
+    // Honest cloud-AI disclosure (NOT a fake on/off toggle — turning cloud
+    // analysis "off" would break scanning, so we disclose instead).
+    cloudTitle: 'How analysis works',
+    cloudBody: 'Pura’s skin reading is powered by an AI model that runs in the cloud, so analyzing a scan means sending the photo securely for processing. Pura doesn’t sell your data and doesn’t use your face to train advertising.',
+    cloudHonest: 'Because analysis is cloud-powered, there isn’t an on-device-only mode today. If that matters to you, you can scan less often — or erase everything below at any time.',
+    // Permissions section.
+    permissionsTitle: 'Permissions',
+    permissions: {
+      camera: { label: 'Camera', meta: 'Captures your skin scan.' },
+      photos: { label: 'Photos', meta: 'Used only if you pick an existing photo to scan.' },
+      notifications: { label: 'Notifications', meta: 'Sends your nightly scan reminder.' },
+      manageCta: 'Manage in device Settings',
+      webNote: 'On the web, permissions are managed by your browser.',
+    },
+    // "Your data" controls — every one performs a real action.
     dataTitle: 'Your data',
-    eraseLabel: 'Erase all my data',
-    eraseMeta: 'Deletes your profile, scans, routine, and history from this device.',
-    eraseConfirmTitle: 'Erase all data?',
-    eraseConfirmBody: 'This permanently deletes your profile, scans, routine, and saved products from this device. This cannot be undone.',
-    eraseConfirmCta: 'Erase everything',
+    actions: {
+      exportLabel: 'Export my data',
+      exportMeta: 'Download your profile and scan summary as a JSON file.',
+      clearScansLabel: 'Delete scan history',
+      clearScansMeta: 'Removes past scans and scores. Your profile stays.',
+      clearScansConfirmTitle: 'Delete scan history?',
+      clearScansConfirmBody: 'This permanently removes your scans, scores, and findings from this device. Your profile and routine stay. This can’t be undone.',
+      clearScansConfirmCta: 'Delete scans',
+      clearChatLabel: 'Clear assistant chat',
+      clearChatMeta: 'Erases your conversation history.',
+      clearChatConfirmTitle: 'Clear assistant chat?',
+      clearChatConfirmBody: 'This permanently clears your conversation with the Pura assistant. This can’t be undone.',
+      clearChatConfirmCta: 'Clear chat',
+      resetProfileLabel: 'Reset skin profile',
+      resetProfileMeta: 'Clears your skin answers. Scans and history stay.',
+      resetProfileConfirmTitle: 'Reset skin profile?',
+      resetProfileConfirmBody: 'This clears your skin type, concerns, goal, and preferences. Your scans and history are kept.',
+      resetProfileConfirmCta: 'Reset profile',
+      eraseLabel: 'Erase everything',
+      eraseMeta: 'Deletes your profile, scans, routine, and chat from this device.',
+      eraseConfirmTitle: 'Erase all data?',
+      eraseConfirmBody: 'This permanently deletes your profile, scans, routine, saved products, and chat from this device. This can’t be undone.',
+      eraseConfirmCta: 'Erase everything',
+    },
+    exportedToast: 'Your data was exported.',
+    exportUnavailable: 'Export couldn’t start. Please try again.',
     cancel: 'Cancel',
   },
 
   // ----- Appearance -----
   appearance: {
     title: 'Appearance',
-    // Honest framing: Pura ships a single light theme by design. We do not
-    // fake a dark toggle that wouldn't actually repaint the app.
-    themeLabel: 'Theme',
-    themeValue: 'Light',
-    themeNote: 'Pura is designed as one calm, luminous light experience. A dark theme isn’t available yet.',
+    intro: 'Tune how Pura looks and feels. Changes apply instantly.',
+    // Theme — only Light is real today. Dark/System are shown honestly as
+    // "coming soon" and are not selectable (they wouldn't repaint the app).
+    themeTitle: 'Theme',
+    theme: {
+      light: 'Light',
+      dark: 'Dark',
+      system: 'System',
+    },
+    themeActiveNote: 'Pura is designed as one calm, luminous light experience, so scans read true to color.',
+    comingSoon: 'Coming soon',
+    darkComingSoon: 'A dark theme is in the works. For now Pura stays light so color-based skin reading stays accurate.',
+    // Lighting Assist — real, wired to the scan camera.
     lightingTitle: 'Scan lighting',
     lightingLabel: 'Lighting Assist',
     lightingMeta: 'Adds a soft on-screen glow during face scans so low light still reads clearly.',
+    // Motion — real, wired to useReduceMotion via motionPreference.
+    motionTitle: 'Motion',
+    motionLabel: 'Animation',
+    motion: {
+      system: 'Follow system',
+      reduced: 'Reduced',
+    },
+    motionMeta: 'Calms large animations and transitions. “Follow system” respects your device’s accessibility setting.',
+    // Haptics — real, wired to hapt.* via hapticsEnabled.
+    hapticsTitle: 'Feedback',
+    hapticsLabel: 'Haptics',
+    hapticsMeta: 'Subtle taps when you complete steps or capture a scan. Works on iPhone and Android.',
+    // Live preview tied to the two real controls above.
+    preview: {
+      title: 'Preview',
+      motionCaption: 'This gentle pulse stops when motion is reduced.',
+      hapticButton: 'Tap to feel it',
+      hapticOn: 'You’ll feel a tap on a real device.',
+      hapticOff: 'Haptics are off.',
+    },
   },
 
   // ----- Help & support -----

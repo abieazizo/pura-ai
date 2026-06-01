@@ -17,11 +17,15 @@
 
 import type {
   CustomRoutine,
+  PillarKey,
+  PillarSelection,
   RoutineBuildProductStep,
   RoutineBuildStage,
   RoutineBuildSubPhase,
   RoutineStep,
+  RoutineTimeOfDay,
 } from '@/types/routine';
+import { pillarKeyToStepType } from '@/types/routine';
 import type {
   ScanAnalysisResponse,
 } from '@/types/scanResults';
@@ -317,14 +321,24 @@ function buildDeterministicRoutine(
 export function buildCeremonyRoutine(args: {
   scanId: string;
   limitedByScan?: boolean;
+  /** Pillars the user chose to include. Omitted = all four. */
+  selection?: PillarSelection;
 }): CustomRoutine {
-  const { scanId, limitedByScan = false } = args;
-  const baseSteps: RoutineStep[] = [
-    makeStep('cleanse', 1, 'both', [], false),
-    makeStep('treat', 2, 'evening', [], false),
-    makeStep('hydrate', 3, 'both', [], false),
-    makeStep('protect', 4, 'morning', [], false),
-  ];
+  const { scanId, limitedByScan = false, selection } = args;
+  // Include a pillar unless it's explicitly toggled off. If the caller
+  // somehow filters everything out, fall back to all four rather than
+  // committing an empty routine.
+  const include = (key: PillarKey): boolean =>
+    !selection || selection[key] !== false;
+  const anySelected =
+    !selection || (['cleanse', 'treat', 'moisturize', 'protect'] as PillarKey[]).some(include);
+  const wants = (key: PillarKey): boolean => (anySelected ? include(key) : true);
+
+  const baseSteps: RoutineStep[] = [];
+  if (wants('cleanse')) baseSteps.push(makeStep('cleanse', 1, 'both', [], false));
+  if (wants('treat')) baseSteps.push(makeStep('treat', 2, 'evening', [], false));
+  if (wants('moisturize')) baseSteps.push(makeStep('hydrate', 3, 'both', [], false));
+  if (wants('protect')) baseSteps.push(makeStep('protect', 4, 'morning', [], false));
   const morningSteps = baseSteps
     .filter((s) => s.timing === 'morning' || s.timing === 'both')
     .map((s, i) => ({ ...s, order: i + 1 }));
@@ -350,6 +364,19 @@ export function buildCeremonyRoutine(args: {
     canStartEvening: false,
     limitedByScan,
   };
+}
+
+/**
+ * Build one routine step for a single pillar — used by the routine
+ * page's "Add step" flow. Deterministic and product-matched, mirroring
+ * the ceremony builder so an added step is indistinguishable from a
+ * built-in one. `order` is provisional; the store renumbers on insert.
+ */
+export function buildSingleStep(
+  pillar: PillarKey,
+  timeOfDay: RoutineTimeOfDay,
+): RoutineStep {
+  return makeStep(pillarKeyToStepType(pillar), 1, timeOfDay, [], false);
 }
 
 function makeStep(
