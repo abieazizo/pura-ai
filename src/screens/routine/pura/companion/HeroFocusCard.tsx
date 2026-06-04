@@ -32,6 +32,7 @@ import Animated, {
   useSharedValue,
   withRepeat,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { stepTypeToPillarKey, type RoutineStep } from '@/types/routine';
 import { PILLAR_IDENTITY } from '@/components/routine/pillarIdentity';
@@ -46,8 +47,22 @@ import {
   companionType,
 } from './companionTokens';
 import { resolveRoutineProductImage } from './productImage';
+import { ProductCheckmark } from './ProductCheckmark';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/**
+ * Eased sub-progress for one element's slice of the master reveal clock.
+ * `reveal` is the 0→1 master (driven linearly by the host over ~700ms);
+ * `[start, end]` is this element's window in that 0→1 space. Returns an
+ * ease-out cubic 0→1 so each layer settles softly on its own beat.
+ */
+function revAt(reveal: number, start: number, end: number): number {
+  'worklet';
+  const t = (reveal - start) / (end - start);
+  const c = t < 0 ? 0 : t > 1 ? 1 : t;
+  return 1 - (1 - c) * (1 - c) * (1 - c);
+}
 
 /** Compose the 2–3 sentence "why this" body from grounded step fields. */
 function whyThisCopy(step: RoutineStep): string {
@@ -69,6 +84,12 @@ export interface HeroFocusCardProps {
   onOpenDetail: () => void;
   /** Host pauses the ambient breath during the completion choreography. */
   breathPaused?: boolean;
+  /**
+   * 0→1 master reveal clock (host-owned, driven on tab focus). Each inner
+   * layer reads its own window off this for the staggered entrance. When
+   * omitted the card renders fully settled (used during slot swaps).
+   */
+  reveal?: SharedValue<number>;
 }
 
 export function HeroFocusCard({
@@ -78,6 +99,7 @@ export function HeroFocusCard({
   onMarkDone,
   onOpenDetail,
   breathPaused = false,
+  reveal,
 }: HeroFocusCardProps) {
   const reduceMotion = useReduceMotion();
   const { height: vh } = useWindowDimensions();
@@ -100,10 +122,25 @@ export function HeroFocusCard({
     : companionGeo.productImage;
   const haloSize = compact ? companionGeo.haloCompact : companionGeo.halo;
 
+  // Completion choreography -------------------------------------------------
+  // The card owns the *intrinsic* completion visuals (button fill +
+  // checkmark draw + haptics + hold); the host owns the slot depart/rise
+  // and only learns we're done via onMarkDone, fired at the end of hold.
+  const [completing, setCompleting] = React.useState(false);
+  const [draw, setDraw] = React.useState(0);
+  const fill = useSharedValue(0);
+  const rafRef = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
+
   // Ambient breath ----------------------------------------------------------
   const breath = useSharedValue(0);
   React.useEffect(() => {
-    if (reduceMotion || breathPaused) {
+    if (reduceMotion || breathPaused || completing) {
       cancelAnimation(breath);
       breath.value = withTiming(0, { duration: 220 });
       return;
@@ -117,7 +154,7 @@ export function HeroFocusCard({
       true,
     );
     return () => cancelAnimation(breath);
-  }, [reduceMotion, breathPaused, breath]);
+  }, [reduceMotion, breathPaused, completing, breath]);
 
   const imageBreath = useAnimatedStyle(() => ({
     transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.015]) }],
@@ -126,10 +163,85 @@ export function HeroFocusCard({
     opacity: interpolate(breath.value, [0, 1], [0.4, 0.52]),
     transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.05]) }],
   }));
+  const fillStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: fill.value }],
+  }));
+
+  // Entrance reveal --------------------------------------------------------
+  // One master clock (host-owned) feeds five overlapping windows so the
+  // card assembles itself top-to-bottom: wash blooms from the corner,
+  // product rises, name fades, brand/guidance follow, button slides up.
+  const internalReveal = useSharedValue(1);
+  const R = reveal ?? internalReveal;
+  const washStyle = useAnimatedStyle(() => {
+    const w = revAt(R.value, 0, 0.571);
+    return { opacity: w, transform: [{ scale: 0.72 + 0.28 * w }] };
+  });
+  const productStyle = useAnimatedStyle(() => {
+    const p = revAt(R.value, 0.143, 0.857);
+    return { opacity: p, transform: [{ translateY: 30 * (1 - p) }] };
+  });
+  const nameStyle = useAnimatedStyle(() => {
+    const n = revAt(R.value, 0.286, 0.714);
+    return { opacity: n, transform: [{ translateY: 10 * (1 - n) }] };
+  });
+  const metaStyle = useAnimatedStyle(() => {
+    const m = revAt(R.value, 0.429, 0.857);
+    return { opacity: m, transform: [{ translateY: 8 * (1 - m) }] };
+  });
+  const buttonStyle = useAnimatedStyle(() => {
+    const b = revAt(R.value, 0.571, 1);
+    return { opacity: b, transform: [{ translateY: 16 * (1 - b) }] };
+  });
 
   const handleMark = () => {
+    if (completing) return;
+    setCompleting(true);
     hapt.tap();
-    onMarkDone();
+
+    // Reduce motion / static preview: resolve instantly, no draw.
+    if (reduceMotion) {
+      fill.value = 1;
+      setDraw(1);
+      hapt.success();
+      onMarkDone();
+      return;
+    }
+
+    // Button fills L→R (Reanimated transform — safe in Expo Go).
+    fill.value = withTiming(1, {
+      duration: companionMotion.fill,
+      easing: companionMotion.entrance,
+    });
+
+    // One rAF timeline: fill (350) → checkmark draw (450) → hold (200).
+    const FILL = companionMotion.fill;
+    const DRAW = companionMotion.checkmark;
+    const HOLD = 200;
+    let start = 0;
+    let successFired = false;
+
+    const tick = (t: number) => {
+      if (!start) start = t;
+      const elapsed = t - start;
+      const raw = DRAW <= 0 ? 1 : (elapsed - FILL) / DRAW;
+      const p = raw <= 0 ? 0 : raw >= 1 ? 1 : raw;
+      // ease in-out (matches the spec's 450ms ease-in-out draw).
+      const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      setDraw(eased);
+
+      if (!successFired && elapsed >= FILL + DRAW) {
+        successFired = true;
+        hapt.success();
+      }
+      if (elapsed >= FILL + DRAW + HOLD) {
+        rafRef.current = null;
+        onMarkDone();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
   };
 
   return (
@@ -140,17 +252,18 @@ export function HeroFocusCard({
         { minHeight: compact ? companionGeo.heroHeightCompact : companionGeo.heroHeight },
       ]}
     >
-      <LinearGradient
-        colors={atmosphere.hero}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        pointerEvents="none"
-        style={styles.gradient}
-      />
+      <Animated.View pointerEvents="none" style={[styles.gradient, washStyle]}>
+        <LinearGradient
+          colors={atmosphere.hero}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
 
       <View style={[styles.inner, compact && styles.innerCompact]}>
         {/* Top row: STEP x OF y · Why this? */}
-        <View style={styles.topRow}>
+        <Animated.View style={[styles.topRow, nameStyle]}>
           <View style={styles.stepPill}>
             <Text style={companionType.stepPill}>
               STEP {stepIndex + 1} OF {totalSteps}
@@ -169,14 +282,14 @@ export function HeroFocusCard({
               </Text>
             </Pressable>
           ) : null}
-        </View>
+        </Animated.View>
 
-        <Text style={[companionType.pillarLabel, styles.pillarLabel]}>
+        <Animated.Text style={[companionType.pillarLabel, styles.pillarLabel, nameStyle]}>
           {identity.label}
-        </Text>
+        </Animated.Text>
 
         {/* Product stage — halo + breathing image. */}
-        <View style={[styles.stage, { height: haloSize }]}>
+        <Animated.View style={[styles.stage, { height: haloSize }, productStyle]}>
           <Animated.View
             pointerEvents="none"
             style={[
@@ -223,18 +336,35 @@ export function HeroFocusCard({
               </View>
             )}
           </AnimatedPressable>
-        </View>
+
+          {completing ? (
+            <View pointerEvents="none" style={styles.checkOverlay}>
+              <ProductCheckmark
+                size={imageSize}
+                progress={draw}
+                strokeWidth={compact ? 4.5 : 5.5}
+              />
+            </View>
+          ) : null}
+        </Animated.View>
 
         {/* Product identity. */}
         <View style={styles.meta}>
-          {brand ? <Text style={companionType.brand}>{brand}</Text> : null}
-          <Text style={companionType.productName} numberOfLines={2}>
+          {brand ? (
+            <Animated.Text style={[companionType.brand, metaStyle]}>
+              {brand}
+            </Animated.Text>
+          ) : null}
+          <Animated.Text style={[companionType.productName, nameStyle]} numberOfLines={2}>
             {productName}
-          </Text>
+          </Animated.Text>
           {guidance ? (
-            <Text style={[companionType.guidance, styles.guidance]} numberOfLines={3}>
+            <Animated.Text
+              style={[companionType.guidance, styles.guidance, metaStyle]}
+              numberOfLines={3}
+            >
               {guidance}
-            </Text>
+            </Animated.Text>
           ) : null}
         </View>
 
@@ -248,20 +378,25 @@ export function HeroFocusCard({
           </Animated.View>
         ) : null}
 
-        <View style={styles.buttonSlot}>
+        <Animated.View style={[styles.buttonSlot, buttonStyle]}>
           <Pressable
             onPress={handleMark}
+            disabled={completing}
             accessibilityRole="button"
             accessibilityLabel="Mark as done"
             style={({ pressed }) => [
               styles.button,
               companionShadows.button,
-              pressed && styles.buttonPressed,
+              pressed && !completing && styles.buttonPressed,
             ]}
           >
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.buttonFill, fillStyle]}
+            />
             <Text style={companionType.button}>Mark as done</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </View>
     </View>
   );
@@ -275,6 +410,8 @@ const styles = StyleSheet.create({
   gradient: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: companionGeo.heroRadius,
+    overflow: 'hidden',
+    transformOrigin: 'top left',
   },
   inner: {
     flex: 1,
@@ -316,6 +453,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  checkOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   placeholder: {
     borderRadius: 16,
     alignItems: 'center',
@@ -346,9 +488,15 @@ const styles = StyleSheet.create({
     backgroundColor: CC.ink,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  buttonFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: CC.blue,
+    transformOrigin: 'left',
   },
   buttonPressed: {
-    transform: [{ scale: 0.985 }],
+    transform: [{ scale: 0.97 }],
     opacity: 0.96,
   },
 });

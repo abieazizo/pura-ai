@@ -44,6 +44,10 @@ export {
   puraShopSpace,
   puraShopShadow,
   puraShopLayout,
+  // puraShopHome — atmospheric tokens for the shop HOME card-stack feed.
+  // Consumed only by the shop-home rebuild (the gradient backdrop, the
+  // glass stack card, swipe reveals, price-route tints).
+  puraShopHome,
   // puraAssist — "Pura Assist" Home + conversation surface tokens.
   // Consumed only by the new Home (AI Assist landing) and the
   // conversation screen + the animated face mesh.
@@ -78,6 +82,7 @@ export type {
   Pura26Token,
   Pura27Token,
   PuraShopToken,
+  PuraShopHomeToken,
   PuraAssistToken,
 } from './tokens';
 export { ThemeProvider } from './ThemeProvider';

@@ -195,4 +195,9 @@ export type RootStackParamList = {
    *  selects which surface to render pixel-clean for screenshots; absent =
    *  tappable index. Reachable from AIDiagnostics; never linked in prod. */
   ScanRevealDev: { surface?: 1 | 2 | 3 | 4 | 5 | 6 | 'pager' | 'picker' | 'ceremony' | 'routine' } | undefined;
+  /** Dev-only gallery for the Pura Shop home card stack. Renders the real
+   *  StackCard from the real builder over per-pillar gradient bands so the
+   *  card's craft can be reviewed in isolation. Reachable only via the dev
+   *  nav ref; never linked from a user surface. */
+  ShopCardDevGallery: undefined;
 };

@@ -40,6 +40,7 @@ import {
   todayDateKey,
   resolveStepAvailability,
   selectDailyDoneIds,
+  selectCompletionStreak,
 } from '@/state/routine/routineStore';
 import { useAppStore, useLatestScan, useLatestResult } from '@/store/useAppStore';
 import { useRoutineFocus } from '@/state/v26/routineFocus';
@@ -55,8 +56,6 @@ import {
 } from '@/services/scanResults/translateAnalysis';
 import { getProgressComparison } from '@/services/routine/progressComparisonService';
 import {
-  RoutineEmptyState,
-  ScanAvailableState,
   RoutineBuildingView,
   RoutineReadyView,
   RoutineReviewView,
@@ -68,8 +67,16 @@ import {
   QuietTextButton,
 } from '@/components/routine/pura';
 import { RoutineCompanionScreen } from './companion/RoutineCompanionScreen';
+import { ProductDetailSheet } from './companion/ProductDetailSheet';
+import { CustomizeSheet } from './companion/CustomizeSheet';
+import { CompanionEmptyState } from './companion/CompanionEmptyState';
 import type { RootStackParamList } from '@/navigation/types';
-import type { PillarKey, RoutineStep, RoutineTimeOfDay } from '@/types/routine';
+import type {
+  PillarKey,
+  RoutineProduct,
+  RoutineStep,
+  RoutineTimeOfDay,
+} from '@/types/routine';
 import { hapt } from '@/utils/haptics';
 
 type Nav = NavigationProp<RootStackParamList>;
@@ -82,6 +89,8 @@ export function PuraRoutineScreen() {
   const setFocused = useRoutineFocus((s) => s.setFocused);
 
   const [screenMode, setScreenMode] = useState<ScreenMode>('main');
+  const [detailStep, setDetailStep] = useState<RoutineStep | null>(null);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
 
   const {
     lifecycle,
@@ -93,6 +102,7 @@ export function PuraRoutineScreen() {
     selectedTimeOfDay,
     todaySession,
     dailyChecklist,
+    completionDates,
   } = useRoutineStore(
     useShallow((s) => ({
       lifecycle: s.lifecycle,
@@ -104,6 +114,7 @@ export function PuraRoutineScreen() {
       selectedTimeOfDay: s.selectedTimeOfDay,
       todaySession: s.todaySession,
       dailyChecklist: s.dailyChecklist,
+      completionDates: s.completionDates,
     })),
   );
 
@@ -122,6 +133,7 @@ export function PuraRoutineScreen() {
   const reorderSteps = useRoutineStore((s) => s.reorderSteps);
   const removeRoutineStep = useRoutineStore((s) => s.removeRoutineStep);
   const addRoutineStep = useRoutineStore((s) => s.addRoutineStep);
+  const swapStepProduct = useRoutineStore((s) => s.swapStepProduct);
 
   // Derive the correct lifecycle when no routine exists yet.
   useEffect(() => {
@@ -301,9 +313,45 @@ export function PuraRoutineScreen() {
     });
   }, [nav]);
 
-  // Companion sheets — wired to real bottom sheets in later steps.
-  const handleOpenProductDetail = useCallback((_step: RoutineStep) => {}, []);
-  const handleOpenCustomize = useCallback(() => {}, []);
+  // Companion sheets.
+  const handleOpenProductDetail = useCallback((step: RoutineStep) => {
+    setDetailStep(step);
+  }, []);
+
+  const handleCloseProductDetail = useCallback(() => {
+    setDetailStep(null);
+  }, []);
+
+  const handleAskAboutProduct = useCallback(
+    (step: RoutineStep) => {
+      setDetailStep(null);
+      const name = step.product?.name ?? step.title;
+      nav.navigate('AssistChat', {
+        initialMessage: `Tell me more about ${name} and how to use it.`,
+      });
+    },
+    [nav],
+  );
+
+  const handleOpenCustomize = useCallback(() => {
+    setCustomizeOpen(true);
+  }, []);
+
+  const handleCloseCustomize = useCallback(() => {
+    setCustomizeOpen(false);
+  }, []);
+
+  const handleSwapProduct = useCallback(
+    (stepId: string, product: RoutineProduct) => {
+      swapStepProduct(stepId, product);
+    },
+    [swapStepProduct],
+  );
+
+  const handleRebuildRoutine = useCallback(() => {
+    setCustomizeOpen(false);
+    void handleBuild();
+  }, [handleBuild]);
 
   const handleUseRoutine = useCallback(() => {
     hapt.tap();
@@ -394,6 +442,11 @@ export function PuraRoutineScreen() {
     [routine, confirmedOwnedProductIds, skippedStepIds, selectedTimeOfDay],
   );
 
+  const streak = useMemo(
+    () => selectCompletionStreak(completionDates),
+    [completionDates],
+  );
+
   const headerTitle = lifecycle === 'building' ? 'Routine'
     : lifecycle === 'ready_to_review' ? 'Routine'
     : lifecycle === 'confirming_products' ? 'Your Custom Routine'
@@ -457,15 +510,48 @@ export function PuraRoutineScreen() {
   // owns its own chrome, so it returns before the shared header/scroll shell.
   if (lifecycle === 'active' && routine) {
     return (
-      <RoutineCompanionScreen
-        routine={routine}
-        timeOfDay={selectedTimeOfDay}
-        onChangeTimeOfDay={handleChangeTimeOfDay}
-        doneIds={selectDailyDoneIds(dailyChecklist, selectedTimeOfDay)}
-        onToggleComplete={handleToggleComplete}
-        onOpenDetail={handleOpenProductDetail}
-        onCustomize={handleOpenCustomize}
-        onHowItWorks={handleHowItWorks}
+      <>
+        <RoutineCompanionScreen
+          routine={routine}
+          timeOfDay={selectedTimeOfDay}
+          onChangeTimeOfDay={handleChangeTimeOfDay}
+          doneIds={selectDailyDoneIds(dailyChecklist, selectedTimeOfDay)}
+          streak={streak}
+          onToggleComplete={handleToggleComplete}
+          onOpenDetail={handleOpenProductDetail}
+          onCustomize={handleOpenCustomize}
+          onHowItWorks={handleHowItWorks}
+        />
+        <ProductDetailSheet
+          visible={!!detailStep}
+          step={detailStep}
+          onClose={handleCloseProductDetail}
+          onAsk={handleAskAboutProduct}
+        />
+        <CustomizeSheet
+          visible={customizeOpen}
+          routine={routine}
+          timeOfDay={selectedTimeOfDay}
+          onClose={handleCloseCustomize}
+          onSwap={handleSwapProduct}
+          onRebuild={handleRebuildRoutine}
+        />
+      </>
+    );
+  }
+
+  // Empty landings wear the companion's own shell (porcelain page, the
+  // quiet spine, the "Routine" header) — never the cards-in-a-list shell.
+  if (lifecycle === 'no_scan') {
+    return <CompanionEmptyState variant="no_scan" onPrimary={goScan} />;
+  }
+
+  if (lifecycle === 'scan_available') {
+    return (
+      <CompanionEmptyState
+        variant="scan_no_routine"
+        onPrimary={handleBuild}
+        onSecondary={latestScan ? goViewScanResults : undefined}
       />
     );
   }
@@ -531,17 +617,6 @@ export function PuraRoutineScreen() {
             onReturnToRoutine={handleReturnToRoutine}
             onScheduleNextScan={goScan}
           />
-        ) : lifecycle === 'no_scan' ? (
-          <RoutineEmptyState
-            onStartScan={goScan}
-            onBrowseProducts={goShop}
-          />
-        ) : lifecycle === 'scan_available' ? (
-          <ScanAvailableState
-            focusAreaCount={countFocusAreas(latestScan)}
-            onBuild={handleBuild}
-            onViewResults={goViewScanResults}
-          />
         ) : lifecycle === 'building' || lifecycle === 'build_failed' ? (
           <RoutineBuildingView
             progress={buildProgress}
@@ -580,16 +655,6 @@ export function PuraRoutineScreen() {
       </ScrollView>
     </SafeAreaView>
   );
-}
-
-function countFocusAreas(scan: ReturnType<typeof useLatestScan>): number {
-  if (!scan) return 0;
-  try {
-    const analysis = translateScanToAnalysis(scan);
-    return selectVisibleFindings(analysis).length;
-  } catch {
-    return 0;
-  }
 }
 
 const styles = StyleSheet.create({

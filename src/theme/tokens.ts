@@ -1489,6 +1489,83 @@ export const puraShopLayout = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// puraShopHome — atmospheric tokens for the Shop HOME feed rebuild (v39).
+//
+// The shop-home rebuild centers a swipeable recommendation card stack over a
+// LIVING gradient backdrop that subtly shifts hue as the user swipes between
+// a cleanser, a treatment, a moisturizer, and an SPF. Those per-pillar
+// gradient corners, the product halo washes, the glass card surface, and the
+// swipe-reveal tints don't exist in the base `puraShop` namespace — they live
+// here so (per CLAUDE.md) every hex literal still resides in theme/tokens.ts.
+//
+// DESIGN NOTE — why these gradients are COOL, not the warm peach/cream
+// pastels of the original brief: this codebase shipped a "Pura Blue" rebrand
+// (see the palette header above) that deliberately de-warmed every surface
+// ("Never warm cream", "No muddy beiges"). Reintroducing warm corners would
+// fracture brand coherence. So each of the four routine PILLARS gets a
+// DISTINCT but COOL porcelain hue — enough hue separation that the backdrop
+// reads as alive while staying coherent with the #FCFDFF canvas and the
+// single Pura Blue accent. cleanse→fresh green-cool, treat→Pura-Blue
+// periwinkle, moisturize→aqua, protect→daylight sky.
+// ---------------------------------------------------------------------------
+
+export const puraShopHome = {
+  // Page canvas — the gradient melts from the active pillar's light corner
+  // down into this shared deep porcelain so the bottom of the page is calm.
+  canvas:        '#FCFDFF',
+  canvasDeep:    '#F4F8FE',
+
+  // ----- Per-pillar atmospheric corners (top-left light → bottom deep) -----
+  cleanseLight:    '#F0F7F3',
+  cleanseDeep:     '#DBEDE5',
+  cleanseHalo:     'rgba(32, 166, 122, 0.08)',
+  cleanseAccent:   '#188A65',
+
+  treatLight:      '#EDF3FE',
+  treatDeep:       '#D5E3FB',
+  treatHalo:       'rgba(20, 124, 255, 0.09)',
+  treatAccent:     '#147CFF',
+
+  moisturizeLight: '#EAF4FB',
+  moisturizeDeep:  '#D2E8F4',
+  moisturizeHalo:  'rgba(24, 183, 255, 0.08)',
+  moisturizeAccent:'#0E86C7',
+
+  protectLight:    '#F1F6FB',
+  protectDeep:     '#DDE9F4',
+  protectHalo:     'rgba(7, 95, 209, 0.07)',
+  protectAccent:   '#075FD1',
+
+  // ----- The stack card floating over the gradient. Opaque: a deck must
+  //        not let the cards beneath ghost through. Depth comes from scale +
+  //        shadow, not translucency. -----
+  cardSurface:   '#FFFFFF',
+  cardEdge:      'rgba(8, 22, 56, 0.05)',
+  cardEdgeStrong:'rgba(8, 22, 56, 0.09)',
+
+  // ----- Swipe-affordance reveals (behind a dragged card) -----
+  saveReveal:    'rgba(32, 166, 122, 0.16)',   // right-swipe = save
+  saveRevealInk: '#188A65',
+  skipReveal:    'rgba(124, 134, 150, 0.14)',   // left-swipe = skip
+  skipRevealInk: '#5D6673',
+
+  // ----- Editorial greys (quieter than puraShop.inkMuted; never compete) ---
+  quietInk:      '#8A93A1',
+  hairline:      'rgba(8, 22, 56, 0.06)',
+
+  // ----- Price-route tints (budget vs splurge editorial cards) -----
+  budgetTint:    '#E9F8F2',   // calm green — "same job, less money"
+  budgetInk:     '#188A65',
+  splurgeTint:   '#EFEAFB',   // soft amethyst — "the investment"
+  splurgeInk:    '#5B47B0',
+
+  white:         '#FFFFFF',
+  ink:           '#080A0F',
+} as const;
+
+export type PuraShopHomeToken = keyof typeof puraShopHome;
+
+// ---------------------------------------------------------------------------
 // puraAssist — "Pura Assist" surface tokens (v32).
 //
 // The redesigned Home tab IS the AI Assist landing surface, and the

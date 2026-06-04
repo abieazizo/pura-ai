@@ -8,6 +8,7 @@ import { ProductDetailScreen } from '@/screens/productDetail/ProductDetailScreen
 import { AIDiagnosticsScreen } from '@/components/dev/AIDiagnosticsScreen';
 import { ScanResultsStatesGallery } from '@/components/dev/ScanResultsStatesGallery';
 import { RevealDevGallery } from '@/components/dev/RevealDevGallery';
+import { ShopCardDevGallery } from '@/components/dev/ShopCardDevGallery';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { RootStackParamList } from './types';
@@ -121,6 +122,18 @@ export function RootNavigator() {
       <Stack.Screen
         name="ScanRevealDev"
         component={RevealDevGallery}
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
+          animationDuration: 280,
+        }}
+      />
+
+      {/* Dev-only Pura Shop card gallery. Reachable only via the dev nav ref
+          (window.__pura_nav__) for isolated card review. No prod entry. */}
+      <Stack.Screen
+        name="ShopCardDevGallery"
+        component={ShopCardDevGallery}
         options={{
           presentation: 'modal',
           animation: 'slide_from_bottom',

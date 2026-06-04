@@ -24,6 +24,7 @@ import type {
   RoutineBuildStage,
   RoutineBuildSubPhase,
   RoutineLifecycleState,
+  RoutineProduct,
   RoutineSessionRecord,
   RoutineStep,
   RoutineStepType,
@@ -67,6 +68,15 @@ interface RoutineStoreState {
    */
   dailyChecklist: { dateKey: string; morning: string[]; evening: string[] } | null;
 
+  /**
+   * Ledger of local date keys (`YYYY-MM-DD`) on which the user checked off
+   * at least one step (morning OR evening). Persistent and immutable for
+   * past days — the streak engine walks it backward from today. Distinct
+   * from `dailyChecklist`, which self-resets each day and cannot carry
+   * history.
+   */
+  completionDates: string[];
+
   // Actions
   setLifecycle: (next: RoutineLifecycleState) => void;
   startBuild: (scanId: string) => void;
@@ -100,6 +110,8 @@ interface RoutineStoreState {
   removeRoutineStep: (timeOfDay: RoutineTimeOfDay, stepId: string) => void;
   /** Append a freshly built step to the given list (edit mode add). */
   addRoutineStep: (timeOfDay: RoutineTimeOfDay, step: RoutineStep) => void;
+  /** Swap the product on a step (Customize sheet), matched by id across both lists. */
+  swapStepProduct: (stepId: string, product: RoutineProduct) => void;
   /** Hard reset — used when a fresh scan arrives and the user accepts an update. */
   clearAll: () => void;
 }
@@ -120,6 +132,7 @@ const initial = {
     morning: string[];
     evening: string[];
   } | null,
+  completionDates: [] as string[],
 };
 
 export const useRoutineStore = create<RoutineStoreState>()(
@@ -392,7 +405,22 @@ export const useRoutineStore = create<RoutineStoreState>()(
             timeOfDay === 'morning'
               ? { dateKey: today, morning: nextList, evening: base.evening }
               : { dateKey: today, morning: base.morning, evening: nextList };
-          return { dailyChecklist: next };
+          // Keep the streak ledger exactly consistent with "≥1 completion
+          // today": stamp today on the first check-off, drop it if the day
+          // empties back out. Past days are never touched.
+          const dates = state.completionDates ?? [];
+          const hasAnyToday = next.morning.length > 0 || next.evening.length > 0;
+          const hasStamp = dates.includes(today);
+          let completionDates = dates;
+          if (hasAnyToday && !hasStamp) {
+            completionDates = [...dates, today].sort();
+            if (completionDates.length > 400) {
+              completionDates = completionDates.slice(-400);
+            }
+          } else if (!hasAnyToday && hasStamp) {
+            completionDates = dates.filter((d) => d !== today);
+          }
+          return { dailyChecklist: next, completionDates };
         }),
 
       reorderSteps: (timeOfDay, from, to) =>
@@ -465,6 +493,27 @@ export const useRoutineStore = create<RoutineStoreState>()(
           return { routine: { ...state.routine, ...patch } };
         }),
 
+      swapStepProduct: (stepId, product) =>
+        set((state) => {
+          if (!state.routine) return state;
+          // A step id can appear in both lists (a "both"-timed step); swap
+          // in both so morning and evening never show different products
+          // for the same step.
+          const apply = (steps: RoutineStep[]) =>
+            steps.map((s) =>
+              s.id === stepId
+                ? { ...s, product, availability: product.availability }
+                : s,
+            );
+          return {
+            routine: {
+              ...state.routine,
+              morningSteps: apply(state.routine.morningSteps),
+              eveningSteps: apply(state.routine.eveningSteps),
+            },
+          };
+        }),
+
       clearAll: () => set({ ...initial }),
     }),
     {
@@ -480,6 +529,7 @@ export const useRoutineStore = create<RoutineStoreState>()(
         todaySession: state.todaySession,
         recentSessions: state.recentSessions,
         dailyChecklist: state.dailyChecklist,
+        completionDates: state.completionDates,
       }),
       version: 1,
     },
@@ -607,6 +657,38 @@ export function selectDailyDoneIds(
     return timeOfDay === 'morning' ? checklist.morning : checklist.evening;
   }
   return [];
+}
+
+/**
+ * Consecutive-day completion streak, anchored to today. Counts the
+ * unbroken run of days with ≥1 completion ending today, or — if today
+ * has nothing yet — ending yesterday, so an active streak still reads
+ * as "alive" first thing in the day rather than dropping to zero.
+ *
+ *   • `count` — number of consecutive days in the run (0 if broken).
+ *   • `includesToday` — whether today itself is one of them.
+ */
+export function selectCompletionStreak(
+  completionDates: string[] | undefined,
+  date: Date = new Date(),
+): { count: number; includesToday: boolean } {
+  const set = new Set(completionDates ?? []);
+  const includesToday = set.has(todayDateKey(date));
+  const cursor = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (!includesToday) {
+    // No completion today yet — see if the run is still carried by
+    // yesterday. If not, the streak is broken.
+    cursor.setDate(cursor.getDate() - 1);
+    if (!set.has(todayDateKey(cursor))) {
+      return { count: 0, includesToday: false };
+    }
+  }
+  let count = 0;
+  while (set.has(todayDateKey(cursor))) {
+    count += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return { count, includesToday };
 }
 
 /**
