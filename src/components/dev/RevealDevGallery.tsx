@@ -22,6 +22,7 @@ import { puraReveal, puraRevealType } from '@/theme/tokens';
 import { REVEAL_FIXTURE } from '@/screens/scan/reveal/revealFixture';
 import { ScanRevealScreen } from '@/screens/scan/reveal/ScanRevealScreen';
 import { RevealAnalyzingSlide } from '@/screens/scan/reveal/RevealAnalyzingSlide';
+import { BuildRoutinePicker } from '@/screens/scan/reveal/BuildRoutinePicker';
 import { ScanBuildCeremony } from '@/screens/scan/reveal/ScanBuildCeremony';
 import { RoutineLandingView } from '@/screens/scan/reveal/RoutineLandingView';
 import {
@@ -35,7 +36,7 @@ import {
   type RoutineTimeOfDay,
 } from '@/types/routine';
 
-type Surface = 1 | 2 | 3 | 4 | 5 | 6 | 'pager' | 'ceremony' | 'routine';
+type Surface = 1 | 2 | 3 | 4 | 5 | 6 | 'pager' | 'picker' | 'ceremony' | 'routine';
 type Nav = NativeStackNavigationProp<RootStackParamList, 'ScanRevealDev'>;
 type Rt = RouteProp<RootStackParamList, 'ScanRevealDev'>;
 
@@ -46,6 +47,7 @@ const ITEMS: ReadonlyArray<{ surface: Surface; label: string; hint: string }> = 
   { surface: 4, label: '4 · Personalized Insights', hint: 'Sparkle disc + 3 cards' },
   { surface: 5, label: '5 · Your Skin Plan', hint: 'Four pillars · starts tonight' },
   { surface: 6, label: '6 · Ready when you are', hint: 'Build my routine CTA' },
+  { surface: 'picker', label: '6.5 · Build Picker', hint: 'Choose pillars · 4 toggles' },
   { surface: 'ceremony', label: '7 · Build Ceremony', hint: '~13s build · 4 pillars resolve' },
   { surface: 'routine', label: '8 · Routine (populated)', hint: '4 pillars · check off · why' },
   { surface: 'pager', label: 'Full pager (from 2)', hint: 'Walk 2→6 with Next' },
@@ -122,6 +124,15 @@ export function RevealDevGallery() {
 
   if (surface === 1) {
     return <RevealAnalyzingSlide stage="ai_result_returned" onCancel={toIndex} />;
+  }
+  if (surface === 'picker') {
+    return (
+      <BuildRoutinePicker
+        scanId="dev-picker-scan"
+        onBack={toIndex}
+        onBuild={onBuild}
+      />
+    );
   }
   if (surface === 'ceremony') {
     return (

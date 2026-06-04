@@ -194,5 +194,5 @@ export type RootStackParamList = {
   /** Dev-only gallery for the post-scan reveal arc (screens 1–6). Param
    *  selects which surface to render pixel-clean for screenshots; absent =
    *  tappable index. Reachable from AIDiagnostics; never linked in prod. */
-  ScanRevealDev: { surface?: 1 | 2 | 3 | 4 | 5 | 6 | 'pager' | 'ceremony' | 'routine' } | undefined;
+  ScanRevealDev: { surface?: 1 | 2 | 3 | 4 | 5 | 6 | 'pager' | 'picker' | 'ceremony' | 'routine' } | undefined;
 };
