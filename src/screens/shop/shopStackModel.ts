@@ -20,6 +20,7 @@
  */
 
 import { useMemo } from 'react';
+import type { ImageSourcePropType } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/store/useAppStore';
 import type { ProductMatch } from '@/ai/ai-contracts';
@@ -74,6 +75,9 @@ export type StackCardType =
 export interface CompareRef {
   id: string;
   shortName: string;
+  /** Brand + packshot of the reference pick, so a card can render it side-by-side. */
+  brand: string;
+  packshot: ImageSourcePropType;
   price: number;
   /** This card's price minus the reference price. Negative = cheaper. */
   priceDelta: number;
@@ -454,6 +458,8 @@ function compareRef(ref: ShopCatalogProduct, priceDelta: number): CompareRef {
   return {
     id: ref.id,
     shortName: ref.shortName ?? ref.name,
+    brand: ref.brand,
+    packshot: ref.catalogPackshot,
     price: ref.price,
     priceDelta,
   };

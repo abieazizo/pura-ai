@@ -38,6 +38,10 @@ import {
   CardStack,
   type CardStackHandle,
 } from '@/screens/shop/components/CardStack';
+import { FeedHeader } from '@/screens/shop/components/FeedHeader';
+import { ConcernsTonight } from '@/screens/shop/components/ConcernsTonight';
+import { ShopFeed } from '@/screens/shop/components/ShopFeed';
+import type { SkinState } from '@/types/canonical';
 
 // ── Synthetic, dev-only fixture ─────────────────────────────────────
 const FIXTURE_PROFILE: UserProfileSnapshot = {
@@ -55,7 +59,58 @@ const FIXTURE_PROFILE: UserProfileSnapshot = {
 const FIXTURE_SAVED = ['the-ordinary-niacinamide'];
 const FIXTURE_ROUTINE = ['cerave-hydrating-cleanser'];
 
-function buildFixtureInput(): BuildShopHomeInput {
+// A realistic post-scan reading — three concerns with varied severity AND
+// movement (worse / better / same) so the concerns row exercises every trend.
+const FIXTURE_SKIN_STATE: SkinState = {
+  scanId: 'dev-scan-1',
+  createdAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+  imageQuality: { usable: true, confidence: 0.82, issues: [] },
+  score: 72,
+  scoreBand: 'good',
+  scoreDelta: 3,
+  summaryHeadline: 'Steady, with a little congestion at the jaw.',
+  summaryBody: 'Breakouts along the jaw are the main thing to watch; old marks are fading.',
+  topConcerns: [
+    {
+      concern: 'breakouts',
+      severity: 'moderate',
+      rank: 1,
+      confidence: 0.78,
+      regions: ['chin', 'jaw'],
+      summary: 'A small cluster along the jaw.',
+      direction: 'worse',
+    },
+    {
+      concern: 'dark_marks',
+      severity: 'mild',
+      rank: 2,
+      confidence: 0.64,
+      regions: ['left cheek'],
+      summary: 'Older marks are lightening.',
+      direction: 'better',
+    },
+    {
+      concern: 'hydration',
+      severity: 'mild',
+      rank: 3,
+      confidence: 0.6,
+      regions: ['forehead'],
+      summary: 'A touch of tightness up top.',
+      direction: 'same',
+    },
+  ],
+  severityByConcern: { breakouts: 'moderate', dark_marks: 'mild', hydration: 'mild' },
+  zoneFindings: [],
+  confidenceByConcern: { breakouts: 0.78, dark_marks: 0.64, hydration: 0.6 },
+  trendSummary: { direction: 'improving', deltaSinceFirst: 5 },
+  nextStepCategory: 'serum',
+  routineHints: ['Keep actives gentle', 'Spot-treat the jaw at night'],
+  riskFlags: [],
+  overallConfidence: 'high',
+  source: 'ai',
+};
+
+function makeInput(over: Partial<BuildShopHomeInput> = {}): BuildShopHomeInput {
   const now = Date.now();
   return {
     hasScan: true,
@@ -70,10 +125,63 @@ function buildFixtureInput(): BuildShopHomeInput {
     previousScanAtIso: new Date(now - 9 * 86_400_000).toISOString(),
     scoreDelta: 3,
     now,
+    ...over,
   };
 }
 
-type GalleryMode = 'cards' | 'stack';
+function buildFixtureInput(): BuildShopHomeInput {
+  return makeInput();
+}
+
+// Header specimens — each exercises a distinct branch of the model's header
+// logic (acknowledgment kind, freshness, staleness) so FeedHeader can be
+// reviewed across every state it must handle.
+const HEADER_FIXTURES: { label: string; input: BuildShopHomeInput }[] = (() => {
+  const now = Date.now();
+  const days = (n: number) => new Date(now - n * 86_400_000).toISOString();
+  return [
+    {
+      label: 'POST-SCAN · WITH CONCERNS (reactive)',
+      input: makeInput({
+        skinState: FIXTURE_SKIN_STATE,
+        scoreDelta: 3,
+        scanCount: 2,
+        latestScanAtIso: days(2),
+      }),
+    },
+    {
+      label: 'POST-SCAN · FRESH · NAMED (improving)',
+      input: makeInput({ scoreDelta: 3, scanCount: 2, latestScanAtIso: days(2) }),
+    },
+    {
+      label: 'POST-SCAN · STALE · BANNER',
+      input: makeInput({ scoreDelta: 0, scanCount: 3, latestScanAtIso: days(40) }),
+    },
+    {
+      label: 'POST-SCAN · NO NAME',
+      input: makeInput({ greetingName: null, latestScanAtIso: days(2) }),
+    },
+    {
+      label: 'FIRST SCAN · TODAY',
+      input: makeInput({ scanCount: 1, scoreDelta: null, latestScanAtIso: days(0) }),
+    },
+    {
+      label: 'REACTIVE (skin needs support)',
+      input: makeInput({ scoreDelta: -3, scanCount: 2, latestScanAtIso: days(3) }),
+    },
+    {
+      label: 'PRE-SCAN (no scan yet)',
+      input: makeInput({
+        hasScan: false,
+        scanCount: 0,
+        scoreDelta: null,
+        latestScanAtIso: null,
+      }),
+    },
+  ];
+})();
+
+type GalleryMode = 'cards' | 'stack' | 'header' | 'feed';
 
 export function ShopCardDevGallery() {
   const nav = useNavigation();
@@ -125,8 +233,16 @@ export function ShopCardDevGallery() {
       </View>
 
       <View style={styles.modeRow}>
-        {(['stack', 'cards'] as GalleryMode[]).map((m) => {
+        {(['feed', 'stack', 'cards', 'header'] as GalleryMode[]).map((m) => {
           const active = mode === m;
+          const label =
+            m === 'stack'
+              ? 'Stack'
+              : m === 'cards'
+                ? 'Cards'
+                : m === 'header'
+                  ? 'Header'
+                  : 'Feed';
           return (
             <Pressable
               key={m}
@@ -138,25 +254,26 @@ export function ShopCardDevGallery() {
               <Text
                 style={[styles.modeChipText, active && styles.modeChipTextActive]}
               >
-                {m === 'stack' ? 'Stack' : 'Cards'}
+                {label}
               </Text>
             </Pressable>
           );
         })}
       </View>
 
-      {mode === 'stack' ? (
-        <StackMode
-          cards={cards}
+      {mode === 'feed' ? (
+        <FeedMode
+          saved={saved}
+          routine={routine}
           onToggleSave={toggleSave}
           onAdd={addRoutine}
         />
+      ) : mode === 'stack' ? (
+        <StackMode cards={cards} onToggleSave={toggleSave} onAdd={addRoutine} />
+      ) : mode === 'cards' ? (
+        <CardsMode cards={cards} onToggleSave={toggleSave} onAdd={addRoutine} />
       ) : (
-        <CardsMode
-          cards={cards}
-          onToggleSave={toggleSave}
-          onAdd={addRoutine}
-        />
+        <HeaderMode />
       )}
     </SafeAreaView>
   );
@@ -281,6 +398,76 @@ function CardsMode({
   );
 }
 
+// ── Feed mode — the fully assembled post-scan ShopFeed ─────────────
+function FeedMode({
+  saved,
+  routine,
+  onToggleSave,
+  onAdd,
+}: {
+  saved: Set<string>;
+  routine: Set<string>;
+  onToggleSave: (id: string) => void;
+  onAdd: (id: string) => void;
+}) {
+  const model = useMemo(
+    () =>
+      buildShopHomeModel(
+        makeInput({
+          skinState: FIXTURE_SKIN_STATE,
+          savedIds: saved,
+          routineIds: routine,
+        }),
+      ),
+    [saved, routine],
+  );
+  return (
+    <View style={styles.feedHost}>
+      <ShopFeed
+        model={model}
+        onPressProduct={() => {}}
+        onToggleSave={onToggleSave}
+        onAdd={onAdd}
+        onScan={() => {}}
+        onBrowseAll={() => {}}
+        onBrowseConcern={() => {}}
+        onPressConcern={() => {}}
+        bottomInset={28}
+      />
+    </View>
+  );
+}
+
+// ── Header mode — every FeedHeader branch over the page canvas ─────
+function HeaderMode() {
+  return (
+    <ScrollView contentContainerStyle={styles.headerScroll}>
+      {HEADER_FIXTURES.map(({ label, input }) => {
+        const m = buildShopHomeModel(input);
+        return (
+          <View key={label} style={styles.headerSpecimen}>
+            <Text style={styles.specimenLabel}>{label}</Text>
+            <View style={styles.specimenStage}>
+              <FeedHeader
+                state={m.state}
+                greetingName={m.greetingName}
+                acknowledgment={m.acknowledgment}
+                scanFreshness={m.scanFreshness}
+                showRescanBanner={m.showRescanBanner}
+                onRescan={() => {}}
+              />
+              <ConcernsTonight
+                concerns={m.concernsTonight}
+                onPressConcern={() => {}}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -399,5 +586,36 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: puraShopHome.quietInk,
     marginBottom: 12,
+  },
+
+  // Feed mode
+  feedHost: {
+    flex: 1,
+  },
+
+  // Header mode
+  headerScroll: {
+    paddingVertical: 18,
+    paddingBottom: 60,
+    gap: 18,
+  },
+  headerSpecimen: {
+    marginHorizontal: 16,
+  },
+  specimenLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1,
+    color: puraShopHome.quietInk,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  specimenStage: {
+    borderRadius: 24,
+    backgroundColor: puraShopHome.canvas,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: puraShopHome.hairline,
+    paddingVertical: 10,
+    overflow: 'hidden',
   },
 });

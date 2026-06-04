@@ -15,7 +15,7 @@
  * breath. A restrained press-scale acknowledges taps into the product detail.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -24,10 +24,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
   clamp,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -42,7 +44,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
-import { Heart, Check } from 'phosphor-react-native';
+import { Heart, Check, ArrowsLeftRight, X } from 'phosphor-react-native';
 
 import {
   puraShop,
@@ -159,6 +161,48 @@ export function StackCardView({
     const v = clamp(routineV.value, 0, 1);
     return { opacity: v, transform: [{ scale: 0.85 + 0.15 * v }] };
   });
+
+  // ----- Side-by-side comparison (budget / splurge cards vs the pick). -----
+  // A budget / splurge card carries `compareTo` — the pick it's priced against.
+  // Tapping the compare chip flips the card's face to a side-by-side: the pick
+  // and this product weighed together, with each price and the delta on the
+  // divider between them. A tap anywhere on the panel closes it. The horizontal
+  // swipe axis belongs to the deck (KEEP / SKIP), so the comparison is a tap —
+  // never a competing drag — and the reveal is motion-gated.
+  const [comparing, setComparing] = useState(false);
+  // The panel is an opaque, full-card overlay. Keep it OUT of the tree unless
+  // it is open or animating closed: an always-mounted invisible overlay can
+  // intercept taps meant for the card beneath it (on web a child <button>'s
+  // pointer-events can defeat the wrapper's `none`), which would steal the very
+  // compare chip that opens it. Mount on open; unmount once the close settles.
+  const [panelMounted, setPanelMounted] = useState(false);
+  const compareV = useSharedValue(0);
+  useEffect(() => {
+    if (comparing) {
+      setPanelMounted(true);
+      compareV.value = reduceMotion
+        ? 1
+        : withSpring(1, { damping: 19, stiffness: 240, mass: 0.8 });
+    } else if (reduceMotion) {
+      compareV.value = 0;
+      setPanelMounted(false);
+    } else {
+      compareV.value = withTiming(
+        0,
+        { duration: 180, easing: Easing.in(Easing.quad) },
+        (finished) => {
+          if (finished) runOnJS(setPanelMounted)(false);
+        },
+      );
+    }
+  }, [comparing, reduceMotion, compareV]);
+  const comparePanelStyle = useAnimatedStyle(() => ({
+    opacity: compareV.value,
+    transform: [
+      { translateY: (1 - compareV.value) * 16 },
+      { scale: 0.97 + 0.03 * compareV.value },
+    ],
+  }));
 
   // ----- Terminal card (no product, hosts the escape hatches). -----
   if (card.type === 'end' || !card.product) {
@@ -294,36 +338,55 @@ export function StackCardView({
           <Text style={styles.reason} numberOfLines={3}>
             {card.reason}
           </Text>
-
-          {compare ? (
-            <View
-              style={[
-                styles.comparePill,
-                {
-                  backgroundColor: compareLess
-                    ? puraShopHome.budgetTint
-                    : puraShopHome.splurgeTint,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.compareText,
-                  {
-                    color: compareLess
-                      ? puraShopHome.budgetInk
-                      : puraShopHome.splurgeInk,
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                {compareLess ? '−' : '+'}
-                {formatPrice(Math.abs(compare.priceDelta))} vs {compare.shortName}
-              </Text>
-            </View>
-          ) : null}
         </View>
       </Pressable>
+
+      {/* Compare chip — a sibling Pressable (never nested in the open zone), so
+          the web build keeps every tap target a separate <button>. Tapping it
+          flips the card face to the side-by-side panel below. */}
+      {compare ? (
+        <Pressable
+          style={styles.compareChipWrap}
+          onPress={() => {
+            hapt.select();
+            setComparing(true);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Compare ${productLabel} with the ${compare.shortName}`}
+          accessibilityHint="Opens a side-by-side price comparison"
+        >
+          <View
+            style={[
+              styles.comparePill,
+              {
+                backgroundColor: compareLess
+                  ? puraShopHome.budgetTint
+                  : puraShopHome.splurgeTint,
+              },
+            ]}
+          >
+            <ArrowsLeftRight
+              size={13}
+              weight="bold"
+              color={compareLess ? puraShopHome.budgetInk : puraShopHome.splurgeInk}
+            />
+            <Text
+              style={[
+                styles.compareText,
+                {
+                  color: compareLess
+                    ? puraShopHome.budgetInk
+                    : puraShopHome.splurgeInk,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {compareLess ? '−' : '+'}
+              {formatPrice(Math.abs(compare.priceDelta))} vs {compare.shortName}
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
 
       {/* Footer — price + add-to-routine. */}
       <View style={styles.footer}>
@@ -357,7 +420,136 @@ export function StackCardView({
         pointerEvents="none"
         style={[styles.addWash, washStyle]}
       />
+
+      {/* Side-by-side comparison — the card's alternate face. Absolute over the
+          whole (clipped, rounded) card; opaque card surface so nothing ghosts
+          through. A single Pressable IS the close target (no nested buttons). */}
+      {compare && panelMounted ? (
+        <Animated.View
+          pointerEvents={comparing ? 'auto' : 'none'}
+          style={[styles.comparePanel, comparePanelStyle]}
+        >
+          <Pressable
+            style={styles.comparePanelInner}
+            onPress={() => setComparing(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close comparison"
+          >
+            <View style={styles.compareHead}>
+              <Text style={styles.compareEyebrow}>
+                {compareLess ? 'SAME STEP · LESS' : 'SAME STEP · MORE'}
+              </Text>
+              <View style={styles.compareClose}>
+                <X size={14} weight="bold" color={puraShopHome.quietInk} />
+              </View>
+            </View>
+
+            <View style={styles.compareCols}>
+              {/* The anchor — the pick I recommended above. */}
+              <CompareCol
+                roleLabel="I RECOMMENDED"
+                brand={compare.brand}
+                name={compare.shortName}
+                price={compare.price}
+                packshot={compare.packshot}
+                halo={halo}
+              />
+
+              {/* Divider carrying the price delta. */}
+              <View style={styles.compareDivider}>
+                <View style={styles.compareDividerLine} />
+                <View
+                  style={[
+                    styles.compareDeltaBadge,
+                    {
+                      backgroundColor: compareLess
+                        ? puraShopHome.budgetInk
+                        : puraShopHome.splurgeInk,
+                    },
+                  ]}
+                >
+                  <Text style={styles.compareDeltaText}>
+                    {compareLess ? '−' : '+'}
+                    {formatPrice(Math.abs(compare.priceDelta))}
+                  </Text>
+                </View>
+                <View style={styles.compareDividerLine} />
+              </View>
+
+              {/* This card — the alternative being weighed. */}
+              <CompareCol
+                roleLabel={compareLess ? 'BUDGET PICK' : 'THE UPGRADE'}
+                brand={p.brand}
+                name={p.shortName ?? p.name}
+                price={p.price}
+                packshot={p.catalogPackshot}
+                halo={halo}
+                emphasisColor={
+                  compareLess ? puraShopHome.budgetInk : puraShopHome.splurgeInk
+                }
+              />
+            </View>
+
+            <Text style={styles.compareFoot}>
+              {compareLess
+                ? `${formatPrice(Math.abs(compare.priceDelta))} less than the ${compare.shortName}. Same step in your routine.`
+                : `${formatPrice(Math.abs(compare.priceDelta))} more than the ${compare.shortName}. Same step — if you'd rather invest here.`}
+            </Text>
+
+            <Text style={styles.compareDismiss}>TAP TO CLOSE</Text>
+          </Pressable>
+        </Animated.View>
+      ) : null}
     </Animated.View>
+  );
+}
+
+// One column of the side-by-side comparison: a haloed packshot over brand,
+// name, and price. The alternative column tints its price with the route
+// accent (green for budget, amethyst for splurge); the anchor stays ink.
+function CompareCol({
+  roleLabel,
+  brand,
+  name,
+  price,
+  packshot,
+  halo,
+  emphasisColor,
+}: {
+  roleLabel: string;
+  brand: string;
+  name: string;
+  price: number;
+  packshot: ImageSourcePropType;
+  halo: string;
+  emphasisColor?: string;
+}) {
+  return (
+    <View style={styles.compareCol}>
+      <Text style={styles.compareRole} numberOfLines={1}>
+        {roleLabel}
+      </Text>
+      <View style={styles.compareImgWrap}>
+        <View style={[styles.compareHalo, { backgroundColor: halo }]} />
+        <Image
+          source={packshot}
+          style={styles.compareImg}
+          resizeMode="contain"
+          accessibilityLabel={`${brand} ${name}`}
+        />
+      </View>
+      <Text style={styles.compareBrand} numberOfLines={1}>
+        {brand.toUpperCase()}
+      </Text>
+      <Text style={styles.compareName} numberOfLines={2}>
+        {name}
+      </Text>
+      <Text
+        style={[styles.comparePrice, emphasisColor ? { color: emphasisColor } : null]}
+      >
+        {formatPrice(price)}
+      </Text>
+    </View>
   );
 }
 
@@ -443,17 +635,154 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
     color: puraShop.inkSecondary,
   },
-  comparePill: {
-    alignSelf: 'flex-start',
+  compareChipWrap: {
+    paddingHorizontal: H_PAD,
     marginTop: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    alignItems: 'flex-start',
+  },
+  comparePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
     borderRadius: 999,
   },
   compareText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
     letterSpacing: 0.1,
+  },
+
+  // ----- Side-by-side comparison panel (the card's alternate face) -----
+  comparePanel: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: puraShopHome.cardSurface,
+  },
+  comparePanelInner: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: puraShopSpace.lg,
+    paddingBottom: puraShopSpace.lg,
+    justifyContent: 'center',
+  },
+  compareHead: {
+    position: 'absolute',
+    top: puraShopSpace.lg,
+    left: H_PAD,
+    right: H_PAD,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  compareEyebrow: {
+    ...puraShopType.tagLabel,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    color: puraShopHome.quietInk,
+  },
+  compareClose: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: puraShopHome.canvasDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compareCols: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  compareCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  compareRole: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 1,
+    color: puraShopHome.quietInk,
+    marginBottom: 8,
+  },
+  compareImgWrap: {
+    width: 100,
+    height: 108,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginBottom: 10,
+  },
+  compareHalo: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  compareImg: {
+    width: 80,
+    height: 94,
+  },
+  compareBrand: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10.5,
+    letterSpacing: 0.4,
+    color: puraShopHome.quietInk,
+    marginBottom: 3,
+    textAlign: 'center',
+  },
+  compareName: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    lineHeight: 17,
+    color: puraShopHome.ink,
+    textAlign: 'center',
+    marginBottom: 7,
+    paddingHorizontal: 4,
+  },
+  comparePrice: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 16.5,
+    color: puraShopHome.ink,
+  },
+  compareDivider: {
+    width: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compareDividerLine: {
+    flex: 1,
+    width: 1.5,
+    backgroundColor: puraShopHome.hairline,
+  },
+  compareDeltaBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginVertical: 6,
+  },
+  compareDeltaText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 12.5,
+    letterSpacing: 0.2,
+    color: puraShopHome.white,
+  },
+  compareFoot: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 17.5,
+    letterSpacing: -0.05,
+    color: puraShop.inkSecondary,
+    textAlign: 'center',
+    marginTop: 18,
+    paddingHorizontal: 6,
+  },
+  compareDismiss: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    color: puraShopHome.quietInk,
+    textAlign: 'center',
+    marginTop: 12,
   },
 
   // Footer
