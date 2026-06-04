@@ -1509,7 +1509,9 @@ export const puraAssist = {
   blue05:        'rgba(20, 124, 255, 0.05)',  // reading-your-scan card bg
   blue08:        'rgba(20, 124, 255, 0.08)',  // scan-ready pill, follow-up chips
   blue12:        'rgba(20, 124, 255, 0.12)',  // icon chips
-  blue15:        'rgba(20, 124, 255, 0.15)',  // reading-your-scan card border
+  blue15:        'rgba(20, 124, 255, 0.15)',  // reading-your-scan card border, prompt-card border
+  blue20:        'rgba(20, 124, 255, 0.20)',  // input-bar focus ring (1px)
+  blue00:        'rgba(20, 124, 255, 0)',     // transparent blue — input-bar resting border (animates to blue20 on focus, no layout shift)
   blueWireframe: '#147CFF',  // animated face mesh stroke
 
   // ----- Green positive-signal accent -----
@@ -1620,8 +1622,16 @@ export const puraAssistType = {
   },
   inputText: {
     fontFamily: SANS_REG,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 21,
+    letterSpacing: -0.2,
+  },
+  // Leading "AI" lozenge label on the input bar — compact SemiBold, not the
+  // spaced-out eyebrow caps.
+  aiBadge: {
+    fontFamily: SANS_SEMI,
+    fontSize: 12,
+    lineHeight: 15,
     letterSpacing: -0.1,
   },
   subCardLabel: {
@@ -1642,6 +1652,8 @@ export const puraAssistRadius = {
   quickAction: 14,
   iconChip: 10,
   input: 16,
+  inputBar: 32,   // v33 premium ask dock — full pill at the ~64px resting height
+  promptCard: 16, // v33 empty-state suggested-prompt cards
   pill: 999,
   bubble: 22,
   bubbleTail: 6,
@@ -1661,6 +1673,23 @@ export const puraAssistShadow = {
     shadowOpacity: 0.06,
     shadowRadius: 16,
     elevation: 6,
+  },
+  // v33 premium ask dock — a soft upward-casting lift (negative Y) so the bar
+  // reads as floating over the page. shadowOpacity is animated 0.08 → 0.12 on
+  // focus in the component; these are the resting values.
+  inputBar: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  inputBarFocus: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 10,
   },
 } as const satisfies Record<string, ViewStyle>;
 
@@ -1802,12 +1831,6 @@ export const puraRevealType = {
   },
 
   // ----- Skin Plan pillars -----
-  pillarNumber: {
-    fontFamily: SERIF_ITALIC,
-    fontSize: 30,
-    lineHeight: 34,
-    letterSpacing: 0,
-  },
   pillarName: {
     fontFamily: SANS_SEMI,
     fontSize: 19,

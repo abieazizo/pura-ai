@@ -8,6 +8,7 @@
 
 import type { ConcernType } from '@/ai/ai-contracts';
 import type { SkinConcernSummary, SkinState } from '@/types/canonical';
+import type { PillarKey } from '@/types/routine';
 import { puraReveal } from '@/theme/tokens';
 
 // ---------------------------------------------------------------------------
@@ -237,7 +238,7 @@ export function deriveInsights(skin: SkinState): InsightCard[] {
 // ---------------------------------------------------------------------------
 
 export interface Pillar {
-  index: string;
+  key: PillarKey;
   name: string;
   desc: string;
 }
@@ -247,22 +248,22 @@ export function derivePillars(skin: SkinState): Pillar[] {
   const primaryLabel = primary ? concernDisplay(primary.concern).label.toLowerCase() : 'your concerns';
   return [
     {
-      index: '01',
+      key: 'cleanse',
       name: 'Cleanse',
       desc: 'Lift the day off without stripping your barrier.',
     },
     {
-      index: '02',
+      key: 'treat',
       name: 'Treat',
       desc: `Target ${primaryLabel} while your skin is most receptive.`,
     },
     {
-      index: '03',
+      key: 'moisturize',
       name: 'Moisturize',
       desc: 'Lock in water so oil has less to compensate for.',
     },
     {
-      index: '04',
+      key: 'protect',
       name: 'Protect',
       desc: 'Daylight is where most visible damage happens — shield it each morning.',
     },

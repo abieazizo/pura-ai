@@ -49,6 +49,7 @@ import {
   type MapOverlay,
 } from './revealContent';
 import { FloatingNext, RevealCTA, RevealHeader, RevealLink } from './revealChrome';
+import { PillarIcon } from '@/components/routine/pillarIdentity';
 
 const SKIN_GRADIENT = ['#E8D2C2', '#D8B6A2', '#C99A86'] as const;
 const TOTAL_STEPS = 6;
@@ -266,12 +267,10 @@ export function ScanRevealScreen({
 
             <View style={styles.pillarList}>
               {pillars.map((p, i) => (
-                <View key={p.index}>
+                <View key={p.key}>
                   {i > 0 ? <View style={styles.pillarDivider} /> : null}
                   <View style={styles.pillarRow}>
-                    <Text style={[puraRevealType.pillarNumber, { color: puraReveal.blue }]}>
-                      {p.index}
-                    </Text>
+                    <PillarIcon pillar={p.key} size={44} />
                     <View style={styles.pillarCol}>
                       <Text style={[puraRevealType.pillarName, { color: puraReveal.ink }]}>
                         {p.name}
