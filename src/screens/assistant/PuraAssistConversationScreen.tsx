@@ -49,6 +49,8 @@ import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
+  FadeInUp,
+  FadeOut,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -56,11 +58,15 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import {
+  ArrowRight,
   CaretLeft,
+  ChatCircle,
+  ChartLine,
   Moon,
   Prohibit,
   Scan,
   Sparkle,
+  type IconProps,
 } from 'phosphor-react-native';
 
 import {
@@ -78,6 +84,54 @@ import { useAssistSignal } from '@/state/assistSignal';
 import type { RootStackParamList } from '@/navigation/types';
 import { AssistantFaceLive, type AssistantFaceState } from './AssistantFaceLive';
 import { AssistInputBar } from './AssistInputBar';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+type IconCmp = React.FC<IconProps>;
+
+// Empty-state quick-starts (Fix 3). Fixed editorial copy — three prompt cards
+// shown ONLY when the conversation has no messages. Tapping one auto-sends.
+const SUGGESTED_PROMPTS: ReadonlyArray<{
+  key: string;
+  Icon: IconCmp;
+  prompt: string;
+  description: string;
+}> = [
+  {
+    key: 'routine',
+    Icon: Moon as IconCmp,
+    prompt: "Build me tonight's routine",
+    description: 'Based on your last scan and the time of day',
+  },
+  {
+    key: 'serum',
+    Icon: ChatCircle as IconCmp,
+    prompt: 'Can I use my serum tonight?',
+    description: 'Check ingredients against your scan',
+  },
+  {
+    key: 'changed',
+    Icon: ChartLine as IconCmp,
+    prompt: "What's changed since my last scan?",
+    description: 'Compare two scans side by side',
+  },
+];
+
+// Fix 4 — the conversation "assembles" around the (stationary) input bar as
+// the navigator cross-fades the screen in: the header and the context card
+// slide DOWN from above into place, while the prompt cards rise from below
+// (their own Fix 3 stagger). Fresh builder per mount; entering plays once.
+const headerEntering = () =>
+  FadeInUp.duration(350)
+    .delay(60)
+    .easing(Easing.out(Easing.cubic))
+    .withInitialValues({ transform: [{ translateY: -60 }] });
+
+const contextCardEntering = () =>
+  FadeInUp.duration(350)
+    .delay(110)
+    .easing(Easing.out(Easing.cubic))
+    .withInitialValues({ transform: [{ translateY: -20 }] });
 
 // ---------------------------------------------------------------------------
 // Conversation model
@@ -218,7 +272,8 @@ export function PuraAssistConversationScreen() {
       }
       hapt.tap();
       setDraft('');
-      Keyboard.dismiss();
+      // Keep the keyboard up and the input focused (Fix 1): the user can fire
+      // off another message without re-tapping the field.
       const at = Date.now();
       const userId = `u-${at}`;
       const asstId = `a-${at}`;
@@ -274,23 +329,16 @@ export function PuraAssistConversationScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params?.initialMessage]);
 
-  // ---- Follow-up chips ----------------------------------------------------
-  const initialChips = useMemo(() => {
-    if (!signal.scanReady) {
-      return [
-        'What should I do tonight?',
-        'Build a simple PM routine',
-        'What should I avoid?',
-      ];
-    }
-    const zone = signal.focusZoneLabel;
-    const first =
-      zone === 'Overall'
-        ? "What's my barrier like tonight?"
-        : `Why only my ${zone.toLowerCase()}?`;
-    return [first, 'Build my PM routine', 'Compare to last scan'];
-  }, [signal.scanReady, signal.focusZoneLabel]);
+  // Keep the latest message visible when the keyboard opens (Fix 2).
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', scrollToEnd);
+    return () => sub.remove();
+  }, [scrollToEnd]);
 
+  // ---- Follow-up chips ----------------------------------------------------
+  // Small chips appear only AFTER an answer (from its `followUps`). The empty
+  // state is owned by the big suggested-prompt cards (Fix 3), so there are no
+  // "initial" chips anymore.
   const activeChips = useMemo(() => {
     for (let i = turns.length - 1; i >= 0; i--) {
       const t = turns[i];
@@ -306,8 +354,8 @@ export function PuraAssistConversationScreen() {
         return [];
       }
     }
-    return turns.length === 0 ? initialChips : [];
-  }, [turns, initialChips]);
+    return [];
+  }, [turns]);
 
   const firstAt = turns.length > 0 ? turns[0].at : null;
 
@@ -318,8 +366,11 @@ export function PuraAssistConversationScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* ---- Header ---- */}
-        <View style={styles.header}>
+        {/* ---- Header (slides down into place — Fix 4) ---- */}
+        <Animated.View
+          style={styles.header}
+          entering={reduce ? undefined : headerEntering()}
+        >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back"
@@ -345,7 +396,7 @@ export function PuraAssistConversationScreen() {
           >
             <Sparkle size={20} color={puraAssist.blue} weight="fill" />
           </Pressable>
-        </View>
+        </Animated.View>
 
         {/* ---- Reading-your-scan hero (pinned; carries the face) ---- */}
         <ReadingScanCard
@@ -353,6 +404,7 @@ export function PuraAssistConversationScreen() {
           chips={signal.scanChips}
           noScanLine={signal.scanContextLine}
           thinking={isThinking}
+          reduce={reduce}
         />
 
         {/* ---- Conversation ---- */}
@@ -373,9 +425,7 @@ export function PuraAssistConversationScreen() {
         >
           {firstAt !== null ? (
             <Text style={styles.dayLabel}>Today, {clock(firstAt)}</Text>
-          ) : (
-            <EmptyHint scanReady={signal.scanReady} />
-          )}
+          ) : null}
 
           {turns.map((t) =>
             t.role === 'user' ? (
@@ -394,8 +444,10 @@ export function PuraAssistConversationScreen() {
           )}
         </ScrollView>
 
-        {/* ---- Follow-up chips ---- */}
-        {activeChips.length > 0 ? (
+        {/* ---- Empty-state suggested prompts (Fix 3) / follow-up chips ---- */}
+        {turns.length === 0 ? (
+          <SuggestedPromptCards onPick={send} reduce={reduce} />
+        ) : activeChips.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -448,15 +500,20 @@ function ReadingScanCard({
   chips,
   noScanLine,
   thinking,
+  reduce,
 }: {
   scanReady: boolean;
   chips: string[];
   noScanLine: string;
   thinking: boolean;
+  reduce: boolean;
 }) {
   const faceState = useFaceState(thinking);
   return (
-    <View style={styles.scanCard}>
+    <Animated.View
+      style={styles.scanCard}
+      entering={reduce ? undefined : contextCardEntering()}
+    >
       <View style={styles.scanCardCopy}>
         <View style={styles.scanCardTitleRow}>
           <Scan size={16} color={puraAssist.blue} weight="bold" />
@@ -489,17 +546,98 @@ function ReadingScanCard({
       <View style={styles.faceWrap}>
         <AssistantFaceLive state={faceState} subdued={!scanReady} />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
-function EmptyHint({ scanReady }: { scanReady: boolean }) {
+// ---------------------------------------------------------------------------
+// Empty-state suggested prompt cards (Fix 3)
+// ---------------------------------------------------------------------------
+
+function SuggestedPromptCards({
+  onPick,
+  reduce,
+}: {
+  onPick: (text: string) => void;
+  reduce: boolean;
+}) {
   return (
-    <Text style={styles.emptyHint}>
-      {scanReady
-        ? 'Ask anything about tonight — what changed, what to use, what to skip.'
-        : 'Ask about your routine, ingredients, or what to do tonight.'}
-    </Text>
+    <Animated.View
+      style={styles.promptCards}
+      exiting={reduce ? undefined : FadeOut.duration(300)}
+    >
+      {SUGGESTED_PROMPTS.map((p, i) => (
+        <SuggestedPromptCard
+          key={p.key}
+          item={p}
+          index={i}
+          reduce={reduce}
+          onPick={onPick}
+        />
+      ))}
+    </Animated.View>
+  );
+}
+
+function SuggestedPromptCard({
+  item,
+  index,
+  reduce,
+  onPick,
+}: {
+  item: (typeof SUGGESTED_PROMPTS)[number];
+  index: number;
+  reduce: boolean;
+  onPick: (text: string) => void;
+}) {
+  const scale = useSharedValue(1);
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const onPress = useCallback(() => {
+    hapt.tap();
+    if (!reduce) {
+      // 1.0 → 0.97 → 1.0 over ~200ms.
+      scale.value = withSequence(
+        withTiming(0.97, { duration: 100, easing: Easing.out(Easing.quad) }),
+        withTiming(1, { duration: 100, easing: Easing.out(Easing.quad) }),
+      );
+    }
+    onPick(item.prompt);
+  }, [reduce, scale, onPick, item.prompt]);
+
+  const Icon = item.Icon;
+  return (
+    <Animated.View
+      entering={
+        reduce
+          ? undefined
+          : FadeInDown.duration(400)
+              .delay(index * 100)
+              .easing(Easing.out(Easing.cubic))
+      }
+    >
+      <AnimatedPressable
+        accessibilityRole="button"
+        accessibilityLabel={item.prompt}
+        accessibilityHint={item.description}
+        onPress={onPress}
+        style={[styles.promptCard, aStyle]}
+      >
+        <View style={styles.promptIcon}>
+          <Icon size={18} color={puraAssist.blue} weight="bold" />
+        </View>
+        <View style={styles.promptCopy}>
+          <Text style={styles.promptTitle} numberOfLines={1}>
+            {item.prompt}
+          </Text>
+          <Text style={styles.promptDesc} numberOfLines={1}>
+            {item.description}
+          </Text>
+        </View>
+        <ArrowRight size={16} color={puraAssist.blue} weight="bold" />
+      </AnimatedPressable>
+    </Animated.View>
   );
 }
 
@@ -926,12 +1064,46 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 2,
   },
-  emptyHint: {
-    ...puraAssistType.subhead,
-    color: puraAssist.veryMuted,
-    textAlign: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 24,
+  // ---- Empty-state suggested prompt cards (Fix 3) ----
+  promptCards: {
+    flexGrow: 0,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 12,
+  },
+  promptCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 64,
+    backgroundColor: puraAssist.surface,
+    borderRadius: puraAssistRadius.promptCard,
+    borderWidth: 1,
+    borderColor: puraAssist.blue15,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  promptIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: puraAssist.blue10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promptCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  promptTitle: {
+    ...puraAssistType.promptTitle,
+    color: puraAssist.ink,
+  },
+  promptDesc: {
+    ...puraAssistType.promptDesc,
+    color: puraAssist.muted,
   },
 
   // ---- User bubble ----

@@ -13,8 +13,10 @@
  * the animated face mesh lives on the conversation surface.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -112,10 +114,25 @@ export function PuraAssistHomeScreen() {
   const homeNav = useNavigation<NavigationProp<HomeStackParamList>>();
   const signal = useAssistSignal();
 
+  // The Home ask dock is a live input (Fix 1). Tapping it types here; the
+  // return key or send button opens the conversation with the typed text as
+  // the first turn — exactly as if the user had sent it from inside.
+  const [draft, setDraft] = useState('');
+
   const openConversation = useCallback(() => {
     hapt.tap();
     rootNav.navigate('AssistChat');
   }, [rootNav]);
+
+  const openWithMessage = useCallback(
+    (text: string) => {
+      hapt.tap();
+      rootNav.navigate('AssistChat', { initialMessage: text });
+      // Clear the Home field so returning later doesn't show a stale draft.
+      setDraft('');
+    },
+    [rootNav],
+  );
 
   const goScan = useCallback(() => {
     hapt.tap();
@@ -178,6 +195,10 @@ export function PuraAssistHomeScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -324,8 +345,15 @@ export function PuraAssistHomeScreen() {
           colors={[puraAssist.bgClear, puraAssist.bg]}
           style={[styles.dockFade, { height: fadeHeight, top: -fadeHeight }]}
         />
-        <AssistInputBar mode="launcher" onOpen={openConversation} bottomInset={0} />
+        <AssistInputBar
+          mode="launcher"
+          value={draft}
+          onChangeText={setDraft}
+          onSubmit={openWithMessage}
+          bottomInset={0}
+        />
       </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -491,6 +519,9 @@ const styles = StyleSheet.create({
     color: puraAssist.ink,
   },
   scroll: {
+    flex: 1,
+  },
+  flex: {
     flex: 1,
   },
   dockBar: {

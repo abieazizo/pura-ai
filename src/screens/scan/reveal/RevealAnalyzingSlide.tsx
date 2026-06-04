@@ -7,10 +7,11 @@
  * Reference port: PURA eyebrow + step counter, Instrument Serif "AI Skin
  * Analysis" with a Pura-Blue italic "in progress", the captured photo under a
  * white triangulated mesh + scan sweep, and a Porcelain status card carrying
- * the 150px progress ring, the running checklist, and a sparkle tip line.
+ * the 150px progress ring, a single rolling status line over a thin progress
+ * bar, and a sparkle tip line.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -19,26 +20,42 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import Animated, {
   Easing,
+  runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { Check, Sparkle } from 'phosphor-react-native';
+import { Sparkle } from 'phosphor-react-native';
 import { puraReveal, puraRevealLayout, puraRevealRadius, puraRevealShadow, puraRevealType } from '@/theme/tokens';
 import type { LoadingStage } from '@/components/scan-results/AnalysisLoadingSlide';
 import { RevealHeader } from './revealChrome';
 import { ProgressRing } from '@/components/reveal/ProgressRing';
 
-const STAGE_PROGRESS: Record<LoadingStage, number> = {
-  image_ready: 0.12,
-  quality_validated: 0.36,
-  ai_result_returned: 0.64,
-  geometry_ready: 0.84,
-  normalized: 1.0,
-};
+const ANALYZING_PHRASES = [
+  'Mapping facial geometry...',
+  'Reading skin tone across forehead...',
+  'Checking pore density on T-zone...',
+  'Analyzing texture on left cheek...',
+  'Analyzing texture on right cheek...',
+  'Measuring hydration signal...',
+  'Detecting redness patterns...',
+  'Reading barrier health indicators...',
+  'Checking under-eye fatigue...',
+  'Scanning for hyperpigmentation...',
+  'Measuring sebum distribution...',
+  'Detecting fine line patterns...',
+  'Reading skin clarity...',
+  'Cross-referencing with skin profile...',
+  'Calibrating to your concerns...',
+  'Finalizing analysis...',
+] as const;
 
-const STATUS_ITEMS = ['Image quality', 'Visible areas', 'Focus areas', 'Results'] as const;
+const ANALYZE_RAMP_MS = 7000;
+const FINISH_SPRINT_MS = 300;
+const PHRASE_INTERVAL_MS = 650;
+const CROSSFADE_MS = 200;
 
 export interface RevealAnalyzingSlideProps {
   photoUri?: string;
@@ -48,10 +65,59 @@ export interface RevealAnalyzingSlideProps {
 
 export function RevealAnalyzingSlide({ photoUri, stage, onCancel }: RevealAnalyzingSlideProps) {
   const { width: vw } = useWindowDimensions();
-  const target = STAGE_PROGRESS[stage];
-  const progress = useTween(target);
-  const pct = Math.round(progress * 100);
-  const checkedCount = Math.min(STATUS_ITEMS.length, Math.round(progress * STATUS_ITEMS.length));
+  const done = stage === 'normalized';
+
+  // Continuous progress: ramp to 95% over the analysis window, hold, then
+  // sprint to 100% on completion. The integer % mirrors into JS state only
+  // when it actually changes, so every integer 0..100 is rendered exactly once
+  // and the ring (plain-number) redraws in lockstep with the text.
+  const progress = useSharedValue(0);
+  const [pct, setPct] = useState(0);
+
+  useEffect(() => {
+    progress.value = withTiming(0.95, {
+      duration: ANALYZE_RAMP_MS,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+    });
+  }, [progress]);
+
+  useEffect(() => {
+    if (done) {
+      progress.value = withTiming(1, { duration: FINISH_SPRINT_MS, easing: Easing.out(Easing.quad) });
+    }
+  }, [done, progress]);
+
+  useAnimatedReaction(
+    () => Math.round(progress.value * 100),
+    (cur, prev) => {
+      if (cur !== prev) runOnJS(setPct)(cur);
+    },
+  );
+
+  // Single rolling status line, crossfading through the phrase list until the
+  // analysis completes, then snapping to "Analysis complete."
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const phraseOpacity = useSharedValue(1);
+
+  useEffect(() => {
+    if (done) {
+      phraseOpacity.value = withTiming(1, { duration: 150 });
+      return;
+    }
+    const advance = () => setPhraseIndex((i) => (i + 1) % ANALYZING_PHRASES.length);
+    const id = setInterval(() => {
+      phraseOpacity.value = withTiming(0, { duration: CROSSFADE_MS }, (finished) => {
+        if (finished) {
+          runOnJS(advance)();
+          phraseOpacity.value = withTiming(1, { duration: CROSSFADE_MS });
+        }
+      });
+    }, PHRASE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [done, phraseOpacity]);
+
+  const phraseStyle = useAnimatedStyle(() => ({ opacity: phraseOpacity.value }));
+  const phrase = done ? 'Analysis complete.' : ANALYZING_PHRASES[phraseIndex];
 
   const contentW = Math.min(vw, puraRevealLayout.maxContentWidth) - puraRevealLayout.screenPadding * 2;
   const frameW = Math.round(contentW * 0.78);
@@ -76,32 +142,34 @@ export function RevealAnalyzingSlide({ photoUri, stage, onCancel }: RevealAnalyz
         </View>
 
         <View style={styles.photoBlock}>
-          <PhotoMeshFrame photoUri={photoUri} width={frameW} height={frameH} active={stage !== 'normalized'} />
+          <PhotoMeshFrame photoUri={photoUri} width={frameW} height={frameH} active={!done} />
         </View>
 
         <View style={styles.card}>
-          <View style={styles.cardRow}>
-            <ProgressRing
-              size={150}
-              stroke={puraRevealLayout.ringStroke}
-              progress={progress}
-              color={puraReveal.blue}
-              trackColor={puraReveal.ringTrack}
-            >
-              <View style={styles.ringCenter}>
-                <Text style={[puraRevealType.ringNumber, { color: puraReveal.ink }]}>{pct}</Text>
-                <Text style={[puraRevealType.ringPercent, { color: puraReveal.muted }]}>%</Text>
-              </View>
-            </ProgressRing>
-
-            <View style={styles.cardCol}>
-              <Text style={[puraRevealType.cardTitle, { color: puraReveal.ink }]}>Analyzing…</Text>
-              <View style={styles.statusList}>
-                {STATUS_ITEMS.map((label, i) => (
-                  <StatusItem key={label} label={label} done={i < checkedCount} />
-                ))}
-              </View>
+          <ProgressRing
+            size={150}
+            stroke={puraRevealLayout.ringStroke}
+            progress={pct / 100}
+            color={puraReveal.blue}
+            trackColor={puraReveal.ringTrack}
+          >
+            <View style={styles.ringCenter}>
+              <Text style={[puraRevealType.ringNumber, { color: puraReveal.ink }]}>{pct}</Text>
+              <Text style={[puraRevealType.ringPercent, { color: puraReveal.muted }]}>%</Text>
             </View>
+          </ProgressRing>
+
+          <View style={styles.phraseWrap}>
+            <Animated.Text
+              style={[puraRevealType.body, styles.phrase, { color: puraReveal.ink }, phraseStyle]}
+              numberOfLines={2}
+            >
+              {phrase}
+            </Animated.Text>
+          </View>
+
+          <View style={styles.track}>
+            <View style={[styles.fill, { width: `${pct}%` }]} />
           </View>
 
           <View style={styles.divider} />
@@ -205,54 +273,6 @@ function FaceMesh({ width, height }: { width: number; height: number }) {
   );
 }
 
-function StatusItem({ label, done }: { label: string; done: boolean }) {
-  return (
-    <View style={styles.statusItem}>
-      <View style={[styles.statusDotWell, done && styles.statusCheck]}>
-        {done ? (
-          <Check size={10} weight="bold" color={puraReveal.white} />
-        ) : (
-          <View style={styles.statusDot} />
-        )}
-      </View>
-      <Text
-        style={[
-          puraRevealType.statusItem,
-          { color: done ? puraReveal.ink : puraReveal.veryMuted },
-        ]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// useTween — RAF ease-out tween toward a numeric target (no animated SVG).
-// ---------------------------------------------------------------------------
-
-function useTween(target: number, duration = 540): number {
-  const [value, setValue] = useState(target);
-  const fromRef = useRef(target);
-  useEffect(() => {
-    const from = fromRef.current;
-    const start = Date.now();
-    let raf = 0;
-    const tick = () => {
-      const t = Math.min(1, (Date.now() - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      const cur = from + (target - from) * eased;
-      fromRef.current = cur;
-      setValue(cur);
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return value;
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: puraReveal.bg },
   page: {
@@ -287,30 +307,30 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 18,
     marginBottom: 6,
+    alignItems: 'center',
     ...puraRevealShadow.card,
   },
-  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   ringCenter: { flexDirection: 'row', alignItems: 'baseline' },
-  cardCol: { flex: 1 },
-  statusList: { marginTop: 10, gap: 8 },
-  statusItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  statusDotWell: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+  phraseWrap: {
+    height: 42,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 14,
   },
-  statusCheck: { backgroundColor: puraReveal.done },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: puraReveal.ringTrack,
+  phrase: { fontSize: 15, lineHeight: 19, textAlign: 'center' },
+  track: {
+    alignSelf: 'stretch',
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: puraReveal.ringTrack,
+    overflow: 'hidden',
+    marginTop: 12,
   },
+  fill: { height: '100%', borderRadius: 1, backgroundColor: puraReveal.blue },
   divider: {
     height: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
     backgroundColor: puraReveal.border,
     marginVertical: 14,
   },

@@ -20,6 +20,7 @@ import React from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -167,21 +168,23 @@ export function RoutineLandingView({
 
   const handleRemove = React.useCallback(
     (row: Row) => {
-      Alert.alert(
-        'Remove step',
-        `Remove ${row.label} from your routine?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: () => {
-              hapt.medium();
-              onRemoveStep(row.step.id);
-            },
-          },
-        ],
-      );
+      const commit = () => {
+        hapt.medium();
+        onRemoveStep(row.step.id);
+      };
+      // RN Web's Alert.alert renders window.alert and silently drops the
+      // buttons array, so the destructive action would never fire. Fall back
+      // to the browser confirm dialog on web; keep the native dialog elsewhere.
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.confirm(`Remove ${row.label} from your routine?`)) {
+          commit();
+        }
+        return;
+      }
+      Alert.alert('Remove step', `Remove ${row.label} from your routine?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: commit },
+      ]);
     },
     [onRemoveStep],
   );

@@ -1,19 +1,32 @@
 /**
  * AssistInputBar — the floating "Ask about your skin tonight" dock that
  * appears identically on the Pura Assist Home surface and the conversation
- * screen (per the reference, the two bars are pixel-identical).
+ * screen. The two bars are pixel-identical on purpose: submitting from Home
+ * navigates into the conversation, and because the bar lives in the same
+ * place on both surfaces it reads as the SAME bar staying put while the rest
+ * of the conversation assembles around it.
  *
- * Two modes share one visual:
- *   • launcher  — the whole bar is a button. Tapping anywhere (including the
- *                 send glyph) opens the conversation. Used on Home, where
- *                 typing happens AFTER the conversation opens.
- *   • composer  — a live TextInput with an active send button. Used inside
- *                 the conversation. Send is enabled only when there's text.
+ * Two modes share one visual and one keyboard contract:
+ *   • launcher  — a live input on Home. Submitting (return key OR the send
+ *                 button) calls `onSubmit(text)` so the host can open the
+ *                 conversation with the typed text as the first turn. Empty
+ *                 submit is a no-op.
+ *   • composer  — the live input inside the conversation. Submitting calls
+ *                 `onSend()`; the keyboard stays up and focus remains so the
+ *                 user can keep typing.
+ *
+ * Enter-to-submit: a multiline TextInput's `onSubmitEditing` is unreliable
+ * (on most platforms it never fires for multiline, and `blurOnSubmit` would
+ * dismiss the keyboard), so the return key is detected by watching for a
+ * trailing newline in `onChangeText`. We submit and swallow the newline — the
+ * field never keeps a stray blank line and the keyboard never drops. A small
+ * timestamp guard dedupes against the rare platform that also fires
+ * `onSubmitEditing`.
  *
  * Reads only `puraAssist` tokens — no hex literals.
  */
 
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -22,6 +35,15 @@ import {
   View,
   type TextInputProps,
 } from 'react-native';
+import Animated, {
+  Easing,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { ArrowUp, Sparkle } from 'phosphor-react-native';
 import {
   puraAssist,
@@ -29,179 +51,229 @@ import {
   puraAssistShadow,
   puraAssistType,
 } from '@/theme';
+import { hapt } from '@/utils/haptics';
 
 const PLACEHOLDER = 'Ask about your skin tonight';
 
+// Send circle: 44px when there's text, ~40px (idle scale) when empty.
+const SEND_SIZE = 44;
+const SEND_IDLE_SCALE = 40 / SEND_SIZE; // ≈ 0.909
+
 interface CommonProps {
+  value: string;
+  onChangeText: (t: string) => void;
+  inputRef?: React.RefObject<TextInput | null>;
+  onFocus?: TextInputProps['onFocus'];
   /** Bottom inset so the dock floats clear of the home indicator / tab bar. */
   bottomInset?: number;
 }
 
 interface LauncherProps extends CommonProps {
   mode: 'launcher';
-  onOpen: () => void;
+  /** Open the conversation with `text` as the first turn. */
+  onSubmit: (text: string) => void;
 }
 
 interface ComposerProps extends CommonProps {
   mode: 'composer';
-  value: string;
-  onChangeText: (t: string) => void;
   onSend: () => void;
-  inputRef?: React.RefObject<TextInput | null>;
-  onFocus?: TextInputProps['onFocus'];
 }
 
 export type AssistInputBarProps = LauncherProps | ComposerProps;
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export function AssistInputBar(props: AssistInputBarProps) {
-  const canSend = props.mode === 'composer' && props.value.trim().length > 0;
+  const { value } = props;
+  const canSend = value.trim().length > 0;
 
-  // ----- The three regions: AI badge / field / send. --------------------
-  // The leading badge is the standing "you're talking to Pura's AI" signal —
-  // identical on the launcher (Home) and the composer (conversation) so the
-  // two bars stay pixel-matched. Decorative only; the bar itself carries the
-  // press affordance and accessibility label.
-  const aiBadge = (
-    <View style={styles.aiBadge} accessible={false} pointerEvents="none">
-      <Sparkle size={13} color={puraAssist.blue} weight="fill" />
-      <Text style={styles.aiBadgeLabel}>AI</Text>
-    </View>
+  // ---- Submit (return key OR send button), deduped --------------------------
+  const lastSubmitRef = useRef(0);
+  const submit = useCallback(() => {
+    const text = value.trim();
+    if (text.length === 0) return;
+    const now = Date.now();
+    if (now - lastSubmitRef.current < 250) return; // dedupe double-fire
+    lastSubmitRef.current = now;
+    if (props.mode === 'composer') props.onSend();
+    else props.onSubmit(text);
+  }, [props, value]);
+
+  // The return key arrives as a trailing newline on a multiline field. Treat
+  // it as submit and swallow the newline; otherwise pass the change through.
+  const handleChangeText = useCallback(
+    (next: string) => {
+      if (next.endsWith('\n')) {
+        submit();
+        return;
+      }
+      props.onChangeText(next);
+    },
+    [props, submit],
   );
 
-  // Launcher's send glyph is always the full Pura Blue affordance.
-  const sendGlyph = (
-    <View style={styles.send}>
-      <ArrowUp size={18} color={puraAssist.onBlue} weight="bold" />
-    </View>
+  // ---- Focus animation: deeper shadow + Pura Blue ring ----------------------
+  const focus = useSharedValue(0);
+  const barStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(
+      focus.value,
+      [0, 1],
+      [puraAssist.blue00, puraAssist.blue20],
+    ),
+    shadowOpacity: 0.08 + focus.value * 0.04, // 0.08 → 0.12
+  }));
+  const handleFocus = useCallback<NonNullable<TextInputProps['onFocus']>>(
+    (e) => {
+      focus.value = withTiming(1, {
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+      });
+      hapt.tap();
+      props.onFocus?.(e);
+    },
+    [focus, props],
   );
+  const handleBlur = useCallback(() => {
+    focus.value = withTiming(0, {
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [focus]);
 
-  if (props.mode === 'launcher') {
-    // Entire bar is one button — tapping opens the conversation.
-    return (
-      <View style={[styles.dock, dockInset(props.bottomInset)]} pointerEvents="box-none">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ask Pura about your skin tonight"
-          onPress={props.onOpen}
-          style={({ pressed }) => [styles.bar, pressed && styles.barPressed]}
-        >
-          {aiBadge}
-          <Text style={styles.placeholder} numberOfLines={1}>
-            {PLACEHOLDER}
-          </Text>
-          {sendGlyph}
-        </Pressable>
-      </View>
-    );
-  }
+  // ---- Send button: bouncy spring the moment text first appears -------------
+  const sendScale = useSharedValue(canSend ? 1 : SEND_IDLE_SCALE);
+  const sendOpacity = useSharedValue(canSend ? 1 : 0.5);
+  const sendPress = useSharedValue(1);
+  const prevCanSend = useRef(canSend);
+  useEffect(() => {
+    if (canSend === prevCanSend.current) return;
+    prevCanSend.current = canSend;
+    if (canSend) {
+      sendOpacity.value = withTiming(1, { duration: 140 });
+      // 0.9 → overshoot ~1.1 → settle 1.0, springy, ~250ms.
+      sendScale.value = withSequence(
+        withTiming(0.9, { duration: 70, easing: Easing.out(Easing.quad) }),
+        withSpring(1, { damping: 9, stiffness: 220, mass: 0.6 }),
+      );
+    } else {
+      sendOpacity.value = withTiming(0.5, { duration: 140 });
+      sendScale.value = withTiming(SEND_IDLE_SCALE, {
+        duration: 140,
+        easing: Easing.out(Easing.quad),
+      });
+    }
+  }, [canSend, sendOpacity, sendScale]);
+  const sendStyle = useAnimatedStyle(() => ({
+    opacity: sendOpacity.value,
+    transform: [{ scale: sendScale.value * sendPress.value }],
+  }));
 
-  // composer
   return (
-    <View style={[styles.dock, dockInset(props.bottomInset)]} pointerEvents="box-none">
-      <View style={styles.bar}>
-        {aiBadge}
+    <View
+      style={[styles.dock, dockInset(props.bottomInset)]}
+      pointerEvents="box-none"
+    >
+      <Animated.View style={[styles.bar, barStyle]}>
+        {/* Leading AI lozenge — identical on both bars. */}
+        <View style={styles.aiBadge} pointerEvents="none">
+          <Sparkle size={16} color={puraAssist.blue} weight="fill" />
+          <Text style={styles.aiBadgeLabel}>AI</Text>
+        </View>
+
         <TextInput
           ref={props.inputRef as React.RefObject<TextInput>}
           style={styles.input}
-          value={props.value}
-          onChangeText={props.onChangeText}
-          onFocus={props.onFocus}
+          value={value}
+          onChangeText={handleChangeText}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           placeholder={PLACEHOLDER}
           placeholderTextColor={puraAssist.veryMuted}
           multiline
           maxLength={500}
           returnKeyType="send"
           blurOnSubmit={false}
-          onSubmitEditing={() => {
-            if (canSend) props.onSend();
-          }}
+          onSubmitEditing={submit}
           accessibilityLabel="Message Pura Assist"
         />
-        <Pressable
+
+        <AnimatedPressable
           accessibilityRole="button"
           accessibilityLabel="Send message"
           accessibilityState={{ disabled: !canSend }}
           disabled={!canSend}
-          hitSlop={6}
-          onPress={props.onSend}
-          style={({ pressed }) => [
-            styles.send,
-            !canSend && styles.sendIdle,
-            pressed && canSend && { opacity: 0.9, transform: [{ scale: 0.96 }] },
-          ]}
+          hitSlop={8}
+          onPress={submit}
+          onPressIn={() => {
+            sendPress.value = withTiming(0.9, { duration: 80 });
+          }}
+          onPressOut={() => {
+            sendPress.value = withTiming(1, { duration: 120 });
+          }}
+          style={[styles.send, sendStyle]}
         >
-          <ArrowUp size={18} color={puraAssist.onBlue} weight="bold" />
-        </Pressable>
-      </View>
+          <ArrowUp size={20} color={puraAssist.onBlue} weight="bold" />
+        </AnimatedPressable>
+      </Animated.View>
     </View>
   );
 }
 
 function dockInset(bottomInset?: number) {
-  return { paddingBottom: (bottomInset ?? 0) + 10 };
+  return { paddingBottom: (bottomInset ?? 0) + 12 };
 }
 
 const styles = StyleSheet.create({
   dock: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 8,
     backgroundColor: 'transparent',
   },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 52,
-    paddingLeft: 8,
-    paddingRight: 8,
+    minHeight: 64,
+    paddingLeft: 12,
+    paddingRight: 12,
     backgroundColor: puraAssist.surface,
-    borderRadius: puraAssistRadius.input,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraAssist.border,
-    ...puraAssistShadow.input,
-  },
-  barPressed: {
-    opacity: 0.96,
-    transform: [{ scale: 0.995 }],
+    borderRadius: puraAssistRadius.inputBar,
+    // 1px border kept always-on (transparent at rest) so the focus ring fades
+    // in via colour with no layout shift.
+    borderWidth: 1,
+    borderColor: puraAssist.blue00,
+    ...puraAssistShadow.inputBar,
   },
   aiBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    height: 26,
-    paddingHorizontal: 9,
-    marginLeft: 2,
+    height: 36,
+    paddingHorizontal: 11,
     borderRadius: puraAssistRadius.pill,
-    backgroundColor: puraAssist.blue12,
+    backgroundColor: puraAssist.blue10,
   },
   aiBadgeLabel: {
-    ...puraAssistType.eyebrow,
-    color: puraAssist.blueText,
-  },
-  placeholder: {
-    flex: 1,
-    ...puraAssistType.inputText,
-    color: puraAssist.veryMuted,
-    paddingHorizontal: 4,
+    ...puraAssistType.aiBadge,
+    color: puraAssist.blue,
   },
   input: {
     flex: 1,
     ...puraAssistType.inputText,
     color: puraAssist.ink,
-    paddingHorizontal: 4,
+    paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 8,
-    maxHeight: 120,
+    // ~4 lines (lineHeight 21) + vertical padding, then it scrolls internally.
+    maxHeight: 4 * 21 + 16,
+    // Android centres multiline text only with this; iOS ignores it.
+    textAlignVertical: 'center',
   },
   send: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: SEND_SIZE,
+    height: SEND_SIZE,
+    borderRadius: SEND_SIZE / 2,
     backgroundColor: puraAssist.blue,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  sendIdle: {
-    backgroundColor: puraAssist.blue,
-    opacity: 0.35,
   },
 });

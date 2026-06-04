@@ -62,13 +62,22 @@ export function RootNavigator() {
 
       {/* v32 — Pura Assist conversation. Root-level so it covers the
           floating tab dock (the reference shows no tab bar in
-          conversation). Opened from the Home tab's input dock. */}
+          conversation). Opened from the Home tab's input dock.
+
+          v33 Fix 4 — premium "expand into AI Assist" transition. The Home ask
+          dock and the conversation composer occupy the same place, so a
+          cross-fade (rather than a horizontal push) reads as the SAME bar
+          staying put while the conversation assembles around it: the header
+          and context card slide down into place and the prompt cards rise up,
+          via the screen's Reanimated entering animations. Shared-element
+          libraries aren't available in this environment, so this is the
+          Reanimated-only Option C. The fade reverses on back automatically. */}
       <Stack.Screen
         name="AssistChat"
         component={PuraAssistConversationScreen}
         options={{
-          animation: 'slide_from_right',
-          animationDuration: 320,
+          animation: 'fade',
+          animationDuration: 340,
         }}
       />
 

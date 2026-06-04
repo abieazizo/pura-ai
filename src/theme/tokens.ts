@@ -1508,6 +1508,7 @@ export const puraAssist = {
   blueText:      '#063D8F',  // legible blue text on blue tints
   blue05:        'rgba(20, 124, 255, 0.05)',  // reading-your-scan card bg
   blue08:        'rgba(20, 124, 255, 0.08)',  // scan-ready pill, follow-up chips
+  blue10:        'rgba(20, 124, 255, 0.10)',  // input-bar AI lozenge, prompt-card icon disc
   blue12:        'rgba(20, 124, 255, 0.12)',  // icon chips
   blue15:        'rgba(20, 124, 255, 0.15)',  // reading-your-scan card border, prompt-card border
   blue20:        'rgba(20, 124, 255, 0.20)',  // input-bar focus ring (1px)
@@ -1633,6 +1634,20 @@ export const puraAssistType = {
     fontSize: 12,
     lineHeight: 15,
     letterSpacing: -0.1,
+  },
+  // Empty-state suggested-prompt card title — editorial serif, present at a
+  // small size (SemiBold reads cleaner than the thin Regular here).
+  promptTitle: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.2,
+  },
+  promptDesc: {
+    fontFamily: SANS_REG,
+    fontSize: 12,
+    lineHeight: 15,
+    letterSpacing: -0.05,
   },
   subCardLabel: {
     fontFamily: SANS_SEMI,
