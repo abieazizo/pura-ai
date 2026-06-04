@@ -54,4 +54,13 @@ export { PuraMark } from './PuraMark';
 export type { PuraMarkProps, MarkVariant, MarkSize } from './PuraMark';
 export { AnimatedNumber } from './AnimatedNumber';
 export type { AnimatedNumberProps } from './AnimatedNumber';
+export {
+  Skeleton,
+  ProductCardSkeleton,
+  HeroCardSkeleton,
+  ConversationSkeleton,
+  ProductDetailSkeleton,
+  ScanCardSkeleton,
+} from './ui/Skeleton';
+export type { SkeletonProps } from './ui/Skeleton';
 export * from './glyphs';

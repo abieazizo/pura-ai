@@ -67,7 +67,7 @@ import {
   Body,
   QuietTextButton,
 } from '@/components/routine/pura';
-import { RoutineLandingView } from '@/screens/scan/reveal/RoutineLandingView';
+import { RoutineCompanionScreen } from './companion/RoutineCompanionScreen';
 import type { RootStackParamList } from '@/navigation/types';
 import type { PillarKey, RoutineStep, RoutineTimeOfDay } from '@/types/routine';
 import { hapt } from '@/utils/haptics';
@@ -301,6 +301,10 @@ export function PuraRoutineScreen() {
     });
   }, [nav]);
 
+  // Companion sheets — wired to real bottom sheets in later steps.
+  const handleOpenProductDetail = useCallback((_step: RoutineStep) => {}, []);
+  const handleOpenCustomize = useCallback(() => {}, []);
+
   const handleUseRoutine = useCallback(() => {
     hapt.tap();
     setLifecycle('active');
@@ -453,15 +457,14 @@ export function PuraRoutineScreen() {
   // owns its own chrome, so it returns before the shared header/scroll shell.
   if (lifecycle === 'active' && routine) {
     return (
-      <RoutineLandingView
+      <RoutineCompanionScreen
         routine={routine}
         timeOfDay={selectedTimeOfDay}
         onChangeTimeOfDay={handleChangeTimeOfDay}
         doneIds={selectDailyDoneIds(dailyChecklist, selectedTimeOfDay)}
         onToggleComplete={handleToggleComplete}
-        onReorder={handleReorder}
-        onRemoveStep={handleRemoveStep}
-        onAddStep={handleAddStep}
+        onOpenDetail={handleOpenProductDetail}
+        onCustomize={handleOpenCustomize}
         onHowItWorks={handleHowItWorks}
       />
     );

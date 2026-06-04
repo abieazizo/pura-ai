@@ -188,6 +188,9 @@ export interface ColorPalette {
   overlayWeak: string;
   overlayStrong: string;
   shimmer: string;
+  // Skeleton placeholder shimmer — cool-neutral base with a lighter sweep.
+  skeletonBase: string;
+  skeletonHighlight: string;
   shadowTint: string;
   grainOverlay: string;
 }
@@ -261,6 +264,10 @@ export const colors: ColorPalette = {
   overlayWeak: palette.grainOverlay,
   overlayStrong: palette.scrim,
   shimmer: 'rgba(248,250,252,0.08)',
+  // v35 — Skeleton bones. Base reuses the cool-gray inactive token; the
+  // sweep is the lighter porcelain tint. Consumed only by ui/Skeleton.
+  skeletonBase: palette.sandLight,
+  skeletonHighlight: palette.sandPaper,
   shadowTint: palette.shadowTint,
   grainOverlay: palette.grainOverlay,
 };
@@ -285,6 +292,8 @@ export const darkColors: ColorPalette = {
   border: '#2A303B',
   borderLight: '#1F242E',
   divider: '#1F242E',
+  skeletonBase: '#1B212B',
+  skeletonHighlight: '#2A323E',
 };
 
 export const lightColors = colors;
