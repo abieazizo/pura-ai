@@ -2130,3 +2130,101 @@ export const puraRevealLayout = {
   /** Floating tab bar clearance the scroll content must leave. */
   dockClearance: 66,
 } as const;
+
+// ---------------------------------------------------------------------------
+// auroraOrb — Onboarding "cold open" (Screen 1) living aurora orb.
+//
+// The first screen on first launch: a point of light is born, blooms into a
+// glowing aurora orb, gains its color, and opens its eyes — becoming the
+// user's companion. These tokens are the ONLY home for the orb's aurora
+// palette (violet → blue → cyan). It is deliberately DISTINCT from the app's
+// single Pura-Blue UI accent: the orb is an atmospheric, emotional object, not
+// a control, so it gets its own cool-iridescent family.
+//
+// This RNSVG build ships no blur-filter primitive, so every soft edge / halo /
+// glow is built from radial gradients that fade to transparent — hence many
+// stops are authored as rgba() with an explicit alpha. Per CLAUDE.md, every
+// color literal AuroraOrb + ColdOpenScreen touch lives here.
+// ---------------------------------------------------------------------------
+export const auroraOrb = {
+  // ----- Stage backgrounds -----
+  heldBreathBg: '#F4F1ED',  // dim warm off-white — the inhale (T < 0)
+  porcelain:    '#FCFDFF',  // settled cool ground
+
+  // ----- LAYER A — ground glow (light the orb casts on the porcelain) -----
+  groundGlow0:    'rgba(139, 124, 216, 0.060)', // center, +2% on breath
+  groundGlowMid:  'rgba(139, 124, 216, 0.028)',
+  groundGlowEdge: 'rgba(139, 124, 216, 0)',
+
+  // ----- LAYER B — halo (atmospheric diffusion) -----
+  halo0:   'rgba(155, 140, 218, 0.35)',  // center violet
+  halo40:  'rgba(123, 165, 224, 0.20)',  // blue
+  halo70:  'rgba(136, 195, 218, 0.12)',  // cyan
+  halo100: 'rgba(136, 195, 218, 0)',     // transparent
+
+  // ----- LAYER C — core orb, FULL saturation (off-center origin) -----
+  // The final stop drops to transparent so the vector edge is feathered.
+  coreFull0:   'rgba(224, 240, 255, 0.96)',  // 0%  pale cyan
+  coreFull25:  'rgba(168, 156, 224, 0.86)',  // 25% violet
+  coreFull55:  'rgba(122, 107, 200, 0.76)',  // 55% deep violet
+  coreFull80:  'rgba(107, 134, 196, 0.62)',  // 80% blue
+  coreFull94:  'rgba(139, 124, 184, 0.44)',  // 94% violet-blue
+  coreFull100: 'rgba(139, 124, 184, 0)',     // 100% feather → transparent
+
+  // ----- LAYER C — core orb, PALE (pre-bloom, washed-out white) -----
+  // Same shape, desaturated toward warm-white; the bloom crossfades pale→full
+  // so the orb visibly "gains color" as it grows.
+  corePale0:   'rgba(249, 251, 254, 0.96)',
+  corePale25:  'rgba(227, 225, 234, 0.86)',
+  corePale55:  'rgba(208, 205, 219, 0.76)',
+  corePale80:  'rgba(206, 210, 221, 0.62)',
+  corePale94:  'rgba(215, 212, 223, 0.44)',
+  corePale100: 'rgba(215, 212, 223, 0)',
+
+  // ----- LAYER C — off-center sheen (dimensional highlight, upper-left) -----
+  coreHiEdge:  'rgba(224, 240, 255, 0)',  // pale-cyan → transparent
+  paleHiEdge:  'rgba(249, 251, 254, 0)',  // washed-white → transparent
+
+  // ----- LAYER D — aurora wisps (internal flow) -----
+  wispCyan0:     'rgba(191, 230, 242, 0.22)',
+  wispCyanEdge:  'rgba(191, 230, 242, 0)',
+  wispViolet0:   'rgba(199, 188, 236, 0.22)',
+  wispVioletEdge:'rgba(199, 188, 236, 0)',
+
+  // ----- Idle hue-drift overlay (violet ⇄ cyan, very low alpha) -----
+  driftViolet0:   'rgba(155, 140, 218, 0.11)',
+  driftVioletEdge:'rgba(155, 140, 218, 0)',
+  driftCyan0:     'rgba(143, 208, 230, 0.11)',
+  driftCyanEdge:  'rgba(143, 208, 230, 0)',
+
+  // ----- Seed of light (T = 100ms) -----
+  seedCore: 'rgba(255, 255, 255, 0.96)',
+  seedHalo: 'rgba(205, 228, 255, 0.60)',
+  seedEdge: 'rgba(205, 228, 255, 0)',
+
+  // ----- Breath ripples (first breath T = 1000ms, then forever) -----
+  ripple:     'rgba(155, 140, 218, 0.26)',
+  rippleEdge: 'rgba(155, 140, 218, 0)',
+
+  // ----- The face — pure white vector -----
+  face: '#FFFFFF',
+
+  // ----- "knows" glow — soft violet bloom behind the word (tied to orb hue) -----
+  knowsGlow:     'rgba(139, 124, 216, 0.55)',
+  knowsGlowEdge: 'rgba(139, 124, 216, 0)',
+
+  // ----- Typography ink -----
+  heroInk: '#080A0F',   // hero serif (Ink)
+  subInk:  '#0A0B12',   // subline (Ink + whisper of cool)
+  signIn:  '#6E6E73',   // muted-gray sign-in link
+  trust:   '#9A9AA6',   // lightest-gray trust whisper (quietest element)
+
+  // ----- Button -----
+  buttonInk:    '#080A0F',
+  buttonLabel:  '#FFFFFF',
+  buttonShadow: '#1B1340',           // deep violet-ink — the breathing float shadow
+  shimmerEdge:  'rgba(255, 255, 255, 0)',
+  shimmerMid:   'rgba(255, 255, 255, 0.24)',
+} as const;
+
+export type AuroraOrbToken = keyof typeof auroraOrb;

@@ -3,10 +3,9 @@
  * Home input dock opens. It is a ROOT-level route (covers the floating tab
  * dock, matching the reference's no-tab-bar conversation).
  *
- * The "Reading your scan" hero card is pinned at the top; the low-poly
- * AssistantFace on it IS the thinking indicator — it animates from the
- * moment the user sends until the answer finishes revealing, then settles
- * to neutral.
+ * The "Reading your scan" hero card is pinned at the top; the AssistantAuroraOrb
+ * on it IS the live character — it grows and shifts through idle → listening →
+ * thinking → responding as the conversation moves, then settles back to idle.
  *
  * There is no real token stream: `askAssistant()` resolves a single
  * `AssistantMessage` whose canonical `structured` answer we reveal with a
@@ -82,7 +81,11 @@ import { askAssistant } from '@/api/assistant';
 import type { AssistantMessage } from '@/types';
 import { useAssistSignal } from '@/state/assistSignal';
 import type { RootStackParamList } from '@/navigation/types';
-import { AssistantFaceLive, type AssistantFaceState } from './AssistantFaceLive';
+import {
+  AssistantAuroraOrb,
+  type AssistantOrbState,
+  type AssistantScanTone,
+} from './AssistantAuroraOrb';
 import { AssistInputBar } from './AssistInputBar';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -163,32 +166,44 @@ function clock(ms: number): string {
   });
 }
 
-// Map the boolean "thinking" signal onto the face's three-state machine: the
-// falling edge (thinking → done) holds a brief 'landing' beat before idle, so
-// the face can play its settle/pop instead of snapping back.
-const LANDING_MS = 600;
+// ---------------------------------------------------------------------------
+// Card orb — the AssistantAuroraOrb as it appears on the pinned hero card.
+// The orb renders at its max footprint and the card choreographs the
+// idle↔thinking size growth (56 → 92 → settle) by scaling it in place inside
+// the reserved 92×92 well, so the card layout never shifts. The orb owns all
+// of its own internal motion; this wrapper only owns the footprint.
+// ---------------------------------------------------------------------------
 
-function useFaceState(thinking: boolean): AssistantFaceState {
-  const [faceState, setFaceState] = useState<AssistantFaceState>(
-    thinking ? 'thinking' : 'idle',
-  );
-  const wasThinking = useRef(thinking);
+const CARD_ORB_MAX = 92;
+const CARD_ORB_SCALE: Record<AssistantOrbState, number> = {
+  idle: 56 / CARD_ORB_MAX,
+  listening: 60 / CARD_ORB_MAX,
+  responding: 72 / CARD_ORB_MAX,
+  thinking: 1,
+};
+
+function CardOrb({
+  state,
+  scanTone,
+  reduce,
+}: {
+  state: AssistantOrbState;
+  scanTone: AssistantScanTone;
+  reduce: boolean;
+}) {
+  const grow = useSharedValue(CARD_ORB_SCALE[state]);
   useEffect(() => {
-    const was = wasThinking.current;
-    wasThinking.current = thinking;
-    if (thinking) {
-      setFaceState('thinking');
-      return;
-    }
-    if (was) {
-      setFaceState('landing');
-      const t = setTimeout(() => setFaceState('idle'), LANDING_MS);
-      return () => clearTimeout(t);
-    }
-    setFaceState('idle');
-    return undefined;
-  }, [thinking]);
-  return faceState;
+    const target = CARD_ORB_SCALE[state];
+    grow.value = reduce
+      ? target
+      : withTiming(target, { duration: 400, easing: Easing.out(Easing.cubic) });
+  }, [state, reduce, grow]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: grow.value }] }));
+  return (
+    <Animated.View style={style}>
+      <AssistantAuroraOrb size={CARD_ORB_MAX} state={state} scanTone={scanTone} />
+    </Animated.View>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -221,16 +236,23 @@ export function PuraAssistConversationScreen() {
     });
   }, [reduce]);
 
-  // The face thinks while any assistant turn is awaiting OR revealing.
-  const isThinking = useMemo(
-    () =>
-      turns.some(
-        (t) =>
-          t.role === 'assistant' &&
-          (t.status === 'thinking' || t.status === 'streaming'),
-      ),
-    [turns],
-  );
+  // Drive the orb's four-state machine from the live conversation: an awaiting
+  // turn = thinking, a revealing turn = responding, a non-empty draft =
+  // listening, otherwise idle. (thinking/responding outrank listening so the
+  // orb stays "busy" even if the user starts typing the next question.)
+  const orbState: AssistantOrbState = useMemo(() => {
+    let thinking = false;
+    let responding = false;
+    for (const t of turns) {
+      if (t.role !== 'assistant') continue;
+      if (t.status === 'thinking') thinking = true;
+      else if (t.status === 'streaming') responding = true;
+    }
+    if (thinking) return 'thinking';
+    if (responding) return 'responding';
+    if (draft.trim().length > 0) return 'listening';
+    return 'idle';
+  }, [turns, draft]);
 
   // ---- Send / receive ----------------------------------------------------
   const runAssistant = useCallback(
@@ -403,7 +425,8 @@ export function PuraAssistConversationScreen() {
           scanReady={signal.scanReady}
           chips={signal.scanChips}
           noScanLine={signal.scanContextLine}
-          thinking={isThinking}
+          orbState={orbState}
+          scanTone={signal.scanTone}
           reduce={reduce}
         />
 
@@ -499,16 +522,17 @@ function ReadingScanCard({
   scanReady,
   chips,
   noScanLine,
-  thinking,
+  orbState,
+  scanTone,
   reduce,
 }: {
   scanReady: boolean;
   chips: string[];
   noScanLine: string;
-  thinking: boolean;
+  orbState: AssistantOrbState;
+  scanTone: AssistantScanTone;
   reduce: boolean;
 }) {
-  const faceState = useFaceState(thinking);
   return (
     <Animated.View
       style={styles.scanCard}
@@ -544,7 +568,7 @@ function ReadingScanCard({
         )}
       </View>
       <View style={styles.faceWrap}>
-        <AssistantFaceLive state={faceState} subdued={!scanReady} />
+        <CardOrb state={orbState} scanTone={scanTone} reduce={reduce} />
       </View>
     </Animated.View>
   );

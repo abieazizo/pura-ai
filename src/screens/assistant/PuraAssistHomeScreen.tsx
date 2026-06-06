@@ -9,8 +9,9 @@
  * Everything grounded in tonight's scan flows through `useAssistSignal()`
  * — the thin display model composed from the canonical readers. Pre-scan,
  * every signal degrades to an honest "Take a scan" rather than inventing
- * precision (per CLAUDE.md). The decorative orb-and-path is static here;
- * the animated face mesh lives on the conversation surface.
+ * precision (per CLAUDE.md). The hero AssistantAuroraOrb is the live Pura
+ * Assist character; it idles here and leans into 'listening' as the user
+ * composes, then carries through into the conversation surface.
  */
 
 import React, { useCallback, useState } from 'react';
@@ -22,13 +23,11 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Path } from 'react-native-svg';
 import {
   ArrowRight,
   Drop,
@@ -58,6 +57,7 @@ import type {
   TabParamList,
 } from '@/navigation/types';
 import { AssistInputBar } from './AssistInputBar';
+import { AssistantAuroraOrb, type AssistantOrbState } from './AssistantAuroraOrb';
 
 type IconCmp = React.FC<IconProps>;
 
@@ -109,7 +109,6 @@ const ACCENT: Record<
 
 export function PuraAssistHomeScreen() {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
   const homeNav = useNavigation<NavigationProp<HomeStackParamList>>();
   const signal = useAssistSignal();
@@ -118,6 +117,12 @@ export function PuraAssistHomeScreen() {
   // return key or send button opens the conversation with the typed text as
   // the first turn — exactly as if the user had sent it from inside.
   const [draft, setDraft] = useState('');
+
+  // The hero orb is the live Pura Assist character. It idles until the user
+  // starts composing, then leans into 'listening'; on send it routes to the
+  // conversation, where the orb continues into thinking/responding.
+  const homeOrbState: AssistantOrbState =
+    draft.trim().length > 0 ? 'listening' : 'idle';
 
   const openConversation = useCallback(() => {
     hapt.tap();
@@ -184,7 +189,6 @@ export function PuraAssistHomeScreen() {
     ? 'Ask what changed, what to use, or what to avoid tonight.'
     : 'Take a 30-second scan to personalize everything Pura tells you.';
 
-  const orbWidth = width - puraAssistLayout.screenPadding * 2;
   // The ask dock is laid out in-flow at the bottom of the scene (which the
   // navigator already insets above the floating tab bar), so the ScrollView
   // fills only the space ABOVE the dock and clips its content there. Nothing
@@ -251,34 +255,13 @@ export function PuraAssistHomeScreen() {
         </Text>
         <Text style={styles.subhead}>{subhead}</Text>
 
-        {/* ---- Decorative orb + dotted path (static on Home) ---- */}
-        <View style={styles.orbWrap} pointerEvents="none">
-          <Svg width={orbWidth} height={132} viewBox="0 0 320 132">
-            <Path
-              d="M16 104 Q 96 38 168 70 T 304 44"
-              stroke={puraAssist.blue}
-              strokeOpacity={0.42}
-              strokeWidth={2}
-              strokeDasharray="1 8"
-              strokeLinecap="round"
-              fill="none"
-            />
-            <Circle cx={16} cy={104} r={3} fill={puraAssist.blue} opacity={0.5} />
-            <Circle cx={304} cy={44} r={3} fill={puraAssist.blue} opacity={0.5} />
-            <Circle cx={168} cy={70} r={36} fill={puraAssist.blue} opacity={0.05} />
-            <Circle
-              cx={168}
-              cy={70}
-              r={25}
-              stroke={puraAssist.blue}
-              strokeOpacity={0.16}
-              strokeWidth={1.5}
-              fill="none"
-            />
-            <Circle cx={168} cy={70} r={13} fill={puraAssist.blue} opacity={0.12} />
-            <Circle cx={168} cy={70} r={6} fill={puraAssist.blue} />
-            <Circle cx={160} cy={62} r={2.4} fill={puraAssist.white} opacity={0.85} />
-          </Svg>
+        {/* ---- Aurora orb — the live Pura Assist character (hero presence) ---- */}
+        <View style={styles.orbWrap}>
+          <AssistantAuroraOrb
+            size={120}
+            state={homeOrbState}
+            scanTone={signal.scanTone}
+          />
         </View>
 
         {/* ---- Tonight's Signal card ---- */}
@@ -433,7 +416,9 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   orbWrap: {
+    height: 132,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 6,
     marginBottom: 2,
   },

@@ -56,6 +56,10 @@ export {
   puraAssistRadius,
   puraAssistShadow,
   puraAssistLayout,
+  // auroraOrb — Onboarding "cold open" (Screen 1) living aurora orb. Consumed
+  // only by AuroraOrb + ColdOpenScreen; its violet→blue→cyan family is
+  // intentionally separate from the single Pura-Blue UI accent.
+  auroraOrb,
 } from './tokens';
 // puraRoutine — Routine + Progress tokens. Consumed only by the
 // routine domain (components/routine, screens/routine, services).
@@ -84,6 +88,7 @@ export type {
   PuraShopToken,
   PuraShopHomeToken,
   PuraAssistToken,
+  AuroraOrbToken,
 } from './tokens';
 export { ThemeProvider } from './ThemeProvider';
 export { useTheme } from './useTheme';

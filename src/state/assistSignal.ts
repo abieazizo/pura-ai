@@ -24,6 +24,15 @@ import type { ConcernType, Severity } from '@/ai/ai-contracts';
 export type SignalTone = 'blue' | 'green' | 'muted';
 export type SignalIcon = 'shield' | 'target' | 'drop';
 
+/**
+ * Tint the Pura Assist orb leans toward, derived from the canonical scan.
+ *   • reactive — sensitivity / redness flagged → cooler, calming
+ *   • active   — breakouts flagged → warmer, focused
+ *   • balanced — a scan exists but neither axis is meaningfully flagged
+ *   • none     — no scan yet → gentler, neutral
+ */
+export type AssistScanTone = 'reactive' | 'active' | 'balanced' | 'none';
+
 export interface AssistSignalRow {
   key: 'barrier' | 'focus' | 'routine';
   label: string;
@@ -45,6 +54,8 @@ export interface AssistSignal {
   focusZoneLabel: string;
   /** Capture time label e.g. "9:41 PM", or undefined pre-scan. */
   timestampLabel?: string;
+  /** Subtle tint the assistant orb leans toward for this scan. */
+  scanTone: AssistScanTone;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +101,35 @@ function routineValue(focus: TonightFocusType | undefined): string {
 /** A concern axis is "flagged" only when its severity is meaningful. */
 function isFlagged(severity: Severity): boolean {
   return severity === 'mild' || severity === 'moderate' || severity === 'high';
+}
+
+const SEVERITY_RANK: Record<Severity, number> = {
+  none: 0,
+  low: 1,
+  mild: 2,
+  moderate: 3,
+  high: 4,
+};
+
+/**
+ * Map the canonical scan onto the assistant orb's tint. Reads severity from
+ * SkinState (never raw AI output): the irritation axes (redness / sensitivity)
+ * pull the orb cooler ('reactive'); breakouts pull it warmer ('active'). When
+ * both are flagged the more severe axis wins, ties favouring the acute
+ * breakout read. Pre-scan it is 'none'.
+ */
+export function deriveScanTone(
+  scanReady: boolean,
+  skin: SkinState | null,
+): AssistScanTone {
+  if (!scanReady || !skin) return 'none';
+  const sev = skin.severityByConcern;
+  const rank = (c: ConcernType): number => SEVERITY_RANK[sev[c] ?? 'none'];
+  const reactive = Math.max(rank('redness'), rank('sensitivity'));
+  const active = rank('breakouts');
+  const FLAG = SEVERITY_RANK.mild;
+  if (active < FLAG && reactive < FLAG) return 'balanced';
+  return active >= reactive ? 'active' : 'reactive';
 }
 
 /** Positive read shown ONLY when that axis is not currently flagged. */
@@ -153,6 +193,7 @@ export function useAssistSignal(): AssistSignal {
         scanContextLine: NO_SCAN_LINE,
         focusZoneLabel: zoneLabel(focusZone),
         timestampLabel: undefined,
+        scanTone: 'none',
       };
     }
 
@@ -190,6 +231,7 @@ export function useAssistSignal(): AssistSignal {
       scanContextLine: scanChips.join(' · '),
       focusZoneLabel: zoneLabel(focusZone),
       timestampLabel: obs.scanTimestamp,
+      scanTone: deriveScanTone(true, skin),
     };
   }, [obs, skin]);
 }
