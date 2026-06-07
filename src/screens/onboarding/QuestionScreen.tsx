@@ -235,11 +235,7 @@ export function QuestionScreen({
       advancedRef.current = true;
       clearTimers();
       orb.setPatient(false);
-      if (__DEV__) console.log('[QS] doAdvance', value, id);
-      runExit(() => {
-        if (__DEV__) console.log('[QS] exit cb → onAdvance', value, id);
-        onAdvance(value, id);
-      }, exitMode);
+      runExit(() => onAdvance(value, id), exitMode);
     },
     [clearTimers, orb, runExit, onAdvance, exitMode],
   );
@@ -268,7 +264,6 @@ export function QuestionScreen({
         AccessibilityInfo.announceForAccessibility?.(line);
         push(() => orb.setSize(ORB_SIZES.question), lineMs + 220); // settle back
         const hold = reduceMotion ? 1400 : lineMs + 400; // ~400ms after last word
-        if (__DEV__) console.log('[QS] schedule advance in', hold, 'ms');
         push(() => doAdvance(option.value, option.id), hold);
       };
 
