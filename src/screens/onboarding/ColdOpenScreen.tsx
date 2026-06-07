@@ -77,10 +77,8 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
   const reduceMotion = useReduceMotion();
   const { width, height } = Dimensions.get('window');
 
-  const orbSize = Math.min(Math.round(width * 0.64), 264);
-  // Optical centering — the orb sits slightly ABOVE true center (~38% of the
-  // composition height to its center) so the orb + text cluster reads balanced.
-  const clusterTop = Math.round(height * 0.16);
+  // The orb is THE hero of this screen — give it generous presence.
+  const orbSize = Math.min(Math.round(width * 0.72), 300);
 
   // 'boot' (deciding) → 'held' (the 400ms inhale, first-launch only) → 'run'.
   const [phase, setPhase] = useState<'boot' | 'held' | 'run'>('boot');
@@ -167,6 +165,9 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
   useEffect(() => {
     if (phase !== 'run' || !variant) return;
     const first = variant === 'first';
+    // Forcing the 'reduce' variant must render fully static even when the OS
+    // Reduce-Motion flag is off (dev harness + correctness).
+    const reduce = reduceMotion || variant === 'reduce';
     const ec = Easing.out(Easing.cubic);
 
     // Background: warm inhale → porcelain (first launch only; else already porcelain).
@@ -179,7 +180,7 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
 
     // "knows" glow: bloom to 0.5, settle to 0.3, then drift 0.3↔0.4 forever.
     const settleGlow = () => {
-      if (reduceMotion) {
+      if (reduce) {
         knowsN.value = 0.3;
         return;
       }
@@ -192,7 +193,7 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
         false,
       );
     };
-    if (reduceMotion) {
+    if (reduce) {
       knowsN.value = withTiming(0.3, { duration: 600 });
     } else {
       knowsN.value = withDelay(
@@ -221,7 +222,7 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
     );
 
     // Living idle: button breathing shadow + a first shimmer 1.5s after settle.
-    if (!reduceMotion) {
+    if (!reduce) {
       shadowBreath.value = withDelay(
         first ? 2700 : 300,
         withRepeat(
@@ -339,14 +340,14 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
   return (
     <Animated.View style={[styles.root, bgStyle]}>
       {/* Orb + hero + subline cluster (optically above center). */}
-      <View style={[styles.cluster, { paddingTop: clusterTop }]} pointerEvents="box-none">
+      <View style={styles.cluster} pointerEvents="box-none">
         {showContent && (
           <Animated.View style={orbExitStyle}>
             <AuroraOrb
               size={orbSize}
               state={variant === 'first' ? 'awakening' : 'idle'}
-              reduceMotion={reduceMotion}
-              enableParallax={!reduceMotion}
+              reduceMotion={reduceMotion || variant === 'reduce'}
+              enableParallax={!(reduceMotion || variant === 'reduce')}
             />
           </Animated.View>
         )}
@@ -467,7 +468,7 @@ function FocusWord({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.porcelain },
-  cluster: { alignItems: 'center', flexGrow: 1 },
+  cluster: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 28 },
   copyWrap: { alignItems: 'center', paddingHorizontal: 28, marginTop: 26 },
   heroRow: {
     flexDirection: 'row',

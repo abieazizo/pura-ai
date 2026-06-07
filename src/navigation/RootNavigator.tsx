@@ -33,6 +33,18 @@ export function RootNavigator() {
   // No-op in production (__DEV__ is tree-shaken).
   React.useEffect(() => {
     if (__DEV__ && !hasOnboarded) {
+      // Escape hatch: set localStorage '__pura_show_onboarding__' = '1' to
+      // PREVIEW the onboarding flow in dev (the orb cold open + interview don't
+      // touch the camera, so they don't block headless JS). Default behavior is
+      // unchanged — without the flag we still auto-seed a completed state.
+      try {
+        if (
+          (globalThis as any)?.localStorage?.getItem?.('__pura_show_onboarding__') ===
+          '1'
+        ) {
+          return;
+        }
+      } catch {}
       useAppStore.getState().devResetToNewUser();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

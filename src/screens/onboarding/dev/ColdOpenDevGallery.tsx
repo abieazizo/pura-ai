@@ -17,7 +17,22 @@ const VARIANTS: ColdOpenVariant[] = ['first', 'repeat', 'reduce'];
 
 export function ColdOpenDevGallery() {
   const insets = useSafeAreaInsets();
-  const [variant, setVariant] = useState<ColdOpenVariant>('first');
+  // Under the design-audit static flag, default to the static 'reduce' variant
+  // so a still frame can be captured without animation jitter (the page only
+  // reaches an idle frame when nothing is looping).
+  const [variant, setVariant] = useState<ColdOpenVariant>(() => {
+    if (typeof window !== 'undefined') {
+      const w = window as unknown as { __puraStaticPreview__?: boolean };
+      try {
+        if (w.__puraStaticPreview__ || window.localStorage?.getItem('__pura_static_preview__') === '1') {
+          return 'reduce';
+        }
+      } catch {
+        /* localStorage blocked */
+      }
+    }
+    return 'first';
+  });
   const [runId, setRunId] = useState(0);
   const [chrome, setChrome] = useState(true);
 

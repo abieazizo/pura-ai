@@ -28,6 +28,11 @@ export type ProductsRowKind =
 export type OnboardingStackParamList = {
   // ---- Active scan-first arc (three screens before the camera) ----
   Splash: undefined;
+  /** Screen 1 — the cold open (the orb's birth). New onboarding entry. */
+  ColdOpen: undefined;
+  /** The orb interview — Screen 2 + name beat + Screen 3 hosted as one route
+   *  so the companion orb stays a single continuous element across them. */
+  OrbInterview: undefined;
   AskName: undefined;
   CameraPrimer: undefined;
   CameraPermission: undefined;

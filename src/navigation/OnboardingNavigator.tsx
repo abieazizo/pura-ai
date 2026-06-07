@@ -8,6 +8,8 @@ import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { SlideEntry } from '@/components/onboarding/SlideEntry';
 import { Splash } from '@/screens/onboarding/Splash';
+import { ColdOpenScreen } from '@/screens/onboarding/ColdOpenScreen';
+import { OrbInterviewScreen } from '@/screens/onboarding/OrbInterviewScreen';
 import { AskName } from '@/screens/onboarding/AskName';
 import { CameraPrimer } from '@/screens/onboarding/CameraPrimer';
 import { CameraPermission } from '@/screens/onboarding/CameraPermission';
@@ -46,7 +48,30 @@ const Stack = createNativeStackNavigator<OnboardingStackParamList>();
  */
 export function OnboardingNavigator() {
   return (
-    <Stack.Navigator screenOptions={STACK_OPTIONS} initialRouteName="Splash">
+    <Stack.Navigator screenOptions={STACK_OPTIONS} initialRouteName="ColdOpen">
+      {/* Screen 1 — the cold open (the orb's birth). Self-animates; no
+          SlideEntry wrapper (it owns its entrance + variants). */}
+      <Stack.Screen name="ColdOpen" options={{ gestureEnabled: false }}>
+        {({ navigation }) => (
+          <ColdOpenScreen
+            onContinue={() => navigation.navigate('OrbInterview')}
+            onSignIn={() => navigation.navigate('SignIn')}
+          />
+        )}
+      </Stack.Screen>
+
+      {/* The orb interview (Screen 2 + name beat + Screen 3). A cross-fade in
+          (not a slide) so the companion orb — seeded at the cold open's exit
+          spot — reads as one continuous element across the handoff. */}
+      <Stack.Screen
+        name="OrbInterview"
+        options={{ animation: 'fade', animationDuration: 280, gestureEnabled: false }}
+      >
+        {({ navigation }) => (
+          <OrbInterviewScreen onDone={() => navigation.navigate('CameraPrimer')} />
+        )}
+      </Stack.Screen>
+
       <Stack.Screen name="Splash" options={{ gestureEnabled: false }}>
         {({ navigation }) => (
           <SlideEntry>
@@ -208,7 +233,7 @@ function SignInHost({
           // eslint-disable-next-line no-console
           console.log('[onboarding] TODO: forgot password flow');
         }}
-        onCreateAccount={() => nav.replace('AskName')}
+        onCreateAccount={() => nav.replace('ColdOpen')}
       />
     </SlideEntry>
   );

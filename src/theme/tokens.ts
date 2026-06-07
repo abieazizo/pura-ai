@@ -2189,7 +2189,7 @@ export const auroraOrb = {
   paleHiMid:   'rgba(247, 249, 253, 0.32)',
   paleHiEdge:  'rgba(249, 251, 254, 0)',    // washed-white → transparent
   // Small glossy specular catchlight — emerges with the orb's life, reads 3D.
-  specular0:   'rgba(255, 255, 255, 0.92)',
+  specular0:   'rgba(255, 255, 255, 0.80)',
   specularEdge:'rgba(255, 255, 255, 0)',
 
   // ----- LAYER D — aurora wisps (internal flow) -----

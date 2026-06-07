@@ -48,10 +48,10 @@ import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
-  FadeInUp,
   FadeOut,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
@@ -122,19 +122,31 @@ const SUGGESTED_PROMPTS: ReadonlyArray<{
 
 // Fix 4 — the conversation "assembles" around the (stationary) input bar as
 // the navigator cross-fades the screen in: the header and the context card
-// slide DOWN from above into place, while the prompt cards rise from below
-// (their own Fix 3 stagger). Fresh builder per mount; entering plays once.
-const headerEntering = () =>
-  FadeInUp.duration(350)
-    .delay(60)
-    .easing(Easing.out(Easing.cubic))
-    .withInitialValues({ transform: [{ translateY: -60 }] });
-
-const contextCardEntering = () =>
-  FadeInUp.duration(350)
-    .delay(110)
-    .easing(Easing.out(Easing.cubic))
-    .withInitialValues({ transform: [{ translateY: -20 }] });
+// settle DOWN into place. These are PINNED elements (outside the ScrollView),
+// so their entrance must NOT use Reanimated's `entering` layout animation —
+// on web that leaves the element `position: absolute`, and if it's interrupted
+// before its cleanup (which happens here: sending a prompt re-renders the card
+// the instant the screen mounts) the card stays absolute, drops out of the
+// flex column, and the conversation stacks underneath it. `useEnterFade` is a
+// layout-safe equivalent: opacity + a `transform` translateY, neither of which
+// ever touches flex flow.
+function useEnterFade(reduce: boolean, delayMs: number, fromY: number) {
+  const p = useSharedValue(reduce ? 1 : 0);
+  useEffect(() => {
+    if (reduce) {
+      p.value = 1;
+      return;
+    }
+    p.value = withDelay(
+      delayMs,
+      withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) }),
+    );
+  }, [reduce, delayMs, p]);
+  return useAnimatedStyle(() => ({
+    opacity: p.value,
+    transform: [{ translateY: (1 - p.value) * fromY }],
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Conversation model
@@ -381,6 +393,8 @@ export function PuraAssistConversationScreen() {
 
   const firstAt = turns.length > 0 ? turns[0].at : null;
 
+  const headerFade = useEnterFade(reduce, 60, -12);
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
@@ -388,11 +402,8 @@ export function PuraAssistConversationScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* ---- Header (slides down into place — Fix 4) ---- */}
-        <Animated.View
-          style={styles.header}
-          entering={reduce ? undefined : headerEntering()}
-        >
+        {/* ---- Header (settles down into place — Fix 4, layout-safe) ---- */}
+        <Animated.View style={[styles.header, headerFade]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back"
@@ -533,11 +544,9 @@ function ReadingScanCard({
   scanTone: AssistantScanTone;
   reduce: boolean;
 }) {
+  const cardFade = useEnterFade(reduce, 110, -10);
   return (
-    <Animated.View
-      style={styles.scanCard}
-      entering={reduce ? undefined : contextCardEntering()}
-    >
+    <Animated.View style={[styles.scanCard, cardFade]}>
       <View style={styles.scanCardCopy}>
         <View style={styles.scanCardTitleRow}>
           <Scan size={16} color={puraAssist.blue} weight="bold" />
