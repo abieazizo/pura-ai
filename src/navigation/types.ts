@@ -200,4 +200,7 @@ export type RootStackParamList = {
    *  card's craft can be reviewed in isolation. Reachable only via the dev
    *  nav ref; never linked from a user surface. */
   ShopCardDevGallery: undefined;
+  /** Dev-only harness for the onboarding cold open (Screen 1). Renders the real
+   *  ColdOpenScreen with a variant toolbar. Reachable only via the dev nav ref. */
+  OnboardingColdOpenDev: undefined;
 };

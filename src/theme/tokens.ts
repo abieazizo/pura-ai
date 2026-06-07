@@ -2157,19 +2157,21 @@ export const auroraOrb = {
   groundGlowEdge: 'rgba(139, 124, 216, 0)',
 
   // ----- LAYER B — halo (atmospheric diffusion) -----
-  halo0:   'rgba(155, 140, 218, 0.35)',  // center violet
-  halo40:  'rgba(123, 165, 224, 0.20)',  // blue
-  halo70:  'rgba(136, 195, 218, 0.12)',  // cyan
-  halo100: 'rgba(136, 195, 218, 0)',     // transparent
+  halo0:   'rgba(160, 146, 226, 0.40)',  // center violet
+  halo40:  'rgba(120, 168, 230, 0.22)',  // blue
+  halo70:  'rgba(140, 202, 224, 0.13)',  // cyan
+  halo100: 'rgba(140, 202, 224, 0)',     // transparent
 
   // ----- LAYER C — core orb, FULL saturation (off-center origin) -----
   // The final stop drops to transparent so the vector edge is feathered.
-  coreFull0:   'rgba(224, 240, 255, 0.96)',  // 0%  pale cyan
-  coreFull25:  'rgba(168, 156, 224, 0.86)',  // 25% violet
-  coreFull55:  'rgba(122, 107, 200, 0.76)',  // 55% deep violet
-  coreFull80:  'rgba(107, 134, 196, 0.62)',  // 80% blue
-  coreFull94:  'rgba(139, 124, 184, 0.44)',  // 94% violet-blue
-  coreFull100: 'rgba(139, 124, 184, 0)',     // 100% feather → transparent
+  // Tuned for a luminous aurora read: lavender-bright core → violet → cool
+  // blue → cyan-tinted feather (not a uniform grape).
+  coreFull0:   'rgba(234, 246, 255, 0.98)',  // sheen core (pale cyan-white)
+  coreFull25:  'rgba(184, 174, 238, 0.90)',  // luminous lavender center
+  coreFull55:  'rgba(130, 112, 210, 0.78)',  // deep violet
+  coreFull80:  'rgba(98, 142, 208, 0.64)',   // cool blue
+  coreFull94:  'rgba(118, 172, 208, 0.46)',  // cyan-blue edge
+  coreFull100: 'rgba(118, 172, 208, 0)',     // feather → transparent (cyan-tinted)
 
   // ----- LAYER C — core orb, PALE (pre-bloom, washed-out white) -----
   // Same shape, desaturated toward warm-white; the bloom crossfades pale→full
@@ -2182,8 +2184,13 @@ export const auroraOrb = {
   corePale100: 'rgba(215, 212, 223, 0)',
 
   // ----- LAYER C — off-center sheen (dimensional highlight, upper-left) -----
-  coreHiEdge:  'rgba(224, 240, 255, 0)',  // pale-cyan → transparent
-  paleHiEdge:  'rgba(249, 251, 254, 0)',  // washed-white → transparent
+  coreHiMid:   'rgba(228, 244, 255, 0.32)', // smooth falloff for the sheen
+  coreHiEdge:  'rgba(224, 240, 255, 0)',    // pale-cyan → transparent
+  paleHiMid:   'rgba(247, 249, 253, 0.32)',
+  paleHiEdge:  'rgba(249, 251, 254, 0)',    // washed-white → transparent
+  // Small glossy specular catchlight — emerges with the orb's life, reads 3D.
+  specular0:   'rgba(255, 255, 255, 0.92)',
+  specularEdge:'rgba(255, 255, 255, 0)',
 
   // ----- LAYER D — aurora wisps (internal flow) -----
   wispCyan0:     'rgba(191, 230, 242, 0.22)',
@@ -2225,6 +2232,32 @@ export const auroraOrb = {
   buttonShadow: '#1B1340',           // deep violet-ink — the breathing float shadow
   shimmerEdge:  'rgba(255, 255, 255, 0)',
   shimmerMid:   'rgba(255, 255, 255, 0.24)',
+
+  // ----- Companion controls (Screens 2–3 — the orb reacts + warms) -----
+  // These extend the orb from a born-once object into a controllable
+  // companion: a reaction glow it can bloom on acknowledgement, a warm
+  // overlay that fullens as familiarity grows across the questionnaire, and
+  // an atmospheric shimmer for Screen 2's "then I'll read your skin" beat.
+  // Soft edges, like the rest of the orb, are radial-gradient feathers (this
+  // RNSVG build has no blur filter), so every stop carries an explicit alpha.
+
+  // reaction glow — a cool-bright bloom layered over the core when the orb
+  // "takes the floor" to acknowledge an answer (brightness it can pulse).
+  reactGlow0:    'rgba(214, 236, 255, 0.90)', // pale-cyan center
+  reactGlowMid:  'rgba(170, 196, 255, 0.40)', // pura-blue-leaning mid
+  reactGlowEdge: 'rgba(170, 196, 255, 0)',    // feather → transparent
+
+  // warmth — familiarity. A soft gold-rose the orb gains as it gets to know
+  // the user; layered very low so it reads as "warmer/fuller", never "amber".
+  warmGlow0:     'rgba(255, 224, 191, 0.85)', // warm-gold center
+  warmGlowMid:   'rgba(255, 201, 186, 0.42)', // rose-warm mid
+  warmGlowEdge:  'rgba(255, 201, 186, 0)',    // feather → transparent
+
+  // atmospheric shimmer — a soft white highlight that organizes, sweeps once,
+  // and dissolves. ATMOSPHERIC only (never a scan UI); degrades to a plain
+  // brightening sweep under reduce-motion / low performance tier.
+  shimmerSweep0:   'rgba(255, 255, 255, 0.34)',
+  shimmerSweepEdge:'rgba(255, 255, 255, 0)',
 } as const;
 
 export type AuroraOrbToken = keyof typeof auroraOrb;

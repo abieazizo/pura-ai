@@ -9,6 +9,7 @@ import { AIDiagnosticsScreen } from '@/components/dev/AIDiagnosticsScreen';
 import { ScanResultsStatesGallery } from '@/components/dev/ScanResultsStatesGallery';
 import { RevealDevGallery } from '@/components/dev/RevealDevGallery';
 import { ShopCardDevGallery } from '@/components/dev/ShopCardDevGallery';
+import { ColdOpenDevGallery } from '@/screens/onboarding/dev/ColdOpenDevGallery';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { RootStackParamList } from './types';
@@ -138,6 +139,18 @@ export function RootNavigator() {
           presentation: 'modal',
           animation: 'slide_from_bottom',
           animationDuration: 280,
+        }}
+      />
+
+      {/* Dev-only onboarding cold-open (Screen 1) harness. Reachable only via
+          window.__pura_nav__; never linked from a user surface. */}
+      <Stack.Screen
+        name="OnboardingColdOpenDev"
+        component={ColdOpenDevGallery}
+        options={{
+          presentation: 'fullScreenModal',
+          animation: 'fade',
+          animationDuration: 200,
         }}
       />
     </Stack.Navigator>

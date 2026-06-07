@@ -279,6 +279,15 @@ export interface AppState {
   hapticsEnabled: boolean;
   motionPreference: 'system' | 'reduced';
 
+  /**
+   * Onboarding "orb-as-progress" familiarity, 0 → 1. Rises as the user
+   * answers the orb's questions; the companion's glow subtly warms and
+   * fullens with it ("we're getting to know each other"). Ephemeral to a
+   * single onboarding run — deliberately NOT persisted (omitted from
+   * partialize) so a fresh run always starts cool at 0.
+   */
+  familiarity: number;
+
   // v7.7 — scan analyzing choreography state. Transient except for
   // `latestResult`, which is persisted so returning users can see their last
   // reveal if they re-enter the stack without re-scanning.
@@ -417,6 +426,8 @@ export interface AppState {
   /** v28 — appearance & accessibility setters. */
   setHapticsEnabled: (enabled: boolean) => void;
   setMotionPreference: (pref: 'system' | 'reduced') => void;
+  /** Orb-as-progress familiarity (0→1). Clamped by the caller. */
+  setFamiliarity: (v: number) => void;
   /**
    * v26 — Set / clear the tonight completion timestamp. Passing
    * `null` reopens the nightly loop (e.g. user un-checks a step and
@@ -582,6 +593,8 @@ const blankState = {
   // motion follows the OS until the user explicitly overrides it.
   hapticsEnabled: true,
   motionPreference: 'system' as 'system' | 'reduced',
+  // Orb-as-progress: starts cool; the onboarding questionnaire warms it.
+  familiarity: 0,
 
   // v18.9 — safety profile defaults: every field neutral so users
   // who never opt in get the standard recommendation experience.
@@ -857,6 +870,8 @@ export const useAppStore = create<AppState>()(
       // v28 — appearance & accessibility setters.
       setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
       setMotionPreference: (motionPreference) => set({ motionPreference }),
+      setFamiliarity: (familiarity) =>
+        set({ familiarity: Math.max(0, Math.min(1, familiarity)) }),
       // v26 — Tonight completion setter.
       setTonightCompleteAt: (tonightCompleteAt) => set({ tonightCompleteAt }),
       setRoutineSessionV26: (routineSessionV26) =>
