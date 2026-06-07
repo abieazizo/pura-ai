@@ -75,6 +75,11 @@ export type {
   PuraRoutineColor,
   PuraRoutineTypeKey,
 } from './puraRoutineTokens';
+// ds — mature unified design system (v36 / Cycle 2). The canonical foundation
+// elevated screens read from: color ramps, elevation/depth, time-of-day
+// ambient gradients, expressive type scale, 8pt spacing/radius, motion presets.
+// Additive — the legacy per-surface namespaces above are untouched.
+export * from './ds';
 export type {
   ColorPalette,
   AvatarColor,

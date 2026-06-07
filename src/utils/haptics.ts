@@ -82,6 +82,40 @@ export const hapt = {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
     );
   },
+  /**
+   * Ritual / milestone complete — a fuller celebration than a single step.
+   * Success note, then two rising taps (light → medium). Distinct enough that
+   * finishing the whole routine FEELS different from checking one step off.
+   */
+  ritualComplete() {
+    safe(() =>
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    );
+    setTimeout(
+      () => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
+      120
+    );
+    setTimeout(
+      () => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)),
+      260
+    );
+  },
+  /** Swipe-stack KEEP commit — a confident medium thunk. */
+  swipeKeep() {
+    safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+  },
+  /** Swipe-stack SKIP commit — a soft, lighter release. */
+  swipeSkip() {
+    safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft));
+  },
+  /** A card landing into the stack / a sheet settling — soft rigid tick. */
+  cardLand() {
+    safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid));
+  },
+  /** Crossing a drag threshold (e.g. a swipe arming) — a selection tick. */
+  threshold() {
+    safe(() => Haptics.selectionAsync());
+  },
   /** Legacy aliases kept so older call sites compile. */
   medium() {
     safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
