@@ -92,7 +92,15 @@ export type OrbExpression =
   | 'warm'
   | 'focused'
   | 'curious'
-  | 'reassuring';
+  | 'reassuring'
+  | 'competent' // calm authority — brows level/settled, direct gaze
+  | 'validating'; // gentle symmetric warmth — the easy middle
+
+/** The reaction archetypes Screens 4+ calibrate per option (face = soul). */
+export type OrbArchetype = 'warm' | 'competent' | 'validating';
+
+/** Aura tint the orb wears for a beat; shifts at a question seam. */
+export type OrbAuraTheme = 'violet-cool' | 'blue-warm';
 
 /**
  * The five distinct reactions for Screen 3's goal question. Each is a
@@ -125,6 +133,27 @@ export interface AuroraOrbHandle {
   blinkNow(): void;
   /** Animate the orb-as-progress warmth to v (0→1). */
   setFamiliarity(v: number): void;
+  /**
+   * The calibrated reaction for a question option. `lineMs` is the spoken
+   * line's duration so blink-timing lands right (warm: a slow blink mid-line;
+   * competent: no blink during the line, one slow blink after; validating: one
+   * easy blink). `competence`/`warmth` flex the glow register.
+   */
+  reactArchetype(
+    kind: OrbArchetype,
+    opts?: {
+      lineMs?: number;
+      competence?: 'high' | 'mid' | 'low';
+      warmth?: 'high' | 'mid' | 'low';
+    },
+  ): void;
+  /** Cross-fade the aura tint (the question-seam signal). */
+  setAura(theme: OrbAuraTheme): void;
+  /** Patient hesitation mode — gaze drifts gently across the cards, waiting
+   *  WITH the user (on), or returns to forward (off). */
+  setPatient(on: boolean): void;
+  // POLISH-PASS HOOK (do NOT implement in v1): gaze-follows-finger eye-tracking
+  // would land here as e.g. trackPointer(x, y) driving gazeX/gazeY directly.
 }
 
 export interface AuroraOrbProps {
@@ -151,6 +180,11 @@ export interface AuroraOrbProps {
   enableParallax?: boolean;
   /** When true: fully-formed, completely static (no birth, no idle motion). */
   reduceMotion?: boolean;
+  /** Dark appearance — orb reads as a luminous light source (+bloom, vivid
+   *  aura). The screen owns the near-black canvas + the pool behind the orb. */
+  dark?: boolean;
+  /** Initial aura tint. `setAura` cross-fades to another at a question seam. */
+  auraTheme?: OrbAuraTheme;
   /** Fires once the face has opened its eyes + brows + first blink (~T=2480ms
    *  in awakening; immediately in idle/static). Lets a host chain off "alive". */
   onAwake?: () => void;
@@ -196,6 +230,10 @@ const EXPRESSIONS: Record<
   focused: { raise: -0.35, tilt: -0.4, eyeOpen: 1.06 },
   curious: { raise: 0.45, tilt: 0.7, eyeOpen: 1.0 },
   reassuring: { raise: 0.35, tilt: 0.22, eyeOpen: 0.9 },
+  // calm authority — brows settle level, eyes steady & open (peer-level, not cold)
+  competent: { raise: 0.05, tilt: -0.05, eyeOpen: 1.0 },
+  // gentle symmetric warmth — the easy middle, a touch softer than neutral
+  validating: { raise: 0.28, tilt: 0.18, eyeOpen: 0.92 },
 };
 
 // Auto performance tier — a weak heuristic when the host doesn't pass one.
@@ -214,6 +252,8 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       performanceTier,
       enableParallax = false,
       reduceMotion = false,
+      dark = false,
+      auraTheme = 'violet-cool',
       onAwake,
     },
     ref,
@@ -236,6 +276,8 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
         warm: `aurora-warm-${uid}`,
         react: `aurora-react-${uid}`,
         shimmer: `aurora-shimmer-${uid}`,
+        auraV: `aurora-auraV-${uid}`,
+        auraB: `aurora-auraB-${uid}`,
       }),
       [uid],
     );
@@ -250,6 +292,9 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const tier: OrbPerfTier = performanceTier ?? autoTier();
     const tierLow = tier === 'low';
     const rippleCount = tierLow ? RIPPLE_COUNT_LOW : RIPPLE_COUNT_HIGH;
+    // Aura tint strength — subtle in light, vivid in dark (the orb is a light
+    // source). Both tint layers share this; auraMix cross-fades between them.
+    const auraOpacity = dark ? 0.22 : 0.085;
 
     // Refs so the imperative handle reads the latest mode/tier without
     // re-creating its closures every render.
@@ -334,6 +379,8 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const warmth = useSharedValue(familiarity); // 0..1 familiarity
     const shimmerAmp = useSharedValue(0); // 0..1 shimmer opacity envelope
     const shimmerPos = useSharedValue(0); // 0..1 shimmer sweep position
+    const auraMix = useSharedValue(auraTheme === 'blue-warm' ? 1 : 0); // 0=violet 1=blue
+    const patientSweep = useSharedValue(0); // hesitation gaze drift (−1..1)
 
     // ---- Gyro parallax (front plane). Hook always called; output ignored when
     //      disabled or under reduce-motion. No-op (zeros) without a sensor. -----
@@ -362,6 +409,9 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const onAwakeRef = useRef(onAwake);
     onAwakeRef.current = onAwake;
     const pendingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+    // Idle blinks pause until this timestamp (ms) — lets a 'competent' reaction
+    // hold a steady, unblinking gaze through its differentiating clause.
+    const suppressBlinkUntilRef = useRef(0);
 
     // Apply an expression preset to brows + eye openness. Plain JS — assigning
     // `.value = withTiming(...)` from the JS thread is the standard pattern.
@@ -439,6 +489,34 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
           warmth.value = animsOffRef.current
             ? t
             : withTiming(t, { duration: 900, easing: EASE_IO });
+        },
+        reactArchetype(kind, opts) {
+          runArchetype(kind, opts);
+        },
+        setAura(theme) {
+          const to = theme === 'blue-warm' ? 1 : 0;
+          auraMix.value = animsOffRef.current
+            ? to
+            : withTiming(to, { duration: 900, easing: EASE_IO });
+        },
+        setPatient(on) {
+          if (animsOffRef.current) return;
+          if (on) {
+            // look gently toward the cards and drift across them.
+            gazeY.value = withTiming(0.32, { duration: 800, easing: EASE_IO });
+            patientSweep.value = withRepeat(
+              withSequence(
+                withTiming(0.5, { duration: 2600, easing: EASE_IO }),
+                withTiming(-0.5, { duration: 2800, easing: EASE_IO }),
+              ),
+              -1,
+              true,
+            );
+          } else {
+            cancelAnimation(patientSweep);
+            patientSweep.value = withTiming(0, { duration: 500, easing: EASE_IO });
+            gazeY.value = withTiming(0, { duration: 500, easing: EASE_IO });
+          }
         },
       }),
       // Shared values are stable; refs carry the latest mode/tier. Built once.
@@ -534,6 +612,79 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
           );
           break;
         }
+      }
+    }
+
+    // The calibrated archetype reactions (Screens 4+). The DISTINCT BLINK RHYTHM
+    // is the master detail that makes them feel alive rather than canned.
+    function runArchetype(
+      kind: OrbArchetype,
+      opts?: {
+        lineMs?: number;
+        competence?: 'high' | 'mid' | 'low';
+        warmth?: 'high' | 'mid' | 'low';
+      },
+    ) {
+      const exprByKind: Record<OrbArchetype, OrbExpression> = {
+        warm: 'warm',
+        competent: 'competent',
+        validating: 'validating',
+      };
+      if (animsOffRef.current) {
+        applyExpression(exprByKind[kind], 0);
+        return;
+      }
+      const Lm = Math.max(360, opts?.lineMs ?? 800);
+      const now = Date.now();
+      if (kind === 'warm') {
+        applyExpression('warm', 440);
+        // a slow deliberate blink that lands ~on the warm word of the line
+        const blinkAt = Math.max(160, Math.min(Lm * 0.45, Lm - 260));
+        blink.value = withDelay(
+          blinkAt,
+          withSequence(
+            withTiming(0.1, { duration: 180, easing: EASE_IN_QUAD }),
+            withTiming(1, { duration: 320, easing: EASE_OUT_QUAD }),
+          ),
+        );
+        // warmth → a warm, steady glow that HOLDS (steadiness, not brightness)
+        glowBoost.value = withSequence(
+          withTiming(0.12, { duration: 540, easing: EASE_OUT }),
+          withTiming(0.06, { duration: 820, easing: EASE_IO }),
+        );
+        suppressBlinkUntilRef.current = now + blinkAt + 700; // hold a beat longer
+      } else if (kind === 'competent') {
+        applyExpression('competent', 280);
+        // steady, direct — NO blink during the differentiating clause...
+        suppressBlinkUntilRef.current = now + Lm + 140;
+        // ...then a single slow blink AFTER the line lands (a period).
+        blink.value = withDelay(
+          Lm + 200,
+          withSequence(
+            withTiming(0.1, { duration: 160, easing: EASE_IN_QUAD }),
+            withTiming(1, { duration: 300, easing: EASE_OUT_QUAD }),
+          ),
+        );
+        // the CALMEST register: a barely-there glow, never a salesy spike.
+        glowBoost.value = withSequence(
+          withTiming(0.05, { duration: 720, easing: EASE_IO }),
+          withTiming(0.02, { duration: 760, easing: EASE_IO }),
+        );
+      } else {
+        applyExpression('validating', 360);
+        const blinkAt = Math.max(140, Math.min(Lm * 0.32, Lm - 220));
+        blink.value = withDelay(
+          blinkAt,
+          withSequence(
+            withTiming(0.09, { duration: 120, easing: EASE_IN_QUAD }),
+            withTiming(1, { duration: 220, easing: EASE_OUT_QUAD }),
+          ),
+        );
+        glowBoost.value = withSequence(
+          withTiming(0.09, { duration: 440, easing: EASE_OUT }),
+          withTiming(0.04, { duration: 560, easing: EASE_IO }),
+        );
+        suppressBlinkUntilRef.current = now + blinkAt + 320; // quickest return
       }
     }
 
@@ -663,6 +814,12 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       const scheduleBlink = (firstDelay: number) => {
         const tmr = setTimeout(function tick() {
           if (cancelled) return;
+          // Hold a steady, unblinking gaze while a 'competent' reaction speaks.
+          if (Date.now() < suppressBlinkUntilRef.current) {
+            const t2 = setTimeout(tick, 600);
+            pendingTimers.current.push(t2);
+            return;
+          }
           blink.value = withSequence(
             withTiming(0.08, { duration: 90, easing: EASE_IN_QUAD }),
             withTiming(1, { duration: 110, easing: EASE_OUT_QUAD }),
@@ -682,6 +839,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
           browLO, browRO, noseO, blink, breath, drift, r1, r2, r3,
           gazeX, gazeY, ambientX, ambientY, browRaise, browTilt, eyeOpen,
           glowBoost, leanScale, orbTilt, warmth, shimmerAmp, shimmerPos,
+          auraMix, patientSweep,
           ...ripples,
         ].forEach(cancelAnimation);
         pendingTimers.current.forEach(clearTimeout);
@@ -723,8 +881,9 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       transform: [{ translateX: lagX.value * 5 }, { translateY: lagY.value * 5 }],
     }));
     const haloStyle = useAnimatedStyle(() => ({
-      opacity: haloO.value + glowBoost.value * 0.5 + warmth.value * 0.1,
-      transform: [{ scale: haloS.value }],
+      // Dark: the orb is a luminous light source — a touch more bloom.
+      opacity: haloO.value + glowBoost.value * 0.5 + warmth.value * 0.1 + (dark ? 0.06 : 0),
+      transform: [{ scale: haloS.value * (dark ? 1.15 : 1) }],
     }));
     const paleStyle = useAnimatedStyle(() => ({
       opacity: interpolate(sat.value, [0.3, 1], [1, 0], 'clamp'),
@@ -734,6 +893,8 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     }));
     const warmStyle = useAnimatedStyle(() => ({ opacity: warmth.value * 0.12 }));
     const reactStyle = useAnimatedStyle(() => ({ opacity: glowBoost.value }));
+    const auraVStyle = useAnimatedStyle(() => ({ opacity: (1 - auraMix.value) * auraOpacity }));
+    const auraBStyle = useAnimatedStyle(() => ({ opacity: auraMix.value * auraOpacity }));
     const wispStyle = useAnimatedStyle(() => ({ opacity: wispO.value }));
     const seedStyle = useAnimatedStyle(() => ({
       opacity: seedO.value,
@@ -760,7 +921,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const eyeLStyle = useAnimatedStyle(() => ({
       opacity: interpolate(eyeLO.value, [0, 0.2, 1], [0, 1, 1], 'clamp'),
       transform: [
-        { translateX: (gazeX.value + ambientX.value) * S * 0.03 },
+        { translateX: (gazeX.value + ambientX.value + patientSweep.value) * S * 0.03 },
         { translateY: (gazeY.value + ambientY.value) * S * 0.03 },
         { scaleY: interpolate(eyeLO.value, [0, 1], [0.08, 1]) * blink.value * eyeOpen.value },
       ],
@@ -768,7 +929,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const eyeRStyle = useAnimatedStyle(() => ({
       opacity: interpolate(eyeRO.value, [0, 0.2, 1], [0, 1, 1], 'clamp'),
       transform: [
-        { translateX: (gazeX.value + ambientX.value) * S * 0.03 },
+        { translateX: (gazeX.value + ambientX.value + patientSweep.value) * S * 0.03 },
         { translateY: (gazeY.value + ambientY.value) * S * 0.03 },
         { scaleY: interpolate(eyeRO.value, [0, 1], [0.08, 1]) * blink.value * eyeOpen.value },
       ],
@@ -907,6 +1068,31 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
               <Circle cx={half} cy={half} r={half} fill={`url(#${ids.hiFull})`} />
               {/* Glossy specular catchlight (upper-left), small + bright. */}
               <Circle cx={S * 0.35} cy={S * 0.29} r={S * 0.15} fill={`url(#${ids.specular})`} />
+            </Svg>
+          </Animated.View>
+
+          {/* Aura tint — the question-seam signal (violet-cool ⇄ blue-warm).
+              Two cross-faded radials; subtle in light, vivid in dark. */}
+          <Animated.View style={[centered(S), auraVStyle]} pointerEvents="none">
+            <Svg width={S} height={S}>
+              <Defs>
+                <RadialGradient id={ids.auraV} cx="50%" cy="48%" r="55%">
+                  <Stop offset="0%" stopColor={C.auraVioletCool0} />
+                  <Stop offset="100%" stopColor={C.auraVioletCoolEdge} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={half} cy={half} r={half} fill={`url(#${ids.auraV})`} />
+            </Svg>
+          </Animated.View>
+          <Animated.View style={[centered(S), auraBStyle]} pointerEvents="none">
+            <Svg width={S} height={S}>
+              <Defs>
+                <RadialGradient id={ids.auraB} cx="50%" cy="48%" r="55%">
+                  <Stop offset="0%" stopColor={C.auraBlueWarm0} />
+                  <Stop offset="100%" stopColor={C.auraBlueWarmEdge} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={half} cy={half} r={half} fill={`url(#${ids.auraB})`} />
             </Svg>
           </Animated.View>
 

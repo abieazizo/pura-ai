@@ -92,12 +92,12 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
 | Surface | IA | Type | Color/Depth | Spacing | Comp | Imagery | DataViz | States | Motion | Voice | **Avg** |
 |---|--|--|--|--|--|--|--|--|--|--|--|
 | Home (Assist) | 8 | 8 | 7 | 8 | 7 | 7 | 6 | 7 | 8 | 8 | **7.4** | _(C3)_
-| Shop | 8 | 7 | 6 | 7 | 8 | 6 | 7 | 7 | 6 | 9 | **7.1** |
+| Shop | 8 | 7 | 7 | 7 | 8 | 7 | 7 | 7 | 8 | 9 | **7.5** | _(C4)_
 | Scan | 6 | 7 | 7 | 7 | 7 | 5 | 6 | 8 | 6 | 8 | **6.7** |
 | Routine | 8 | 8 | 5 | 8 | 8 | 7 | 6 | 8 | 7 | 9 | **7.4** |
 | Me | 2 | 7 | 5 | 7 | 7 | 1 | 1 | 3 | 2 | 7 | **4.2** |
 | Onboarding | 8 | 9 | 8 | 7 | 8 | 8 | 6 | 9 | 9 | 9 | **8.1** |
-| **App** | 6.6 | 7.7 | 6.3 | 7.3 | 7.5 | 5.7 | 5.3 | 7.0 | 6.3 | 8.3 | **6.8** |
+| **App** | 6.6 | 7.7 | 6.5 | 7.3 | 7.5 | 5.9 | 5.3 | 7.0 | 6.6 | 8.3 | **6.9** |
 
 ### Cross-cutting themes (drive the whole loop)
 1. **World-class signature assets are buried.** The Aurora orb (Home + Onboarding) and the
@@ -293,3 +293,42 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
 > report). **C19 perf follow-up:** profile the orb's web blur cost; consider a static/cheaper
 > halo on web or a perf-tier fallback.
 - **Next run picks up at:** Cycle 4 — Shop full elevation.
+
+### Cycle 4 — Shop full elevation (swipe stack) ✅
+- **Focus:** Make the swipe card stack a tactile, physical centerpiece (the audit's #1 Shop
+  problem: "mechanically complete but materially flat — white card sliding off a white screen")
+  and make the living pillar gradient actually perceptible.
+- **Files changed:**
+  - `src/theme/tokens.ts` (`puraShopHome`) — pillar halos **~8% → ~15%**, deep corners deepened
+    a step, hue separation widened so the backdrop visibly shifts per pillar (the living gradient
+    is finally above perceptual threshold).
+  - `src/screens/shop/shopHomeTokens.ts` (`shopHomeMotion`) — `peekOffsetPx` 14→**26**,
+    `peekScaleStep` 0.04→**0.055**, `maxTiltDeg` 8→**15**, new `restingTiltDeg: 2` (dealt fan).
+  - `src/screens/shop/components/CardStack.tsx` — incoming card now **settles with overshoot**
+    (spring damping 22→15); peek cards **fan with a resting tilt that eases to 0 as they rise**;
+    commit fires **directional haptics** (`swipeKeep`/`swipeSkip`) instead of a generic select;
+    passes `depth` to the card.
+  - `src/screens/shop/components/StackCard.tsx` — **per-depth lift shadow** (top card floats at
+    `dsElevation.e3`, peek cards recede to `e1`) so picking the deck up has real parallax;
+    **two-layer contact shadow** under the floating product for grounded still-life weight.
+- **What this fixes:** the three compounding flatness failures the audit named — invisible peek
+  depth, no active-card lift, slide-not-deal flyout — plus the sub-threshold living gradient and
+  the flat single-ellipse contact shadow.
+- **Verification:** `tsc --noEmit` → **0 errors** (a transient error mid-run was an external
+  mid-write of an unrelated onboarding file; re-ran clean). **Live visual not reachable this
+  run:** the deck renders only post-scan (behind `PreScanGate`) and the offline sandbox can't
+  produce scan data; the preview also drifted to the onboarding flow (QuestionScreen being edited
+  externally). Changes are deterministic token/motion/style props, reasoned through statically.
+- **Scores:** Shop **7.1 → 7.5** (Motion 6→8, Color/Depth 6→7, Imagery 6→7). App 6.8 → **6.9**.
+- **Biggest improvement:** The deck now reads as a real, dealt stack with lift, depth, fan,
+  overshoot, and directional haptics — the signature "dealing tonight's edit" tactility.
+- **Judgment calls:** (1) Did NOT route the stack hero through `ProductPackshot` (audit
+  suggestion) — that would flatten the per-pillar halo, which IS the living-gradient signature;
+  instead enriched the existing haloed zone. (2) **Deferred** to a Shop cleanup pass: the doubled
+  end-of-deck escape hatches (needs a `ShopFeed.tsx` read) and removing the dead
+  `useShopViewModel.ts` — both lower visual impact and higher tracing risk than the tactility
+  work. (3) Gradient *tween-on-swipe* (animating corners between pillars) also deferred to the
+  cleanup pass — the backdrop lives in `ShopFeed`/`PuraShopScreen`, unread this cycle.
+- **Next run picks up at:** Cycle 5 — Scan (capture as precision instrument; land the locked
+  reveal on the editorial finding cards; make the captured face the hero). Also carry the Shop
+  cleanup (doubled ending, dead VM, gradient tween) as a small debt to fold in.

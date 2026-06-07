@@ -113,12 +113,17 @@ export const shopHomeMotion = {
   swipeCommitFraction: 0.32,
   /** Velocity (px/s) that commits a swipe regardless of distance. */
   swipeVelocityCommit: 720,
-  /** Vertical px of the next card peeking below the top card. */
-  peekOffsetPx: 14,
-  /** Scale step applied to each card deeper in the stack. */
-  peekScaleStep: 0.04,
+  /** Vertical px of the next card peeking below the top card. v40: 14→26 so
+   *  the deck visibly reads as a STACK, not a single floating card. */
+  peekOffsetPx: 26,
+  /** Scale step applied to each card deeper in the stack. v40: 0.04→0.055. */
+  peekScaleStep: 0.055,
+  /** Resting tilt (deg) each peek card fans by — the deck looks "dealt" at
+   *  rest, not perfectly squared. Eases to 0 as a card rises to the top. */
+  restingTiltDeg: 2,
   /** How far a card flies off-screen on commit, as a width multiple. */
   flyoutFraction: 1.25,
-  /** Rotation (deg) at full horizontal drag — the "dealt card" tilt. */
-  maxTiltDeg: 8,
+  /** Rotation (deg) at full horizontal drag — the "dealt card" tilt.
+   *  v40: 8→15 so a committed swipe reads as DEALT, not slid. */
+  maxTiltDeg: 15,
 } as const;

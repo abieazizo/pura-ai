@@ -1,90 +1,56 @@
 /**
- * OrbInterviewScreen — hosts Screen 2 → name beat → Screen 3 as ONE route with
- * ONE orb instance.
+ * OrbInterviewScreen — hosts the whole orb interview as ONE route with ONE orb
+ * instance: Screen 2 → name beat → Screen 3 (goal) → Screen 4 (guidance) →
+ * Screen 5 (routine depth). Keeping them internal steps means the orb never
+ * re-mounts between them; it glides + shifts aura while each step's content
+ * cross-fades. Seeded at Screen 1's exit spot for a seamless handoff in.
  *
- * WHY one route: the orb must be a single continuous element across these three
- * beats. Keeping them as internal steps (not separate navigator screens) means
- * the orb never re-mounts between them — it just glides to each beat's target
- * while each step's own content cross-fades. The orb is seeded at the EXACT spot
- * Screen 1's cold open exits to, so the handoff into the interview is seamless.
- *
- * Screen 3 is instantiated here as the first question (the goal), with the FULL
- * spoken-reaction treatment; later questions would drop in as more steps using
- * the same QuestionScreen with reactionStyle="light".
+ * Forks wired here:
+ *   • goal → stored, and "guide me" SKIPS Screen 4 (default walk-me-through).
+ *   • guidance → stored (forks explanation depth) + threads Screen 5's framing.
+ *   • routine depth → stored as an EDITABLE preference (sizes the routine).
+ *   • Screen 4 → 5 is a z-axis transition with the aura warming violet→blue.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Sparkle, Crosshair, Hourglass, Sun, Compass } from 'phosphor-react-native';
-import { palette } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAppStore } from '@/store/useAppStore';
 import type { AppState } from '@/store/useAppStore';
 import { OrbProvider, useOrb } from './orb/OrbHost';
 import type { OrbTarget } from './orb/orbLayout';
+import { useOnboardingTheme } from './orb/onboardingTheme';
 import { OrbSpeaksScreen } from './OrbSpeaksScreen';
 import { NameBeatScreen } from './NameBeatScreen';
-import { QuestionScreen, type QuestionOption } from './QuestionScreen';
+import { QuestionScreen } from './QuestionScreen';
+import {
+  GOAL_QUESTION,
+  GUIDANCE_QUESTION,
+  ROUTINE_DEPTH_QUESTION,
+} from './questionConfig';
 
 export interface OrbInterviewScreenProps {
   /** Advance out of the orb chain (→ the camera primer). */
   onDone: () => void;
 }
 
-// Screen 3 — the goal question, with five DISTINCT reactions.
-const GOAL_OPTIONS: QuestionOption[] = [
-  {
-    key: 'calmClear',
-    label: 'Calmer, clearer skin overall',
-    Icon: Sparkle,
-    reaction: 'calmClear',
-    reactionLine: "Calm and clear. That's a good place to aim.",
-  },
-  {
-    key: 'breakouts',
-    label: 'Get my breakouts under control',
-    Icon: Crosshair,
-    reaction: 'breakouts',
-    reactionLine: "Let's get ahead of them together, [Name].",
-  },
-  {
-    key: 'aging',
-    label: 'Slow the signs of aging',
-    Icon: Hourglass,
-    reaction: 'aging',
-    reactionLine: "Smart. We'll work on this gently, starting tonight.",
-  },
-  {
-    key: 'darkSpots',
-    label: 'Fade dark spots and even tone',
-    Icon: Sun,
-    reaction: 'darkSpots',
-    reactionLine: "Got it. Even tone takes patience — I'll guide the pace.",
-  },
-  {
-    key: 'unsure',
-    label: "Honestly? I'm not sure — guide me",
-    Icon: Compass,
-    reaction: 'unsure',
-    reactionLine: "That's completely okay. That's exactly what I'm here for.",
-  },
-];
+type Step = 'speaks' | 'name' | 'goal' | 'guidance' | 'routine';
 
-// Map each goal answer onto the store's existing `goal` vocabulary so the scan
-// reveal, routine matching and Shop keep working. "Not sure" stays null.
-const GOAL_BY_KEY: Record<string, AppState['goal']> = {
-  calmClear: 'calm',
-  breakouts: 'clear',
-  aging: 'smoother',
-  darkSpots: 'bright',
-  unsure: null,
-};
-
-// Indicative question count for the quiet progress dots + orb-as-progress.
-const TOTAL_QUESTIONS = 6;
+function devInitialStep(): Step | null {
+  if (!__DEV__) return null;
+  try {
+    const s = (globalThis as any)?.localStorage?.getItem?.('__pura_interview_step__');
+    if (s === 'name') return 'name';
+    if (s === 'goal' || s === 'question') return 'goal';
+    if (s === 'guidance') return 'guidance';
+    if (s === 'routine') return 'routine';
+  } catch {}
+  return null;
+}
 
 export function OrbInterviewScreen({ onDone }: OrbInterviewScreenProps) {
   const reduceMotion = useReduceMotion();
+  const { dark, colors } = useOnboardingTheme();
   const { width, height } = useWindowDimensions();
 
   // The orb enters EXACTLY where Screen 1's cold open leaves it (same formula),
@@ -98,8 +64,14 @@ export function OrbInterviewScreen({ onDone }: OrbInterviewScreenProps) {
   };
 
   return (
-    <View style={styles.root}>
-      <OrbProvider reduceMotion={reduceMotion} birth={false} initialTarget={arrival}>
+    <View style={[styles.root, { backgroundColor: colors.base }]}>
+      <OrbProvider
+        reduceMotion={reduceMotion}
+        birth={false}
+        initialTarget={arrival}
+        dark={dark}
+        auraTheme="violet-cool"
+      >
         <InterviewSteps onDone={onDone} />
       </OrbProvider>
     </View>
@@ -111,23 +83,21 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
   const orb = useOrb();
   const name = useAppStore((s) => s.name);
   const setGoal = useAppStore((s) => s.setGoal);
-  const [step, setStep] = useState<'speaks' | 'name' | 'question'>(() => {
-    // Dev preview escape hatch: jump straight to a step for verification.
-    if (__DEV__) {
-      try {
-        const s = (globalThis as any)?.localStorage?.getItem?.('__pura_interview_step__');
-        if (s === 'name' || s === 'question') return s;
-      } catch {}
-    }
-    return 'speaks';
-  });
-  const [goalKey, setGoalKey] = useState<string[]>([]);
+  const setGuidance = useAppStore((s) => s.setGuidance);
+  const setRoutineDepth = useAppStore((s) => s.setRoutineDepth);
+
+  const [step, setStep] = useState<Step>(() => devInitialStep() ?? 'speaks');
+  const [goalId, setGoalId] = useState<string | null>(null);
+  const [goalVal, setGoalVal] = useState<string | null>(null);
+  const [guidanceId, setGuidanceId] = useState<string | null>(null);
+  const [guidanceVal, setGuidanceVal] = useState<string | null>(null);
+  const [routineId, setRoutineId] = useState<string | null>(null);
+  const [skippedGuidance, setSkippedGuidance] = useState(false);
   const doneRef = useRef(false);
 
   const finish = useCallback(() => {
     if (doneRef.current) return;
     doneRef.current = true;
-    // The orb exits the built chain here (later questions would keep it going).
     orb.hide({ duration: 260 });
     setTimeout(onDone, reduceMotion ? 0 : 260);
   }, [orb, onDone, reduceMotion]);
@@ -135,24 +105,72 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
   switch (step) {
     case 'speaks':
       return <OrbSpeaksScreen onAdvance={() => setStep('name')} />;
+
     case 'name':
-      return <NameBeatScreen onAdvance={() => setStep('question')} />;
-    case 'question':
+      return <NameBeatScreen onAdvance={() => setStep('goal')} />;
+
+    case 'goal':
+      return (
+        <QuestionScreen
+          config={GOAL_QUESTION}
+          name={name}
+          progressFrom={0}
+          progressTo={0.34}
+          initialSelected={goalId}
+          onSelect={(value, id) => {
+            setGoalId(id);
+            setGoalVal(value);
+            setGoal(value === 'unsure' ? null : (value as AppState['goal']));
+          }}
+          onAdvance={(value) => {
+            if (value === 'unsure') {
+              // Don't make a confused user declare confusion twice — skip
+              // Screen 4 and default guidance to walk-me-through.
+              setSkippedGuidance(true);
+              setGuidance('full-guidance');
+              setGuidanceVal('full-guidance');
+              setStep('routine');
+            } else {
+              setStep('guidance');
+            }
+          }}
+        />
+      );
+
+    case 'guidance':
+      return (
+        <QuestionScreen
+          config={GUIDANCE_QUESTION}
+          goal={goalVal}
+          name={name}
+          progressFrom={0.34}
+          progressTo={0.67}
+          exitMode="z" // recede into depth toward Screen 5
+          initialSelected={guidanceId}
+          onSelect={(value, id) => {
+            setGuidanceId(id);
+            setGuidanceVal(value);
+            setGuidance(value as AppState['guidance']);
+          }}
+          onAdvance={() => setStep('routine')}
+        />
+      );
+
+    case 'routine':
     default:
       return (
         <QuestionScreen
-          question="What are you hoping we'll work on together?"
-          options={GOAL_OPTIONS}
-          reactionStyle="full"
-          select="single"
-          progress={{ index: 0, total: TOTAL_QUESTIONS }}
-          familiarityFrom={0}
-          familiarityTo={1 / TOTAL_QUESTIONS}
+          config={ROUTINE_DEPTH_QUESTION}
+          goal={goalVal}
           name={name}
-          initialSelected={goalKey}
-          onSelect={(keys) => {
-            setGoalKey(keys);
-            setGoal(GOAL_BY_KEY[keys[0]] ?? null);
+          threadKey={guidanceVal}
+          progressFrom={skippedGuidance ? 0.34 : 0.67}
+          progressTo={1}
+          enterMode={skippedGuidance ? 'rise' : 'z'} // emerge from depth after S4
+          initialSelected={routineId}
+          onSelect={(value, id) => {
+            setRoutineId(id);
+            setRoutineDepth(value as AppState['routineDepth']);
           }}
           onAdvance={finish}
         />
@@ -161,5 +179,5 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.bg },
+  root: { flex: 1 },
 });

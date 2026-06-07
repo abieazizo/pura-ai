@@ -1516,24 +1516,28 @@ export const puraShopHome = {
   canvasDeep:    '#F4F8FE',
 
   // ----- Per-pillar atmospheric corners (top-left light → bottom deep) -----
-  cleanseLight:    '#F0F7F3',
-  cleanseDeep:     '#DBEDE5',
-  cleanseHalo:     'rgba(32, 166, 122, 0.08)',
+  // v40 (Cycle 4) — halos pushed from ~8% to ~15% and per-pillar hue
+  // separation widened so the living backdrop is actually PERCEPTIBLE on
+  // device (the deck "shifts to the pillar" as you swipe) instead of reading
+  // as white-on-white. Deep corners deepened a step for the same reason.
+  cleanseLight:    '#EEF7F1',
+  cleanseDeep:     '#CCE7DA',
+  cleanseHalo:     'rgba(32, 166, 122, 0.16)',
   cleanseAccent:   '#188A65',
 
-  treatLight:      '#EDF3FE',
-  treatDeep:       '#D5E3FB',
-  treatHalo:       'rgba(20, 124, 255, 0.09)',
+  treatLight:      '#EAF1FE',
+  treatDeep:       '#C4DAFB',
+  treatHalo:       'rgba(20, 124, 255, 0.17)',
   treatAccent:     '#147CFF',
 
-  moisturizeLight: '#EAF4FB',
-  moisturizeDeep:  '#D2E8F4',
-  moisturizeHalo:  'rgba(24, 183, 255, 0.08)',
+  moisturizeLight: '#E6F2FB',
+  moisturizeDeep:  '#C0E1F4',
+  moisturizeHalo:  'rgba(24, 183, 255, 0.16)',
   moisturizeAccent:'#0E86C7',
 
-  protectLight:    '#F1F6FB',
-  protectDeep:     '#DDE9F4',
-  protectHalo:     'rgba(7, 95, 209, 0.07)',
+  protectLight:    '#EEF4FC',
+  protectDeep:     '#CCE0F4',
+  protectHalo:     'rgba(7, 95, 209, 0.14)',
   protectAccent:   '#075FD1',
 
   // ----- The stack card floating over the gradient. Opaque: a deck must
@@ -2258,6 +2262,15 @@ export const auroraOrb = {
   // brightening sweep under reduce-motion / low performance tier.
   shimmerSweep0:   'rgba(255, 255, 255, 0.34)',
   shimmerSweepEdge:'rgba(255, 255, 255, 0)',
+
+  // ----- Aura themes (Screen 4 violet-cool → Screen 5 blue-warm) -----
+  // Two tint overlays the orb cross-fades between to signal a new question at
+  // the seam. The overlay's LAYER opacity is scaled by the orb (subtle in
+  // light, vivid in dark), so these centers can stay saturated.
+  auraVioletCool0:   'rgba(150, 132, 232, 0.85)', // cool violet
+  auraVioletCoolEdge:'rgba(150, 132, 232, 0)',
+  auraBlueWarm0:     'rgba(86, 156, 244, 0.85)',  // warmer azure blue
+  auraBlueWarmEdge:  'rgba(86, 156, 244, 0)',
 } as const;
 
 export type AuroraOrbToken = keyof typeof auroraOrb;

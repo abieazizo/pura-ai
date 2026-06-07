@@ -33,6 +33,8 @@ import Animated, {
 import {
   AuroraOrb,
   type AuroraOrbHandle,
+  type OrbArchetype,
+  type OrbAuraTheme,
   type OrbExpression,
   type OrbGaze,
   type OrbReaction,
@@ -68,6 +70,19 @@ export interface OrbController {
   /** Animate orb-as-progress warmth to v (0→1); also persists to the store so
    *  downstream surfaces and the reduce-motion static state stay in sync. */
   setFamiliarity(v: number): void;
+  /** Cross-fade the aura tint (Screen 4 violet-cool → Screen 5 blue-warm). */
+  setAura(theme: OrbAuraTheme): void;
+  /** The calibrated reaction for an answer (archetype + blink-timing + glow). */
+  reactArchetype(
+    kind: OrbArchetype,
+    opts?: {
+      lineMs?: number;
+      competence?: 'high' | 'mid' | 'low';
+      warmth?: 'high' | 'mid' | 'low';
+    },
+  ): void;
+  /** Patient hesitation mode (gaze drifts across the cards). */
+  setPatient(on: boolean): void;
 }
 
 const OrbControllerCtx = createContext<OrbController | null>(null);
@@ -97,6 +112,10 @@ export interface OrbProviderProps {
    * jump (then the first step springs it to its settle).
    */
   initialTarget?: OrbTarget;
+  /** Dark appearance (orb luminous; screens own the near-black canvas). */
+  dark?: boolean;
+  /** Initial aura tint; `setAura` shifts it at a question seam. */
+  auraTheme?: OrbAuraTheme;
 }
 
 export function OrbProvider({
@@ -104,6 +123,8 @@ export function OrbProvider({
   reduceMotion,
   birth = true,
   initialTarget,
+  dark = false,
+  auraTheme = 'violet-cool',
 }: OrbProviderProps) {
   const orbRef = useRef<AuroraOrbHandle>(null);
   const rmRef = useRef(reduceMotion);
@@ -171,6 +192,9 @@ export function OrbProvider({
         setStoreFamiliarityRef.current(t);
         orbRef.current?.setFamiliarity(t);
       },
+      setAura: (theme) => orbRef.current?.setAura(theme),
+      reactArchetype: (kind, opts) => orbRef.current?.reactArchetype(kind, opts),
+      setPatient: (on) => orbRef.current?.setPatient(on),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -199,6 +223,8 @@ export function OrbProvider({
                 state={birth ? 'awakening' : 'idle'}
                 familiarity={familiarity}
                 reduceMotion={reduceMotion}
+                dark={dark}
+                auraTheme={auraTheme}
                 onAwake={() => setAwoken(true)}
               />
             </Animated.View>

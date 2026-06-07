@@ -1,25 +1,33 @@
 /**
- * PuraAssistHomeScreen — the redesigned Home tab.
+ * PuraAssistHomeScreen — the Home tab (Pura Assist landing surface).
  *
- * The Home tab IS the Pura Assist landing surface. There is no separate
- * "AI Assist" destination anymore; tapping the input dock at the bottom
- * opens the conversation (a full-screen root route that covers the tab
- * dock, matching the reference).
+ * Cycle 3 elevation — the brief: promote the Aurora orb from a buried mid-page
+ * widget to THE centerpiece, give the flat porcelain real figure-ground, turn
+ * "Tonight's Signal" into a visually-encoded read (not a text list), establish a
+ * weight ladder (one primary next step; quick actions demoted), push the hero
+ * serif, and add a staggered entrance + scroll-linked header + press/haptics.
  *
- * Everything grounded in tonight's scan flows through `useAssistSignal()`
- * — the thin display model composed from the canonical readers. Pre-scan,
- * every signal degrades to an honest "Take a scan" rather than inventing
- * precision (per CLAUDE.md). The hero AssistantAuroraOrb is the live Pura
- * Assist character; it idles here and leans into 'listening' as the user
- * composes, then carries through into the conversation surface.
+ * Composition, top → bottom:
+ *   • Sticky header — "Home" + a hairline that fades in on scroll.
+ *   • Presence zone — scan pill, the LARGE breathing orb (scan-tinted) as the
+ *     crown, an editorial centred serif hero, subhead. This is the moment.
+ *   • Weight-ladder primary — pre-scan: a glowing "Take a scan" CTA; post-scan:
+ *     the elevated "Tonight's read" panel is the focal content.
+ *   • Tonight's read — an elevated card with provenance + tonal accent rows
+ *     (each row carries a colored edge + icon disc encoding its tone), echoing
+ *     the orb's intelligence accent. Pre-scan it degrades to one honest line.
+ *   • Quick actions — DEMOTED to a flat grouped list, clearly below the read.
+ *   • Ask dock — unchanged; opens the conversation.
+ *
+ * Everything grounded in tonight's scan still flows through `useAssistSignal()`
+ * (no raw AI output; pre-scan degrades to an honest invitation, per CLAUDE.md).
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -28,34 +36,50 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   ArrowRight,
   Drop,
-  Info,
   Scan,
   Shield,
   ShoppingBagOpen,
   Sliders,
-  Sparkle,
   Target,
   Waveform,
   type IconProps,
 } from 'phosphor-react-native';
 
 import {
+  blue,
+  ds,
+  dsElevation,
+  dsRadius,
+  dsSpace,
+  dsTiming,
+  dsType,
+  fontFamily,
   puraAssist,
   puraAssistLayout,
   puraAssistRadius,
-  puraAssistShadow,
   puraAssistType,
 } from '@/theme';
 import { hapt } from '@/utils/haptics';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAssistSignal, type AssistSignalRow } from '@/state/assistSignal';
 import type {
   HomeStackParamList,
   RootStackParamList,
   TabParamList,
 } from '@/navigation/types';
+import { Button } from '@/components/ui';
 import { AssistInputBar } from './AssistInputBar';
 import { AssistantAuroraOrb, type AssistantOrbState } from './AssistantAuroraOrb';
 
@@ -67,26 +91,20 @@ const SIGNAL_ICON: Record<AssistSignalRow['icon'], IconCmp> = {
   drop: Drop as IconCmp,
 };
 
-function rowIconColor(tone: AssistSignalRow['tone']): string {
-  return tone === 'green'
-    ? puraAssist.green
-    : tone === 'muted'
-      ? puraAssist.veryMuted
-      : puraAssist.blue;
+interface ToneStyle {
+  edge: string;
+  icon: string;
+  chip: string;
+  value: string;
 }
-function rowChipBg(tone: AssistSignalRow['tone']): string {
-  return tone === 'green'
-    ? puraAssist.green10
-    : tone === 'muted'
-      ? puraAssist.hairline
-      : puraAssist.blue12;
-}
-function rowValueColor(tone: AssistSignalRow['tone']): string {
-  return tone === 'green'
-    ? puraAssist.greenText
-    : tone === 'muted'
-      ? puraAssist.muted
-      : puraAssist.blueText;
+function toneStyle(tone: AssistSignalRow['tone']): ToneStyle {
+  if (tone === 'green') {
+    return { edge: puraAssist.green, icon: puraAssist.green, chip: puraAssist.green10, value: puraAssist.greenText };
+  }
+  if (tone === 'muted') {
+    return { edge: puraAssist.border, icon: puraAssist.veryMuted, chip: puraAssist.hairline, value: puraAssist.muted };
+  }
+  return { edge: puraAssist.blue, icon: puraAssist.blue, chip: puraAssist.blue12, value: puraAssist.blueText };
 }
 
 interface QuickAction {
@@ -98,14 +116,42 @@ interface QuickAction {
   onPress: () => void;
 }
 
-const ACCENT: Record<
-  QuickAction['accent'],
-  { icon: string; chip: string; eyebrow: string }
-> = {
-  blue: { icon: puraAssist.blue, chip: puraAssist.blue12, eyebrow: puraAssist.blueText },
-  purple: { icon: puraAssist.purple, chip: puraAssist.purple10, eyebrow: puraAssist.purpleText },
-  green: { icon: puraAssist.green, chip: puraAssist.green10, eyebrow: puraAssist.greenText },
+const ACCENT: Record<QuickAction['accent'], { icon: string; chip: string }> = {
+  blue: { icon: puraAssist.blue, chip: puraAssist.blue12 },
+  purple: { icon: puraAssist.purple, chip: puraAssist.purple10 },
+  green: { icon: puraAssist.green, chip: puraAssist.green10 },
 };
+
+// ---------------------------------------------------------------------------
+// Rise — staggered fade-up entrance. Reduce-motion → appears instantly.
+// ---------------------------------------------------------------------------
+function Rise({
+  delay = 0,
+  children,
+  style,
+}: {
+  delay?: number;
+  children: React.ReactNode;
+  style?: object;
+}) {
+  const reduce = useReduceMotion();
+  const p = useSharedValue(reduce ? 1 : 0);
+
+  useEffect(() => {
+    if (reduce) {
+      p.value = 1;
+      return;
+    }
+    p.value = withDelay(delay, withTiming(1, dsTiming.settle));
+  }, [reduce, delay, p]);
+
+  const aStyle = useAnimatedStyle(() => ({
+    opacity: p.value,
+    transform: [{ translateY: (1 - p.value) * 16 }],
+  }));
+
+  return <Animated.View style={[style, aStyle]}>{children}</Animated.View>;
+}
 
 export function PuraAssistHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -113,16 +159,20 @@ export function PuraAssistHomeScreen() {
   const homeNav = useNavigation<NavigationProp<HomeStackParamList>>();
   const signal = useAssistSignal();
 
-  // The Home ask dock is a live input (Fix 1). Tapping it types here; the
-  // return key or send button opens the conversation with the typed text as
-  // the first turn — exactly as if the user had sent it from inside.
   const [draft, setDraft] = useState('');
 
-  // The hero orb is the live Pura Assist character. It idles until the user
-  // starts composing, then leans into 'listening'; on send it routes to the
-  // conversation, where the orb continues into thinking/responding.
   const homeOrbState: AssistantOrbState =
     draft.trim().length > 0 ? 'listening' : 'idle';
+
+  // Scroll-linked header — a hairline + subtle lift fade in once the hero
+  // begins to leave, so the sticky header reads as a layer over the content.
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+  const headerSepStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 36], [0, 1], Extrapolation.CLAMP),
+  }));
 
   const openConversation = useCallback(() => {
     hapt.tap();
@@ -133,7 +183,6 @@ export function PuraAssistHomeScreen() {
     (text: string) => {
       hapt.tap();
       rootNav.navigate('AssistChat', { initialMessage: text });
-      // Clear the Home field so returning later doesn't show a stale draft.
       setDraft('');
     },
     [rootNav],
@@ -155,30 +204,9 @@ export function PuraAssistHomeScreen() {
   }, [homeNav]);
 
   const quickActions: QuickAction[] = [
-    {
-      key: 'scan',
-      eyebrow: 'Scan',
-      title: "What's my skin barrier like tonight?",
-      Icon: Scan as IconCmp,
-      accent: 'blue',
-      onPress: goScan,
-    },
-    {
-      key: 'routine',
-      eyebrow: 'Routine',
-      title: "Build tonight's routine.",
-      Icon: Sliders as IconCmp,
-      accent: 'purple',
-      onPress: goRoutine,
-    },
-    {
-      key: 'products',
-      eyebrow: 'Products',
-      title: 'What should I avoid tonight?',
-      Icon: ShoppingBagOpen as IconCmp,
-      accent: 'green',
-      onPress: goProducts,
-    },
+    { key: 'scan', eyebrow: 'Scan', title: "What's my skin barrier like tonight?", Icon: Scan as IconCmp, accent: 'blue', onPress: goScan },
+    { key: 'routine', eyebrow: 'Routine', title: "Build tonight's routine.", Icon: Sliders as IconCmp, accent: 'purple', onPress: goRoutine },
+    { key: 'products', eyebrow: 'Products', title: 'What should I avoid tonight?', Icon: ShoppingBagOpen as IconCmp, accent: 'green', onPress: goProducts },
   ];
 
   const scanReady = signal.scanReady;
@@ -187,13 +215,8 @@ export function PuraAssistHomeScreen() {
     : ['Let’s read your', 'skin tonight.'];
   const subhead = scanReady
     ? 'Ask what changed, what to use, or what to avoid tonight.'
-    : 'Take a 30-second scan to personalize everything Pura tells you.';
+    : 'A 30-second scan personalizes everything Pura tells you.';
 
-  // The ask dock is laid out in-flow at the bottom of the scene (which the
-  // navigator already insets above the floating tab bar), so the ScrollView
-  // fills only the space ABOVE the dock and clips its content there. Nothing
-  // scrolls behind the bar; a short fade just above it dissolves the last
-  // line of content into the page instead of hard-cutting a quick-action card.
   const fadeHeight = 44;
 
   return (
@@ -203,16 +226,7 @@ export function PuraAssistHomeScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-      <ScrollView
-        style={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: puraAssistLayout.screenPadding,
-          paddingTop: 8,
-          paddingBottom: fadeHeight + 12,
-        }}
-      >
-        {/* ---- Header ---- */}
+        {/* ---- Sticky header (scroll-linked hairline) ---- */}
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Text style={styles.headerTitle}>Home</Text>
@@ -227,144 +241,192 @@ export function PuraAssistHomeScreen() {
           >
             <Waveform size={20} color={puraAssist.blue} weight="bold" />
           </Pressable>
+          <Animated.View style={[styles.headerSep, headerSepStyle]} pointerEvents="none" />
         </View>
 
-        {/* ---- Scan-ready pill ---- */}
-        <View style={[styles.pill, scanReady ? styles.pillReady : styles.pillMuted]}>
-          <View
-            style={[
-              styles.pillDot,
-              { backgroundColor: scanReady ? puraAssist.green : puraAssist.veryMuted },
-            ]}
+        <Animated.ScrollView
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={{
+            paddingHorizontal: puraAssistLayout.screenPadding,
+            paddingTop: dsSpace.sm,
+            paddingBottom: fadeHeight + dsSpace.md,
+          }}
+        >
+          {/* ---- Ambient atmosphere behind the presence zone ---- */}
+          <LinearGradient
+            pointerEvents="none"
+            colors={[puraAssist.blue05, puraAssist.bgClear]}
+            style={styles.atmosphere}
           />
-          <Text
-            style={[
-              styles.pillText,
-              { color: scanReady ? puraAssist.blueText : puraAssist.muted },
-            ]}
-          >
-            {scanReady ? 'Tonight’s scan ready' : 'Take a scan to begin'}
-          </Text>
-        </View>
 
-        {/* ---- Hero ---- */}
-        <Text style={styles.hero}>
-          {heroLines[0]}
-          {'\n'}
-          {heroLines[1]}
-        </Text>
-        <Text style={styles.subhead}>{subhead}</Text>
+          {/* ---- Presence zone — orb as the centerpiece ---- */}
+          <View style={styles.presence}>
+            <Rise delay={0}>
+              <View style={[styles.pill, scanReady ? styles.pillReady : styles.pillMuted]}>
+                <View
+                  style={[
+                    styles.pillDot,
+                    { backgroundColor: scanReady ? puraAssist.green : puraAssist.veryMuted },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.pillText,
+                    { color: scanReady ? puraAssist.blueText : puraAssist.muted },
+                  ]}
+                >
+                  {scanReady ? 'Tonight’s scan ready' : 'Take a scan to begin'}
+                </Text>
+              </View>
+            </Rise>
 
-        {/* ---- Aurora orb — the live Pura Assist character (hero presence) ---- */}
-        <View style={styles.orbWrap}>
-          <AssistantAuroraOrb
-            size={120}
-            state={homeOrbState}
-            scanTone={signal.scanTone}
-          />
-        </View>
+            <Rise delay={70} style={styles.orbWrap}>
+              <AssistantAuroraOrb size={158} state={homeOrbState} scanTone={signal.scanTone} />
+            </Rise>
 
-        {/* ---- Tonight's Signal card ---- */}
-        <View style={styles.card}>
-          <View style={styles.cardHead}>
-            <Sparkle size={16} color={puraAssist.blue} weight="fill" />
-            <Text style={styles.cardTitle}>Tonight’s Signal</Text>
-            <View style={{ flex: 1 }} />
-            <Info size={16} color={puraAssist.veryMuted} weight="regular" />
+            <Rise delay={150}>
+              <Text style={styles.hero}>
+                {heroLines[0]}
+                {'\n'}
+                {heroLines[1]}
+              </Text>
+            </Rise>
+            <Rise delay={210}>
+              <Text style={styles.subhead}>{subhead}</Text>
+            </Rise>
           </View>
-          <View style={styles.signalList}>
-            {signal.signalRows.map((row) => {
-              const RowIcon = SIGNAL_ICON[row.icon];
+
+          {/* ---- Weight-ladder primary action (pre-scan) ---- */}
+          {!scanReady ? (
+            <Rise delay={280} style={styles.primaryCta}>
+              <Button
+                label="Take a 30-second scan"
+                variant="accent"
+                size="lg"
+                fullWidth
+                onPress={goScan}
+                icon={<Scan size={20} color={puraAssist.white} weight="bold" />}
+              />
+            </Rise>
+          ) : null}
+
+          {/* ---- Tonight's read — elevated, visually-encoded ---- */}
+          <Rise delay={scanReady ? 280 : 340} style={styles.readCard}>
+            <View style={styles.readHead}>
+              <Text style={styles.readEyebrow}>Tonight’s read</Text>
+              <Text style={styles.readProvenance}>
+                {scanReady
+                  ? signal.timestampLabel
+                    ? `From your ${signal.timestampLabel} scan`
+                    : 'From tonight’s scan'
+                  : 'Appears after a scan'}
+              </Text>
+            </View>
+
+            {scanReady ? (
+              <View style={styles.readRows}>
+                {signal.signalRows.map((row) => {
+                  const RowIcon = SIGNAL_ICON[row.icon];
+                  const t = toneStyle(row.tone);
+                  return (
+                    <View key={row.key} style={styles.readRow}>
+                      <View style={[styles.readEdge, { backgroundColor: t.edge }]} />
+                      <View style={[styles.readChip, { backgroundColor: t.chip }]}>
+                        <RowIcon size={16} color={t.icon} weight="bold" />
+                      </View>
+                      <Text style={styles.readLabel}>{row.label}</Text>
+                      <View style={styles.flex1} />
+                      <Text style={[styles.readValue, { color: t.value }]}>{row.value}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.readEmpty}>
+                Your barrier, focus zone, and tonight’s routine direction will
+                show here once Pura has read your skin.
+              </Text>
+            )}
+          </Rise>
+
+          {/* ---- Quick actions — DEMOTED to a flat grouped list ---- */}
+          <Rise delay={scanReady ? 360 : 420} style={styles.quickGroup}>
+            <Text style={styles.quickGroupLabel}>Jump to</Text>
+            {quickActions.map((qa, i) => {
+              const accent = ACCENT[qa.accent];
               return (
-                <View key={row.key} style={styles.signalRow}>
-                  <View style={[styles.signalChip, { backgroundColor: rowChipBg(row.tone) }]}>
-                    <RowIcon size={16} color={rowIconColor(row.tone)} weight="bold" />
+                <Pressable
+                  key={qa.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={qa.title}
+                  onPress={qa.onPress}
+                  style={({ pressed }) => [
+                    styles.quickRow,
+                    i < quickActions.length - 1 && styles.quickDivider,
+                    pressed && styles.pressedDim,
+                  ]}
+                >
+                  <View style={[styles.quickChip, { backgroundColor: accent.chip }]}>
+                    <qa.Icon size={18} color={accent.icon} weight="bold" />
                   </View>
-                  <Text style={styles.signalLabel}>{row.label}</Text>
-                  <View style={{ flex: 1 }} />
-                  <Text style={[styles.signalValue, { color: rowValueColor(row.tone) }]}>
-                    {row.value}
+                  <Text style={styles.quickTitle} numberOfLines={1}>
+                    {qa.title}
                   </Text>
-                </View>
+                  <ArrowRight size={16} color={puraAssist.veryMuted} weight="bold" />
+                </Pressable>
               );
             })}
-          </View>
-        </View>
+          </Rise>
+        </Animated.ScrollView>
 
-        {/* ---- Quick actions ---- */}
-        <View style={styles.quickList}>
-          {quickActions.map((qa) => {
-            const accent = ACCENT[qa.accent];
-            return (
-              <Pressable
-                key={qa.key}
-                accessibilityRole="button"
-                accessibilityLabel={qa.title}
-                onPress={qa.onPress}
-                style={({ pressed }) => [styles.quickCard, pressed && styles.pressedCard]}
-              >
-                <View style={[styles.quickChip, { backgroundColor: accent.chip }]}>
-                  <qa.Icon size={20} color={accent.icon} weight="bold" />
-                </View>
-                <View style={styles.quickCopy}>
-                  <Text style={[styles.quickEyebrow, { color: accent.eyebrow }]}>
-                    {qa.eyebrow}
-                  </Text>
-                  <Text style={styles.quickTitle}>{qa.title}</Text>
-                </View>
-                <ArrowRight size={18} color={puraAssist.veryMuted} weight="bold" />
-              </Pressable>
-            );
-          })}
+        {/* ---- Ask dock ---- */}
+        <View style={styles.dockBar} pointerEvents="box-none">
+          <LinearGradient
+            pointerEvents="none"
+            colors={[puraAssist.bgClear, puraAssist.bg]}
+            style={[styles.dockFade, { height: fadeHeight, top: -fadeHeight }]}
+          />
+          <AssistInputBar
+            mode="launcher"
+            value={draft}
+            onChangeText={setDraft}
+            onSubmit={openWithMessage}
+            bottomInset={0}
+          />
         </View>
-      </ScrollView>
-
-      {/* ---- Ask dock — in-flow on solid page just above the tab bar. The
-           fade above it dissolves the scroll content's last line into the
-           page so the bar never hard-cuts a quick-action card. ---- */}
-      <View style={styles.dockBar} pointerEvents="box-none">
-        <LinearGradient
-          pointerEvents="none"
-          colors={[puraAssist.bgClear, puraAssist.bg]}
-          style={[styles.dockFade, { height: fadeHeight, top: -fadeHeight }]}
-        />
-        <AssistInputBar
-          mode="launcher"
-          value={draft}
-          onChangeText={setDraft}
-          onSubmit={openWithMessage}
-          bottomInset={0}
-        />
-      </View>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: puraAssist.bg,
-  },
+  root: { flex: 1, backgroundColor: puraAssist.bg },
+  flex: { flex: 1 },
+  scroll: { flex: 1 },
+  flex1: { flex: 1 },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 4,
-    paddingBottom: 18,
+    paddingHorizontal: puraAssistLayout.screenPadding,
+    paddingTop: 6,
+    paddingBottom: 14,
   },
-  headerCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  headerTitle: {
-    ...puraAssistType.headerTitle,
-    color: puraAssist.ink,
-  },
-  headerSub: {
-    ...puraAssistType.headerSub,
-    color: puraAssist.muted,
-    marginTop: 2,
+  headerCopy: { flex: 1, minWidth: 0 },
+  headerTitle: { ...puraAssistType.headerTitle, color: puraAssist.ink },
+  headerSub: { ...puraAssistType.headerSub, color: puraAssist.muted, marginTop: 2 },
+  headerSep: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: puraAssist.border,
   },
   waveBtn: {
     width: 44,
@@ -375,146 +437,167 @@ const styles = StyleSheet.create({
     borderColor: puraAssist.border,
     alignItems: 'center',
     justifyContent: 'center',
-    ...puraAssistShadow.card,
+    ...dsElevation.e1,
   },
-  pressedDim: {
-    opacity: 0.7,
+  pressedDim: { opacity: 0.7 },
+
+  // Atmosphere
+  atmosphere: {
+    position: 'absolute',
+    left: -puraAssistLayout.screenPadding,
+    right: -puraAssistLayout.screenPadding,
+    top: 0,
+    height: 360,
+  },
+
+  // Presence zone
+  presence: {
+    alignItems: 'center',
+    paddingTop: dsSpace.sm,
   },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     gap: 7,
     paddingLeft: 10,
     paddingRight: 13,
     height: 28,
     borderRadius: puraAssistRadius.pill,
   },
-  pillReady: {
-    backgroundColor: puraAssist.blue08,
-  },
-  pillMuted: {
-    backgroundColor: puraAssist.hairline,
-  },
-  pillDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
-  pillText: {
-    ...puraAssistType.chip,
+  pillReady: { backgroundColor: puraAssist.blue08 },
+  pillMuted: { backgroundColor: puraAssist.hairline },
+  pillDot: { width: 7, height: 7, borderRadius: 3.5 },
+  pillText: { ...puraAssistType.chip },
+  orbWrap: {
+    height: 176,
+    width: 176,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: dsSpace.md,
+    marginBottom: dsSpace.xs,
   },
   hero: {
-    ...puraAssistType.heroSerif,
+    fontFamily: fontFamily.serifSemi,
+    fontSize: 42,
+    lineHeight: 45,
+    letterSpacing: -1.1,
     color: puraAssist.ink,
-    marginTop: 18,
+    textAlign: 'center',
   },
   subhead: {
     ...puraAssistType.subhead,
     color: puraAssist.muted,
-    marginTop: 12,
-    maxWidth: 320,
+    marginTop: dsSpace.md,
+    textAlign: 'center',
+    maxWidth: 300,
   },
-  orbWrap: {
-    height: 132,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-    marginBottom: 2,
-  },
-  card: {
+
+  // Primary CTA
+  primaryCta: { marginTop: dsSpace.xl },
+
+  // Tonight's read
+  readCard: {
     backgroundColor: puraAssist.surface,
-    borderRadius: puraAssistRadius.card,
+    borderRadius: dsRadius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: puraAssist.border,
-    padding: 16,
-    marginTop: 10,
-    ...puraAssistShadow.card,
+    padding: dsSpace.lg,
+    marginTop: dsSpace.xl,
+    ...dsElevation.e2,
   },
-  cardHead: {
+  readHead: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
   },
-  cardTitle: {
-    ...puraAssistType.cardTitle,
+  readEyebrow: {
+    fontFamily: fontFamily.sansSemi,
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.3,
     color: puraAssist.ink,
   },
-  signalList: {
-    marginTop: 14,
-    gap: 14,
+  readProvenance: {
+    ...dsType.caption,
+    color: puraAssist.veryMuted,
   },
-  signalRow: {
+  readRows: { marginTop: dsSpace.base, gap: dsSpace.sm },
+  readRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: dsSpace.md,
+    backgroundColor: puraAssist.bg,
+    borderRadius: dsRadius.md,
+    paddingVertical: dsSpace.md,
+    paddingRight: dsSpace.base,
+    paddingLeft: dsSpace.base,
+    overflow: 'hidden',
   },
-  signalChip: {
-    width: 32,
-    height: 32,
+  readEdge: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: dsRadius.md,
+    borderBottomLeftRadius: dsRadius.md,
+  },
+  readChip: {
+    width: 30,
+    height: 30,
     borderRadius: puraAssistRadius.iconChip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  signalLabel: {
+  readLabel: {
     ...puraAssistType.signalLabel,
     color: puraAssist.ink,
   },
-  signalValue: {
+  readValue: {
     ...puraAssistType.signalValue,
     textAlign: 'right',
   },
-  quickList: {
-    marginTop: 14,
-    gap: 10,
+  readEmpty: {
+    ...dsType.bodySm,
+    color: puraAssist.muted,
+    marginTop: dsSpace.md,
   },
-  quickCard: {
+
+  // Quick actions (demoted)
+  quickGroup: {
+    marginTop: dsSpace.xl,
+    paddingHorizontal: dsSpace.xs,
+  },
+  quickGroupLabel: {
+    ...dsType.label,
+    color: puraAssist.veryMuted,
+    marginBottom: dsSpace.xs,
+  },
+  quickRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: puraAssist.surface,
-    borderRadius: puraAssistRadius.quickAction,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: puraAssist.border,
-    paddingVertical: 15,
-    paddingHorizontal: 15,
-    ...puraAssistShadow.card,
+    gap: dsSpace.md,
+    paddingVertical: dsSpace.md,
   },
-  pressedCard: {
-    opacity: 0.92,
-    transform: [{ scale: 0.992 }],
+  quickDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: puraAssist.hairline,
   },
   quickChip: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: puraAssistRadius.iconChip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 3,
-  },
-  quickEyebrow: {
-    ...puraAssistType.eyebrow,
-  },
   quickTitle: {
+    flex: 1,
     ...puraAssistType.quickAction,
     color: puraAssist.ink,
   },
-  scroll: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
-  dockBar: {
-    backgroundColor: puraAssist.bg,
-  },
-  dockFade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-  },
+
+  // Dock
+  dockBar: { backgroundColor: puraAssist.bg },
+  dockFade: { position: 'absolute', left: 0, right: 0 },
 });

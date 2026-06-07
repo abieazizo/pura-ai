@@ -106,7 +106,8 @@ export const CardStack = forwardRef<CardStackHandle, CardStackProps>(
         const n = i + 1;
         setDir(1);
         dragProgress.value = 0;
-        hapt.select();
+        // Commit haptic is fired directionally in the gesture's onEnd
+        // (swipeKeep / swipeSkip) so the feel matches the swipe direction.
         onIndexChange?.(n);
         return n;
       });
@@ -227,10 +228,16 @@ function SwipeCard({
   const alreadySaved = card.isSaved;
   const isProductCard = card.product != null;
 
+  // JS-thread haptic callbacks fired from the gesture worklet on commit.
+  const fireKeep = useCallback(() => hapt.swipeKeep(), []);
+  const fireSkip = useCallback(() => hapt.swipeSkip(), []);
+
   useEffect(() => {
+    // A touch of overshoot (lower damping) so the incoming card SETTLES into
+    // the top slot instead of stopping dead — the "dealt" landing.
     depthV.value = reduceMotion
       ? depth
-      : withSpring(depth, { damping: 22, stiffness: 200 });
+      : withSpring(depth, { damping: 15, stiffness: 190, mass: 0.9 });
   }, [depth, reduceMotion, depthV]);
 
   useEffect(() => {
@@ -260,6 +267,7 @@ function SwipeCard({
       if (past && canCommit) {
         // Right = keep (ensure saved), left = skip (just advance).
         const keep = tx.value > 0;
+        runOnJS(keep ? fireKeep : fireSkip)();
         if (keep && productId && !alreadySaved && onToggleSave) {
           runOnJS(onToggleSave)(productId);
         }
@@ -286,7 +294,7 @@ function SwipeCard({
     const ty = dEff * shopHomeMotion.peekOffsetPx;
     const baseScale = 1 - dEff * shopHomeMotion.peekScaleStep;
 
-    const rot =
+    const dragRot =
       isTop && !reduceMotion
         ? interpolate(
             tx.value,
@@ -295,6 +303,10 @@ function SwipeCard({
             Extrapolation.CLAMP,
           )
         : 0;
+    // Peek cards fan by a small resting tilt that eases to 0 as they rise to
+    // the top — so the deck reads as "dealt", not perfectly squared.
+    const restRot = !isTop && !reduceMotion ? dEff * shopHomeMotion.restingTiltDeg : 0;
+    const rot = dragRot + restRot;
 
     // Back-step entrance: settle down + scale up + fade in.
     const entranceTy = (1 - enter.value) * 10;
@@ -330,6 +342,7 @@ function SwipeCard({
         <StackCardView
           card={card}
           width={width}
+          depth={depth}
           animate={isTop && !reduceMotion}
           onPressProduct={onPressProduct}
           onToggleSave={onToggleSave}

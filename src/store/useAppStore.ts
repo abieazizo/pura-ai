@@ -288,6 +288,20 @@ export interface AppState {
    */
   familiarity: number;
 
+  /**
+   * Onboarding Screen 4 — how much the user wants the orb to explain. Forks
+   * EXPLANATION DEPTH across the app (scan reveal, routine descriptions, orb
+   * vocabulary). Consume via `explanationDepth(guidance)` / `pickByGuidance`.
+   * null until answered (or when Screen 4 is skipped → defaults walk-me-through).
+   */
+  guidance: 'full-guidance' | 'some-guidance' | 'minimal-guidance' | null;
+  /**
+   * Onboarding Screen 5 — current routine depth + direction of travel. SIZES
+   * the built routine (step count). An EDITABLE preference surfaced later in
+   * profile / routine settings.
+   */
+  routineDepth: 'minimal' | 'building' | 'full' | null;
+
   // v7.7 — scan analyzing choreography state. Transient except for
   // `latestResult`, which is persisted so returning users can see their last
   // reveal if they re-enter the stack without re-scanning.
@@ -428,6 +442,10 @@ export interface AppState {
   setMotionPreference: (pref: 'system' | 'reduced') => void;
   /** Orb-as-progress familiarity (0→1). Clamped by the caller. */
   setFamiliarity: (v: number) => void;
+  /** Screen 4 — guidance/explanation-depth preference. */
+  setGuidance: (g: AppState['guidance']) => void;
+  /** Screen 5 — routine-depth preference (editable later). */
+  setRoutineDepth: (d: AppState['routineDepth']) => void;
   /**
    * v26 — Set / clear the tonight completion timestamp. Passing
    * `null` reopens the nightly loop (e.g. user un-checks a step and
@@ -595,6 +613,9 @@ const blankState = {
   motionPreference: 'system' as 'system' | 'reduced',
   // Orb-as-progress: starts cool; the onboarding questionnaire warms it.
   familiarity: 0,
+  // Onboarding Screen 4 / 5 preferences (persisted; routineDepth is editable).
+  guidance: null as AppState['guidance'],
+  routineDepth: null as AppState['routineDepth'],
 
   // v18.9 — safety profile defaults: every field neutral so users
   // who never opt in get the standard recommendation experience.
@@ -872,6 +893,8 @@ export const useAppStore = create<AppState>()(
       setMotionPreference: (motionPreference) => set({ motionPreference }),
       setFamiliarity: (familiarity) =>
         set({ familiarity: Math.max(0, Math.min(1, familiarity)) }),
+      setGuidance: (guidance) => set({ guidance }),
+      setRoutineDepth: (routineDepth) => set({ routineDepth }),
       // v26 — Tonight completion setter.
       setTonightCompleteAt: (tonightCompleteAt) => set({ tonightCompleteAt }),
       setRoutineSessionV26: (routineSessionV26) =>
@@ -1080,6 +1103,8 @@ export const useAppStore = create<AppState>()(
         sunExposure: state.sunExposure,
         effort: state.effort,
         goal: state.goal,
+        guidance: state.guidance,
+        routineDepth: state.routineDepth,
         routineTiming: state.routineTiming,
         patternContext: state.patternContext,
         attribution: state.attribution,

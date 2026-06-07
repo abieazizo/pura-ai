@@ -47,10 +47,10 @@ import Svg, {
 import { Heart, Check, ArrowsLeftRight, X } from 'phosphor-react-native';
 
 import {
+  dsElevation,
   puraShop,
   puraShopHome,
   puraShopRadius,
-  puraShopShadow,
   puraShopSpace,
   puraShopType,
 } from '@/theme';
@@ -68,6 +68,8 @@ export interface StackCardViewProps {
   card: StackCard;
   /** Card width. Defaults to the screen width minus the home gutter. */
   width?: number;
+  /** Stack depth (0 = resting top). Drives the per-card lift shadow. */
+  depth?: number;
   /** Only the resting top card breathes; deeper / off-screen cards pass false. */
   animate?: boolean;
   onPressProduct?: (productId: string) => void;
@@ -80,6 +82,7 @@ export interface StackCardViewProps {
 export function StackCardView({
   card,
   width = SCREEN_W - puraShopSpace.gutter * 2,
+  depth = 0,
   animate = true,
   onPressProduct,
   onToggleSave,
@@ -87,6 +90,11 @@ export function StackCardView({
   endActions,
 }: StackCardViewProps) {
   const reduceMotion = useReduceMotion();
+
+  // Per-depth lift: the resting top card genuinely FLOATS (e3); peek cards
+  // recede to a hairline (e1) so picking the deck up has real parallax —
+  // the fix for the "white card on a white screen" flatness.
+  const liftShadow = depth <= 0 ? dsElevation.e3 : depth === 1 ? dsElevation.e1 : dsElevation.e0;
 
   // ----- Breathing float (top card only, motion-gated). -----
   const breath = useSharedValue(0);
@@ -207,7 +215,7 @@ export function StackCardView({
   // ----- Terminal card (no product, hosts the escape hatches). -----
   if (card.type === 'end' || !card.product) {
     return (
-      <View style={[styles.card, styles.endCard, { width }]}>
+      <View style={[styles.card, liftShadow, styles.endCard, { width }]}>
         <View style={[styles.eyebrowTick, styles.endTick]} />
         <Text style={styles.endEyebrow}>{card.eyebrow}</Text>
         <Text style={styles.endReason}>{card.reason}</Text>
@@ -235,7 +243,7 @@ export function StackCardView({
   // They are kept as SIBLINGS — never nested — so the web build never emits a
   // <button> inside a <button> (RN Pressable → <button> on react-native-web).
   return (
-    <Animated.View style={[styles.card, { width }, pressStyle]}>
+    <Animated.View style={[styles.card, liftShadow, { width }, pressStyle]}>
       {/* Header — editorial eyebrow + save heart. */}
       <View style={styles.header}>
         <View style={styles.eyebrowRow}>
@@ -298,14 +306,24 @@ export function StackCardView({
               </RadialGradient>
             </Defs>
             <Rect x={0} y={0} width={width} height={zoneH} fill="url(#halo)" />
-            {/* Soft contact shadow that grounds the float. */}
+            {/* Two-layer contact shadow — a wide soft pool + a tighter core —
+                so the floating product reads as grounded still-life, not a
+                sticker on a flat ellipse. */}
             <Ellipse
               cx={width / 2}
-              cy={zoneH - 18}
-              rx={imgW * 0.4}
-              ry={9}
+              cy={zoneH - 16}
+              rx={imgW * 0.46}
+              ry={13}
               fill={puraShopHome.ink}
-              opacity={0.07}
+              opacity={0.05}
+            />
+            <Ellipse
+              cx={width / 2}
+              cy={zoneH - 16}
+              rx={imgW * 0.3}
+              ry={7}
+              fill={puraShopHome.ink}
+              opacity={0.09}
             />
           </Svg>
 
@@ -564,7 +582,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: puraShopHome.cardEdge,
     overflow: 'hidden',
-    ...puraShopShadow.hero,
+    // Lift shadow is applied per-depth at the call site (liftShadow) so the
+    // top card floats and the peek cards recede — see StackCardView.
   },
 
   // Header

@@ -7,9 +7,12 @@
  * into focus (a scale settle, since this RNSVG/RN build can't animate blur
  * radius per frame) on a stagger.
  *
- * Callers pass the serif `textStyle`; OrbSpeech only owns the per-word motion
- * and the timing model (startDelay / wordStagger / wordDuration) — which a host
- * can mirror to time a synced beat (e.g. Screen 2's "lean in on *you*").
+ * Callers pass the serif `textStyle`; OrbSpeech owns the per-word motion and the
+ * timing model (startDelay / wordStagger / wordDuration) — which a host can
+ * mirror to time a synced beat (e.g. Screen 2's "lean in on *you*", or a
+ * reaction's blink). `accentWords` get a WHISPER of distinction (a faint
+ * Pura-Blue tint via `accentStyle`) so an interpolated {goal} word subliminally
+ * reads as "the orb is using my words" — never a highlight.
  *
  * Accessibility: the whole line is exposed to VoiceOver as ONE label
  * (`accessibilityLabel={text}`); the animated word fragments are hidden from
@@ -37,6 +40,8 @@ import Animated, {
 
 const EASE_OUT = Easing.out(Easing.cubic);
 
+const clean = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, '');
+
 export interface OrbSpeechProps {
   text: string;
   /** Serif voice styling (fontFamily / size / color / letterSpacing …). */
@@ -52,6 +57,10 @@ export interface OrbSpeechProps {
   accessibilityRole?: AccessibilityRole;
   style?: StyleProp<ViewStyle>;
   maxWidth?: number;
+  /** Words (e.g. an interpolated {goal} phrase) that get the accent style. */
+  accentWords?: string[];
+  /** The whisper-of-distinction style merged onto accent words. */
+  accentStyle?: StyleProp<TextStyle>;
 }
 
 export function OrbSpeech({
@@ -67,19 +76,29 @@ export function OrbSpeech({
   accessibilityRole = 'text',
   style,
   maxWidth,
+  accentWords,
+  accentStyle,
 }: OrbSpeechProps) {
   const words = React.useMemo(() => text.split(' '), [text]);
+  const accentSet = React.useMemo(
+    () => new Set((accentWords ?? []).map(clean).filter(Boolean)),
+    [accentWords],
+  );
+  const isAccent = (w: string) => accentSet.has(clean(w));
 
   if (reduceMotion) {
     return (
       <ReducedSpeech
         text={text}
+        words={words}
         textStyle={textStyle}
         align={align}
         onDone={onDone}
         accessibilityRole={accessibilityRole}
         style={style}
         maxWidth={maxWidth}
+        isAccent={isAccent}
+        accentStyle={accentStyle}
       />
     );
   }
@@ -110,6 +129,8 @@ export function OrbSpeech({
             key={`${w}-${i}`}
             word={w}
             textStyle={textStyle}
+            accent={isAccent(w)}
+            accentStyle={accentStyle}
             play={play}
             delay={startDelay + i * wordStagger}
             duration={wordDuration}
@@ -125,6 +146,8 @@ export function OrbSpeech({
 function Word({
   word,
   textStyle,
+  accent,
+  accentStyle,
   play,
   delay,
   duration,
@@ -133,6 +156,8 @@ function Word({
 }: {
   word: string;
   textStyle?: StyleProp<TextStyle>;
+  accent?: boolean;
+  accentStyle?: StyleProp<TextStyle>;
   play: boolean;
   delay: number;
   duration: number;
@@ -169,8 +194,8 @@ function Word({
   return (
     <Animated.Text
       allowFontScaling
-      maxFontSizeMultiplier={1.2}
-      style={[textStyle, styles.word, aStyle]}
+      maxFontSizeMultiplier={1.6}
+      style={[textStyle, accent && accentStyle, styles.word, aStyle]}
     >
       {word}
     </Animated.Text>
@@ -179,16 +204,27 @@ function Word({
 
 function ReducedSpeech({
   text,
+  words,
   textStyle,
   align,
   onDone,
   accessibilityRole,
   style,
   maxWidth,
-}: Pick<
-  OrbSpeechProps,
-  'text' | 'textStyle' | 'align' | 'onDone' | 'accessibilityRole' | 'style' | 'maxWidth'
->) {
+  isAccent,
+  accentStyle,
+}: {
+  text: string;
+  words: string[];
+  textStyle?: StyleProp<TextStyle>;
+  align?: 'center' | 'left';
+  onDone?: () => void;
+  accessibilityRole?: AccessibilityRole;
+  style?: StyleProp<ViewStyle>;
+  maxWidth?: number;
+  isAccent: (w: string) => boolean;
+  accentStyle?: StyleProp<TextStyle>;
+}) {
   useEffect(() => {
     onDone?.();
   }, [onDone]);
@@ -202,10 +238,16 @@ function ReducedSpeech({
     >
       <Text
         accessibilityRole={accessibilityRole}
-        maxFontSizeMultiplier={1.2}
+        accessibilityLabel={text}
+        maxFontSizeMultiplier={1.6}
         style={[textStyle, { textAlign: align }]}
       >
-        {text}
+        {words.map((w, i) => (
+          <Text key={`${w}-${i}`} style={isAccent(w) ? accentStyle : undefined}>
+            {w}
+            {i < words.length - 1 ? ' ' : ''}
+          </Text>
+        ))}
       </Text>
     </View>
   );
