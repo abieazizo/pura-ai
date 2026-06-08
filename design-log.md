@@ -21,6 +21,15 @@ IA & hierarchy · Typography · Color & depth/material · Spacing & layout · Co
 quality · Imagery treatment · Data visualization · States · Motion & micro-interactions
 · Microcopy & voice.
 
+## ⚡ STANDING RULE — minimum jump per cycle (user directive, 2026-06-08)
+**Every cycle must lift EACH page's composite rubric score by at least +0.3** vs that page's
+previous score (the lone exception: a page already at ~9.7+ that the 10 ceiling caps). No timid,
+single-surface passes (Cycle 8 moved only Me/Progress for a +0.1 app composite — that bar is now
+too low). **Scope each cycle broadly enough to move every page**, and in each cycle's log entry
+record a **per-page before→after table** (Home · Shop · Scan · Routine · Me · Onboarding) proving
+every page jumped ≥0.3. If a focus is inherently narrow, also make a real cross-cutting pass that
+lifts the other pages by ≥0.3 the same cycle. Rule takes effect Cycle 9 onward.
+
 ---
 
 ## LIVE ARCHITECTURE MAP (verified Cycle 1 — trust this; re-verify before deleting)
