@@ -58,11 +58,14 @@ import {
   tnum,
   puraShopLayout,
 } from '@/theme';
-import { Card, ListRow, Button, SectionHeader } from '@/components/ui';
+import { Card, ListRow, Button } from '@/components/ui';
 import { AnimatedNumber } from '@/components';
 import { useProgressRoutineInsight } from '@/state/progressRoutineInsight';
 import { ProgressHeroSection } from '@/components/progress/ProgressHeroSection';
 import { BeforeAfterSection } from '@/components/progress/BeforeAfterSection';
+import { ScoreBreakdownCard } from '@/components/progress/ScoreBreakdownCard';
+import { ScoreTrendSection } from '@/components/progress/ScoreTrendSection';
+import { ScanTimelineSection } from '@/components/progress/ScanTimelineSection';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { hapt } from '@/utils/haptics';
@@ -197,19 +200,28 @@ export function MeScreen() {
               </Card>
             </Rise>
 
-            {/* ── Before & after — the emotional proof ── */}
-            <Rise index={3}>
-              <SectionHeader
-                eyebrow="PROOF"
-                title="Before & after"
-                serif
-                style={styles.sectionHeader}
-              />
+            {/* ── What's driving the score (self-suppresses when no metrics) ── */}
+            <Rise index={3} style={styles.block}>
+              <ScoreBreakdownCard metrics={insight.metrics} />
+            </Rise>
+
+            {/* ── The trend — Me's whole reason for being: "over time" ── */}
+            <Rise index={4} style={styles.block}>
+              <ScoreTrendSection trend={insight.trendSummary} />
+            </Rise>
+
+            {/* ── Before & after — the emotional proof (self-heads + self-locks) ── */}
+            <Rise index={5} style={styles.block}>
               <BeforeAfterSection
                 comparison={insight.comparison}
                 latestDayNumber={latestScan?.dayNumber ?? 0}
                 onTakeScan={openScan}
               />
+            </Rise>
+
+            {/* ── Your scan history over time (self-suppresses when empty) ── */}
+            <Rise index={6} style={styles.block}>
+              <ScanTimelineSection timeline={insight.timeline} />
             </Rise>
           </>
         ) : (
@@ -237,7 +249,7 @@ export function MeScreen() {
         )}
 
         {/* ── Quiet shortcuts (demoted below the story) ── */}
-        <Rise index={hasScanned ? 4 : 2} style={styles.block}>
+        <Rise index={hasScanned ? 7 : 2} style={styles.block}>
           <Card tint="surface" level="e1" padding={H}>
             <ListRow
               icon={<CalendarCheck size={18} color={ds.textSecondary} weight="duotone" />}
@@ -256,7 +268,7 @@ export function MeScreen() {
         </Rise>
 
         {/* ── Account ── */}
-        <Rise index={hasScanned ? 5 : 3} style={styles.block}>
+        <Rise index={hasScanned ? 8 : 3} style={styles.block}>
           <Text style={styles.listLabel} maxFontSizeMultiplier={1.15}>
             ACCOUNT
           </Text>
@@ -286,7 +298,7 @@ export function MeScreen() {
         </Rise>
 
         {/* ── Support ── */}
-        <Rise index={hasScanned ? 6 : 4} style={styles.block}>
+        <Rise index={hasScanned ? 9 : 4} style={styles.block}>
           <Text style={styles.listLabel} maxFontSizeMultiplier={1.15}>
             SUPPORT
           </Text>
@@ -457,12 +469,6 @@ const styles = StyleSheet.create({
     width: StyleSheet.hairlineWidth,
     height: 34,
     backgroundColor: ds.border,
-  },
-
-  // Section header (aligns to component self-inset)
-  sectionHeader: {
-    paddingHorizontal: H,
-    marginBottom: dsSpace.md,
   },
 
   // Empty state

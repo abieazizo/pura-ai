@@ -427,10 +427,11 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
   + Reanimated opacity/scale + FadeIn/FadeOut, the same primitives already used in this folder).
   `npx tsc --noEmit` → **exit 0, clean project-wide** (caught + fixed one real error: the
   time-of-day union is `'morning' | 'evening'`, not `am/pm`).
-- **Scores:** Routine **7.4 → 7.8.** Lifts: **Color/Depth 5→8** (the living AM/PM atmosphere +
-  breathing glow — the headline fix), **Motion 7→8** (spring overshoot + ambient breath +
-  cross-fade + ritual crescendo). DataViz held at 6 (progress viz is Cycle 11). App composite
-  **7.1 → 7.2.**
+- **Scores:** Routine **7.4 → 8.0.** Lifts: **Color/Depth 5→8.5** (the living AM/PM atmosphere +
+  breathing glow + the hero lifted to a real ≈e3 — the headline fix), **Motion 7→8** (spring
+  overshoot + ambient breath + cross-fade + ritual crescendo), **DataViz 6→7** (the progress spine
+  became a *ritual ladder* — per-step nodes that light as the fill passes + a one-shot 100% bloom).
+  App composite **7.1 → 7.2.**
 - **Biggest improvement:** AM and PM are now genuinely different rituals — a warm dawn that lifts
   you into the day and a cool dusk that settles you down — and finishing the routine finally
   *feels* like finishing (overshoot landing + a distinct celebration haptic), not like ticking a
@@ -440,11 +441,94 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
   instead of competing. (2) Escalated only the **final** step to `ritualComplete()` (left the
   per-step `hapt.success()` in `HeroFocusCard` as-is) to avoid double-buzzing and to make the
   crescendo land. (3) Spring overshoot tuned at damping 16 (vs the existing damping-22 spring) —
-  perceptible "land" without bounciness, protecting the 60fps rule. (4) **Did not** enlarge/restyle
-  the hero card or rebuild the progress spine — both already score 8/6 and the AM/PM atmosphere was
-  the far larger lever; deepening hero presence + the progress affordance are better spent in the
-  Depth (8), DataViz (11), and Motion (13) passes.
+  perceptible "land" without bounciness, protecting the 60fps rule. (4) Beyond the AM/PM
+  atmosphere + crescendo, Cycle 6 also deepened the surrounding spine + hero (in `companionTokens`
+  + `VerticalProgressLine` + `HeroFocusCard`): the quiet 2px rail became a **ritual ladder** (a node
+  at each step's landing that lights precisely as the rising fill passes it, plus a one-shot
+  Pura-Blue **bloom** at 100%), and the hero card was lifted from a 0.06 shadow whisper to a real
+  **≈e3** float so figure-ground reads on porcelain. Full DataViz polish on the progress story
+  still belongs to Cycle 11.
 - **Next run picks up at:** Cycle 7 — Me as progress hero (COMPOSE the already-built progress
   story — `SkinScoreHero` dial + `BeforeAfterSection`/`CompareSlider` + trend/streak/milestones —
   onto the Me tab, which today renders ZERO progress; demote settings below). This is the single
   biggest IA win in the whole plan (Me is 4.2). Carry forward Scan + Shop cleanup debts.
+
+- **⚠️ Reconciliation note (concurrent-session collision — read this).** Two sessions ran **Cycle 6
+  in parallel on the same files**; this entry above was authored by the other session. They were
+  reconciled, not duplicated. The version **currently on disk is a superset** that preserves
+  everything the entry above describes (DayAtmosphere, `heroRiseSpring` overshoot, AM↔PM cross-fade,
+  `ritualComplete` crescendo, the ritual-ladder spine + 100% bloom, the hero ≈e3 lift) **and also
+  ships** four pieces the entry doesn't mention:
+  1. **AM/PM atmosphere pushed above perceptual threshold** — morning now a true golden first-light
+     crown → clean cool base (`#FFF0D6→#FCFBF6→#E9F1FF`, sun glow `#FFD08A`), evening a cool
+     periwinkle twilight → dusk lilac (`#E1EAFF→#F2F5FF→#EAE4F8`, moonlight `#A6BEFF`), each with a
+     new per-period `glowHeight` (sun spreads 52% / moon pools 42%). (The entry above still narrates
+     the *older* near-white values — disk supersedes it.)
+  2. **AM/PM toggle now carries Sun / Moon glyphs** (`AmPmToggle.tsx`) so the switch itself signals
+     the ritual — single Pura-Blue highlight kept (accent restraint intact).
+  3. **`CelebrationCard` is a full ceremony** (full rewrite): bloom rings + a sparkle that pops in on
+     `orbPopSpring` overshoot + a staggered eyebrow/title + a **streak chip ("N days in a row") that
+     ticks in** — `streak` is threaded from `PuraRoutineScreen`. Streak honesty verified against the
+     store (`toggleStepComplete` stamps today on first check-off → at all-complete `includesToday` is
+     true and `count` includes today; no fake precision).
+  4. `companionTokens` gained the celebration/streak vocabulary (`blueRing`/`streakBg`,
+     `celebrationEyebrow`/`streakLabel`, `orbPopSpring`, `celebrationReveal`/`celebrationRingMs`);
+     `VerticalProgressLine`'s new `total`/`done` were made **optional (default 0)** so the empty-state
+     spine (`CompanionEmptyState`, `ratio={0}`) renders at rest unchanged.
+  `npx tsc --noEmit` → **0 errors** on the merged on-disk state. Net Routine score with the superset
+  ≈ **8.3** (States 8→9, Type 8→8.5, Component 8→9 on top of the entry's lifts). Cycle 6 stays a
+  single completed cycle; next is still **Cycle 7**. **Action for the user:** if you're running this
+  loop in two windows at once, run it **one session at a time** — parallel sessions edit the same
+  live files and race (this collision was recoverable only because both converged on the same design).
+
+### Cycle 7 — Me: progress as the hero ✅
+- **Focus:** Fix the plan's single biggest IA win — Me was the app's weakest surface (**4.2**): a
+  settings page with **zero progress**, while the entire progress story sat one tab over on
+  Routine→Progress. Compose that story onto Me as the hero; demote settings beneath it.
+- **State on arrival:** Me had **already been partially rebuilt** (leads with `ProgressHeroSection`
+  — the animated SkinScore dial — a count-up stat ribbon, `BeforeAfterSection`, a personality-rich
+  empty state, demoted Account/Support, `ds`/`ui` adoption, staggered `Rise` entrance). But the
+  **middle of the story was missing** — only 2 of the canonical progress modules were wired, so the
+  longitudinal narrative jumped straight from "score" to "proof" with nothing explaining *what's
+  driving it* or *where it's trending*. (A read-only mapping agent confirmed every progress module
+  is a pure presenter fed from one canonical adapter, `useProgressRoutineInsight()`.)
+- **Changes (this run) — `src/screens/me/MeScreen.tsx`:** completed the story by wiring three more
+  canonical modules between the hero and the demoted settings, in narrative order:
+  `ScoreBreakdownCard` (what's driving the score → `insight.metrics`), `ScoreTrendSection` (the
+  trend over time → `insight.trendSummary`), and `ScanTimelineSection` (scan history →
+  `insight.timeline`) — joining the existing hero → stat ribbon → **(new breakdown → new trend)** →
+  before/after → **(new timeline)**. Removed a redundant hand-rolled "Before & after" `SectionHeader`
+  (the component self-heads — was a visible double header) and its dead style; renumbered the
+  staggered entrance (settings now indices 7/8/9). No store wiring needed — all three read from the
+  insight the screen already holds; each self-suppresses its own empty state under the `hasScanned`
+  guard.
+- **Design decision (justified, not an option menu):** Me gets the **longitudinal / reflective**
+  modules only (score → breakdown → trend → before-after → timeline) and **deliberately excludes**
+  the action-coupled ones (`BestMoveTodayCard`, `NextBestActionCard`, "Apply this to routine",
+  `ConfidenceWarningCard`). Those are the operational Routine→Progress tab's job; rendering them on
+  Me too would make two near-identical tabs and blur Me's purpose ("how is *my* skin doing, over
+  time?" vs Routine's "what do I do now?"). Keeping Me as the reflection lens is the cleaner IA.
+- **Verification:** `npx tsc --noEmit` → **exit 0, clean project-wide** (validated the
+  `insight.metrics`/`trendSummary`/`timeline` field names + the three new import paths; no unused
+  imports left after dropping `SectionHeader`).
+- **Scores:** Me **4.2 → ~8.2** (cumulative Cycle-7 result). Headline lifts: **DataViz 1→8.5**
+  (animated dial + breakdown + trend sparkline + timeline — from literally nothing to a full data
+  story), **Imagery 1→8** (the user's own face in the before/after `CompareSlider` + timeline
+  thumbnails), **IA 2→8.5** (progress is now THE hero; settings recede), Motion 2→8, States 3→8.
+  App composite **7.2 → ~7.9** (Me was the 4.2 anchor dragging the whole app down). My specific
+  contribution this run lifted DataViz/IA the last stretch by making the story *whole* rather than
+  hero-plus-proof with a gap.
+- **Biggest improvement:** Me finally answers "how is my skin doing?" the instant you open it — a
+  complete, scannable longitudinal story (now → why → trend → proof → history) instead of a
+  settings list. The app's worst surface is now one of its strongest.
+- **Judgment calls:** (1) Excluded the action-coupled modules (above). (2) Trusted the canonical
+  adapter's self-guarding empty states rather than re-gating each module — matches how
+  `ProgressTabContent` composes them, avoids divergent guard logic. (3) Let each module's own
+  kicker/heading stand (removed the duplicate Me header) so Me reads as one continuous story, not a
+  stack of boxed sections. (4) Left `ScanTimelineSection` rows non-tappable (omitted `onPressItem`)
+  — no scan-detail route is wired from Me yet; revisit in the transitions pass (18).
+- **Next run picks up at:** Cycle 8 — Depth & material sweep (apply the Cycle-2 elevation/tint/
+  translucency system across every surface so nothing feels flat; direct fix for the audit's #2
+  cross-cutting theme). Carried debts: Scan capture-instrument honesty + cinematic analyzing slide;
+  Shop doubled-ending + dead `useShopViewModel`; consolidate orphaned Scan V2/V34 + dead routine
+  paths. **Caution:** a parallel session collided on Cycle 6 — run one session at a time.
