@@ -160,8 +160,8 @@ export function HeroFocusCard({
     transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.015]) }],
   }));
   const haloBreath = useAnimatedStyle(() => ({
-    opacity: interpolate(breath.value, [0, 1], [0.4, 0.52]),
-    transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.05]) }],
+    opacity: interpolate(breath.value, [0, 1], [0.5, 0.64]),
+    transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.06]) }],
   }));
   const fillStyle = useAnimatedStyle(() => ({
     transform: [{ scaleX: fill.value }],

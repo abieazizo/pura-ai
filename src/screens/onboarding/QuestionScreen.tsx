@@ -112,7 +112,7 @@ export function QuestionScreen({
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const orb = useOrb();
-  const { style: exitStyle, runExit } = useStepTransition(reduceMotion, { enter: false });
+  const { style: exitStyle, runExit, cancelExit } = useStepTransition(reduceMotion, { enter: false });
 
   const target = targetFor('question', width, height, insets.top);
   const lineTop = orbBottom(target) + 18;
@@ -136,7 +136,13 @@ export function QuestionScreen({
   });
 
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const advancedRef = useRef(false);
+  // advanceLockRef — THE single commit lock: the screen advances EXACTLY ONCE
+  // per transition no matter how it's triggered (completion callback, web
+  // fallback, tap-to-skip, or background-resume). Fresh per mount (each step is
+  // a keyed remount), satisfying "reset the lock when a new screen mounts".
+  const advanceLockRef = useRef(false);
+  // exitStartedRef — guards STARTING the exit animation more than once.
+  const exitStartedRef = useRef(false);
   const selectedRef = useRef<string | null>(initialSelected);
   selectedRef.current = selected;
   const lastTap = useRef<{ id: string; t: number }>({ id: '', t: 0 });
@@ -207,10 +213,12 @@ export function QuestionScreen({
     const sub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') {
         clearTimers(); // never fire an advance while backgrounded
-      } else if (pendingAdvance.current && !advancedRef.current) {
+      } else if (pendingAdvance.current && !advanceLockRef.current) {
         orb.blinkNow(); // clear any frozen mid-blink frame
         const p = pendingAdvance.current;
-        push(() => doAdvance(p.value, p.id), 400);
+        // Complete to the already-targeted screen exactly once — the lock guards
+        // against a stale double-advance; no surprise jump.
+        push(() => commitAdvance(p.value, p.id), 400);
       }
     });
     return () => sub.remove();
@@ -229,21 +237,45 @@ export function QuestionScreen({
   const speak = (text: string, v: { stagger: number; duration: number }, accentWords: string[] = []) =>
     setSpeech((s) => ({ text, stagger: v.stagger, duration: v.duration, accent: accentWords, key: s.key + 1 }));
 
-  const doAdvance = useCallback(
+  // The single idempotent commit — performs the actual advance. Whichever
+  // trigger reaches it first wins; later calls are harmless no-ops.
+  const commitAdvance = useCallback(
     (value: string, id: string) => {
-      if (advancedRef.current) return;
-      advancedRef.current = true;
+      if (advanceLockRef.current) return;
+      advanceLockRef.current = true;
       clearTimers();
       orb.setPatient(false);
-      runExit(() => onAdvance(value, id), exitMode);
+      onAdvance(value, id);
     },
-    [clearTimers, orb, runExit, onAdvance, exitMode],
+    [clearTimers, orb, onAdvance],
   );
+
+  // Start the exit animation; the advance fires from its OWN completion callback
+  // (native) or the web-only fallback inside runExit. Guarded so the exit only
+  // starts once.
+  const beginAdvance = useCallback(
+    (value: string, id: string) => {
+      if (advanceLockRef.current || exitStartedRef.current) return;
+      exitStartedRef.current = true;
+      clearTimers();
+      orb.setPatient(false);
+      runExit(() => commitAdvance(value, id), exitMode);
+    },
+    [clearTimers, orb, runExit, commitAdvance, exitMode],
+  );
+
+  // Tap-to-skip: cancel the exit animation + web fallback, then commit through
+  // the SAME lock — no double-advance, no advance-to-wrong-screen.
+  const skipNow = useCallback(() => {
+    const p = pendingAdvance.current;
+    if (!p) return;
+    cancelExit();
+    commitAdvance(p.value, p.id);
+  }, [cancelExit, commitAdvance]);
 
   const deliverReaction = useCallback(
     (option: QuestionOption, changed: boolean) => {
       clearTimers();
-      advancedRef.current = false;
       orb.setPatient(false);
       orb.setSize(ORB_SIZES.reactionLift); // "take the floor"
 
@@ -264,7 +296,7 @@ export function QuestionScreen({
         AccessibilityInfo.announceForAccessibility?.(line);
         push(() => orb.setSize(ORB_SIZES.question), lineMs + 220); // settle back
         const hold = reduceMotion ? 1400 : lineMs + 400; // ~400ms after last word
-        push(() => doAdvance(option.value, option.id), hold);
+        push(() => beginAdvance(option.value, option.id), hold);
       };
 
       if (changed && !reduceMotion) {
@@ -290,7 +322,10 @@ export function QuestionScreen({
       if (lastTap.current.id === id && now - lastTap.current.t < DOUBLE_TAP_MS) return;
       const changed = selectedRef.current != null && selectedRef.current !== id;
       lastTap.current = { id, t: now };
-      if (advancedRef.current) return; // already leaving — ignore
+      // Once the exit has started/committed, ignore further card taps (no
+      // re-react, no advance-to-wrong-screen). Changing your mind DURING the
+      // reaction (before the exit starts) is still allowed.
+      if (advanceLockRef.current || exitStartedRef.current) return;
 
       setSelected(id);
       onSelect?.(option.value, id);
@@ -330,10 +365,7 @@ export function QuestionScreen({
           style={StyleSheet.absoluteFill}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
-          onPress={() => {
-            const p = pendingAdvance.current;
-            if (p) doAdvance(p.value, p.id);
-          }}
+          onPress={skipNow}
         />
       )}
 

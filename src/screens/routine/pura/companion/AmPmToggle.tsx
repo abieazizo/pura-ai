@@ -4,7 +4,10 @@
  * A two-segment control (Morning · Evening) with a single Pura Blue
  * highlight that slides between segments over 200ms. Selected reads
  * white SemiBold; unselected reads Pura Blue Medium on a near-invisible
- * gray track. Presentational: the host owns the selected value.
+ * gray track. A small sun / moon glyph rides ahead of each label so the
+ * switch itself tells you which ritual you're in — AM and PM feel like
+ * two different rooms, not one toggle. Presentational: the host owns the
+ * selected value.
  */
 
 import React from 'react';
@@ -20,14 +23,19 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { Sun, Moon } from 'phosphor-react-native';
 import type { RoutineTimeOfDay } from '@/types/routine';
 import { hapt } from '@/utils/haptics';
 import { CC, companionMotion, companionType } from './companionTokens';
 
 const PAD = 4;
-const SEGMENTS: ReadonlyArray<{ key: RoutineTimeOfDay; label: string }> = [
-  { key: 'morning', label: 'Morning' },
-  { key: 'evening', label: 'Evening' },
+const SEGMENTS: ReadonlyArray<{
+  key: RoutineTimeOfDay;
+  label: string;
+  Icon: typeof Sun;
+}> = [
+  { key: 'morning', label: 'Morning', Icon: Sun },
+  { key: 'evening', label: 'Evening', Icon: Moon },
 ];
 
 export interface AmPmToggleProps {
@@ -61,6 +69,7 @@ export function AmPmToggle({ value, onChange }: AmPmToggleProps) {
       ) : null}
       {SEGMENTS.map((seg) => {
         const selected = seg.key === value;
+        const tint = selected ? CC.white : CC.blue;
         return (
           <Pressable
             key={seg.key}
@@ -73,6 +82,7 @@ export function AmPmToggle({ value, onChange }: AmPmToggleProps) {
               onChange(seg.key);
             }}
           >
+            <seg.Icon size={15} weight={selected ? 'fill' : 'regular'} color={tint} />
             <Text
               style={
                 selected
@@ -108,8 +118,10 @@ const styles = StyleSheet.create({
   segment: {
     flex: 1,
     height: 36,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 7,
     zIndex: 1,
   },
   unselected: {

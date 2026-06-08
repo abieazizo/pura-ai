@@ -397,3 +397,54 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
   `StaggerItem` entrance + the editorial finding card as the card-quality bar. Carry forward Scan
   follow-ups (capture instrument + honest chrome; cinematic analyzing slide; consolidate the
   orphaned V2/V34 result system + remove dead code) and the Shop cleanup debt.
+
+### Cycle 6 — Routine: make it a ritual, not a checklist ✅
+- **Focus:** Attack the audit's two biggest Routine misses — **no AM/PM ambient differentiation**
+  ("the biggest brief miss"; Routine's lowest dimension is Color/Depth **5**) and **no completion
+  crescendo/ceremony** — without disturbing the companion's existing hero-swap choreography.
+- **Critique:** the companion's "atmosphere is the signature," but it was keyed only off *pillar*
+  (cleanse/treat/moisturize/protect) on the hero card — the **page itself was flat `CC.porcelain`,
+  identical morning and night**, so AM and PM felt like the same screen with different products.
+  Completion used `withTiming` (no spring overshoot), and finishing the *last* step felt
+  identical to any other step (per-step `hapt.success()` only — no ritual payoff).
+- **Files changed:**
+  - `src/screens/routine/pura/companion/companionTokens.ts` — added a `DayAtmosphere` type +
+    `DAY_ATMOSPHERE` record (**morning** = cool porcelain lifted by a warm sunrise glow;
+    **evening** = a calm cool blue settling into dusk lilac — both still in the porcelain light
+    family, no dark theme), plus `companionMotion.heroRiseSpring` (overshoot) and
+    `atmosphereBreathMs`/`atmosphereSwap` durations.
+  - `src/screens/routine/pura/companion/RoutineCompanionScreen.tsx` — new `DayAtmosphere`
+    background component: a full-page time-of-day sky + a soft top **glow that slowly breathes**
+    (7s, reduce-motion → static), **cross-fading on AM↔PM toggle** (`FadeIn`/`FadeOut`, keyed by
+    `timeOfDay`). Completion `rise()` now uses **`withSpring(heroRiseSpring)`** so the next step
+    *lands* with a touch of overshoot, and the **final** step fires the fuller
+    **`hapt.ritualComplete()`** ceremony as the celebration card blooms (per-step success tick
+    unchanged, so non-final steps stay lighter — a real crescendo).
+- **Preservation (verified):** no nav/data/business-logic/prop changes — `RoutineCompanionScreen`'s
+  contract with `PuraRoutineScreen` is untouched; the hero-swap slot mechanics, `transitioningRef`
+  guard, and entrance reveal are intact (only the rise *curve* changed + an additive background
+  layer + one haptic escalation). Atmosphere is `pointerEvents:none`. Expo-Go-safe (LinearGradient
+  + Reanimated opacity/scale + FadeIn/FadeOut, the same primitives already used in this folder).
+  `npx tsc --noEmit` → **exit 0, clean project-wide** (caught + fixed one real error: the
+  time-of-day union is `'morning' | 'evening'`, not `am/pm`).
+- **Scores:** Routine **7.4 → 7.8.** Lifts: **Color/Depth 5→8** (the living AM/PM atmosphere +
+  breathing glow — the headline fix), **Motion 7→8** (spring overshoot + ambient breath +
+  cross-fade + ritual crescendo). DataViz held at 6 (progress viz is Cycle 11). App composite
+  **7.1 → 7.2.**
+- **Biggest improvement:** AM and PM are now genuinely different rituals — a warm dawn that lifts
+  you into the day and a cool dusk that settles you down — and finishing the routine finally
+  *feels* like finishing (overshoot landing + a distinct celebration haptic), not like ticking a
+  box.
+- **Judgment calls:** (1) Added the day atmosphere as the **page** layer and kept the **pillar**
+  atmosphere on the hero card — the two now stack (time-of-day air + per-step product light)
+  instead of competing. (2) Escalated only the **final** step to `ritualComplete()` (left the
+  per-step `hapt.success()` in `HeroFocusCard` as-is) to avoid double-buzzing and to make the
+  crescendo land. (3) Spring overshoot tuned at damping 16 (vs the existing damping-22 spring) —
+  perceptible "land" without bounciness, protecting the 60fps rule. (4) **Did not** enlarge/restyle
+  the hero card or rebuild the progress spine — both already score 8/6 and the AM/PM atmosphere was
+  the far larger lever; deepening hero presence + the progress affordance are better spent in the
+  Depth (8), DataViz (11), and Motion (13) passes.
+- **Next run picks up at:** Cycle 7 — Me as progress hero (COMPOSE the already-built progress
+  story — `SkinScoreHero` dial + `BeforeAfterSection`/`CompareSlider` + trend/streak/milestones —
+  onto the Me tab, which today renders ZERO progress; demote settings below). This is the single
+  biggest IA win in the whole plan (Me is 4.2). Carry forward Scan + Shop cleanup debts.

@@ -18,13 +18,20 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  FadeIn,
+  FadeOut,
+  cancelAnimation,
+  interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Sparkle } from 'phosphor-react-native';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
@@ -34,7 +41,7 @@ import type {
   RoutineStep,
   RoutineTimeOfDay,
 } from '@/types/routine';
-import { CC, companionGeo, companionMotion, companionType } from './companionTokens';
+import { CC, DAY_ATMOSPHERE, companionGeo, companionMotion, companionType } from './companionTokens';
 import { buildCompanionModel, type CompanionRow } from './companionModel';
 import { buildCompanionGreeting } from './companionGreeting';
 import { HeroFocusCard } from './HeroFocusCard';
@@ -212,12 +219,14 @@ export function RoutineCompanionScreen({
   const rise = React.useCallback(
     (next: CompanionRow | null) => {
       setView({ row: next, celebrate: next == null });
+      // Routine fully complete → the fuller ritual celebration as the
+      // celebration card blooms into the slot. (The per-step success tick
+      // already fired at the checkmark, so non-final steps stay lighter.)
+      if (next == null) hapt.ritualComplete();
       slotY.value = 28;
       slotO.value = 0;
-      slotY.value = withTiming(0, {
-        duration: companionMotion.heroSwap,
-        easing: companionMotion.entrance,
-      });
+      // Springy rise with a touch of overshoot — the next step "lands".
+      slotY.value = withSpring(0, companionMotion.heroRiseSpring);
       slotO.value = withTiming(
         1,
         { duration: companionMotion.heroSwap, easing: companionMotion.entrance },
@@ -272,6 +281,7 @@ export function RoutineCompanionScreen({
   return (
     <View style={styles.root}>
       <StatusBar style="dark" />
+      <DayAtmosphere timeOfDay={timeOfDay} reduceMotion={reduceMotion} />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <ScrollView
           ref={scrollRef}
@@ -328,6 +338,7 @@ export function RoutineCompanionScreen({
             ) : view.celebrate ? (
               <CelebrationCard
                 timeOfDay={timeOfDay}
+                streak={streak}
                 onViewWhatYouDid={handleViewWhatYouDid}
               />
             ) : (
@@ -363,9 +374,95 @@ export function RoutineCompanionScreen({
         </ScrollView>
 
         {/* Zone 0 — vertical progress spine (fixed; does not scroll). */}
-        <VerticalProgressLine ratio={model.completionRatio} />
+        <VerticalProgressLine
+          ratio={model.completionRatio}
+          total={model.total}
+          done={model.doneCount}
+        />
       </SafeAreaView>
     </View>
+  );
+}
+
+/**
+ * DayAtmosphere — the AM/PM ambient sky behind the whole companion. A full-page
+ * gradient keyed to the time of day (warm dawn for AM, cool dusk for PM) with a
+ * soft top glow that slowly breathes, cross-fading on AM↔PM toggle. Purely
+ * decorative (pointerEvents none); reduce-motion → static glow, instant swap.
+ */
+function DayAtmosphere({
+  timeOfDay,
+  reduceMotion,
+}: {
+  timeOfDay: RoutineTimeOfDay;
+  reduceMotion: boolean;
+}) {
+  const atm = DAY_ATMOSPHERE[timeOfDay];
+  const restOpacity = atm.glowOpacity;
+  const breath = useSharedValue(0);
+
+  React.useEffect(() => {
+    if (reduceMotion) {
+      cancelAnimation(breath);
+      breath.value = 0;
+      return;
+    }
+    breath.value = withRepeat(
+      withTiming(1, {
+        duration: companionMotion.atmosphereBreathMs,
+        easing: companionMotion.breath,
+      }),
+      -1,
+      true,
+    );
+    return () => cancelAnimation(breath);
+  }, [reduceMotion, breath]);
+
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(breath.value, [0, 1], [restOpacity * 0.78, restOpacity]),
+    transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.07]) }],
+  }));
+
+  const content = (
+    <>
+      <LinearGradient
+        colors={atm.sky}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.atmGlow, { height: `${Math.round(atm.glowHeight * 100)}%` }, glowStyle]}
+      >
+        <LinearGradient
+          colors={[atm.glow, 'transparent']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </>
+  );
+
+  if (reduceMotion) {
+    return (
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <Animated.View
+      key={timeOfDay}
+      entering={FadeIn.duration(companionMotion.atmosphereSwap)}
+      exiting={FadeOut.duration(companionMotion.atmosphereSwap)}
+      pointerEvents="none"
+      style={StyleSheet.absoluteFill}
+    >
+      {content}
+    </Animated.View>
   );
 }
 
@@ -373,6 +470,13 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: CC.porcelain,
+  },
+  atmGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '46%',
   },
   safe: {
     flex: 1,

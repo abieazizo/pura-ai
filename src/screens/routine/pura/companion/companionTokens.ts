@@ -10,11 +10,18 @@
  * wash (hero), a softer wash (upcoming preview), and a visible-but-calm
  * halo behind its product image. Cleanse=blue, Treat=peach, Moisturize=
  * green, Protect=amber — the only place the surface admits warmth.
+ *
+ * Cycle 6 (ritual) deepened three things here without touching the
+ * locked anchors: the AM/PM day atmosphere is now genuinely temperature-
+ * distinct (golden dawn vs periwinkle dusk, not two near-whites); the
+ * hero rides a real lift (≈e3) instead of a 0.06 whisper; and a small
+ * celebration/streak vocabulary was added so the all-complete moment can
+ * become a ceremony rather than a static card.
  */
 
 import type { TextStyle, ViewStyle } from 'react-native';
 import { Easing } from 'react-native-reanimated';
-import type { PillarKey } from '@/types/routine';
+import type { PillarKey, RoutineTimeOfDay } from '@/types/routine';
 
 const SERIF = 'InstrumentSerif-Regular';
 const SERIF_ITALIC = 'InstrumentSerif-Italic';
@@ -43,6 +50,10 @@ export const CC = {
   lineTrack: 'rgba(110, 110, 115, 0.15)',
   /** STEP X OF Y pill — Pura Blue on 12% alpha. */
   bluePill: 'rgba(20, 124, 255, 0.12)',
+  /** Celebration bloom ring — Pura Blue at a soft alpha that radiates out. */
+  blueRing: 'rgba(20, 124, 255, 0.16)',
+  /** Streak chip fill — Pura Blue @10% (chip text reuses CC.blue). */
+  streakBg: 'rgba(20, 124, 255, 0.10)',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -92,6 +103,52 @@ export const PILLAR_ATMOSPHERE: Record<PillarKey, PillarAtmosphere> = {
 export const CELEBRATION_GRADIENT: readonly [string, string] = ['#F4F8FE', '#FFFFFF'];
 
 // ---------------------------------------------------------------------------
+// Day atmosphere (AM / PM ambient sky)
+// ---------------------------------------------------------------------------
+
+/**
+ * The whole-page mood behind the companion, keyed off time of day. The pillar
+ * atmosphere (above) colours the *hero card*; this colours the *air around it*
+ * so AM and PM feel like genuinely different rituals — a warm dawn that lifts
+ * you into the day, a cool dusk that settles you down. Stays in the porcelain
+ * light family (no dark theme); the difference is temperature + a soft top
+ * glow (sun vs moonlight) that breathes.
+ *
+ * Cycle 6: pushed the temperature contrast above perceptual threshold. Morning
+ * now opens on a genuine golden first-light crown and resolves to a clean cool
+ * base (the day ahead); evening opens on a cool periwinkle twilight and settles
+ * into a dusk lilac (nightfall). `glowHeight` lets the sunrise band spread taller
+ * than the tighter pool of moonlight.
+ */
+export interface DayAtmosphere {
+  /** Full-page vertical sky gradient, top → bottom. */
+  sky: readonly [string, string, string];
+  /** Soft top glow (sun / moonlight) that fades to transparent. */
+  glow: string;
+  /** Resting glow-layer opacity; the breath modulates around it. */
+  glowOpacity: number;
+  /** Fraction of screen height the glow band occupies (sun spreads, moon pools). */
+  glowHeight: number;
+}
+
+export const DAY_ATMOSPHERE: Record<RoutineTimeOfDay, DayAtmosphere> = {
+  // Morning — a golden first-light crown lifting into a clean, cool day.
+  morning: {
+    sky: ['#FFF0D6', '#FCFBF6', '#E9F1FF'],
+    glow: '#FFD08A',
+    glowOpacity: 0.8,
+    glowHeight: 0.52,
+  },
+  // Evening — a cool periwinkle twilight settling into a soft dusk lilac.
+  evening: {
+    sky: ['#E1EAFF', '#F2F5FF', '#EAE4F8'],
+    glow: '#A6BEFF',
+    glowOpacity: 0.62,
+    glowHeight: 0.42,
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Geometry
 // ---------------------------------------------------------------------------
 
@@ -113,6 +170,8 @@ export const companionGeo = {
   /** Left vertical progress line: 2px, inset 8px from the screen edge. */
   progressLineWidth: 2,
   progressLineInset: 8,
+  /** Per-step node dots on the spine (the "ritual ladder"). */
+  progressNode: 7,
   /** Screen-height threshold below which the compact hero kicks in. */
   compactBelow: 700,
   /** Completed-tail pill. */
@@ -122,18 +181,22 @@ export const companionGeo = {
 } as const;
 
 export const companionShadows = {
-  /** Hero card — opacity 0.06, radius 24, offset 0,8 (spec). */
+  /**
+   * Hero card — the centerpiece floats at a real ≈e3 lift (Cycle 6 deepened
+   * this from the original 0.06 whisper so figure-ground actually reads on
+   * porcelain). Still soft and wide, never hard.
+   */
   hero: {
     shadowColor: '#0A1A2F',
-    shadowOpacity: 0.06,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
   },
-  /** Upcoming preview — opacity 0.04. */
+  /** Upcoming preview — opacity 0.05, a gentle step below the hero. */
   upcoming: {
     shadowColor: '#0A1A2F',
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
@@ -323,6 +386,24 @@ export const companionType = {
     color: CC.muted,
     textAlign: 'center',
   },
+  /** Celebration eyebrow above the title ("MORNING RITUAL"). */
+  celebrationEyebrow: {
+    fontFamily: SANS_SEMI,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 2.2,
+    textTransform: 'uppercase',
+    color: CC.blue,
+    textAlign: 'center',
+  },
+  /** Streak chip label ("4 days in a row"). */
+  streakLabel: {
+    fontFamily: SANS_SEMI,
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: 0.2,
+    color: CC.blue,
+  },
 } as const satisfies Record<string, TextStyle>;
 
 // ---------------------------------------------------------------------------
@@ -341,13 +422,27 @@ export const companionMotion = {
   /** Soft in-out for the ambient product breath. */
   breath: Easing.inOut(Easing.sin),
   spring: { stiffness: 200, damping: 22, mass: 1 },
+  /** Hero rise on step completion — springy settle with a touch of overshoot. */
+  heroRiseSpring: { stiffness: 220, damping: 16, mass: 1 },
+  /** Celebration sparkle "pop" — looser spring, a clear overshoot bounce. */
+  orbPopSpring: { stiffness: 170, damping: 11, mass: 1 },
   // Durations (ms).
   reveal: 600,
   fill: 350,
   checkmark: 450,
   cardExit: 500,
   progressFill: 800,
+  /** One-shot expanding ring when the spine reaches 100%. */
+  progressBloomMs: 850,
   breathMs: 4000,
+  /** Slow whole-page atmosphere breath (AM/PM sky glow). */
+  atmosphereBreathMs: 7000,
+  /** AM↔PM atmosphere cross-fade. */
+  atmosphereSwap: 520,
   heroSwap: 400,
   whyExpand: 250,
+  /** Master clock for the all-complete celebration ceremony (staggered). */
+  celebrationReveal: 850,
+  /** Celebration bloom rings expand-and-fade over this. */
+  celebrationRingMs: 1150,
 } as const;

@@ -112,6 +112,7 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
     case 'goal':
       return (
         <QuestionScreen
+          key="goal"
           config={GOAL_QUESTION}
           name={name}
           progressFrom={0}
@@ -140,6 +141,7 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
     case 'guidance':
       return (
         <QuestionScreen
+          key="guidance"
           config={GUIDANCE_QUESTION}
           goal={goalVal}
           name={name}
@@ -160,6 +162,7 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
     default:
       return (
         <QuestionScreen
+          key="routine"
           config={ROUTINE_DEPTH_QUESTION}
           goal={goalVal}
           name={name}
