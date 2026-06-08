@@ -12,7 +12,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ArrowUp, ArrowDown, Minus } from 'phosphor-react-native';
-import { palette } from '@/theme';
+import { palette, ds, dsElevation } from '@/theme';
 import type { InsightMetric } from '@/state/progressRoutineInsight';
 
 interface Props {
@@ -216,9 +216,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: palette.bg,
+    backgroundColor: ds.surface,
     borderWidth: 1,
     borderColor: palette.hairline,
+    ...dsElevation.e1,
   },
   headRow: {
     flexDirection: 'row',

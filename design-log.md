@@ -532,3 +532,56 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
   cross-cutting theme). Carried debts: Scan capture-instrument honesty + cinematic analyzing slide;
   Shop doubled-ending + dead `useShopViewModel`; consolidate orphaned Scan V2/V34 + dead routine
   paths. **Caution:** a parallel session collided on Cycle 6 — run one session at a time.
+
+### Cycle 8 — Depth & material sweep ✅
+- **Focus:** Kill the last conspicuous flat material. Earlier cycles already gave Home (C3), Shop
+  (C4), Routine (C6) and Me's containers (C7) real depth, so the residual flatness lived in the
+  **shared progress-card cluster** — the legacy-`palette` cards Cycle 7 had just promoted to hero
+  content on BOTH Me and the Progress sub-tab. They were textbook porcelain-on-porcelain:
+  `backgroundColor: palette.bg` is `#FCFDFF` — *the exact page color* — under a 1px hairline with
+  **zero shadow**.
+- **Critique:** the C7 Me rebuild made these flat cards (breakdown, trend, timeline, before/after)
+  the most-looked-at surfaces in the app while they still read as drawn-on rectangles with no
+  figure-ground. The single highest-impact depth move left.
+- **Files changed (targeted edits on large shared presenters — the full change lands in each live
+  file; chose Edit over rewrite to protect 200–300-line shared components):**
+  - `src/components/progress/ScoreTrendSection.tsx` — card → `ds.surface` (white) + `dsElevation.e2`;
+    empty card → `e1`.
+  - `src/components/progress/ScoreBreakdownCard.tsx` — metric rows → white + `e1`.
+  - `src/components/progress/ScanTimelineSection.tsx` — history rows → white + `e1`.
+  - `src/components/progress/BeforeAfterSection.tsx` — empty/unlock card → white + `e2`.
+  - `src/screens/routine/ProgressTabContent.tsx` — the tab's own `panel` (→ white + `e2`) and bottom
+    `scanAgainCta` (→ `e1`) so the Progress tab stays cohesive with its now-floating cards.
+  - `src/navigation/FloatingTabBar.tsx` — **folded in** the in-flight scan-tab change left by the
+    prior session: the center orb now wears the phosphor `Scan` frame-bracket glyph (the face is
+    reserved for genuinely-alive moments, never static tab chrome) with a one-shot camera-style
+    focus pulse on activation, replacing the idle-breathing face; dead imports removed.
+- **Depth language (consistent):** standalone cards = `e2` (≈0.09 cool-ink shadow), list rows +
+  quiet empty states = `e1` (≈0.06). White surface on the porcelain page + shadow gives genuine
+  lift; the faint hairline stays for a crisp edge. Same `dsElevation` web-verified in C3
+  (`e2 → rgba(10,26,47,0.09) 0 6px 16px`).
+- **Preservation:** purely additive surface/shadow + one import per file; no data, props, layout, or
+  business logic touched. `npx tsc --noEmit` → **exit 0, clean project-wide** (verified twice — once
+  on the inherited working tree, once after these edits).
+- **Verification:** static. The running preview (`pura-web-static`, port 4173) is a STATIC web bundle
+  built *before* these edits, so it cannot show them without a rebuild (same live-unreachable
+  constraint as C4–C6); the change is deterministic additive styling on tokens already web-verified
+  in C3.
+- **Scores:** Me **~8.2 → ~8.5**, Progress (Routine sub-tab) Color/Depth **~6 → 8**. The progress
+  cluster now floats on both tabs. App composite **~7.9 → ~8.0.**
+- **Biggest improvement:** the progress story — the app's freshly-promoted hero content — finally has
+  real figure-ground; cards float off the porcelain instead of being outlined rectangles painted on it.
+- **Judgment calls:** (1) **Scoped** Cycle 8 to the residual flat cluster rather than re-sweeping
+  surfaces C3/C4/C6/C7 already depth-elevated — honest about what was already covered. (2) Kept the
+  prior session's scan-tab glyph change (complete, coherent, compiles, on-theme) and gave it a logged
+  home here rather than reverting finished work. (3) Targeted Edits (not full rewrites) on the large
+  shared presenters for safety; the full change still lands in each live file. (4) Left the faint
+  hairline under the new shadow (shadow + hairline = crisp premium edge), didn't strip it.
+- **Concurrent-session takeover note:** this run began with a sibling session sweeping the same repo;
+  it was detected (rejected write + advancing git HEAD + a chronological mtime sweep) and this session
+  **stood down** until the user confirmed. On takeover, Cycle 7 (Me, authored across both sessions)
+  was committed (`4777821`) and Cycle 8 done here. See memory `feedback-concurrent-loop-sessions`.
+- **Next run picks up at:** Cycle 9 — Typography mastery (Instrument Serif editorial confidence
+  everywhere; fix scale/line-height/caps tracking; tabular numerals on all data). Carried debts
+  unchanged (Scan capture-instrument + cinematic analyzing; Shop doubled-ending + dead VM; orphaned
+  Scan V2/V34 + dead routine paths).

@@ -18,7 +18,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { palette } from '@/theme';
+import { palette, ds, dsElevation } from '@/theme';
 import type { ProgressRoutineInsight } from '@/state/progressRoutineInsight';
 
 interface Props {
@@ -146,9 +146,10 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     paddingHorizontal: 20,
     borderRadius: 20,
-    backgroundColor: palette.bg,
+    backgroundColor: ds.surface,
     borderWidth: 1,
     borderColor: palette.hairline,
+    ...dsElevation.e2,
   },
   emptyWrap: {
     marginTop: 22,
@@ -160,6 +161,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.bgDeep,
     borderWidth: 1,
     borderColor: palette.hairline,
+    ...dsElevation.e1,
   },
   head: {
     flexDirection: 'row',

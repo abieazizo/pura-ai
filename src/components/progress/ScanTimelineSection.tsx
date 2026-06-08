@@ -19,7 +19,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { ArrowUp, ArrowDown, Minus, Sparkle } from 'phosphor-react-native';
-import { palette } from '@/theme';
+import { palette, ds, dsElevation } from '@/theme';
 import type {
   InsightTimelineItem,
   ProgressRoutineInsight,
@@ -194,9 +194,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: palette.bg,
+    backgroundColor: ds.surface,
     borderWidth: 1,
     borderColor: palette.hairline,
+    ...dsElevation.e1,
   },
   thumbFrame: {
     width: 56,

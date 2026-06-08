@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Camera, Lock } from 'phosphor-react-native';
 import { CompareSlider } from '@/components/CompareSlider';
-import { palette, space } from '@/theme';
+import { palette, space, ds, dsElevation } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { ProgressRoutineInsight } from '@/state/progressRoutineInsight';
 
@@ -186,9 +186,10 @@ const styles = StyleSheet.create({
     paddingVertical: 22,
     paddingHorizontal: 20,
     borderRadius: 20,
-    backgroundColor: palette.bg,
+    backgroundColor: ds.surface,
     borderWidth: 1,
     borderColor: palette.hairline,
+    ...dsElevation.e2,
   },
   emptyKicker: {
     fontFamily: 'Inter-SemiBold',

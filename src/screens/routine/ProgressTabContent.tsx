@@ -44,7 +44,7 @@ import { BeforeAfterSection } from '@/components/progress/BeforeAfterSection';
 import { ScoreTrendSection } from '@/components/progress/ScoreTrendSection';
 import { ScanTimelineSection } from '@/components/progress/ScanTimelineSection';
 import { NextBestActionCard } from '@/components/progress/NextBestActionCard';
-import { palette } from '@/theme';
+import { palette, ds, dsElevation } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { ProgressRoutineInsight } from '@/state/progressRoutineInsight';
 import type { Scan } from '@/types';
@@ -258,8 +258,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: palette.hairline,
-    backgroundColor: palette.bg,
+    backgroundColor: ds.surface,
     alignItems: 'center',
+    ...dsElevation.e2,
   },
   panelMark: { marginBottom: 18 },
   panelHeading: {
@@ -329,6 +330,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.bgDeep,
     borderWidth: 1,
     borderColor: palette.hairline,
+    ...dsElevation.e1,
   },
   scanAgainBadge: {
     width: 30,
