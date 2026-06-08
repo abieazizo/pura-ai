@@ -216,9 +216,12 @@ export function severityTone(s: Severity): SeverityTone {
     case 'high':
       return { color: puraReveal.priorityHigh, label: 'High' };
     case 'moderate':
-      return { color: puraReveal.priorityMedium, label: 'Moderate' };
+      // Deepest amber — pairs with three lit segments below the coral "High".
+      return { color: warning[700], label: 'Moderate' };
     case 'mild':
-      return { color: warning[300], label: 'Mild' };
+      // Mid amber (AA-legible as the 11px pill label, unlike the lighter 300
+      // step) — distinct from the deeper "Moderate" by hue depth + lit count.
+      return { color: warning[500], label: 'Mild' };
     case 'low':
       return { color: puraReveal.priorityLow, label: 'Low' };
     case 'none':

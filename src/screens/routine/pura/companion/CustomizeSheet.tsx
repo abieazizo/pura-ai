@@ -22,6 +22,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   stepTypeToPillarKey,
@@ -35,6 +36,7 @@ import { hapt } from '@/utils/haptics';
 import {
   CC,
   PILLAR_ATMOSPHERE,
+  SHEET_VEIL,
   companionShadows,
   companionType,
 } from './companionTokens';
@@ -109,6 +111,18 @@ export function CustomizeSheet({
           },
         ]}
       >
+        {/* Ambient top veil — matches the product sheet: a cool wash gives the
+            flat porcelain panel depth behind the header. */}
+        <View pointerEvents="none" style={styles.veilClip}>
+          <LinearGradient
+            colors={SHEET_VEIL}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+
         <View style={styles.handle} />
 
         <View style={styles.head}>
@@ -142,8 +156,15 @@ export function CustomizeSheet({
               <View key={step.id} style={styles.stepBlock}>
                 <View style={styles.stepRow}>
                   <View
-                    style={[styles.thumb, { backgroundColor: atmosphere.halo }]}
+                    style={[styles.thumb, { backgroundColor: atmosphere.haloDeep }]}
                   >
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']}
+                      start={{ x: 0.25, y: 0.15 }}
+                      end={{ x: 0.9, y: 1 }}
+                      pointerEvents="none"
+                      style={StyleSheet.absoluteFill}
+                    />
                     {packshot ? (
                       <Image
                         source={packshot}
@@ -283,6 +304,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 12,
   },
+  veilClip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
   handle: {
     alignSelf: 'center',
     width: 44,
@@ -317,6 +348,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   thumbImg: {
     width: 38,
@@ -405,10 +437,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   rebuildText: {
+    // Secondary escape hatch — neutral so the eye isn't pulled here over the
+    // per-row Swap actions and the primary ink Done button.
     fontFamily: 'Inter-Medium',
     fontSize: 14,
     lineHeight: 18,
-    color: CC.blue,
+    color: CC.inkSoft,
   },
   doneBtn: {
     height: 54,

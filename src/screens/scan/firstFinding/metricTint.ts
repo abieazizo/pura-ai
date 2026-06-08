@@ -75,8 +75,9 @@ export function metricTint(metric: MetricKind, theme: ScreenTheme): MetricTint {
   const anchor = ANCHOR[metric] ?? ANCHOR.neutral;
   if (theme === 'dark') {
     return {
-      // Luminous heat on near-black — the core is bright, edges feather to 0.
-      glow: anchor,
+      // Luminous heat on near-black — the additive core is lifted ~10% toward
+      // white so screen-blend reads as light, not paint, on black.
+      glow: lighten(anchor, 0.1),
       pillBg: rgba(anchor, 0.18),
       pillText: lighten(anchor, 0.55),
       chipBg: 'rgba(14, 16, 22, 0.72)',

@@ -30,33 +30,54 @@ export interface ExpandedFindingProps {
   justFindings: boolean;
   downweighted: boolean;
   onAgency: (verdict: 'confirm' | 'not_me') => void;
+  /** When set, the HEADER (name + pill) becomes the "show on photo" select
+   *  target. Only the header is interactive — the agency buttons below are
+   *  siblings, never nested inside another button. */
+  onHeaderPress?: () => void;
+  selected?: boolean;
 }
 
 export function ExpandedFinding({
-  finding, tint, tokens, variant, justFindings, downweighted, onAgency,
+  finding, tint, tokens, variant, justFindings, downweighted, onAgency, onHeaderPress, selected,
 }: ExpandedFindingProps) {
   const isPositive = finding.metric === 'positive';
   const hero = variant === 'hero';
 
+  const headerInner = (
+    <>
+      <Text
+        style={[hero ? TYPE.name : TYPE2.tag, { color: tokens.name, flex: 1, fontSize: hero ? 17 : 15 }]}
+        maxFontSizeMultiplier={1.6}
+        accessibilityRole="header"
+      >
+        {finding.name}
+      </Text>
+      {!isPositive && (
+        <View style={[styles.pill, { backgroundColor: tint.pillBg }]}>
+          <Text style={[TYPE.pill, { color: tint.pillText }]} maxFontSizeMultiplier={1.3}>
+            {finding.level}
+          </Text>
+        </View>
+      )}
+    </>
+  );
+
   const body = (
-    <View style={hero ? styles.heroBody : styles.supBody} accessible accessibilityRole="summary">
-      {/* Header — name + level pill (plain word, no number). */}
-      <View style={styles.header}>
-        <Text
-          style={[hero ? TYPE.name : TYPE2.tag, { color: tokens.name, flex: 1, fontSize: hero ? 17 : 15 }]}
-          maxFontSizeMultiplier={1.6}
-          accessibilityRole="header"
+    <View style={hero ? styles.heroBody : styles.supBody} accessible={false}>
+      {/* Header — name + level pill (plain word, no number). Tappable to select. */}
+      {onHeaderPress ? (
+        <Pressable
+          onPress={onHeaderPress}
+          accessibilityRole="button"
+          accessibilityHint="Shows this on your photo"
+          accessibilityState={{ selected }}
+          style={styles.header}
         >
-          {finding.name}
-        </Text>
-        {!isPositive && (
-          <View style={[styles.pill, { backgroundColor: tint.pillBg }]}>
-            <Text style={[TYPE.pill, { color: tint.pillText }]} maxFontSizeMultiplier={1.3}>
-              {finding.level}
-            </Text>
-          </View>
-        )}
-      </View>
+          {headerInner}
+        </Pressable>
+      ) : (
+        <View style={styles.header}>{headerInner}</View>
+      )}
 
       {!!finding.whatISee && (
         <Row label="What I see" value={finding.whatISee} tokens={tokens} />
@@ -112,7 +133,8 @@ export function ExpandedFinding({
         styles.heroCard,
         {
           borderRadius: LAYOUT.cardRadius,
-          borderColor: tokens.depth.hairline,
+          borderColor: selected ? tokens.accent : tokens.depth.hairline,
+          borderWidth: selected ? 1 : StyleSheet.hairlineWidth,
           opacity: downweighted ? 0.6 : 1,
           boxShadow: [
             { offsetX: 0, offsetY: tokens.depth.contact.offsetY, blurRadius: tokens.depth.contact.blur, spreadDistance: 0, color: tokens.depth.contact.color },

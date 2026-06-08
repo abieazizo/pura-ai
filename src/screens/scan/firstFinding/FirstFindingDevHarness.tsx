@@ -17,6 +17,7 @@ import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
 import { SKIN_READ_FIXTURES } from '@/api/skinRead';
 import type { SkinReadOutcome } from '@/types/skinRead';
 import { FirstFindingScreen } from './FirstFindingScreen';
+import type { FaceLandmarks } from './faceRegions';
 import type { ScreenTheme } from './metricTint';
 
 // Real portrait URLs (need internet). The DARK-SKIN face proves the additive,
@@ -24,6 +25,24 @@ import type { ScreenTheme } from './metricTint';
 const PHOTOS: Record<string, string> = {
   light: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=640&q=80',
   deep: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=640&q=80',
+};
+
+// Approx face anchors per test photo (image-norm). With "track face" on, glows
+// AFFINE-warp to these so they sit on the actual features — toggle it off to see
+// the proportional fallback. Tune to the exact photo as needed.
+const LANDMARKS: Record<string, FaceLandmarks> = {
+  light: {
+    faceBounds: { x: 0.2, y: 0.12, w: 0.6, h: 0.78 },
+    leftEye: { x: 0.41, y: 0.43 }, rightEye: { x: 0.59, y: 0.42 },
+    noseTip: { x: 0.5, y: 0.55 }, mouthCenter: { x: 0.5, y: 0.69 },
+    chin: { x: 0.5, y: 0.85 }, foreheadCenter: { x: 0.5, y: 0.25 },
+  },
+  deep: {
+    faceBounds: { x: 0.17, y: 0.14, w: 0.64, h: 0.78 },
+    leftEye: { x: 0.38, y: 0.46 }, rightEye: { x: 0.6, y: 0.45 },
+    noseTip: { x: 0.49, y: 0.59 }, mouthCenter: { x: 0.49, y: 0.73 },
+    chin: { x: 0.49, y: 0.88 }, foreheadCenter: { x: 0.49, y: 0.28 },
+  },
 };
 
 type ScenarioKey = 'normal' | 'lowConfidence' | 'positive' | 'badPhoto' | 'error';
@@ -48,6 +67,7 @@ export function FirstFindingDevHarness() {
   const [theme, setTheme] = useState<ScreenTheme>('dark');
   const [photoKey, setPhotoKey] = useState<keyof typeof PHOTOS>('light');
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [trackFace, setTrackFace] = useState(true); // affine-warp glows to anchors
   const [live, setLive] = useState(true); // start pending → flip to scenario
   const [nonce, setNonce] = useState(0); // remount key to replay
 
@@ -78,6 +98,7 @@ export function FirstFindingDevHarness() {
           outcome={outcome}
           theme={theme}
           mirrored
+          landmarks={trackFace ? LANDMARKS[photoKey] : undefined}
           onSeeEverything={() => setScenario((s) => s)}
           onTryBetterLight={() => setNonce((n) => n + 1)}
           onTryAgain={() => setNonce((n) => n + 1)}
@@ -102,6 +123,7 @@ export function FirstFindingDevHarness() {
             <Group label="opts">
               <Chip on={theme === 'dark'} label="dark" onPress={() => setTheme('dark')} />
               <Chip on={theme === 'light'} label="light" onPress={() => setTheme('light')} />
+              <Chip on={trackFace} label="track face" onPress={() => setTrackFace((v) => !v)} />
               <Chip on={reduceMotion} label="reduce motion" onPress={() => setReduceMotion((v) => !v)} />
               <Chip on={live} label="live transition" onPress={() => setLive((v) => !v)} />
               <Chip on={false} label="↻ replay" onPress={() => setNonce((n) => n + 1)} />

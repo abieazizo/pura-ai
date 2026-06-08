@@ -46,7 +46,7 @@ import {
   puraRevealShadow,
   puraRevealType,
 } from '@/theme/tokens';
-import { blue, dsAmbient, dsGradient, tnum } from '@/theme';
+import { dsAmbient, dsGradient, tnum } from '@/theme';
 import {
   BEAT_EYEBROWS,
   concernChips,

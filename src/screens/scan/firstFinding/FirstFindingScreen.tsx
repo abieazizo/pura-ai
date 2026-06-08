@@ -57,8 +57,10 @@ import {
   DEFAULT_FACE_BOX,
   proportionalFaceDetector,
   regionGeometry,
+  regionGeometryFromLandmarks,
   regionWordIndex,
   type FaceBox,
+  type FaceLandmarks,
 } from './faceRegions';
 import { metricTint, type ScreenTheme } from './metricTint';
 import {
@@ -95,6 +97,12 @@ export interface FirstFindingScreenProps {
   theme?: ScreenTheme;
   /** Was the front camera mirrored at display? (person-left ↔ viewer side). */
   mirrored?: boolean;
+  /**
+   * Real face anchors (from the project's faceGeometryProvider / AI overlay).
+   * When present, glows are AFFINE-WARPED to track this face — off-center, tilted,
+   * any proportions. Absent → the proportional fallback (centered face box).
+   */
+  landmarks?: FaceLandmarks;
 }
 
 type Phase = 'analyzing' | 'reveal' | 'badPhotoChoice' | 'error';
@@ -107,6 +115,7 @@ export function FirstFindingScreen({
   onTryAgain,
   theme = 'dark',
   mirrored = true,
+  landmarks,
 }: FirstFindingScreenProps) {
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -171,14 +180,19 @@ export function FirstFindingScreen({
     [finding?.metric, theme],
   );
   const hedge = phase === 'reveal' && outcome.status === 'bad_photo';
+  // Dark mode reads the additive glow as luminous heat → lift strength ~15%
+  // (the renderer still hard-caps the alpha, so it never blows out).
+  const darkLift = theme === 'dark' ? 1.15 : 1;
   const glowSpots: GlowSpotInput[] = useMemo(() => {
     if (!finding) return [];
     return finding.spots.slice(0, 4).map((s) => ({
-      geometry: regionGeometry(s.region, faceBox, rW, rH, mirrored),
-      strength: s.strength,
+      geometry: landmarks
+        ? regionGeometryFromLandmarks(s.region, landmarks, rW, rH, mirrored)
+        : regionGeometry(s.region, faceBox, rW, rH, mirrored),
+      strength: Math.min(1, s.strength * darkLift),
       chipLabel: s.place || REGION_CHIP[s.region],
     }));
-  }, [finding, faceBox, rW, rH, mirrored]);
+  }, [finding, faceBox, rW, rH, mirrored, landmarks, darkLift]);
   const lowConfidence = !!finding?.lowConfidence || hedge;
 
   // ── Mount: detect face once, start analyzing motion, place + wake the orb. ──

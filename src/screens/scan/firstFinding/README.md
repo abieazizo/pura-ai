@@ -60,14 +60,26 @@ wired into `App.tsx` here to avoid clobbering the concurrent screen-2 sweep). On
 web: chips switch scenario / photo (incl. a **deep-skin** test face) / theme /
 reduced-motion / live-transition.
 
+## Geometry: glows track the REAL face
+
+`regionGeometryFromLandmarks` affine-warps the canonical region polygons onto
+real anchors (eyes + mouth) from the project's `faceGeometryProvider` / AI
+`face_overlay`, so a glow sits on the actual feature even when the face is
+off-center or **tilted (rolled)**. Absent anchors → the proportional fallback
+(identity warp). Person-left/right + mirroring handled either way.
+
 ## Verification status
 
 - `npx tsc --noEmit` — **0 errors in these files.**
-- `npx tsx scripts/verifyFirstFinding.ts` — **25/25 deterministic assertions pass.**
+- `npx tsx scripts/verifyFirstFinding.ts` — **30/30 deterministic assertions pass**,
+  incl. landmark warp: identity Δ=0px, off-center tracks +25px, roll rotates the
+  cheeks (Δasym 35px), and the warped glow stays local (6.2% of face → no
+  whole-face wash on any skin tone).
 - Motion (sweep, pivot, word↔glow sync, bloom, dark-mode luminosity) is
   UI-thread Reanimated and is verified by design + the deterministic core; it can
   only be fully judged on-device / in a recording (a still can't capture it), and
-  preview screenshots hang on orb screens — drive the harness live to view.
+  preview screenshots hang on orb screens — drive the harness live to view
+  (toggle "track face" to see the warp).
 
 ## PASS / FAIL checklist (acceptance criteria)
 
@@ -82,6 +94,7 @@ reduced-motion / live-transition.
 | Glow blooms on the EXACT spots, ON the spoken word, additive, clipped, alpha-capped | ✅ `mixBlendMode:'screen'` + ClipPath; word-index sync |
 | Stronger side brighter + a beat sooner | ✅ strongest-first sort + monotonic bloom order |
 | No whole-face wash — proven on any skin tone (incl. deep) | ✅ geometry: glow ≤14% face; both cheeks 12.3% |
+| Glow tracks the real face (off-center / tilted), not a fixed box | ✅ affine landmark warp (reuses faceGeometryProvider) |
 | Differentiate-without-color: location chip + leader line | ✅ |
 | Low confidence → fainter glow + tentative chip/line | ✅ alpha halved, dashed leader |
 | First finding card: name + level pill + What I see / What it means / THE MOVE / how_sure; only findings[0] | ✅ |

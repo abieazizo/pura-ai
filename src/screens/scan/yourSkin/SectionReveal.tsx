@@ -9,9 +9,10 @@
  * reaction registered): the page is still complete and beautiful, just still.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { View, type LayoutChangeEvent, type ViewProps } from 'react-native';
 import Animated, {
+  runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
@@ -32,6 +33,9 @@ export interface SectionRevealProps extends Pick<ViewProps, 'accessibilityRole'>
   children: React.ReactNode;
   /** Optional extra style on the animated wrapper. */
   style?: ViewProps['style'];
+  /** Fires ONCE the first time the section reveals (incl. reduced motion, on
+   *  mount). Used to play the plan consolidation + the warm orb beat in time. */
+  onReveal?: () => void;
 }
 
 export function SectionReveal({
@@ -42,10 +46,17 @@ export function SectionReveal({
   children,
   style,
   accessibilityRole,
+  onReveal,
 }: SectionRevealProps) {
   const top = useSharedValue(-1); // unknown until laid out
   const played = useSharedValue(reduceMotion ? 1 : 0);
   const armed = useSharedValue(reduceMotion ? 1 : 0);
+
+  // Reduced motion: born assembled — fire the reveal callback once on mount.
+  useEffect(() => {
+    if (reduceMotion) onReveal?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onLayout = useCallback(
     (e: LayoutChangeEvent) => {
@@ -69,6 +80,7 @@ export function SectionReveal({
           Math.min(index, 4) * 80,
           withTiming(1, { duration: REVEAL.durMs, easing: EASE.out }),
         );
+        if (onReveal) runOnJS(onReveal)();
       }
     },
     [viewportH, reduceMotion, index],

@@ -210,4 +210,8 @@ export type RootStackParamList = {
   /** Dev-only harness for the onboarding cold open (Screen 1). Renders the real
    *  ColdOpenScreen with a variant toolbar. Reachable only via the dev nav ref. */
   OnboardingColdOpenDev: undefined;
+  /** Dev-only harness for scan-results screen 2 ("Your Skin"). Renders the real
+   *  YourSkinScreen with a fixture / theme / accessibility toolbar (incl. a
+   *  deep-skin multi-finding face). Reachable only via the dev nav ref. */
+  YourSkinDev: undefined;
 };

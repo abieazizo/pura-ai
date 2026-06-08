@@ -104,27 +104,20 @@ export function FindingsSection(props: FindingsSectionProps) {
 
   return (
     <View>
-      {/* HERO */}
+      {/* HERO — the header is the select target (no whole-card button wrap, so
+          the agency buttons inside are never nested interactives). */}
       {hero && (
-        <Pressable
-          onPress={() => onSelect(hero.id)}
-          accessibilityRole="button"
-          accessibilityHint="Shows this on your photo"
-          style={[
-            styles.heroWrap,
-            selectedId === hero.id && { borderLeftColor: tokens.accent, borderLeftWidth: 2, paddingLeft: 10, marginLeft: -12 },
-          ]}
-        >
-          <ExpandedFinding
-            finding={hero}
-            tint={tintByFinding[hero.id]}
-            tokens={tokens}
-            variant="hero"
-            justFindings={justFindings}
-            downweighted={downweighted.has(hero.id)}
-            onAgency={(v) => onAgency(hero.id, v)}
-          />
-        </Pressable>
+        <ExpandedFinding
+          finding={hero}
+          tint={tintByFinding[hero.id]}
+          tokens={tokens}
+          variant="hero"
+          justFindings={justFindings}
+          downweighted={downweighted.has(hero.id)}
+          onAgency={(v) => onAgency(hero.id, v)}
+          onHeaderPress={() => onSelect(hero.id)}
+          selected={selectedId === hero.id}
+        />
       )}
 
       {/* SUPPORTING */}
@@ -136,8 +129,9 @@ export function FindingsSection(props: FindingsSectionProps) {
 
           {visible.map((row, idx) => {
             const f = row.finding;
-            const open = justFindings || expandedRows.has(f.id);
             const selected = selectedId === f.id;
+            // A map-marker tap selects a finding → its row surfaces (auto-opens).
+            const open = justFindings || expandedRows.has(f.id) || selected;
             const groupedMember = row.groupSize >= 2;
             return (
               <View key={f.id}>

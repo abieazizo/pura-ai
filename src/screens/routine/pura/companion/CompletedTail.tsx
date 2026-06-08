@@ -51,7 +51,10 @@ export function CompletedTail({ rows, timeOfDay }: CompletedTailProps) {
                   start={{ x: 0.25, y: 0.15 }}
                   end={{ x: 0.9, y: 1 }}
                   pointerEvents="none"
-                  style={StyleSheet.absoluteFill}
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { borderRadius: companionGeo.tailImage / 2 },
+                  ]}
                 />
                 {packshot ? (
                   <Image source={packshot} style={styles.image} contentFit="contain" />
@@ -105,7 +108,6 @@ const styles = StyleSheet.create({
     borderRadius: companionGeo.tailImage / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   image: {
     width: 30,

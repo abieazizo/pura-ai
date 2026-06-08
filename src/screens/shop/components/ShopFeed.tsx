@@ -91,6 +91,11 @@ export function ShopFeed({
     corners[1],
   ];
   const bloom = activeTheme?.halo ?? dsAmbient.day.glow;
+  // Fade overlays to a transparent PORCELAIN, never the `transparent` keyword:
+  // on Android the keyword interpolates through transparent-black and leaves a
+  // muddy grey seam at the fade. Transparent-white matches the field and keeps
+  // the bloom clean on both platforms.
+  const CLEAR = 'rgba(252,253,255,0)';
 
   return (
     <View style={styles.root}>
@@ -104,7 +109,7 @@ export function ShopFeed({
       />
       {/* Top luminous lift — a clean porcelain light source under the header. */}
       <LinearGradient
-        colors={[dsAmbient.dawn.sky[0], 'transparent']}
+        colors={[dsAmbient.dawn.sky[0], CLEAR]}
         locations={[0, 1]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 0.42 }}
@@ -114,7 +119,7 @@ export function ShopFeed({
       {/* Single ambient bloom — the pillar's atmosphere (or a day-blue whisper
           pre-scan) gathered top-centre, fading to nothing by mid-page. */}
       <LinearGradient
-        colors={[bloom, 'transparent']}
+        colors={[bloom, CLEAR]}
         locations={[0, 1]}
         start={{ x: 0.5, y: 0.04 }}
         end={{ x: 0.5, y: 0.6 }}

@@ -211,6 +211,107 @@ export function regionGeometry(
   };
 }
 
+// ---------------------------------------------------------------------------
+// LANDMARK-DRIVEN geometry — closes the "fixed proportional box" gap. When real
+// anchors are available (the project's faceGeometryProvider derives them from
+// the AI `face_overlay`), the region polygons are WARPED by an affine fit from
+// the canonical face to the detected eyes + mouth, so glows track an off-center
+// or tilted (rolled) face — not just a centered box. Degrades to the proportional
+// path when anchors are absent (affine ≈ identity).
+// ---------------------------------------------------------------------------
+
+export interface FaceLandmarks {
+  /** Face box, normalized in the IMAGE (≈ the frame for a 3:4 selfie). */
+  faceBounds: FaceBox;
+  leftEye: NormPoint;
+  rightEye: NormPoint;
+  noseTip: NormPoint;
+  mouthCenter: NormPoint;
+  chin: NormPoint;
+  foreheadCenter: NormPoint;
+}
+
+// Canonical anchors (face-box-local) — consistent with POLY above, so a face
+// detected AT the canonical pose yields the identity transform (== proportional).
+const CANON_ANCHORS = {
+  leftEye: { x: 0.36, y: 0.4 },
+  rightEye: { x: 0.64, y: 0.4 },
+  mouthCenter: { x: 0.5, y: 0.74 },
+} as const;
+
+interface Affine { a: number; b: number; c: number; d: number; e: number; f: number }
+
+function boxToImg(p: NormPoint, box: FaceBox): NormPoint {
+  return { x: box.x + p.x * box.w, y: box.y + p.y * box.h };
+}
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+function det3(m: number[][]): number {
+  return (
+    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+    m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+    m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+  );
+}
+/** Solve M·x = r (3×3) by Cramer's rule. */
+function solve3(M: number[][], r: number[]): [number, number, number] | null {
+  const d = det3(M);
+  if (Math.abs(d) < 1e-9) return null;
+  const col = (i: number): number[][] =>
+    M.map((row, ri) => row.map((v, ci) => (ci === i ? r[ri] : v)));
+  return [det3(col(0)) / d, det3(col(1)) / d, det3(col(2)) / d];
+}
+/** Affine mapping src[3] → dst[3] (image-norm point pairs). */
+function fitAffine(src: NormPoint[], dst: NormPoint[]): Affine | null {
+  const M = [
+    [src[0].x, src[0].y, 1],
+    [src[1].x, src[1].y, 1],
+    [src[2].x, src[2].y, 1],
+  ];
+  const rowX = solve3(M, [dst[0].x, dst[1].x, dst[2].x]);
+  const rowY = solve3(M, [dst[0].y, dst[1].y, dst[2].y]);
+  if (!rowX || !rowY) return null;
+  return { a: rowX[0], b: rowX[1], c: rowX[2], d: rowY[0], e: rowY[1], f: rowY[2] };
+}
+function applyAffine(t: Affine, p: NormPoint): NormPoint {
+  return { x: t.a * p.x + t.b * p.y + t.c, y: t.d * p.x + t.e * p.y + t.f };
+}
+
+/**
+ * Region geometry warped to REAL landmarks. Same output contract as
+ * `regionGeometry`, so the glow renderer is unchanged.
+ */
+export function regionGeometryFromLandmarks(
+  region: FaceRegionKey,
+  lm: FaceLandmarks,
+  frameW: number,
+  frameH: number,
+  mirrored = true,
+): RegionGeometry {
+  const key = !mirrored && SIDE_FLIP[region] ? SIDE_FLIP[region]! : region;
+  const src = [
+    boxToImg(CANON_ANCHORS.leftEye, DEFAULT_FACE_BOX),
+    boxToImg(CANON_ANCHORS.rightEye, DEFAULT_FACE_BOX),
+    boxToImg(CANON_ANCHORS.mouthCenter, DEFAULT_FACE_BOX),
+  ];
+  const dst = [lm.leftEye, lm.rightEye, lm.mouthCenter];
+  const aff = fitAffine(src, dst);
+  const polygon = POLY[key].map((p) => {
+    const canonImg = boxToImg(p, DEFAULT_FACE_BOX);
+    const img = aff
+      ? applyAffine(aff, canonImg)
+      : boxToImg(p, lm.faceBounds); // degenerate → place via detected box
+    return { x: clamp01(img.x) * frameW, y: clamp01(img.y) * frameH };
+  });
+  return {
+    region,
+    polygon,
+    centroid: centroidOf(polygon),
+    bbox: bboxOf(polygon),
+  };
+}
+
 /** SVG `points` string for a polygon (frame px). */
 export function polygonPointsAttr(points: PxPoint[]): string {
   return points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');

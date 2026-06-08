@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { readSkinFromPhoto } from '@/api/skinRead';
 import type { SkinReadOutcome } from '@/types/skinRead';
 import { FirstFindingScreen } from './FirstFindingScreen';
+import type { FaceLandmarks } from './faceRegions';
 import type { ScreenTheme } from './metricTint';
 
 export interface FirstFindingContainerProps {
@@ -19,6 +20,9 @@ export interface FirstFindingContainerProps {
   onRetake: () => void;
   theme?: ScreenTheme;
   mirrored?: boolean;
+  /** Real face anchors (faceGeometryProvider / AI overlay) → glows track the
+   *  actual face. Wire from the scan flow's detected geometry when available. */
+  landmarks?: FaceLandmarks;
 }
 
 export function FirstFindingContainer({
@@ -27,6 +31,7 @@ export function FirstFindingContainer({
   onRetake,
   theme = 'dark',
   mirrored = true,
+  landmarks,
 }: FirstFindingContainerProps) {
   const [outcome, setOutcome] = useState<SkinReadOutcome>({ status: 'pending' });
   const reqId = useRef(0);
@@ -64,6 +69,7 @@ export function FirstFindingContainer({
       onTryAgain={run}
       theme={theme}
       mirrored={mirrored}
+      landmarks={landmarks}
     />
   );
 }
