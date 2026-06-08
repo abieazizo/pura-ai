@@ -270,9 +270,13 @@ export function StackCardView({
   const accent = theme?.accent ?? puraShopHome.ink;
   const halo = theme?.halo ?? puraShopHome.treatHalo;
 
-  const zoneH = Math.round(width * 0.78);
-  const imgW = Math.round(width * 0.6);
-  const imgH = Math.round(zoneH * 0.84);
+  // CYCLE 11 — the packshot is now the card's commanding hero. The zone grows
+  // from a modest 0.78×width to a towering gallery proportion, and the product
+  // fills far more of it, so a resting card reads as a premium still-life on a
+  // lit plinth — not a thumbnail with copy beside it.
+  const zoneH = Math.round(width * 1.04);
+  const imgW = Math.round(width * 0.74);
+  const imgH = Math.round(zoneH * 0.82);
 
   const showOrb = card.hasRealPersonalization && card.matchPercent != null;
   const productLabel = `${p.brand} ${p.shortName ?? p.name}`;
@@ -349,7 +353,7 @@ export function StackCardView({
         accessibilityRole="button"
         accessibilityLabel={`${productLabel}. ${card.reason}`}
       >
-        {/* The floating product on its pillar halo. */}
+        {/* The hero product, lit on its pillar plinth. */}
         <View style={[styles.zone, { width, height: zoneH }]}>
           <Svg
             width={width}
@@ -361,41 +365,66 @@ export function StackCardView({
               <RadialGradient
                 id="halo"
                 cx="50%"
-                cy="44%"
-                rx="58%"
-                ry="58%"
+                cy="42%"
+                rx="62%"
+                ry="60%"
                 fx="48%"
-                fy="38%"
+                fy="34%"
               >
-                {/* Richer four-stop falloff (was 3) — a brighter concentrated
-                    core that eases through a soft mid-bloom to nothing, so the
-                    product sits in a luminous pool of its pillar's atmosphere
-                    rather than on a flat tinted disc. */}
+                {/* Richer four-stop falloff — a brighter concentrated core that
+                    eases through a soft mid-bloom to nothing, so the product
+                    sits in a luminous pool of its pillar's atmosphere. */}
                 <Stop offset="0%" stopColor={halo} stopOpacity={1} />
-                <Stop offset="34%" stopColor={halo} stopOpacity={0.78} />
+                <Stop offset="34%" stopColor={halo} stopOpacity={0.8} />
                 <Stop offset="66%" stopColor={halo} stopOpacity={0.42} />
                 <Stop offset="100%" stopColor={halo} stopOpacity={0} />
               </RadialGradient>
+              {/* Museum spotlight — a soft vertical cone of light falling from
+                  the top onto the hero, so the packshot reads as a lit gallery
+                  object rather than a sticker on a flat disc. */}
+              <RadialGradient
+                id="spot"
+                cx="50%"
+                cy="2%"
+                rx="46%"
+                ry="78%"
+                fx="50%"
+                fy="0%"
+              >
+                <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.92} />
+                <Stop offset="48%" stopColor="#FFFFFF" stopOpacity={0.34} />
+                <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+              </RadialGradient>
             </Defs>
             <Rect x={0} y={0} width={width} height={zoneH} fill="url(#halo)" />
-            {/* Two-layer contact shadow — a wide soft pool + a tighter core —
-                so the floating product reads as grounded still-life, not a
-                sticker on a flat ellipse. */}
+            <Rect x={0} y={0} width={width} height={zoneH} fill="url(#spot)" />
+
+            {/* The PLINTH — a layered elliptical pedestal the hero rests on:
+                a broad soft tint pool, a crisp pillar-tinted disc, and a tight
+                grounded contact core. Reads as a gallery podium, not a shadow. */}
             <Ellipse
               cx={width / 2}
-              cy={zoneH - 16}
+              cy={zoneH - 30}
+              rx={imgW * 0.6}
+              ry={28}
+              fill={accent}
+              opacity={0.07}
+            />
+            <Ellipse
+              cx={width / 2}
+              cy={zoneH - 26}
               rx={imgW * 0.46}
-              ry={13}
+              ry={18}
               fill={puraShopHome.ink}
               opacity={0.05}
             />
             <Ellipse
               cx={width / 2}
-              cy={zoneH - 16}
+              cy={zoneH - 22}
               rx={imgW * 0.3}
-              ry={7}
+              ry={8}
               fill={puraShopHome.ink}
-              opacity={0.09}
+              opacity={0.11}
             />
           </Svg>
 
@@ -412,12 +441,12 @@ export function StackCardView({
 
           {showOrb ? (
             <View style={[styles.orb, { right: H_PAD }]} pointerEvents="none">
-              <MatchOrb percent={card.matchPercent!} size={64} />
+              <MatchOrb percent={card.matchPercent!} size={88} />
             </View>
           ) : null}
         </View>
 
-        {/* Text block — brand, name, the consultant's reason. */}
+        {/* Text block — brand + the hero serif name. */}
         <View style={styles.body}>
           <Text style={styles.brand} numberOfLines={1}>
             {p.brand.toUpperCase()}
@@ -425,9 +454,20 @@ export function StackCardView({
           <Text style={styles.name} numberOfLines={2}>
             {p.name}
           </Text>
-          <Text style={styles.reason} numberOfLines={3}>
-            {card.reason}
-          </Text>
+        </View>
+
+        {/* WHY THIS — the consultant's reason, promoted from gray body text to a
+            signature editorial pull-quote: an accent rule, a kicker, and the
+            reason set in serif so the recommendation reads as a stated verdict,
+            not fine print. The single most "why-recommended" moment on the card. */}
+        <View style={styles.whyBlock}>
+          <View style={[styles.whyRule, { backgroundColor: accent }]} />
+          <View style={styles.whyTextCol}>
+            <Text style={styles.whyKicker}>WHY THIS</Text>
+            <Text style={styles.whyReason} numberOfLines={3}>
+              {card.reason}
+            </Text>
+          </View>
         </View>
       </Pressable>
 
@@ -478,13 +518,19 @@ export function StackCardView({
         </Pressable>
       ) : null}
 
-      {/* Footer — price + add-to-routine. */}
+      {/* Footer — a confident price-anchored bar. The price is promoted to a
+          large display figure with a raised currency mark, sat under a quiet
+          kicker, so the spend decision carries real weight opposite the add CTA. */}
       <View style={styles.footer}>
-        <View style={styles.priceRow}>
-          <Text style={styles.price}>{formatPrice(p.price)}</Text>
-          {p.compareAtPrice && p.compareAtPrice > p.price ? (
-            <Text style={styles.priceWas}>{formatPrice(p.compareAtPrice)}</Text>
-          ) : null}
+        <View style={styles.priceCol}>
+          <Text style={styles.priceKicker}>PRICE</Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceCurrency}>$</Text>
+            <Text style={styles.price}>{formatPriceFigure(p.price)}</Text>
+            {p.compareAtPrice && p.compareAtPrice > p.price ? (
+              <Text style={styles.priceWas}>{formatPrice(p.compareAtPrice)}</Text>
+            ) : null}
+          </View>
         </View>
         {inRoutine ? (
           <Animated.View
@@ -647,6 +693,12 @@ function formatPrice(n: number): string {
   return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
 }
 
+// The figure WITHOUT a currency mark — the footer renders `$` as its own raised
+// glyph beside this so the price reads as a composed display number.
+function formatPriceFigure(n: number): string {
+  return Number.isInteger(n) ? `${n}` : n.toFixed(2);
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: puraShopHome.cardSurface,
@@ -707,38 +759,68 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   orb: {
+    // The match medallion now overlaps the top-right of the hero zone as a
+    // dominant badge — lifted slightly off the corner so it reads as pinned to
+    // the product, not floating in the margin.
     position: 'absolute',
-    top: puraShopSpace.md,
+    top: puraShopSpace.sm,
   },
 
   // Body
   body: {
     paddingHorizontal: H_PAD,
-    paddingTop: puraShopSpace.md,
+    paddingTop: puraShopSpace.lg,
   },
   brand: {
     // Tracked uppercase brand line — sits as a quiet eyebrow above the serif.
     ...puraShopType.brand,
-    letterSpacing: 1.3,
+    fontSize: 12,
+    letterSpacing: 1.6,
     color: puraShopHome.quietInk,
-    marginBottom: 5,
+    marginBottom: 6,
   },
   name: {
-    // Hero product name — the editorial display moment of the card. Sized up
-    // and tracked tighter than the legacy token so the serif lands with
-    // confidence instead of reading timid.
+    // HERO product name — the editorial display moment of the card. Pushed to a
+    // commanding display size so the serif dominates the lower half of the card
+    // the way a gallery label dominates beneath the object.
     ...puraShopType.heroProductSerif,
-    fontSize: 28,
-    lineHeight: 31,
-    letterSpacing: -0.8,
+    fontSize: 36,
+    lineHeight: 38,
+    letterSpacing: -1.1,
     color: puraShopHome.ink,
-    marginBottom: 9,
   },
-  reason: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14.5,
-    lineHeight: 21,
-    letterSpacing: -0.1,
+
+  // WHY THIS — the signature recommendation moment.
+  whyBlock: {
+    flexDirection: 'row',
+    paddingHorizontal: H_PAD,
+    marginTop: puraShopSpace.lg,
+  },
+  whyRule: {
+    width: 3,
+    borderRadius: 2,
+    marginRight: 13,
+    // Stretches to the height of the reason text beside it.
+    alignSelf: 'stretch',
+  },
+  whyTextCol: {
+    flex: 1,
+  },
+  whyKicker: {
+    ...puraShopType.tagLabel,
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+    color: puraShopHome.quietInk,
+    marginBottom: 6,
+  },
+  whyReason: {
+    // The verdict, set in serif — reads as a stated reason, not body fine print.
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 19,
+    lineHeight: 25,
+    letterSpacing: -0.3,
     color: puraShop.inkSecondary,
   },
   compareChipWrap: {
@@ -908,48 +990,71 @@ const styles = StyleSheet.create({
   // Footer
   footer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: H_PAD,
-    paddingTop: puraShopSpace.lg,
+    paddingTop: puraShopSpace.xl,
     paddingBottom: puraShopSpace.xl,
+  },
+  priceCol: {
+    alignItems: 'flex-start',
+  },
+  priceKicker: {
+    ...puraShopType.tagLabel,
+    fontSize: 9.5,
+    lineHeight: 11,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: puraShopHome.quietInk,
+    marginBottom: 3,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
-  price: {
-    // Primary price figure — sized up a touch and tracked tighter so it lands
-    // as the footer's confident data moment. Tabular figures (shared tnum) keep
-    // the digits column-aligned and jitter-free.
-    ...puraShopType.priceLarge,
-    ...tnum,
-    fontSize: 19,
-    lineHeight: 22,
+  priceCurrency: {
+    // Raised currency mark — smaller than the figure and lifted, so the number
+    // itself is the hero of the price.
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 18,
     letterSpacing: -0.4,
+    color: puraShopHome.ink,
+    marginRight: 1,
+  },
+  price: {
+    // Commanding display price — a large tabular figure that anchors the footer
+    // opposite the add CTA. Tabular figures (shared tnum) keep the digits
+    // column-aligned and jitter-free.
+    ...tnum,
+    fontFamily: 'Inter-Bold',
+    fontSize: 34,
+    lineHeight: 36,
+    letterSpacing: -1.4,
     color: puraShopHome.ink,
   },
   priceWas: {
     ...puraShopType.price,
     ...tnum,
+    fontSize: 14,
     color: puraShopHome.quietInk,
     textDecorationLine: 'line-through',
-    marginLeft: 8,
+    marginLeft: 9,
   },
 
-  // Committed "in routine" confirmation pill (replaces the add button).
+  // Committed "in routine" confirmation pill (replaces the add button). Scaled
+  // to sit at the same commit weight as the enlarged hero add disc.
   addedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderRadius: 999,
     backgroundColor: puraShopHome.budgetTint,
   },
   addedPillText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12.5,
+    fontSize: 13.5,
     letterSpacing: 0.3,
     color: puraShopHome.budgetInk,
   },

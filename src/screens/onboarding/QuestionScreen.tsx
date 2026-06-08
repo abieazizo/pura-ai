@@ -124,7 +124,9 @@ export function QuestionScreen({
 
   const target = targetFor('question', width, height, insets.top);
   const lineTop = orbBottom(target) + 18;
-  const cardsTop = Math.round(height * 0.34);
+  // Cards drop a touch lower so the larger display-scale question (up to three
+  // lines) has confident breathing room above the decision.
+  const cardsTop = Math.round(height * 0.37);
   const trackWidth = width - 48;
   const accent = dark ? RAIL_ACCENT_DARK : RAIL_ACCENT_LIGHT;
 
@@ -491,19 +493,22 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   lines: { position: 'absolute', left: 24, right: 24, alignItems: 'center' },
+  // Display-scale prompt — the orb's question lands as a dramatic editorial
+  // statement. adjustsFontSizeToFit (set on the OrbSpeech static path) keeps a
+  // long line within three lines, so this larger base only amplifies presence.
   question: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 30,
-    lineHeight: 35,
-    letterSpacing: -0.7,
+    fontSize: 36,
+    lineHeight: 40,
+    letterSpacing: -1.1,
     textAlign: 'center',
   },
-  // The orb's spoken reply — a touch smaller + more intimate than the prompt.
+  // The orb's spoken reply — more intimate than the prompt, still elevated.
   reaction: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 21,
-    lineHeight: 27,
-    letterSpacing: -0.3,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.5,
     textAlign: 'center',
   },
   cards: { position: 'absolute', left: 0, right: 0, bottom: 0 },

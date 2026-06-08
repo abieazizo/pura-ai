@@ -59,7 +59,11 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 const SEEN_KEY = '@pura/coldOpenSeen';
 
-const HERO_WORDS = ['Your', 'face', 'already', 'knows.'] as const;
+// The hero stacks as an editorial masthead: three dramatic display-scale lines,
+// each its own baseline. "knows." carries the living glow. Cinematic, not a
+// centered caption.
+const HERO_LINES = [['Your', 'face'], ['already'], ['knows.']] as const;
+const HERO_WORDS = HERO_LINES.flat() as readonly string[];
 
 export type ColdOpenVariant = 'first' | 'repeat' | 'reduce';
 
@@ -77,8 +81,10 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
   const reduceMotion = useReduceMotion();
   const { width, height } = Dimensions.get('window');
 
-  // The orb is THE hero of this screen — give it generous presence.
-  const orbSize = Math.min(Math.round(width * 0.72), 300);
+  // The orb is now the luminous MASTHEAD — a jewel that crowns the editorial
+  // headline rather than dominating center. The dramatic display serif is the
+  // hero; the orb is its living signature above the masthead rule.
+  const orbSize = Math.min(Math.round(width * 0.42), 176);
 
   // 'boot' (deciding) → 'held' (the 400ms inhale, first-launch only) → 'run'.
   const [phase, setPhase] = useState<'boot' | 'held' | 'run'>('boot');
@@ -365,37 +371,60 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
         />
       </Animated.View>
 
-      {/* Orb + hero + subline cluster (optically above center). */}
-      <View style={styles.cluster} pointerEvents="box-none">
+      {/* Editorial masthead: a luminous orb signature crowns a left-anchored
+          display-scale serif headline. The TYPE is the hero — oversized,
+          stacked, confident — with the orb as its living mark and a hairline
+          masthead rule grounding the composition. */}
+      <View style={[styles.cluster, { paddingTop: insets.top }]} pointerEvents="box-none">
         {showContent && (
-          <Animated.View style={orbExitStyle}>
-            <AuroraOrb
-              size={orbSize}
-              state={variant === 'first' ? 'awakening' : 'idle'}
-              reduceMotion={reduceMotion || variant === 'reduce'}
-              enableParallax={!(reduceMotion || variant === 'reduce')}
-            />
-          </Animated.View>
-        )}
+          <Animated.View style={[styles.masthead, textPlane]} pointerEvents="box-none">
+            {/* The orb persists through the exit (only orbExitStyle — shrinks +
+                lifts toward Screen 2), proving the shared-element handoff; the
+                copy below fades/lifts independently. */}
+            <Animated.View style={[styles.orbMast, orbExitStyle]} pointerEvents="none">
+              <AuroraOrb
+                size={orbSize}
+                state={variant === 'first' ? 'awakening' : 'idle'}
+                reduceMotion={reduceMotion || variant === 'reduce'}
+                enableParallax={!(reduceMotion || variant === 'reduce')}
+              />
+            </Animated.View>
 
-        {showContent && (
-          <Animated.View style={[styles.copyWrap, textPlane, contentExitStyle]} pointerEvents="none">
-            <View style={styles.heroRow}>
-              {HERO_WORDS.map((word, i) => (
-                <FocusWord
-                  key={word}
-                  text={word}
-                  value={words[i]}
-                  dy={wordCfg.dy}
-                  scaleFrom={wordCfg.scaleFrom}
-                  glowValue={i === HERO_WORDS.length - 1 ? knowsN : undefined}
-                />
-              ))}
-            </View>
+            <Animated.View style={contentExitStyle} pointerEvents="none">
+              <Animated.Text style={[styles.kicker, sublineStyle]} maxFontSizeMultiplier={1.2}>
+                MEET PURA
+              </Animated.Text>
 
-            <Animated.Text style={[styles.subline, sublineStyle]} maxFontSizeMultiplier={1.2}>
-              Pura reads what your skin needs — and builds the routine that fits.
-            </Animated.Text>
+              <View style={styles.heroBlock}>
+                {(() => {
+                  let idx = -1;
+                  return HERO_LINES.map((line, li) => (
+                    <View key={`line-${li}`} style={styles.heroLine}>
+                      {line.map((word) => {
+                        idx += 1;
+                        const i = idx;
+                        return (
+                          <FocusWord
+                            key={word}
+                            text={word}
+                            value={words[i]}
+                            dy={wordCfg.dy}
+                            scaleFrom={wordCfg.scaleFrom}
+                            glowValue={i === HERO_WORDS.length - 1 ? knowsN : undefined}
+                          />
+                        );
+                      })}
+                    </View>
+                  ));
+                })()}
+              </View>
+
+              <Animated.View style={[styles.mastRule, sublineStyle]} pointerEvents="none" />
+
+              <Animated.Text style={[styles.subline, sublineStyle]} maxFontSizeMultiplier={1.2}>
+                Pura reads what your skin needs — and builds the routine that fits.
+              </Animated.Text>
+            </Animated.View>
           </Animated.View>
         )}
       </View>
@@ -494,49 +523,75 @@ function FocusWord({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.porcelain },
-  cluster: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 28 },
-  copyWrap: { alignItems: 'center', paddingHorizontal: 28, marginTop: 26 },
-  heroRow: {
+  // Editorial poster: the masthead is pinned to a strong left baseline grid and
+  // sits in the upper two-thirds, leaving dramatic whitespace above the CTA.
+  cluster: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
+  masthead: { alignItems: 'flex-start' },
+  // The orb crowns the headline as a luminous signature, nudged left so it
+  // reads as a mark on the masthead rather than a centered centerpiece.
+  orbMast: { alignItems: 'flex-start', marginLeft: -6, marginBottom: 18 },
+  kicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 3.4,
+    color: C.signIn,
+    marginBottom: 14,
+  },
+  heroBlock: { alignSelf: 'stretch' },
+  heroLine: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
     alignItems: 'flex-end',
   },
-  wordWrap: { marginHorizontal: 6 },
+  wordWrap: { marginRight: 12 },
+  // Dramatic display-scale serif — the cinematic hero. Tight leading stacks the
+  // lines into a single confident block. Sized so "Your face" holds one line on
+  // a standard width; on the narrowest devices flex-wrap stacks it gracefully.
   heroWord: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 46,
-    lineHeight: 50,
-    letterSpacing: -1.4,
+    fontSize: 70,
+    lineHeight: 67,
+    letterSpacing: -2.4,
     color: C.heroInk,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   heroGlow: {
     position: 'absolute',
     color: C.knowsGlow,
     textShadowColor: C.knowsGlow,
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 16,
+    textShadowRadius: 26,
+  },
+  // Hairline masthead rule — the editorial signature that separates the display
+  // headline from the supporting line.
+  mastRule: {
+    height: 2,
+    width: 64,
+    borderRadius: 1,
+    backgroundColor: C.heroInk,
+    opacity: 0,
+    marginTop: 26,
+    marginBottom: 18,
   },
   subline: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     letterSpacing: -0.1,
     color: C.subInk,
-    textAlign: 'center',
-    marginTop: 22,
-    maxWidth: 312,
+    textAlign: 'left',
+    maxWidth: 320,
     opacity: 0,
   },
-  bottom: { paddingHorizontal: 24, alignItems: 'center' },
+  bottom: { paddingHorizontal: 28, alignItems: 'stretch' },
   shadowHost: {
     position: 'absolute',
-    left: 24,
-    right: 24,
+    left: 28,
+    right: 28,
     top: 0,
-    height: 56,
-    borderRadius: 28,
+    height: 58,
+    borderRadius: 29,
     backgroundColor: C.porcelain,
     shadowColor: C.buttonShadow,
     shadowOffset: { width: 0, height: 12 },
@@ -546,9 +601,9 @@ const styles = StyleSheet.create({
   },
   buttonRise: { alignSelf: 'stretch' },
   button: {
-    height: 56,
+    height: 58,
     alignSelf: 'stretch',
-    borderRadius: 28,
+    borderRadius: 29,
     backgroundColor: C.buttonInk,
     alignItems: 'center',
     justifyContent: 'center',
@@ -562,7 +617,7 @@ const styles = StyleSheet.create({
   },
   shimmerWrap: { position: 'absolute', top: 0, bottom: 0, width: 120 },
   shimmerFill: { flex: 1 },
-  signInHit: { alignItems: 'center', marginTop: 22 },
+  signInHit: { alignItems: 'center', marginTop: 20 },
   signIn: {
     fontFamily: 'Inter-Regular',
     fontSize: 13.5,

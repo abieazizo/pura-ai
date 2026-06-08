@@ -191,8 +191,9 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {/* Spacer pushes the field below the orb + question. */}
-          <View style={{ height: Math.max(0, lineTop - insets.top + 64) }} />
+          {/* Spacer pushes the field below the orb + the larger display-scale
+              question (which can wrap to two lines). */}
+          <View style={{ height: Math.max(0, lineTop - insets.top + 108) }} />
 
           {phase === 'asking' && (
             <Animated.View style={[styles.body, bodyStyle]}>
@@ -273,11 +274,13 @@ const styles = StyleSheet.create({
     right: 24,
     alignItems: 'center',
   },
+  // The orb's voice at display scale — its question reads as a dramatic
+  // editorial statement, not a modest caption.
   voice: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 31,
-    lineHeight: 37,
-    letterSpacing: -0.7,
+    fontSize: 42,
+    lineHeight: 46,
+    letterSpacing: -1.4,
     color: palette.ink,
     textAlign: 'center',
   },

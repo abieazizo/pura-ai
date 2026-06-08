@@ -42,8 +42,12 @@ const IDLE = {
 
 export type AddButtonSize = 'lg' | 'md' | 'sm';
 
+// CYCLE 11 — the `lg` add affordance on the hero card is promoted to a real
+// commit-weight disc (44→56) so it stands as the card's primary action beside
+// the now-commanding display price, not a quiet icon button. md / sm (supporting
+// + mini cards elsewhere) are unchanged.
 const DIMENSIONS: Record<AddButtonSize, { size: number; icon: number }> = {
-  lg: { size: 44, icon: 19 },
+  lg: { size: 56, icon: 24 },
   md: { size: 36, icon: 16 },
   sm: { size: 32, icon: 14 },
 };

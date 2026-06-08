@@ -29,7 +29,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Ellipse } from 'react-native-svg';
+import Svg, { Circle, Ellipse } from 'react-native-svg';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -56,6 +56,7 @@ import {
   derivePillars,
   directionMeta,
   regionFocus,
+  severityFraction,
   severityTone,
   SEVERITY_TICKS,
   type InsightIcon,
@@ -158,6 +159,101 @@ const rt = StyleSheet.create({
     fontSize: 22,
     lineHeight: 28,
     letterSpacing: -0.4,
+  },
+  // ---- Cycle 11 Focus masthead + cover (BOLD editorial "skin report") ----
+  // Oversized serif masthead — the beat opens like a magazine cover, not a
+  // section label. Dramatically larger than the standard 33px heroTitle.
+  focusMastTitle: {
+    fontFamily: SERIF_SEMI,
+    fontSize: 52,
+    lineHeight: 49,
+    letterSpacing: -1.8,
+  },
+  // Tabular "01 — 03" running index, sat opposite the eyebrow.
+  focusIndex: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 0.5,
+    ...tnum,
+  },
+  // The hero cover's concern title, set large in serif OVER the face banner.
+  coverTitle: {
+    fontFamily: SERIF_SEMI,
+    fontSize: 40,
+    lineHeight: 40,
+    letterSpacing: -1.2,
+  },
+  // White uppercase kicker pinned top-left of the cover banner.
+  coverKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10.5,
+    lineHeight: 13,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.92)',
+  },
+  // The cover's editorial "what it is" line — larger than the standard phrase.
+  coverPhrase: {
+    fontFamily: SERIF_REG,
+    fontSize: 25,
+    lineHeight: 31,
+    letterSpacing: -0.5,
+  },
+  // Big severity word next to the arc gauge on the cover.
+  gaugeLevel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 24,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+  },
+  // Tabular caption under the severity word ("severity · 3 of 4").
+  gaugeUnit: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    lineHeight: 14,
+    letterSpacing: 0.2,
+    ...tnum,
+  },
+  // The "01 / 02 / 03" rank numeral on the secondary finding cards.
+  findingRank: {
+    fontFamily: SERIF_SEMI,
+    fontSize: 22,
+    lineHeight: 22,
+    letterSpacing: -0.5,
+    ...tnum,
+  },
+  // Secondary finding concern name — a step up from the shipped concernName.
+  findingName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 19,
+    lineHeight: 22,
+    letterSpacing: -0.3,
+  },
+  // Big lit-rank numeral at the center of the cover's severity arc.
+  arcNum: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 34,
+    lineHeight: 36,
+    letterSpacing: -1.0,
+    ...tnum,
+  },
+  // Faint "/ 4" denominator under the arc numeral.
+  arcDen: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    lineHeight: 13,
+    letterSpacing: 0,
+    marginTop: 1,
+    ...tnum,
+  },
+  // The compact arc numeral on secondary finding cards.
+  arcNumCompact: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 19,
+    lineHeight: 20,
+    letterSpacing: -0.6,
+    ...tnum,
   },
   // Tracked uppercase eyebrow — the section kicker above each hero.
   eyebrow: {
@@ -346,72 +442,139 @@ export function ScanRevealScreen({
       case 1:
         return (
           <Slide footer={<NextInk onPress={handleNext} />}>
-            <View style={styles.titleBlock}>
-              <Eyebrow label={BEAT_EYEBROWS.focus} />
-              <Text style={[rt.heroTitle, styles.heroTitleText, { color: puraReveal.ink }]}>
-                Top Focus Areas
+            <View style={styles.focusMasthead}>
+              <View style={styles.focusMastheadHead}>
+                <Eyebrow label={BEAT_EYEBROWS.focus} />
+                <Text style={[rt.focusIndex, { color: puraReveal.veryMuted }]}>
+                  {`01 — ${pad2(focus.length)}`}
+                </Text>
+              </View>
+              <Text style={[rt.focusMastTitle, { color: puraReveal.ink }]}>
+                Your skin{'\n'}report
               </Text>
+              <View style={styles.focusMastRule} />
               <Text style={[puraRevealType.body, styles.subtext]}>
-                The areas worth your attention first.
+                The areas worth your attention first — read in order.
               </Text>
             </View>
 
-            <View style={styles.stack}>
+            <View style={styles.focusStack}>
               {focus.map((f, i) => {
                 const sev = severityTone(f.severity);
                 const dir = directionMeta(f.direction);
+                const frac = severityFraction(f.severityRank);
+                const hero = i === 0;
                 return (
                   <StaggerItem key={f.key} index={i}>
-                    <View style={styles.findingCard}>
-                      <View style={styles.findingTop}>
-                        <CropPanel photoUri={photoUri} region={f.region} accent={f.color} />
-                        <View style={styles.findingBody}>
-                          <View style={styles.findingHead}>
-                            <Text
-                              style={[puraRevealType.concernName, { color: puraReveal.ink, flex: 1 }]}
-                              numberOfLines={1}
-                            >
-                              {f.name}
-                            </Text>
+                    {hero ? (
+                      <View style={styles.coverCard}>
+                        {/* Full-bleed hero face banner with the headline data-viz overlaid */}
+                        <View style={styles.coverBanner}>
+                          <CoverImage photoUri={photoUri} region={f.region} />
+                          <View style={styles.coverTopRow} pointerEvents="none">
+                            <View style={styles.coverKicker}>
+                              <View style={[styles.coverKickerDot, { backgroundColor: f.color }]} />
+                              <Text style={rt.coverKicker}>Primary focus</Text>
+                            </View>
                             <TrendChip icon={dir.icon} label={dir.label} color={dir.color} bg={dir.bg} />
                           </View>
-
-                          <View style={styles.meterRow}>
-                            <SeverityMeter rank={f.severityRank} color={sev.color} />
-                            <Text style={[rt.metaPill, { color: sev.color }]}>
-                              {sev.label}
+                          <View style={styles.coverHeadline} pointerEvents="none">
+                            <Text style={[rt.coverTitle, { color: '#FFFFFF' }]} numberOfLines={2}>
+                              {f.name}
                             </Text>
                           </View>
+                        </View>
 
-                          <Text style={[rt.focusPhrase, { color: puraReveal.ink }]}>
-                            {f.phrase}
-                          </Text>
+                        {/* Severity data-viz strip — the magazine "score" moment */}
+                        <View style={styles.coverGaugeRow}>
+                          <SeverityArc fraction={frac} color={sev.color} size={92} />
+                          <View style={styles.coverGaugeText}>
+                            <Text style={[rt.gaugeLevel, { color: sev.color }]}>{sev.label}</Text>
+                            <Text style={[rt.gaugeUnit, { color: puraReveal.veryMuted }]}>
+                              {`severity · ${f.severityRank} of ${SEVERITY_TICKS}`}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Text style={[rt.coverPhrase, { color: puraReveal.ink }]}>
+                          {f.phrase}
+                        </Text>
+
+                        <View style={styles.coverNotes}>
+                          <View style={styles.coverNoteCol}>
+                            <Text style={[rt.microCaps, { color: puraReveal.veryMuted }]}>
+                              Why it matters
+                            </Text>
+                            <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 6 }]}>
+                              {f.why}
+                            </Text>
+                          </View>
+                          <View style={[styles.coverDoCard, { borderLeftColor: f.color }]}>
+                            <Text style={[rt.microCaps, { color: puraReveal.blueText }]}>
+                              What to do
+                            </Text>
+                            <Text style={[puraRevealType.body, { color: puraReveal.ink, marginTop: 6 }]}>
+                              {f.action}
+                            </Text>
+                          </View>
                         </View>
                       </View>
+                    ) : (
+                      <View style={styles.findingCard}>
+                        <View style={styles.findingTop}>
+                          <CropPanel photoUri={photoUri} region={f.region} accent={f.color} />
+                          <View style={styles.findingBody}>
+                            <View style={styles.findingHead}>
+                              <Text style={[rt.findingRank, { color: f.color }]}>{pad2(i + 1)}</Text>
+                              <Text
+                                style={[rt.findingName, { color: puraReveal.ink, flex: 1 }]}
+                                numberOfLines={1}
+                              >
+                                {f.name}
+                              </Text>
+                              <TrendChip icon={dir.icon} label={dir.label} color={dir.color} bg={dir.bg} />
+                            </View>
 
-                      <View style={styles.findingDivider} />
+                            <View style={styles.meterRow}>
+                              <SeverityArc fraction={frac} color={sev.color} size={56} compact />
+                              <View style={{ flex: 1 }}>
+                                <Text style={[rt.metaPill, { color: sev.color }]}>{sev.label}</Text>
+                                <Text style={[rt.gaugeUnit, { color: puraReveal.veryMuted, marginTop: 2 }]}>
+                                  {`${f.severityRank} of ${SEVERITY_TICKS}`}
+                                </Text>
+                              </View>
+                            </View>
 
-                      <View style={styles.findingNote}>
-                        <Text style={[rt.microCaps, { color: puraReveal.veryMuted }]}>
-                          Why it matters
-                        </Text>
-                        <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 6 }]}>
-                          {f.why}
-                        </Text>
-                      </View>
+                            <Text style={[rt.focusPhrase, { color: puraReveal.ink }]}>
+                              {f.phrase}
+                            </Text>
+                          </View>
+                        </View>
 
-                      <View style={styles.findingAction}>
-                        <View style={[styles.actionMark, { backgroundColor: f.color }]} />
-                        <View style={styles.findingActionCol}>
-                          <Text style={[rt.microCaps, { color: puraReveal.blueText }]}>
-                            What to do
+                        <View style={styles.findingDivider} />
+
+                        <View style={styles.findingNote}>
+                          <Text style={[rt.microCaps, { color: puraReveal.veryMuted }]}>
+                            Why it matters
                           </Text>
-                          <Text style={[puraRevealType.body, { color: puraReveal.ink, marginTop: 6 }]}>
-                            {f.action}
+                          <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 6 }]}>
+                            {f.why}
                           </Text>
                         </View>
+
+                        <View style={styles.findingAction}>
+                          <View style={[styles.actionMark, { backgroundColor: f.color }]} />
+                          <View style={styles.findingActionCol}>
+                            <Text style={[rt.microCaps, { color: puraReveal.blueText }]}>
+                              What to do
+                            </Text>
+                            <Text style={[puraRevealType.body, { color: puraReveal.ink, marginTop: 6 }]}>
+                              {f.action}
+                            </Text>
+                          </View>
+                        </View>
                       </View>
-                    </View>
+                    )}
                   </StaggerItem>
                 );
               })}
@@ -670,19 +833,111 @@ function StaggerItem({ index, children }: { index: number; children: React.React
 }
 
 // ---------------------------------------------------------------------------
-// SeverityMeter — segmented bar lit to the canonical severity rank (0..4).
+// SeverityArc — the BOLD severity data-viz (Cycle 11). A thick ~270° dial that
+// fills to the canonical severity fraction, with the lit rank as a large
+// tabular numeral at its center ("3" over a faint "/4"). Replaces the timid
+// 68px segmented bar so the magazine "score" reads in one second. Static SVG
+// only (no animated SVG props) — Expo-Go-safe.
 // ---------------------------------------------------------------------------
 
-function SeverityMeter({ rank, color }: { rank: number; color: string }) {
+function SeverityArc({
+  fraction,
+  color,
+  size,
+  compact = false,
+}: {
+  fraction: number;
+  color: string;
+  size: number;
+  compact?: boolean;
+}) {
+  const stroke = compact ? 5 : 8;
+  const r = (size - stroke) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circ = 2 * Math.PI * r;
+  // Draw a 3/4 dial (270°). The SVG starts at 3-o'clock; we rotate the whole
+  // SVG container by 135° (RN transform → portable CSS transform) so the open
+  // gap sits centered at the bottom. The numeral overlay lives in a separate,
+  // un-rotated layer so the digits stay upright.
+  const sweep = 0.75;
+  const litRank = Math.round(fraction * SEVERITY_TICKS);
+  const dashArc = circ * sweep;
+  const gap = circ - dashArc;
+  const litFrac = Math.max(0, Math.min(1, fraction));
   return (
-    <View style={styles.meter} accessibilityRole="progressbar">
-      {Array.from({ length: SEVERITY_TICKS }).map((_, i) => (
-        <View
-          key={i}
-          style={[styles.meterTick, { backgroundColor: i < rank ? color : puraReveal.ringTrack }]}
-        />
-      ))}
+    <View style={{ width: size, height: size }}>
+      <View style={styles.arcRotor} pointerEvents="none">
+        <Svg width={size} height={size}>
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            stroke={puraReveal.ringTrack}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            fill="none"
+            strokeDasharray={`${dashArc} ${gap}`}
+          />
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            stroke={color}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            fill="none"
+            strokeDasharray={`${dashArc * litFrac} ${circ}`}
+          />
+        </Svg>
+      </View>
+      <View style={styles.arcCenter} pointerEvents="none">
+        {compact ? (
+          <Text style={[rt.arcNumCompact, { color }]}>{litRank}</Text>
+        ) : (
+          <>
+            <Text style={[rt.arcNum, { color: puraReveal.ink }]}>{litRank}</Text>
+            <Text style={[rt.arcDen, { color: puraReveal.veryMuted }]}>{`/ ${SEVERITY_TICKS}`}</Text>
+          </>
+        )}
+      </View>
     </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CoverImage — the captured face as a full-bleed editorial banner across the
+// top of the primary finding's cover card. A bottom-weighted ink scrim lets the
+// large white serif title sit legibly over the photo (or a neutral skin
+// gradient when no photo). Region-aware crop via the same regionFocus map.
+// ---------------------------------------------------------------------------
+
+function CoverImage({ photoUri, region }: { photoUri?: string; region: string }) {
+  return (
+    <>
+      {photoUri ? (
+        <Image
+          source={{ uri: photoUri }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          contentPosition={regionFocus(region)}
+        />
+      ) : (
+        <LinearGradient
+          colors={SKIN_GRADIENT}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      <LinearGradient
+        colors={['rgba(8,12,24,0.10)', 'rgba(8,12,24,0.04)', 'rgba(8,12,24,0.78)']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+    </>
   );
 }
 
@@ -818,6 +1073,11 @@ function clampStep(s: number): number {
   return Math.round(s);
 }
 
+/** Zero-padded count for the editorial running index ("01", "03"). */
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
 const styles = StyleSheet.create({
   // The ambient LinearGradient owns the field now; the porcelain anchor below
   // it keeps the very base on-brand if the gradient ever fails to mount.
@@ -919,8 +1179,76 @@ const styles = StyleSheet.create({
     ...puraRevealShadow.card,
   },
 
-  // Screen 3 — Focus Areas (editorial findings)
+  // Screen 3 — Focus Areas (editorial "skin report")
+  // Oversized serif masthead opening the beat.
+  focusMasthead: { marginBottom: 18 },
+  focusMastheadHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  focusMastRule: {
+    height: 2,
+    backgroundColor: puraReveal.ink,
+    width: 46,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 1,
+  },
+  focusStack: { gap: 16, marginTop: 4 },
+  // Insights (screen 4) card stack — unchanged spacing.
   stack: { gap: puraRevealLayout.cardGap, marginTop: 4 },
+
+  // ---- Primary finding: full-bleed editorial cover card ----
+  coverCard: {
+    backgroundColor: puraReveal.surface,
+    borderRadius: puraRevealRadius.cardLg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: puraReveal.border,
+    overflow: 'hidden',
+    ...puraRevealShadow.float,
+  },
+  coverBanner: {
+    height: 232,
+    backgroundColor: puraReveal.porcelainDeep,
+    justifyContent: 'space-between',
+  },
+  coverTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 16,
+  },
+  coverKicker: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  coverKickerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  coverHeadline: { paddingHorizontal: 20, paddingBottom: 18 },
+  // The severity data-viz strip directly under the banner.
+  coverGaugeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 4,
+  },
+  coverGaugeText: { flex: 1 },
+  coverPhrase: { paddingHorizontal: 20, paddingTop: 12 },
+  coverNotes: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, gap: 14 },
+  coverNoteCol: {},
+  coverDoCard: {
+    backgroundColor: puraReveal.blue05,
+    borderLeftWidth: 3,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+  },
+
+  // ---- Secondary findings: editorial cards ----
   findingCard: {
     backgroundColor: puraReveal.surface,
     borderRadius: puraRevealRadius.card,
@@ -931,10 +1259,21 @@ const styles = StyleSheet.create({
   },
   findingTop: { flexDirection: 'row', gap: 14, alignItems: 'stretch' },
   findingBody: { flex: 1, justifyContent: 'flex-start', gap: 9 },
-  findingHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  meterRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  meter: { flexDirection: 'row', gap: 4, width: 68 },
-  meterTick: { flex: 1, height: 4, borderRadius: 2 },
+  findingHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  meterRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Rotates the dial SVG 135° so its open gap sits centered at the bottom.
+  // Rotating the container (not per-Circle SVG props) keeps it portable across
+  // SVG backends and avoids the web transform-origin warning.
+  arcRotor: {
+    ...StyleSheet.absoluteFillObject,
+    transform: [{ rotate: '135deg' }],
+  },
+  // Centered numeral overlay for the SeverityArc dial.
+  arcCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   trendChip: {
     flexDirection: 'row',
     alignItems: 'center',

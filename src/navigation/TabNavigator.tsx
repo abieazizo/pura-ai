@@ -48,9 +48,11 @@ import {
   HelpScreen,
   AboutScreen,
 } from '@/screens/me/settings';
-import { PuraRoutineScreen } from '@/screens/routine/pura/PuraRoutineScreen';
-// ISOLATION TEST (temporary): YourRoutineTabScreen wiring reverted to confirm
-// my module isn't the web-boot blocker. Re-applied immediately after.
+// v37 — the RoutineTab + "Build my routine" destination is the "Your Routine"
+// experience (reveal morph · daily home · guided ritual). It reads the canonical
+// SkinState + routine store and DELEGATES to PuraRoutineScreen for the no-scan /
+// building / review lifecycle, so it's a superset, not a rip-out.
+import { YourRoutineTabScreen } from '@/screens/routine/yourRoutine/YourRoutineTabScreen';
 import type {
   HomeStackParamList,
   MeStackParamList,
@@ -77,7 +79,7 @@ function HomeStackScreen() {
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="Home" component={PuraAssistHomeScreen} />
       <HomeStack.Screen name="Plan" component={PlanScreen} />
-      <HomeStack.Screen name="Routine" component={PuraRoutineScreen} />
+      <HomeStack.Screen name="Routine" component={YourRoutineTabScreen} />
       <HomeStack.Screen name="Products" component={PuraShopScreen} />
       <HomeStack.Screen name="ProductDetail" component={ProductDetailV25Screen} />
       <HomeStack.Screen name="CategoryView" component={CategoryView} />
@@ -100,7 +102,7 @@ function ProductsStackScreen() {
       <ProductsStack.Screen name="ProductDetail" component={ProductDetailV25Screen} />
       <ProductsStack.Screen name="CategoryView" component={CategoryView} />
       <ProductsStack.Screen name="ConcernIndex" component={ConcernIndexScreen} />
-      <ProductsStack.Screen name="Routine" component={PuraRoutineScreen} />
+      <ProductsStack.Screen name="Routine" component={YourRoutineTabScreen} />
     </ProductsStack.Navigator>
   );
 }
@@ -161,7 +163,7 @@ export function TabNavigator() {
         }}
       />
 
-      <Tab.Screen name="RoutineTab" component={PuraRoutineScreen} />
+      <Tab.Screen name="RoutineTab" component={YourRoutineTabScreen} />
       <Tab.Screen name="MeTab" component={MeStackScreen} />
       {/* Registered but hidden from the floating dock — see comment above. */}
       <Tab.Screen name="AssistantTab" component={AssistantV25Screen} />

@@ -149,7 +149,7 @@ export function CelebrationCard({
               end={{ x: 0.8, y: 0.95 }}
               style={[StyleSheet.absoluteFill, { borderRadius: ORB / 2 }]}
             />
-            <Sparkle size={34} weight="fill" color={CC.blue} />
+            <Sparkle size={44} weight="fill" color={CC.blue} />
           </Animated.View>
         </View>
 
@@ -188,14 +188,16 @@ export function CelebrationCard({
   );
 }
 
-const ORB = 76;
-const RING = 96;
+const ORB = 100;
+const RING = 128;
 
 const styles = StyleSheet.create({
   card: {
     borderRadius: companionGeo.heroRadius,
     backgroundColor: CC.white,
-    minHeight: 300,
+    // Cycle 11 — the payoff card now matches the bolder hero footprint so the
+    // all-complete ceremony lands as the surface's biggest, most present moment.
+    minHeight: companionGeo.heroHeight,
     overflow: 'hidden',
     justifyContent: 'center',
   },

@@ -217,11 +217,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
-    // A touch more breathing room above the centerpiece deck so it separates
-    // cleanly from the concerns row (hierarchy refinement supporting the
-    // editorial type pass).
-    paddingTop: 12,
-    paddingBottom: 22,
+    // Generous gallery whitespace framing the now-commanding hero card so it
+    // reads as the page's centerpiece object, set apart from the concerns row
+    // above and the saved shelf below.
+    paddingTop: 20,
+    paddingBottom: 34,
   },
   pageHatches: {
     paddingHorizontal: 20,

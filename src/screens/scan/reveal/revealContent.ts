@@ -202,6 +202,16 @@ export interface SeverityTone {
 }
 
 /**
+ * Severity as a 0..1 fraction of the canonical 0..4 rank — drives the BIG arc
+ * gauge on the editorial finding cards (Cycle 11). Pure remap of real model
+ * output; no fabricated precision (the same rank that lights the segments).
+ */
+export function severityFraction(rank: number): number {
+  const clamped = Math.max(0, Math.min(SEVERITY_TICKS, rank));
+  return clamped / SEVERITY_TICKS;
+}
+
+/**
  * Cycle 10 — the severity meter reads as one coherent escalation rather than a
  * rainbow. It now climbs gray → green → amber → deeper amber → coral, so more
  * lit AND warmer always means "worth more attention." "Mild" previously borrowed

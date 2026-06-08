@@ -93,15 +93,15 @@ export function MatchOrb({
         <Circle cx={50} cy={50} r={48} fill="url(#orbShadow)" />
         <Circle cx={50} cy={50} r={48} fill="url(#orbInnerRim)" />
         <Ellipse cx={40} cy={32} rx={20} ry={12} fill="url(#orbHighlight)" />
-        {/* Outer hairline — fine warm rim that makes the orb sit
-            cleanly over any backdrop. */}
+        {/* Outer rim — a crisp blue hairline so the larger medallion sits
+            cleanly over the bright hero halo with a defined edge. */}
         <Circle
           cx={50}
           cy={50}
           r={48}
           fill="none"
           stroke={puraShop.orbRim}
-          strokeWidth={1}
+          strokeWidth={1.5}
         />
       </Svg>
       <View style={styles.textOver} pointerEvents="none">
@@ -135,30 +135,30 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   percent: {
-    // Editorial serif data-moment: larger and tighter than the legacy token so
-    // the match figure reads with confidence inside the orb. Tabular figures
-    // keep the digit from shifting the suffix as values animate/change.
+    // Editorial serif data-moment, scaled for the Cycle-11 hero medallion (now
+    // 88px) so the match figure reads as a confident headline number. Tabular
+    // figures keep the digit from shifting the suffix as values animate/change.
     ...puraShopType.matchPercent,
     ...tnum,
-    fontSize: 26,
-    lineHeight: 27,
-    letterSpacing: -1.0,
+    fontSize: 34,
+    lineHeight: 35,
+    letterSpacing: -1.4,
     color: puraShop.orbPercentText,
   },
   percentSuffix: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 14,
+    fontSize: 18,
     letterSpacing: -0.3,
     color: puraShop.orbPercentText,
     marginLeft: 0.5,
   },
   label: {
-    // Tracked uppercase eyebrow — wider tracking so the tiny caps read as a
+    // Tracked uppercase eyebrow — wider tracking so the small caps read as a
     // deliberate label, optically centered under the figure.
     ...puraShopType.matchLabel,
-    fontSize: 8,
-    letterSpacing: 1.5,
+    fontSize: 9.5,
+    letterSpacing: 2,
     color: puraShop.orbMatchText,
-    marginTop: 0,
+    marginTop: 1,
   },
 });

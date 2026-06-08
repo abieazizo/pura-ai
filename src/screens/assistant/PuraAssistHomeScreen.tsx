@@ -1,16 +1,18 @@
 /**
  * PuraAssistHomeScreen — the Home tab (Pura Assist landing surface).
  *
- * Cycle 3 elevation — the brief: promote the Aurora orb from a buried mid-page
- * widget to THE centerpiece, give the flat porcelain real figure-ground, turn
- * "Tonight's Signal" into a visually-encoded read (not a text list), establish a
- * weight ladder (one primary next step; quick actions demoted), push the hero
- * serif, and add a staggered entrance + scroll-linked header + press/haptics.
+ * Cycle 11 — BOLD structural elevation. The prior cycles refined an orb-crowned,
+ * centred column; users "barely saw changes," so the skin-status hero is now the
+ * unmistakable focal point on open. The composition flips from a symmetric column
+ * to an asymmetric EDITORIAL MASTHEAD:
  *
- * Composition, top → bottom:
  *   • Sticky header — "Home" + a hairline that fades in on scroll.
- *   • Presence zone — scan pill, the LARGE breathing orb (scan-tinted) as the
- *     crown, an editorial centred serif hero, subhead. This is the moment.
+ *   • Masthead hero — a tracked eyebrow, then a GIANT left-aligned Instrument-
+ *     Serif headline at true display scale (~60px) that states tonight's skin
+ *     status, framed by generous whitespace, with the scan-tinted orb floating
+ *     to the upper-right as a glowing intelligence accent (no longer the crown).
+ *     A focused Pura-Blue bloom grounds the headline. This is the one-second
+ *     moment. Below it: the scan-status pill + subhead on one editorial baseline.
  *   • Weight-ladder primary — pre-scan: a glowing "Take a scan" CTA; post-scan:
  *     the elevated "Tonight's read" panel is the focal content.
  *   • Tonight's read — an elevated card with provenance + tonal accent rows
@@ -214,9 +216,13 @@ export function PuraAssistHomeScreen() {
   ];
 
   const scanReady = signal.scanReady;
+  // Masthead headline — three editorial lines at true display scale. The last
+  // line carries the emphasis (the orb's accent blue) so the eye lands on the
+  // verb of tonight's read. Left-aligned, big, confident.
   const heroLines = scanReady
-    ? ['Your skin has', 'context now.']
-    : ['Let’s read your', 'skin tonight.'];
+    ? ['Tonight,', 'your skin', 'has context.']
+    : ['Let’s read', 'your skin', 'tonight.'];
+  const heroEyebrow = scanReady ? 'Your skin tonight' : 'Pura Assist';
   const subhead = scanReady
     ? 'Ask what changed, what to use, or what to avoid tonight.'
     : 'A 30-second scan personalizes everything Pura tells you.';
@@ -263,9 +269,9 @@ export function PuraAssistHomeScreen() {
               Two layered washes give the porcelain real depth instead of a
               flat field: (1) a calm day-ambient porcelain SKY behind the whole
               page (top→bottom, cool-icy → porcelain), and (2) a focused Pura-
-              Blue BLOOM behind the presence zone — the orb's halo grounded into
-              the surface, fading to clear before the read card. Subtle, premium,
-              never garish; no second hue (DNA: porcelain / ink / blue only). */}
+              Blue BLOOM anchored to the upper-RIGHT where the orb now floats —
+              an off-axis halo that grounds the asymmetric masthead, fading to
+              clear before the read card. No second hue (DNA: porcelain/ink/blue). */}
           <LinearGradient
             pointerEvents="none"
             colors={dsAmbient.day.sky}
@@ -274,16 +280,40 @@ export function PuraAssistHomeScreen() {
           />
           <LinearGradient
             pointerEvents="none"
-            colors={[puraAssist.blue08, puraAssist.blue05, puraAssist.bgClear]}
-            locations={[0, 0.45, 1]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
+            colors={[puraAssist.blue10, puraAssist.blue05, puraAssist.bgClear]}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0.92, y: 0.04 }}
+            end={{ x: 0.2, y: 1 }}
             style={styles.atmosphere}
           />
 
-          {/* ---- Presence zone — orb as the centerpiece ---- */}
-          <View style={styles.presence}>
+          {/* ---- Masthead hero — GIANT left-aligned display headline is the
+              focal point; the scan-tinted orb floats to the upper-right as a
+              glowing intelligence accent (no longer the crown). ---- */}
+          <View style={styles.masthead}>
+            {/* Orb — floated, absolute, overlapping the headline's top-right.
+                Smaller than before so the SERIF dominates the composition. */}
+            <Rise delay={60} style={styles.orbFloat}>
+              <AssistantAuroraOrb size={132} state="idle" scanTone={signal.scanTone} />
+            </Rise>
+
             <Rise delay={0}>
+              <Text style={styles.heroEyebrow}>{heroEyebrow}</Text>
+            </Rise>
+
+            <Rise delay={130}>
+              <Text style={styles.hero} accessibilityRole="header">
+                <Text>{heroLines[0]}</Text>
+                {'\n'}
+                <Text>{heroLines[1]}</Text>
+                {'\n'}
+                <Text style={styles.heroAccent}>{heroLines[2]}</Text>
+              </Text>
+            </Rise>
+
+            {/* Status pill + subhead on a shared editorial baseline below the
+                headline — the read, not the decoration. */}
+            <Rise delay={210} style={styles.heroFooter}>
               <View style={[styles.pill, scanReady ? styles.pillReady : styles.pillMuted]}>
                 <View
                   style={[
@@ -300,20 +330,6 @@ export function PuraAssistHomeScreen() {
                   {scanReady ? 'Tonight’s scan ready' : 'Take a scan to begin'}
                 </Text>
               </View>
-            </Rise>
-
-            <Rise delay={70} style={styles.orbWrap}>
-              <AssistantAuroraOrb size={158} state="idle" scanTone={signal.scanTone} />
-            </Rise>
-
-            <Rise delay={150}>
-              <Text style={styles.hero}>
-                {heroLines[0]}
-                {'\n'}
-                {heroLines[1]}
-              </Text>
-            </Rise>
-            <Rise delay={210}>
               <Text style={styles.subhead}>{subhead}</Text>
             </Rise>
           </View>
@@ -476,25 +492,64 @@ const styles = StyleSheet.create({
     top: -dsSpace.sm,
     height: 720,
   },
-  // (2) Focused Pura-Blue bloom behind the presence zone — the orb's halo
-  // grounded into the surface, fading to clear before the read card.
+  // (2) Focused Pura-Blue bloom anchored to the upper-RIGHT, under the floated
+  // orb — an off-axis halo grounding the asymmetric masthead, fading to clear
+  // before the read card.
   atmosphere: {
     position: 'absolute',
     left: -puraAssistLayout.screenPadding,
     right: -puraAssistLayout.screenPadding,
-    top: 0,
-    height: 380,
+    top: -dsSpace.sm,
+    height: 440,
   },
 
-  // Presence zone
-  presence: {
+  // Masthead hero — asymmetric editorial composition. Left-aligned giant serif
+  // is the focal point; the orb floats top-right. Generous top/bottom air.
+  masthead: {
+    position: 'relative',
+    paddingTop: dsSpace.lg,
+    paddingBottom: dsSpace.sm,
+    minHeight: 360,
+  },
+  // Orb floated to the upper-right, overlapping the headline's top edge so the
+  // SERIF reads as the dominant element and the orb as its intelligence accent.
+  orbFloat: {
+    position: 'absolute',
+    top: -dsSpace.sm,
+    right: -dsSpace.md,
+    width: 132,
+    height: 132,
     alignItems: 'center',
-    paddingTop: dsSpace.sm,
+    justifyContent: 'center',
+    zIndex: 0,
+  },
+  heroEyebrow: {
+    ...dsType.label,
+    color: puraAssist.blueText,
+    marginBottom: dsSpace.md,
+  },
+  // THE moment — display-scale Instrument Serif, left-aligned, tight leading.
+  hero: {
+    fontFamily: fontFamily.serifSemi,
+    fontSize: 60,
+    lineHeight: 58,
+    letterSpacing: -2.4,
+    color: puraAssist.ink,
+    textAlign: 'left',
+  },
+  // Final line carries the accent — the eye lands on the verb of the read.
+  heroAccent: {
+    color: puraAssist.blue,
+  },
+  heroFooter: {
+    marginTop: dsSpace.xl,
+    alignItems: 'flex-start',
+    gap: dsSpace.md,
   },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'center',
+    alignSelf: 'flex-start',
     gap: 7,
     paddingLeft: 10,
     paddingRight: 13,
@@ -505,28 +560,11 @@ const styles = StyleSheet.create({
   pillMuted: { backgroundColor: puraAssist.hairline },
   pillDot: { width: 7, height: 7, borderRadius: 3.5 },
   pillText: { ...dsType.labelSm },
-  orbWrap: {
-    height: 176,
-    width: 176,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: dsSpace.md,
-    marginBottom: dsSpace.xs,
-  },
-  hero: {
-    fontFamily: fontFamily.serifSemi,
-    fontSize: 46,
-    lineHeight: 47,
-    letterSpacing: -1.6,
-    color: puraAssist.ink,
-    textAlign: 'center',
-  },
   subhead: {
     ...puraAssistType.subhead,
     color: puraAssist.muted,
-    marginTop: dsSpace.md,
-    textAlign: 'center',
-    maxWidth: 300,
+    textAlign: 'left',
+    maxWidth: 320,
   },
 
   // Primary CTA

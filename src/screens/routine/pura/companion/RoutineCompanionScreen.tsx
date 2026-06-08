@@ -491,8 +491,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 6,
+    paddingBottom: 2,
   },
   titleRow: {
     flexDirection: 'row',
@@ -526,16 +526,16 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   toggleWrap: {
-    marginTop: 14,
+    marginTop: 12,
   },
   greetingWrap: {
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
   heroWrap: {
     paddingHorizontal: companionGeo.screenMargin,
-    paddingTop: 4,
+    paddingTop: 2,
   },
   section: {
     paddingTop: 24,

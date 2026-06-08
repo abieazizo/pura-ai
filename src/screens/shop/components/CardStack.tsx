@@ -400,26 +400,28 @@ const styles = StyleSheet.create({
     right: 0,
   },
   stamp: {
+    // Bolder dealt-card stamps to match the larger hero card — bigger pill, a
+    // touch lower so they punch across the product zone on a committed swipe.
     position: 'absolute',
-    top: 64,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 12,
-    borderWidth: 2.5,
+    top: 78,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 14,
+    borderWidth: 3,
   },
   stampKeep: {
-    left: 26,
+    left: 28,
     backgroundColor: puraShopHome.saveReveal,
     borderColor: puraShopHome.saveRevealInk,
   },
   stampSkip: {
-    right: 26,
+    right: 28,
     backgroundColor: puraShopHome.skipReveal,
     borderColor: puraShopHome.skipRevealInk,
   },
   stampText: {
     fontFamily: 'Inter-Bold',
-    fontSize: 16,
-    letterSpacing: 2.5,
+    fontSize: 20,
+    letterSpacing: 3,
   },
 });

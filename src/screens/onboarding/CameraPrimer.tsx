@@ -110,23 +110,26 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
               faint surface bloom, not a second accent). */}
           <View style={styles.orbBloom} pointerEvents="none" />
           <AuroraOrb
-            size={96}
+            size={104}
             state="idle"
             reduceMotion={reduceMotion}
             auraTheme="blue-warm"
           />
         </Animated.View>
 
-        <Animated.Text style={[styles.eyebrow, headStyle]} maxFontSizeMultiplier={1.2}>
-          THE SCAN
-        </Animated.Text>
+        <Animated.View style={[styles.eyebrowRow, headStyle]}>
+          <View style={styles.eyebrowTick} />
+          <Animated.Text style={styles.eyebrow} maxFontSizeMultiplier={1.2}>
+            THE SCAN
+          </Animated.Text>
+        </Animated.View>
 
         <Animated.Text
           style={[styles.headline, headStyle]}
           maxFontSizeMultiplier={1.15}
           accessibilityRole="header"
         >
-          Now, the scan.
+          Now,{'\n'}the scan.
         </Animated.Text>
 
         <Animated.Text style={[styles.sub, subStyle]} maxFontSizeMultiplier={1.25}>
@@ -146,54 +149,72 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
+  // Editorial left-baseline composition — the display headline is the hero, the
+  // orb its luminous mark, with confident whitespace above the CTA.
   body: {
     flex: 1,
     paddingHorizontal: 28,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   glyphWrap: {
-    marginBottom: 26,
-    alignItems: 'center',
+    marginBottom: 28,
+    marginLeft: -4,
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   // Faint surface bloom behind the orb — a low-alpha brand wash that grounds
   // the companion in light. Soft, premium, never a hard disc.
   orbBloom: {
     position: 'absolute',
-    width: 168,
-    height: 168,
-    borderRadius: 84,
+    width: 184,
+    height: 184,
+    borderRadius: 92,
+    left: -40,
+    top: -40,
     backgroundColor: dsAmbient.day.glow,
   },
-  // Eyebrow pulled OFF full Pura Blue → restrained graphite. The blue accent
-  // re-earns attention on the orb + the ink CTA; the label stays quiet.
+  // Eyebrow row — a short brand tick + tracked caps label, the editorial
+  // section marker. The blue accent re-earns attention on the orb + ink CTA;
+  // the tick is the only quiet brand note here.
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  eyebrowTick: {
+    width: 22,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: ds.accent,
+    marginRight: 10,
+  },
   eyebrow: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
+    fontSize: 11.5,
     lineHeight: 14,
-    letterSpacing: 1.6,
+    letterSpacing: 2.4,
     color: ds.textTertiary,
-    textAlign: 'center',
-    marginBottom: 14,
+    textAlign: 'left',
   },
+  // Dramatic display-scale serif headline — cinematic, stacked, left-anchored.
   headline: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 42,
-    lineHeight: 46,
-    letterSpacing: -1.2,
+    fontSize: 64,
+    lineHeight: 60,
+    letterSpacing: -2.2,
     color: palette.ink,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   sub: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
-    lineHeight: 25,
+    fontSize: 16.5,
+    lineHeight: 26,
     letterSpacing: -0.1,
     color: palette.inkSecondary,
-    textAlign: 'center',
-    marginTop: 18,
-    maxWidth: 326,
+    textAlign: 'left',
+    marginTop: 22,
+    maxWidth: 340,
   },
   ctaWrap: {
     paddingTop: 8,

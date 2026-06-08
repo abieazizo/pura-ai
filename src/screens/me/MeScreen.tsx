@@ -1,20 +1,25 @@
 /**
- * Me — the personal tab. Cycle 6 rebuild: "your skin, over time."
+ * Me — the personal tab. Cycle 11 BOLD structural elevation: "your skin, transformed."
  *
- * The audit's lowest-scoring surface (4.2) was a settings page with ZERO
- * progress on it — while a fully-built progress story sat one tab over on the
- * Routine → Progress sub-tab. This rebuild composes that story onto Me as the
- * HERO and demotes settings below it, so Me finally answers "how is *my* skin
- * doing?" the moment you open it.
+ * The prior cycles led with a small editorial masthead (eyebrow + "Hi, name." +
+ * italic subline) and only THEN showed the score inside a mid-page card — so the
+ * first second of the screen was all small text and the "how is my skin doing?"
+ * answer never landed as a HERO. Users reported "barely any change."
  *
- * Singular hierarchy: the animated SkinScore hero is the one dominant element.
- * A count-up stat ribbon and the before/after proof support it; the shortcuts
- * and settings lists recede underneath. Progress data is read from the single
- * canonical `useProgressRoutineInsight()` (same source the Progress sub-tab
- * uses) — no recomputed/scattered state. Adopts the Cycle-2 `ds` design system
- * + `ui` primitives so Me shares one language with the rest of the app.
+ * Cycle 11 makes the SkinScore the unmistakable hero at dramatic scale. The page
+ * now opens with a full-bleed Score Colossus: a deep-ink "skin theatre" panel,
+ * floated on a blue aura, carrying a ~116pt count-up score numeral, the band, a
+ * confident delta pill, and a giant "since day one" transformation ribbon. One
+ * look says: here is my skin, transformed. Everything else — the canonical arc
+ * dial, the stat ribbon, the trend, before/after, timeline, and settings —
+ * recedes beneath it as supporting detail.
  *
- * Navigation, store shape, and the reused progress components are untouched.
+ * Data integrity is unchanged: every number is read from the single canonical
+ * `useProgressRoutineInsight()` (the same source the Progress sub-tab uses) and
+ * `computeSkinScore(scans)` — no recomputed/scattered state, no fake data. When
+ * there is no scan, the colossus becomes an equally bold "Begin here" invitation
+ * rather than inventing a score. Navigation, store shape, and the reused
+ * (locked) progress components are untouched.
  */
 
 import React, { useCallback, useEffect } from 'react';
@@ -48,15 +53,19 @@ import {
   Heart,
   CalendarCheck,
   Camera,
+  TrendUp,
+  Sparkle,
 } from 'phosphor-react-native';
 
 import {
   ds,
   blue,
+  success,
   dsType,
   dsSpace,
   dsRadius,
   dsTiming,
+  dsElevation,
   dsAmbient,
   dsGradient,
   stagger,
@@ -66,6 +75,7 @@ import {
 import { Card, ListRow, Button } from '@/components/ui';
 import { AnimatedNumber } from '@/components';
 import { useProgressRoutineInsight } from '@/state/progressRoutineInsight';
+import { computeSkinScore } from '@/utils/skinScore';
 import { ProgressHeroSection } from '@/components/progress/ProgressHeroSection';
 import { BeforeAfterSection } from '@/components/progress/BeforeAfterSection';
 import { ScoreBreakdownCard } from '@/components/progress/ScoreBreakdownCard';
@@ -121,6 +131,12 @@ export function MeScreen() {
   const hasScanned = insight.hasScanned;
   const latestScan = scansCount ? scans[scansCount - 1] : undefined;
 
+  // Canonical score read — same source as the Progress sub-tab. No recompute.
+  const score = computeSkinScore(scans);
+  const scoreValue = insight.score ?? score.value;
+  const liftSinceFirst = insight.trendSummary.deltaSinceFirst; // integer vs day-1 baseline
+  const hasLift = insight.trendSummary.hasChart; // ≥2 scans → a real transformation exists
+
   const openScan = useCallback(() => {
     hapt.tap();
     rootNav.navigate('ScanModal');
@@ -146,24 +162,23 @@ export function MeScreen() {
     signOut();
   }, [signOut]);
 
-  const greeting = name ? `Hi, ${name}.` : 'Your skin.';
-  const subline = hasScanned
-    ? insight.freshnessLabel?.trim() || 'Tracked, scan by scan.'
-    : 'Your skin story is about to begin.';
+  const firstName = name ? name.split(' ')[0] : null;
+  const overline = firstName ? `${firstName}’s skin` : 'Your skin';
+  const dayLine = insight.dayLabel?.trim() || 'YOUR SKIN, OVER TIME';
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       {/* ── Ambient porcelain wash — a calm day-sky mesh replaces the flat
           porcelain field so the page has real atmospheric depth behind the
-          editorial masthead. Subtly cool, never garish; the locked DNA. ── */}
+          hero. Subtly cool, never garish; the locked DNA. ── */}
       <LinearGradient
         pointerEvents="none"
         colors={dsAmbient.day.sky}
         locations={[0, 0.46, 1]}
         style={styles.ambient}
       />
-      {/* Faint top-light bloom so the greeting hero sits in a pool of light. */}
+      {/* Faint top-light bloom so the colossus sits in a pool of light. */}
       <LinearGradient
         pointerEvents="none"
         colors={[ds.accentSoft, 'rgba(234,244,255,0)']}
@@ -176,12 +191,18 @@ export function MeScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Header + editorial greeting ── */}
+        {/* ── Compact masthead — the greeting is now an OVERLINE that yields the
+            stage to the hero below, not the dominant first line. ── */}
         <Rise index={0}>
           <View style={styles.topBar}>
-            <Text style={styles.eyebrow} maxFontSizeMultiplier={1.1}>
-              YOUR SKIN, OVER TIME
-            </Text>
+            <View style={styles.topBarText}>
+              <Text style={styles.eyebrow} maxFontSizeMultiplier={1.1}>
+                {dayLine}
+              </Text>
+              <Text style={styles.overline} maxFontSizeMultiplier={1.12} accessibilityRole="header">
+                {overline}
+              </Text>
+            </View>
             <Pressable
               onPress={openProfile}
               accessibilityRole="button"
@@ -203,25 +224,127 @@ export function MeScreen() {
               </Text>
             </Pressable>
           </View>
-          <Text style={styles.greeting} maxFontSizeMultiplier={1.12} accessibilityRole="header">
-            {greeting}
-          </Text>
-          <Text style={styles.greetingSub} maxFontSizeMultiplier={1.2}>
-            {subline}
-          </Text>
         </Rise>
 
         {hasScanned ? (
           <>
-            {/* ── HERO: the canonical animated SkinScore (dominant) ── */}
-            <Rise index={1} style={styles.heroWrap}>
-              <ProgressHeroSection scans={scans} insight={insight} />
+            {/* ════════════════════════════════════════════════════════════
+                THE SCORE COLOSSUS — Cycle 11's bold structural hero.
+                A deep-ink "skin theatre" panel floated on a blue aura. The
+                score numeral is the single dominant element on the page at a
+                colossal scale; the band + delta + transformation ribbon make
+                it feel alive and earned. All values are canonical. ════════ */}
+            <Rise index={1} style={styles.colossusWrap}>
+              {/* Blue aura bleeding out behind the dark panel — the hero glows. */}
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(20,124,255,0.22)', 'rgba(20,124,255,0)']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.colossusAura}
+              />
+              <View style={styles.colossus}>
+                {/* Deep cool-ink fill — the score reads in light on a dark stage. */}
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['#0E1A30', '#070C16']}
+                  start={{ x: 0.15, y: 0 }}
+                  end={{ x: 0.85, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                {/* A single Pura-Blue glow blooming from the upper-right so the
+                    dark panel has depth and a brand pulse, never flat black. */}
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(61,144,255,0.45)', 'rgba(61,144,255,0)']}
+                  start={{ x: 1, y: 0 }}
+                  end={{ x: 0.2, y: 0.9 }}
+                  style={styles.colossusBloom}
+                />
+
+                <Text style={styles.colossusKicker} maxFontSizeMultiplier={1.1}>
+                  YOUR SKIN SCORE
+                </Text>
+
+                {/* The hero numeral — colossal, tabular, count-up. */}
+                <View style={styles.scoreRow}>
+                  <AnimatedNumber value={scoreValue} style={styles.scoreColossal} />
+                  <Text style={styles.scoreOutOf} maxFontSizeMultiplier={1.05}>
+                    /100
+                  </Text>
+                </View>
+
+                {/* Band + delta — band is the confident word, delta the proof. */}
+                <View style={styles.bandRow}>
+                  <Text style={styles.bandWord} maxFontSizeMultiplier={1.1}>
+                    {insight.scoreBand}
+                  </Text>
+                  {insight.deltaLabel ? (
+                    <View
+                      style={[
+                        styles.deltaPill,
+                        liftSinceFirst > 0 && styles.deltaPillUp,
+                        liftSinceFirst < 0 && styles.deltaPillDown,
+                      ]}
+                    >
+                      {liftSinceFirst > 0 ? (
+                        <TrendUp size={13} color={success[300]} weight="bold" />
+                      ) : null}
+                      <Text style={styles.deltaPillText} maxFontSizeMultiplier={1.1}>
+                        {insight.deltaLabel}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* The why-line, one calm sentence grounded in the latest scan. */}
+                <Text style={styles.colossusWhy} maxFontSizeMultiplier={1.18}>
+                  {insight.heroReason}
+                </Text>
+
+                {/* ── The transformation ribbon — the emotional payoff. When a
+                    real before→after lift exists, the "since day one" number is
+                    shown BIG and confident. Otherwise we celebrate the baseline
+                    being set, never faking movement. ── */}
+                <View style={styles.transformRow}>
+                  {hasLift ? (
+                    <>
+                      <View style={styles.transformLift}>
+                        <Text style={styles.transformBig} maxFontSizeMultiplier={1.05}>
+                          {liftSinceFirst >= 0 ? '+' : ''}
+                          {liftSinceFirst}
+                        </Text>
+                        <Text style={styles.transformUnit} maxFontSizeMultiplier={1.1}>
+                          pts
+                        </Text>
+                      </View>
+                      <View style={styles.transformMetaCol}>
+                        <Text style={styles.transformLabel} maxFontSizeMultiplier={1.1}>
+                          SINCE DAY ONE
+                        </Text>
+                        <Text style={styles.transformSub} maxFontSizeMultiplier={1.15}>
+                          {insight.trendSummary.summaryLine}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.transformMetaCol}>
+                      <Text style={styles.transformLabel} maxFontSizeMultiplier={1.1}>
+                        BASELINE SET
+                      </Text>
+                      <Text style={styles.transformSub} maxFontSizeMultiplier={1.15}>
+                        {insight.trendSummary.summaryLine}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
             </Rise>
 
-            {/* ── Count-up stat ribbon — the surface that echoes the hero's
-                intelligence. A whisper of blue wash gives it color-based depth
-                and lets the ONE blue data accent (Scans, the number that drives
-                the whole "over time" story) re-earn the eye. ── */}
+            {/* ── Count-up stat ribbon — the supporting facts under the hero.
+                A whisper of blue wash gives color-based depth and lets the ONE
+                blue data accent (Scans, the number that drives the "over time"
+                story) re-earn the eye. ── */}
             <Rise index={2} style={styles.block}>
               <Card tint="clear" level="e1" padding={0} style={styles.statCard}>
                 <LinearGradient
@@ -239,18 +362,28 @@ export function MeScreen() {
               </Card>
             </Rise>
 
-            {/* ── What's driving the score (self-suppresses when no metrics) ── */}
+            {/* ── The canonical arc dial — now a SUPPORTING detail beneath the
+                colossus, headed so it reads as "the full picture", not a
+                competing hero. ── */}
             <Rise index={3} style={styles.block}>
+              <Text style={styles.sectionHead} maxFontSizeMultiplier={1.15}>
+                YOUR DIAL
+              </Text>
+              <ProgressHeroSection scans={scans} insight={insight} />
+            </Rise>
+
+            {/* ── What's driving the score (self-suppresses when no metrics) ── */}
+            <Rise index={4} style={styles.block}>
               <ScoreBreakdownCard metrics={insight.metrics} />
             </Rise>
 
             {/* ── The trend — Me's whole reason for being: "over time" ── */}
-            <Rise index={4} style={styles.block}>
+            <Rise index={5} style={styles.block}>
               <ScoreTrendSection trend={insight.trendSummary} />
             </Rise>
 
             {/* ── Before & after — the emotional proof (self-heads + self-locks) ── */}
-            <Rise index={5} style={styles.block}>
+            <Rise index={6} style={styles.block}>
               <BeforeAfterSection
                 comparison={insight.comparison}
                 latestDayNumber={latestScan?.dayNumber ?? 0}
@@ -259,44 +392,66 @@ export function MeScreen() {
             </Rise>
 
             {/* ── Your scan history over time (self-suppresses when empty) ── */}
-            <Rise index={6} style={styles.block}>
+            <Rise index={7} style={styles.block}>
               <ScanTimelineSection timeline={insight.timeline} />
             </Rise>
           </>
         ) : (
-          /* ── Empty state with personality — a soft blue dawn wash gives the
-              invitation real warmth and depth, harmonized with its accent CTA. ── */
-          <Rise index={1} style={styles.block}>
-            <Card tint="clear" level="e2" padding={0} style={styles.emptyCard}>
+          /* ════════════════════════════════════════════════════════════════
+              THE INVITATION COLOSSUS — equally bold empty state. Same dark
+              theatre + aura as the score hero so the first scan feels like
+              stepping onto a stage. No faked score; a giant promise instead. */
+          <Rise index={1} style={styles.colossusWrap}>
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(20,124,255,0.22)', 'rgba(20,124,255,0)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.colossusAura}
+            />
+            <View style={[styles.colossus, styles.colossusEmpty]}>
               <LinearGradient
-                colors={[ds.surface, ds.accentSoft]}
-                start={{ x: 0.1, y: 0 }}
-                end={{ x: 0.9, y: 1 }}
-                style={styles.emptyWash}
-              >
-                <Text style={styles.emptyTitle} maxFontSizeMultiplier={1.15}>
-                  Your skin story starts here.
-                </Text>
-                <Text style={styles.emptyBody} maxFontSizeMultiplier={1.2}>
-                  One 30-second scan unlocks your score, your trend, and your first
-                  before-and-after.
-                </Text>
-                <Button
-                  label="Take your first scan"
-                  variant="accent"
-                  fullWidth
-                  onPress={openScan}
-                  icon={<Camera size={18} color="#FFFFFF" weight="duotone" />}
-                  accessibilityHint="Opens the camera to scan your skin"
-                  style={styles.emptyCta}
-                />
-              </LinearGradient>
-            </Card>
+                pointerEvents="none"
+                colors={['#0E1A30', '#070C16']}
+                start={{ x: 0.15, y: 0 }}
+                end={{ x: 0.85, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(61,144,255,0.45)', 'rgba(61,144,255,0)']}
+                start={{ x: 1, y: 0 }}
+                end={{ x: 0.2, y: 0.9 }}
+                style={styles.colossusBloom}
+              />
+              <View style={styles.emptyBadge}>
+                <Sparkle size={20} color={blue[200]} weight="fill" />
+              </View>
+              <Text style={styles.emptyKicker} maxFontSizeMultiplier={1.1}>
+                YOUR SKIN, ABOUT TO BEGIN
+              </Text>
+              <Text style={styles.emptyColossalTitle} maxFontSizeMultiplier={1.1}>
+                One scan.{'\n'}Your whole story.
+              </Text>
+              <Text style={styles.emptyColossalBody} maxFontSizeMultiplier={1.2}>
+                A 30-second scan unlocks your Skin Score, your trend over time, and
+                your first before-and-after.
+              </Text>
+              <Button
+                label="Take your first scan"
+                variant="accent"
+                fullWidth
+                onPress={openScan}
+                icon={<Camera size={18} color="#FFFFFF" weight="duotone" />}
+                accessibilityHint="Opens the camera to scan your skin"
+                style={styles.emptyCta}
+              />
+            </View>
           </Rise>
         )}
 
         {/* ── Quiet shortcuts (demoted below the story) ── */}
-        <Rise index={hasScanned ? 7 : 2} style={styles.block}>
+        <Rise index={hasScanned ? 8 : 2} style={styles.block}>
           <Card tint="surface" level="e1" padding={H}>
             <ListRow
               icon={<CalendarCheck size={18} color={ds.textSecondary} weight="duotone" />}
@@ -315,7 +470,7 @@ export function MeScreen() {
         </Rise>
 
         {/* ── Account ── */}
-        <Rise index={hasScanned ? 8 : 3} style={styles.block}>
+        <Rise index={hasScanned ? 9 : 3} style={styles.block}>
           <Text style={styles.listLabel} maxFontSizeMultiplier={1.15}>
             ACCOUNT
           </Text>
@@ -345,7 +500,7 @@ export function MeScreen() {
         </Rise>
 
         {/* ── Support ── */}
-        <Rise index={hasScanned ? 9 : 4} style={styles.block}>
+        <Rise index={hasScanned ? 10 : 4} style={styles.block}>
           <Text style={styles.listLabel} maxFontSizeMultiplier={1.15}>
             SUPPORT
           </Text>
@@ -463,7 +618,7 @@ const styles = StyleSheet.create({
   },
   pressedSoft: { opacity: 0.85 },
 
-  // Header
+  // Header — compact, yields the stage to the colossus.
   topBar: {
     paddingHorizontal: H,
     flexDirection: 'row',
@@ -471,12 +626,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 44,
   },
+  topBarText: {
+    flex: 1,
+    paddingRight: dsSpace.md,
+  },
   eyebrow: {
     // Masthead kicker — tracked uppercase caps, a touch wider than the base
     // label token for editorial breathing room at the top of the page.
     ...dsType.label,
     letterSpacing: 1.7,
     color: ds.textTertiary,
+  },
+  overline: {
+    // The greeting, demoted to a calm editorial overline so the score colossus
+    // below is unambiguously the hero. Serif keeps the editorial voice.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 26,
+    lineHeight: 30,
+    letterSpacing: -0.7,
+    color: ds.textPrimary,
+    marginTop: dsSpace.xs,
   },
   avatar: {
     width: 44,
@@ -498,32 +667,165 @@ const styles = StyleSheet.create({
     color: ds.textSecondary,
     letterSpacing: 0.2,
   },
-  greeting: {
-    // Editorial hero — right-sized from the timid 32pt title to a confident
-    // display serif with tighter optical tracking. The one dominant line on Me.
-    fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 41,
-    lineHeight: 43,
-    letterSpacing: -1.3,
-    color: ds.textPrimary,
-    paddingHorizontal: H,
-    marginTop: dsSpace.base,
+
+  // ══ THE SCORE COLOSSUS ══════════════════════════════════════════════════
+  colossusWrap: {
+    marginTop: dsSpace.lg,
+    marginHorizontal: H,
   },
-  greetingSub: {
-    // Italic serif lead-in — sets an editorial voice under the hero instead of
-    // a flat UI body line. Slightly larger with calm line-height.
+  // Soft blue aura bleeding out beneath the dark panel — the hero glows on the
+  // porcelain page. Sits behind the panel via absolute fill + negative insets.
+  colossusAura: {
+    position: 'absolute',
+    left: -dsSpace.md,
+    right: -dsSpace.md,
+    top: dsSpace.lg,
+    bottom: -dsSpace.lg,
+    borderRadius: dsRadius.xxl,
+  },
+  colossus: {
+    borderRadius: dsRadius.xxl,
+    paddingTop: dsSpace.xl,
+    paddingBottom: dsSpace.xl,
+    paddingHorizontal: dsSpace.xl,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120,170,255,0.22)',
+    ...dsElevation.e4,
+  },
+  colossusEmpty: {
+    alignItems: 'flex-start',
+  },
+  // Pura-Blue bloom in the upper-right of the dark stage — depth + brand pulse.
+  colossusBloom: {
+    position: 'absolute',
+    right: -60,
+    top: -70,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+  },
+  colossusKicker: {
+    ...dsType.label,
+    letterSpacing: 2.2,
+    color: blue[200],
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: dsSpace.xs,
+  },
+  scoreColossal: {
+    // THE hero numeral — colossal editorial serif, far larger than anything
+    // else on the page. Tabular so it stays rock-steady as it counts up.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 116,
+    lineHeight: 116,
+    letterSpacing: -5,
+    color: ds.onInk,
+    ...tnum,
+  },
+  scoreOutOf: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 30,
+    lineHeight: 44,
+    letterSpacing: -0.8,
+    color: 'rgba(255,255,255,0.5)',
+    marginLeft: dsSpace.xs,
+    marginBottom: dsSpace.base,
+  },
+  bandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: dsSpace.sm,
+    marginTop: dsSpace.xs,
+  },
+  bandWord: {
+    // The confident one-word verdict, big and light on the dark stage.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: -0.6,
+    color: blue[200],
+  },
+  deltaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: dsSpace.xs,
+    paddingVertical: 5,
+    paddingHorizontal: dsSpace.sm + 2,
+    borderRadius: dsRadius.pill,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  deltaPillUp: {
+    backgroundColor: 'rgba(32,166,122,0.16)',
+    borderColor: 'rgba(127,211,181,0.32)',
+  },
+  deltaPillDown: {
+    backgroundColor: 'rgba(226,77,77,0.14)',
+    borderColor: 'rgba(240,145,143,0.30)',
+  },
+  deltaPillText: {
+    ...dsType.labelSm,
+    letterSpacing: 0.6,
+    color: 'rgba(255,255,255,0.92)',
+    textTransform: 'none',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  colossusWhy: {
     fontFamily: 'InstrumentSerif-Italic',
     fontSize: 19,
     lineHeight: 25,
     letterSpacing: -0.2,
-    color: ds.textSecondary,
-    paddingHorizontal: H,
-    marginTop: dsSpace.sm,
+    color: 'rgba(255,255,255,0.78)',
+    marginTop: dsSpace.base,
   },
-
-  // Hero
-  heroWrap: {
+  // ── Transformation ribbon — the "since day one" payoff, set big. ──
+  transformRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: dsSpace.base,
     marginTop: dsSpace.xl,
+    paddingTop: dsSpace.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
+  transformLift: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  transformBig: {
+    // The dramatic before→after number — second only to the score itself.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 52,
+    lineHeight: 54,
+    letterSpacing: -2,
+    color: success[300],
+    ...tnum,
+  },
+  transformUnit: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.55)',
+    marginLeft: 4,
+  },
+  transformMetaCol: {
+    flex: 1,
+  },
+  transformLabel: {
+    ...dsType.labelSm,
+    letterSpacing: 1.6,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  transformSub: {
+    ...dsType.bodySm,
+    color: 'rgba(255,255,255,0.82)',
+    marginTop: dsSpace.xs,
   },
 
   // Generic spaced block
@@ -531,7 +833,16 @@ const styles = StyleSheet.create({
     marginTop: dsSpace.xl,
   },
 
-  // Stat ribbon — the Card is now a clear shell that clips a blue-wash fill.
+  // Section heads under the hero — the supporting sections announce themselves.
+  sectionHead: {
+    ...dsType.label,
+    letterSpacing: 1.7,
+    color: ds.textTertiary,
+    paddingHorizontal: H,
+    marginBottom: dsSpace.md,
+  },
+
+  // Stat ribbon — the Card is a clear shell that clips a blue-wash fill.
   statCard: {
     marginHorizontal: H,
     borderRadius: dsRadius.xl,
@@ -549,8 +860,8 @@ const styles = StyleSheet.create({
   },
   statValue: {
     // Editorial data numerals — tabular so the three columns stay rock-steady
-    // as they count up, sized up a notch with tighter tracking for confidence.
-    // Default columns sit in ink so the single blue accent earns the eye.
+    // as they count up. Default columns sit in ink so the single blue accent
+    // earns the eye.
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 34,
     lineHeight: 36,
@@ -581,34 +892,44 @@ const styles = StyleSheet.create({
     backgroundColor: blue[200],
   },
 
-  // Empty state
-  emptyCard: {
-    marginHorizontal: H,
+  // ── Invitation colossus (empty state) ──
+  emptyBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(120,170,255,0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(120,170,255,0.28)',
+    marginBottom: dsSpace.base,
   },
-  emptyWash: {
-    padding: dsSpace.xl,
-    alignItems: 'flex-start',
+  emptyKicker: {
+    ...dsType.label,
+    letterSpacing: 2.2,
+    color: blue[200],
   },
-  emptyTitle: {
-    // Same confident display serif as the greeting hero so the empty state
-    // carries equal editorial weight, not a smaller fallback title.
+  emptyColossalTitle: {
+    // Same colossal editorial register as the score hero so the empty state
+    // carries equal weight — a giant promise, not a smaller fallback.
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 34,
-    lineHeight: 37,
-    letterSpacing: -1.0,
-    color: ds.textPrimary,
+    fontSize: 44,
+    lineHeight: 46,
+    letterSpacing: -1.6,
+    color: ds.onInk,
+    marginTop: dsSpace.sm,
   },
-  emptyBody: {
+  emptyColossalBody: {
     ...dsType.body,
-    color: ds.textSecondary,
-    marginTop: dsSpace.md,
-    marginBottom: dsSpace.lg,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: dsSpace.base,
+    marginBottom: dsSpace.xl,
   },
   emptyCta: {
     alignSelf: 'stretch',
   },
 
-  // Settings labels
+  // Header / settings labels
   listLabel: {
     // Section caps — tracked to match the masthead eyebrow so every uppercase
     // label on the page shares one editorial rhythm.

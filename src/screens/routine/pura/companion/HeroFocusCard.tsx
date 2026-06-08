@@ -275,31 +275,56 @@ export function HeroFocusCard({
       />
 
       <View style={[styles.inner, compact && styles.innerCompact]}>
-        {/* Top row: STEP x OF y · Why this? */}
-        <Animated.View style={[styles.topRow, nameStyle]}>
-          <View style={styles.stepPill}>
-            <Text style={[companionType.stepPill, styles.stepPillText]}>
-              STEP {stepIndex + 1} OF {totalSteps}
-            </Text>
-          </View>
-          {why ? (
-            <Pressable
-              hitSlop={8}
-              onPress={() => {
-                hapt.select();
-                setWhyOpen((v) => !v);
-              }}
-            >
-              <Text style={companionType.whyLink}>
-                {whyOpen ? 'Hide' : 'Why this?'}
+        {/* Crown — the dramatized-progress signature. A giant climbing serif
+            numeral (current step) with a quiet denominator, the pillar name
+            sitting beside it, and a segmented step meter that fills toward the
+            active rung. Progress you read in one glance, not a tiny pill. */}
+        <Animated.View style={[styles.crown, nameStyle]}>
+          <View style={styles.numeralBlock}>
+            <Text style={[companionType.heroStepKicker, styles.crownKicker]}>STEP</Text>
+            <View style={styles.numeralRow}>
+              <Text style={[companionType.heroStepNumeral, styles.numeral]} allowFontScaling={false}>
+                {String(stepIndex + 1).padStart(2, '0')}
               </Text>
-            </Pressable>
-          ) : null}
+              <Text style={[companionType.heroStepDenom, styles.numeralDenom]} allowFontScaling={false}>
+                /{String(totalSteps).padStart(2, '0')}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.crownRight}>
+            <Text style={[companionType.pillarLabel, styles.pillarLabel]} allowFontScaling numberOfLines={1}>
+              {identity.label}
+            </Text>
+            {why ? (
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  hapt.select();
+                  setWhyOpen((v) => !v);
+                }}
+              >
+                <Text style={[companionType.whyLink, styles.whyLink]}>
+                  {whyOpen ? 'Hide' : 'Why this?'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </Animated.View>
 
-        <Animated.Text style={[companionType.pillarLabel, styles.pillarLabel, nameStyle]} allowFontScaling>
-          {identity.label}
-        </Animated.Text>
+        {/* Segmented step meter — one rung per step, lit up to (and including)
+            the active step. The dramatic, full-width companion to the numeral. */}
+        <Animated.View style={[styles.meter, nameStyle]}>
+          {Array.from({ length: Math.max(totalSteps, 1) }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.meterSeg,
+                i <= stepIndex ? styles.meterSegOn : styles.meterSegOff,
+                i === stepIndex && styles.meterSegActive,
+              ]}
+            />
+          ))}
+        </Animated.View>
 
         {/* Product stage — halo + breathing image. */}
         <Animated.View style={[styles.stage, { height: haloSize }, productStyle]}>
@@ -449,39 +474,82 @@ const styles = StyleSheet.create({
   },
   inner: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 18,
+    paddingHorizontal: 24,
+    paddingTop: 22,
+    paddingBottom: 20,
   },
   innerCompact: {
-    paddingTop: 14,
-    paddingBottom: 14,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
   },
-  topRow: {
+  crown: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
-  stepPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: CC.bluePill,
+  numeralBlock: {
+    alignItems: 'flex-start',
   },
-  stepPillText: {
-    // Tabular figures so the step counter never reflows as it climbs.
+  crownKicker: {
+    marginBottom: 1,
+    marginLeft: 2,
+  },
+  numeralRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  numeral: {
+    // Tabular figures so the giant counter never shifts as it climbs.
     ...tnum,
-    letterSpacing: 1.5,
+  },
+  numeralDenom: {
+    ...tnum,
+    marginLeft: 4,
+    marginBottom: 9,
+  },
+  crownRight: {
+    alignItems: 'flex-end',
+    marginBottom: 12,
+    flexShrink: 1,
+    paddingLeft: 12,
+    gap: 7,
   },
   pillarLabel: {
-    marginTop: 14,
-    // Confident, evenly-tracked caps eyebrow above the editorial name.
+    // Confident, evenly-tracked caps eyebrow set against the big numeral.
     letterSpacing: 1.7,
+    textAlign: 'right',
+  },
+  whyLink: {
+    textAlign: 'right',
+  },
+  meter: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 14,
+  },
+  meterSeg: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+  },
+  meterSegOff: {
+    backgroundColor: CC.segmentTrack,
+  },
+  meterSegOn: {
+    backgroundColor: CC.blue,
+  },
+  meterSegActive: {
+    // The live rung carries the foot-of-line glow so the "where am I" reads
+    // instantly — the meter has a clear leading edge, not a flat blue run.
+    ...companionShadows.blueGlow,
   },
   stage: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 6,
+    // Float the product group down into the generous middle of the tall card;
+    // the button keeps its own auto-margin so it stays pinned at the floor.
+    marginTop: 'auto',
   },
   halo: {
     position: 'absolute',
@@ -505,21 +573,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   meta: {
-    marginTop: 10,
+    marginTop: 18,
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   brand: {
     // Slightly airier brand kicker so it reads as a label, not a word.
     letterSpacing: 1.8,
   },
   productName: {
-    // Right-size the hero serif: larger, tighter, centered — editorial
-    // confidence instead of a timid 22px line.
-    fontSize: 27,
-    lineHeight: 30,
-    letterSpacing: -0.5,
+    // Cycle 11 — the hero serif now reads at true centerpiece scale (token
+    // 34px); keep it tight and centered for editorial confidence.
     textAlign: 'center',
+    paddingHorizontal: 4,
   },
   guidance: {
     textAlign: 'center',

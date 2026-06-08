@@ -69,6 +69,10 @@ export const CC = {
   cardLine: 'rgba(8, 22, 56, 0.06)',
   /** STEP X OF Y pill — Pura Blue on 12% alpha (a true data accent → stays blue). */
   bluePill: 'rgba(20, 124, 255, 0.12)',
+  /** Hero segment-track — unfilled rung of the horizontal step meter (cool ink @9%). */
+  segmentTrack: 'rgba(8, 22, 56, 0.09)',
+  /** The faint "/ 03" denominator beside the big climbing step numeral (cool slate). */
+  numeralDenom: 'rgba(93, 102, 115, 0.55)',
   /** Neutral pill fill — secondary chips that should NOT pull blue. */
   neutralPill: 'rgba(91, 102, 115, 0.10)',
   /** Celebration bloom ring — Pura Blue at a soft alpha that radiates out. */
@@ -230,14 +234,17 @@ export const DAY_ATMOSPHERE: Record<RoutineTimeOfDay, DayAtmosphere> = {
 export const companionGeo = {
   /** Screen-edge margin for the hero (full width minus this on each side). */
   screenMargin: 16,
-  heroRadius: 24,
-  heroHeight: 360,
-  heroHeightCompact: 320,
-  /** Product image + its halo. */
-  productImage: 140,
-  productImageCompact: 110,
-  halo: 160,
-  haloCompact: 132,
+  heroRadius: 28,
+  // Cycle 11 (BOLD): the focus card is now a true ritual centerpiece, not a
+  // card in a list. It stands far taller so the product floats in real space
+  // and the climbing step numeral + segmented meter have room to dominate.
+  heroHeight: 524,
+  heroHeightCompact: 432,
+  /** Product image + its halo — grown dramatically so the packshot reads hero-scale. */
+  productImage: 196,
+  productImageCompact: 150,
+  halo: 248,
+  haloCompact: 196,
   upcomingRadius: 16,
   upcomingImage: 52,
   buttonHeight: 56,
@@ -361,12 +368,43 @@ export const companionType = {
     textTransform: 'uppercase',
     color: CC.muted,
   },
-  /** Product name (serif). */
+  /**
+   * Cycle 11 — the hero's crown. The current step rendered as a giant
+   * editorial serif numeral that literally climbs as the ritual advances
+   * ("01" → "02" → "03"). This is the dramatized-progress signature: progress
+   * you read in one glance from across the room. Tabular so the glyph never
+   * shifts as it counts up.
+   */
+  heroStepNumeral: {
+    fontFamily: SERIF,
+    fontSize: 72,
+    lineHeight: 70,
+    letterSpacing: -2,
+    color: CC.ink,
+  },
+  /** The "/ 03" denominator trailing the big numeral — quiet, smaller, cool. */
+  heroStepDenom: {
+    fontFamily: SERIF,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.5,
+    color: CC.numeralDenom,
+  },
+  /** "STEP" micro-kicker stacked above the big numeral. */
+  heroStepKicker: {
+    fontFamily: SANS_SEMI,
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
+    color: CC.slate,
+  },
+  /** Product name (serif) — Cycle 11 grew this to a true editorial hero line. */
   productName: {
     fontFamily: SERIF,
-    fontSize: 22,
-    lineHeight: 26,
-    letterSpacing: -0.2,
+    fontSize: 34,
+    lineHeight: 37,
+    letterSpacing: -0.6,
     color: CC.ink,
   },
   /** Brand caps. */
