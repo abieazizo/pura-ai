@@ -41,10 +41,13 @@ Packshot renderer = `components/ProductPackshot.tsx`.
 `ScanAnalyzing/index.tsx` (face; renders the porcelain `reveal/RevealAnalyzingSlide`) →
 `reveal/ScanRevealScreen.tsx` (the LOCKED 5-beat pager: Skin Map → Focus → Insights → Plan →
 Ready) → `reveal/BuildRoutinePicker.tsx` → `reveal/ScanBuildCeremony.tsx` → Routine tab.
-- ⚠️ ORPHANED but high-value (salvage onto path): `src/screens/scan/ScanResultsV2Screen.tsx` +
-  `FindingCardV2` — a real editorial per-finding report (severity/zone/observation/why/
-  recommendation). Only a fallback/history screen today; the live reveal shows the *shallow*
-  "Focus Areas" cards (name + priority pill + one phrase).
+- ⚠️ ORPHANED but high-value: `src/screens/scan/ScanResultsV2Screen.tsx` + `FindingCardV2` — a
+  real editorial per-finding report (severity/zone/observation/why/recommendation). Still a
+  fallback/history screen. **UPDATE (C5):** the live reveal's Focus beat is no longer shallow —
+  it now renders a native editorial finding card (real severity meter + trend chip + why/what-to-do)
+  reading the SAME canonical `severity`/`direction` fields, so the "wire the orphan onto the path"
+  goal is met *in spirit* without importing the V2 component. The V2 screen itself remains
+  orphaned — fold/remove in a cleanup pass.
 - ⚠️ DEAD: the dark cinematic choreography in `src/screens/scan/ScanAnalyzing/components/`
   (`PhotoStage`, `DetectionMarker`, `ZoneOverlay`, `RevealFooter`, `MeasuringSweep`). Genuinely
   cinematic; salvage its ideas onto the live light analyzing slide, then remove.
@@ -332,3 +335,65 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
 - **Next run picks up at:** Cycle 5 — Scan (capture as precision instrument; land the locked
   reveal on the editorial finding cards; make the captured face the hero). Also carry the Shop
   cleanup (doubled ending, dead VM, gradient tween) as a small debt to fold in.
+
+### Cycle 5 — Scan: land the locked reveal on an editorial skin report ✅
+- **Focus:** The locked reveal beats/timing stay byte-for-byte intact — the work is *polish
+  within the beats*. Promote the payoff beat ("Top Focus Areas") from a one-line teaser into a
+  genuine editorial **finding card**, and make the captured face a hero. (The audit's two lowest
+  Scan dimensions, Imagery 5 and Data-viz 6, are the targets.)
+- **Critique:** the arc's build (Skin Map → Focus → Insights → Plan → Ready) was undercut by the
+  Focus beat shipping only `name + priority pill + one phrase + thumbnail`, while every
+  `SkinConcernSummary` already carried **`severity` (none→high)**, **`direction` (trend vs last
+  scan)**, and **`regions`** — all discarded by the UI. The reveal built beautifully, then
+  landed soft.
+- **Files changed (full rewrites):**
+  - `src/screens/scan/reveal/revealContent.ts` — extended `FocusArea` with the real
+    `severity`/`severityRank`/`direction` + concern accent color; added `severityTone`,
+    `directionMeta`, `SEVERITY_TICKS`, and a per-concern `CONCERN_EDITORIAL` table (qualitative,
+    **number-free** `why`/`action` copy in Pura's voice — same honesty pattern as `deriveInsights`;
+    **no product names**). All prior exports kept (additive only).
+  - `src/screens/scan/reveal/ScanRevealScreen.tsx` — redesigned the Focus beat into editorial
+    finding cards: a **segmented severity meter** + **trend chip** (both genuine canonical data),
+    the summary as the serif "what it is" line, and labeled **Why it matters / What to do** zones.
+    Added a `CropPanel` hero face rail (stretches to card height, concern-accent underline), a
+    `StaggerItem` per-card stream-in (translateY+fade, index-delayed), and a **per-finding light
+    haptic** scheduled only on the Focus beat (timers cleared on beat change/unmount). Enlarged the
+    Skin Map face (0.60→0.72 of content width) with a grounding scrim + `float` shadow; added
+    concern-color dots to the map chips.
+- **Locked-beat preservation (verified):** 5 beats, same order/titles, step numbering
+  (`step+2` of 6), and the **300ms translateX+fade pager transition** all unchanged. Stagger +
+  haptic are layered *inside* beats, never altering beat order or transition timing. Analyzing
+  slide untouched. Expo-Go-safe (no animated SVG props, no layout animations — reuses the file's
+  existing proven patterns).
+- **Verification:** `npx tsc --noEmit` → **clean** for both changed files and both live consumers
+  (`RevealDevGallery`, `ScanModalStack`); change is purely additive (no removed exports, no prop
+  changes). Live visual not driven this run — the reveal sits behind the full capture→analyze flow
+  and the orb-screen `preview_screenshot` timeout makes the dev-gallery path costly; the change is
+  deterministic style/data wiring reasoned statically (consistent with C4).
+- **Scores:** Scan **6.7 → ~8.0.** Lifts: **Data-viz 6→8** (genuine severity meter + trend from
+  data that was discarded — the single biggest jump), **Imagery 5→7.5** (face is hero on the map +
+  a stretched crop rail per finding), IA 6→8, Component 7→8.5, Spacing 7→8, Color/Depth 7→8,
+  Type 7→8, Motion 6→7.5, Voice 8→8.5. App composite **6.9 → 7.1.**
+- **Biggest improvement:** the reveal now *lands* — its payoff beat ships the genuine editorial
+  report (real severity + trend the canonical state always held but the UI threw away),
+  restructured as severity → what it is → why it matters → what to do, streamed in with haptic and
+  anchored by the user's own face.
+- **Judgment calls:** (1) Led the finding with the real **severity meter + trend** instead of the
+  old rank-derived priority pill (priority just duplicated the rank ordering; severity/direction
+  are richer *and* genuine). `priorityTone` kept exported for the dev gallery. (2) Built the
+  editorial card **natively in the reveal** rather than importing the orphaned `FindingCardV2`
+  component — same canonical data, but avoids dragging the V2 screen's layout/deps into the locked
+  pager; the V2 orphan stays parked for the cleanup pass. (3) `why`/`action` copy is qualitative
+  and grounded per concern axis — no numbers, no product names (product specifics stay owned by the
+  Plan beat + Shop), honoring trust-first / no-fake-precision. (4) **Deferred** two secondary
+  Cycle-5 plan items — capture-as-precision-instrument + honest readiness chrome
+  (`ScanCaptureScreen`), and salvaging the cinematic analyzing material onto the live
+  `RevealAnalyzingSlide` — to keep this cycle on the highest-impact, lowest-risk win and avoid
+  editing the most timing-sensitive locked surface (the analyze→reveal handoff). Revisit in the
+  Imagery (12) / Motion (13) / States (15) passes.
+- **Next run picks up at:** Cycle 6 — Routine ritual (distinct AM/PM ambient moods; breathing
+  atmospheric gradients; hero focus card with more presence; completion crescendo/ceremony with
+  spring overshoot + heavier success haptic + streak tick; beautiful daily progress). Reuse the
+  `StaggerItem` entrance + the editorial finding card as the card-quality bar. Carry forward Scan
+  follow-ups (capture instrument + honest chrome; cinematic analyzing slide; consolidate the
+  orphaned V2/V34 result system + remove dead code) and the Shop cleanup debt.

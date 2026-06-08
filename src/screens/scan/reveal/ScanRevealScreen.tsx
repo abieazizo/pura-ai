@@ -3,16 +3,24 @@
  *
  * Screen 1 (analyzing) is its own surface (RevealAnalyzingSlide); once the AI
  * settles this pager takes over and walks the user through five framed beats:
- *   2  Your Skin Map        — face + colored zone overlays + concern chips
- *   3  Top Focus Areas      — three priority cards with close-up crops
+ *   2  Your Skin Map        — face (hero) + colored zone overlays + concern chips
+ *   3  Top Focus Areas      — editorial finding cards (severity, trend, why, do)
  *   4  Personalized Insights— sparkle disc + three editorial cards
  *   5  Your Skin Plan       — four typographic pillars ("starts tonight")
  *   6  Ready when you are    — reassurance + "Build my routine" CTA
  *
  * Presentational + pure: it reads a canonical SkinState (never the store) via
  * the derivations in revealContent, so the same component drives both the live
- * flow and the dev fixture gallery. Slide motion is a single parent-level
- * translateX+fade (Expo-Go-safe — no animated SVG props).
+ * flow and the dev fixture gallery. The parent beat transition is a single
+ * translateX+fade (Expo-Go-safe — no animated SVG props); within the two card
+ * beats the cards stream in on a short per-item stagger, and each FINDING lands
+ * with a light haptic — polish layered inside the locked beats, never changing
+ * their order, titles, step numbering, or transition timing.
+ *
+ * Cycle 5: the Focus beat is the editorial payoff of the whole arc. Each finding
+ * is a designed card — a real severity meter + trend chip (canonical data that
+ * used to be discarded), the summary as the "what it is" line, and grounded
+ * "why it matters" / "what to do" copy — with the captured face as a hero crop.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,9 +34,10 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { Drop, Leaf, ShieldCheck, Sparkle, Star, Target } from 'phosphor-react-native';
+import { Drop, Leaf, Minus, ShieldCheck, Sparkle, Star, TrendDown, TrendUp } from 'phosphor-react-native';
 import type { SkinState } from '@/types/canonical';
 import {
   puraReveal,
@@ -43,13 +52,17 @@ import {
   deriveInsights,
   deriveMapOverlays,
   derivePillars,
-  priorityTone,
+  directionMeta,
   regionFocus,
+  severityTone,
+  SEVERITY_TICKS,
   type InsightIcon,
   type MapOverlay,
+  type TrendIcon,
 } from './revealContent';
 import { FloatingNext, RevealCTA, RevealHeader, RevealLink } from './revealChrome';
 import { PillarIcon } from '@/components/routine/pillarIdentity';
+import { hapt } from '@/utils/haptics';
 
 const SKIN_GRADIENT = ['#E8D2C2', '#D8B6A2', '#C99A86'] as const;
 const TOTAL_STEPS = 6;
@@ -59,6 +72,13 @@ const INSIGHT_ICON: Record<InsightIcon, typeof Drop> = {
   barrier: Drop,
   oil: Leaf,
   clarity: Star,
+};
+
+const TREND_ICON: Record<TrendIcon, typeof TrendUp> = {
+  up: TrendUp,
+  down: TrendDown,
+  flat: Minus,
+  new: Sparkle,
 };
 
 export interface ScanRevealScreenProps {
@@ -117,10 +137,28 @@ export function ScanRevealScreen({
   const insights = useMemo(() => deriveInsights(skinState), [skinState]);
   const pillars = useMemo(() => derivePillars(skinState), [skinState]);
 
+  // Per-finding haptic stream — each focus card lands with a light tap as it
+  // staggers in. Scheduled only on the Focus beat; cleared on any beat change
+  // or unmount so a delayed tap never fires on the wrong screen.
+  const haptTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  useEffect(() => {
+    haptTimers.current.forEach(clearTimeout);
+    haptTimers.current = [];
+    if (step === 1 && focus.length > 0) {
+      focus.forEach((_, i) => {
+        haptTimers.current.push(setTimeout(() => hapt.tap(), 170 + i * 120));
+      });
+    }
+    return () => {
+      haptTimers.current.forEach(clearTimeout);
+      haptTimers.current = [];
+    };
+  }, [step, focus]);
+
   const contentW =
     Math.min(vw, puraRevealLayout.maxContentWidth) - puraRevealLayout.screenPadding * 2;
-  const mapW = Math.round(contentW * 0.6);
-  const mapH = Math.round(mapW * 1.14);
+  const mapW = Math.round(contentW * 0.72);
+  const mapH = Math.round(mapW * 1.2);
 
   const renderStep = () => {
     switch (step) {
@@ -144,6 +182,7 @@ export function ScanRevealScreen({
               <View style={styles.chipsRow}>
                 {chips.map((c) => (
                   <View key={c.key} style={[styles.chip, { backgroundColor: c.soft }]}>
+                    <View style={[styles.chipDot, { backgroundColor: c.color }]} />
                     <Text style={[puraRevealType.tag, { color: c.color }]}>{c.label}</Text>
                   </View>
                 ))}
@@ -174,31 +213,64 @@ export function ScanRevealScreen({
             </View>
 
             <View style={styles.stack}>
-              {focus.map((f) => {
-                const tone = priorityTone(f.priority);
+              {focus.map((f, i) => {
+                const sev = severityTone(f.severity);
+                const dir = directionMeta(f.direction);
                 return (
-                  <View key={f.key} style={styles.focusCard}>
-                    <View style={styles.focusBody}>
-                      <View style={styles.focusHead}>
-                        <Target size={18} weight="bold" color={puraReveal.blue} />
-                        <Text
-                          style={[puraRevealType.concernName, { color: puraReveal.ink, flex: 1 }]}
-                          numberOfLines={1}
-                        >
-                          {f.name}
-                        </Text>
-                        <View style={[styles.pill, { backgroundColor: tone.bg }]}>
-                          <Text style={[puraRevealType.priorityPill, { color: tone.color }]}>
-                            {f.priority}
+                  <StaggerItem key={f.key} index={i}>
+                    <View style={styles.findingCard}>
+                      <View style={styles.findingTop}>
+                        <CropPanel photoUri={photoUri} region={f.region} accent={f.color} />
+                        <View style={styles.findingBody}>
+                          <View style={styles.findingHead}>
+                            <Text
+                              style={[puraRevealType.concernName, { color: puraReveal.ink, flex: 1 }]}
+                              numberOfLines={1}
+                            >
+                              {f.name}
+                            </Text>
+                            <TrendChip icon={dir.icon} label={dir.label} color={dir.color} bg={dir.bg} />
+                          </View>
+
+                          <View style={styles.meterRow}>
+                            <SeverityMeter rank={f.severityRank} color={sev.color} />
+                            <Text style={[puraRevealType.priorityPill, { color: sev.color }]}>
+                              {sev.label}
+                            </Text>
+                          </View>
+
+                          <Text
+                            style={[puraRevealType.focusPhrase, { color: puraReveal.ink }]}
+                          >
+                            {f.phrase}
                           </Text>
                         </View>
                       </View>
-                      <Text style={[puraRevealType.focusPhrase, { color: puraReveal.ink }]}>
-                        {f.phrase}
-                      </Text>
+
+                      <View style={styles.findingDivider} />
+
+                      <View style={styles.findingNote}>
+                        <Text style={[puraRevealType.brandCaps, { color: puraReveal.veryMuted }]}>
+                          Why it matters
+                        </Text>
+                        <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 5 }]}>
+                          {f.why}
+                        </Text>
+                      </View>
+
+                      <View style={styles.findingAction}>
+                        <View style={[styles.actionMark, { backgroundColor: f.color }]} />
+                        <View style={styles.findingActionCol}>
+                          <Text style={[puraRevealType.brandCaps, { color: puraReveal.blueText }]}>
+                            What to do
+                          </Text>
+                          <Text style={[puraRevealType.body, { color: puraReveal.ink, marginTop: 5 }]}>
+                            {f.action}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                    <CropImage photoUri={photoUri} region={f.region} width={92} height={116} />
-                  </View>
+                  </StaggerItem>
                 );
               })}
             </View>
@@ -226,24 +298,26 @@ export function ScanRevealScreen({
             </View>
 
             <View style={styles.stack}>
-              {insights.map((card) => {
+              {insights.map((card, i) => {
                 const Icon = INSIGHT_ICON[card.icon];
                 return (
-                  <View key={card.key} style={styles.insightCard}>
-                    <View style={styles.insightIcon}>
-                      <Icon size={30} weight="regular" color={card.iconColor} />
+                  <StaggerItem key={card.key} index={i}>
+                    <View style={styles.insightCard}>
+                      <View style={styles.insightIcon}>
+                        <Icon size={30} weight="regular" color={card.iconColor} />
+                      </View>
+                      <View style={styles.insightCol}>
+                        <Text style={[puraRevealType.concernName, { color: puraReveal.ink }]}>
+                          {card.title}
+                        </Text>
+                        <Text
+                          style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 6 }]}
+                        >
+                          {card.body}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.insightCol}>
-                      <Text style={[puraRevealType.concernName, { color: puraReveal.ink }]}>
-                        {card.title}
-                      </Text>
-                      <Text
-                        style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 6 }]}
-                      >
-                        {card.body}
-                      </Text>
-                    </View>
-                  </View>
+                  </StaggerItem>
                 );
               })}
             </View>
@@ -380,8 +454,110 @@ function Slide({
 }
 
 // ---------------------------------------------------------------------------
+// StaggerItem — subtle per-card entrance (translateY + fade) on a short
+// index-based delay. Layered inside a beat; never touches the parent beat
+// transition. Expo-Go-safe (no layout animation, no animated SVG props).
+// ---------------------------------------------------------------------------
+
+function StaggerItem({ index, children }: { index: number; children: React.ReactNode }) {
+  const ty = useSharedValue(14);
+  const op = useSharedValue(0);
+
+  useEffect(() => {
+    const delay = index * 90;
+    ty.value = withDelay(delay, withTiming(0, { duration: 380, easing: Easing.out(Easing.cubic) }));
+    op.value = withDelay(delay, withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) }));
+  }, [index, ty, op]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: op.value,
+    transform: [{ translateY: ty.value }],
+  }));
+
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+// ---------------------------------------------------------------------------
+// SeverityMeter — segmented bar lit to the canonical severity rank (0..4).
+// ---------------------------------------------------------------------------
+
+function SeverityMeter({ rank, color }: { rank: number; color: string }) {
+  return (
+    <View style={styles.meter} accessibilityRole="progressbar">
+      {Array.from({ length: SEVERITY_TICKS }).map((_, i) => (
+        <View
+          key={i}
+          style={[styles.meterTick, { backgroundColor: i < rank ? color : puraReveal.ringTrack }]}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TrendChip — movement vs the previous scan. "New" when there's no prior scan.
+// ---------------------------------------------------------------------------
+
+function TrendChip({
+  icon,
+  label,
+  color,
+  bg,
+}: {
+  icon: TrendIcon;
+  label: string;
+  color: string;
+  bg: string;
+}) {
+  const Icon = TREND_ICON[icon];
+  return (
+    <View style={[styles.trendChip, { backgroundColor: bg }]}>
+      <Icon size={11} weight="bold" color={color} />
+      <Text style={[puraRevealType.priorityPill, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CropPanel — the captured face, framed to the finding's region. Stretches to
+// the height of the card's top row so it reads as a hero rail, not a thumbnail.
+// ---------------------------------------------------------------------------
+
+function CropPanel({
+  photoUri,
+  region,
+  accent,
+}: {
+  photoUri?: string;
+  region: string;
+  accent: string;
+}) {
+  return (
+    <View style={styles.cropPanel}>
+      {photoUri ? (
+        <Image
+          source={{ uri: photoUri }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          contentPosition={regionFocus(region)}
+        />
+      ) : (
+        <LinearGradient
+          colors={SKIN_GRADIENT}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      <View style={[styles.cropAccent, { backgroundColor: accent }]} pointerEvents="none" />
+      <View style={styles.cropEdge} pointerEvents="none" />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ZoneMapFrame — portrait photo (or neutral skin gradient) under translucent
-// concern-colored zone ellipses. Static SVG only.
+// concern-colored zone ellipses, with a soft grounding scrim. Static SVG only.
 // ---------------------------------------------------------------------------
 
 function ZoneMapFrame({
@@ -424,40 +600,16 @@ function ZoneMapFrame({
         ))}
       </Svg>
 
+      <LinearGradient
+        colors={['transparent', 'rgba(8,10,15,0.16)']}
+        start={{ x: 0.5, y: 0.6 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.frameScrim}
+        pointerEvents="none"
+      />
+
       <View style={styles.frameEdge} pointerEvents="none" />
     </View>
-  );
-}
-
-function CropImage({
-  photoUri,
-  region,
-  width,
-  height,
-}: {
-  photoUri?: string;
-  region: string;
-  width: number;
-  height: number;
-}) {
-  const dims = { width, height, borderRadius: puraRevealRadius.thumb };
-  if (photoUri) {
-    return (
-      <Image
-        source={{ uri: photoUri }}
-        style={dims}
-        contentFit="cover"
-        contentPosition={regionFocus(region)}
-      />
-    );
-  }
-  return (
-    <LinearGradient
-      colors={SKIN_GRADIENT}
-      start={{ x: 0.2, y: 0 }}
-      end={{ x: 0.8, y: 1 }}
-      style={dims}
-    />
   );
 }
 
@@ -498,12 +650,19 @@ const styles = StyleSheet.create({
   },
 
   // Screen 2 — Skin Map
-  mapBlock: { alignItems: 'center', marginVertical: 16 },
+  mapBlock: { alignItems: 'center', marginVertical: 18 },
   frame: {
     borderRadius: puraRevealRadius.cardLg,
     overflow: 'hidden',
     backgroundColor: puraReveal.porcelainDeep,
-    ...puraRevealShadow.card,
+    ...puraRevealShadow.float,
+  },
+  frameScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '42%',
   },
   frameEdge: {
     ...StyleSheet.absoluteFillObject,
@@ -513,10 +672,14 @@ const styles = StyleSheet.create({
   },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
     paddingHorizontal: 13,
     paddingVertical: 7,
     borderRadius: puraRevealRadius.chip,
   },
+  chipDot: { width: 7, height: 7, borderRadius: 4 },
   card: {
     backgroundColor: puraReveal.surface,
     borderRadius: puraRevealRadius.card,
@@ -527,24 +690,62 @@ const styles = StyleSheet.create({
     ...puraRevealShadow.card,
   },
 
-  // Screen 3 — Focus Areas
+  // Screen 3 — Focus Areas (editorial findings)
   stack: { gap: puraRevealLayout.cardGap, marginTop: 4 },
-  focusCard: {
-    flexDirection: 'row',
-    gap: 14,
+  findingCard: {
     backgroundColor: puraReveal.surface,
     borderRadius: puraRevealRadius.card,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: puraReveal.border,
-    padding: 14,
+    padding: 16,
     ...puraRevealShadow.card,
   },
-  focusBody: { flex: 1, justifyContent: 'center', gap: 10 },
-  focusHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  pill: {
-    paddingHorizontal: 10,
+  findingTop: { flexDirection: 'row', gap: 14, alignItems: 'stretch' },
+  findingBody: { flex: 1, justifyContent: 'flex-start', gap: 9 },
+  findingHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  meterRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  meter: { flexDirection: 'row', gap: 4, width: 68 },
+  meterTick: { flex: 1, height: 4, borderRadius: 2 },
+  trendChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: puraRevealRadius.pill,
+  },
+  findingDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: puraReveal.divider,
+    marginTop: 14,
+    marginBottom: 13,
+  },
+  findingNote: {},
+  findingAction: { flexDirection: 'row', gap: 11, marginTop: 13, alignItems: 'flex-start' },
+  findingActionCol: { flex: 1 },
+  actionMark: { width: 6, height: 6, borderRadius: 3, marginTop: 6 },
+
+  // Face-crop rail
+  cropPanel: {
+    width: 88,
+    alignSelf: 'stretch',
+    minHeight: 118,
+    borderRadius: puraRevealRadius.thumb,
+    overflow: 'hidden',
+    backgroundColor: puraReveal.porcelainDeep,
+  },
+  cropAccent: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+  },
+  cropEdge: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: puraRevealRadius.thumb,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
   },
 
   // Screen 4 — Insights
