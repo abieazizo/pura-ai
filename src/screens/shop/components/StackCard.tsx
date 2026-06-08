@@ -53,6 +53,7 @@ import {
   puraShopRadius,
   puraShopSpace,
   puraShopType,
+  tnum,
 } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { hapt } from '@/utils/haptics';
@@ -607,8 +608,12 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   eyebrow: {
+    // Tracked uppercase eyebrow — wider positive tracking reads as a deliberate
+    // editorial kicker, not a cramped tag.
     ...puraShopType.tagLabel,
-    letterSpacing: 1.1,
+    fontSize: 11,
+    lineHeight: 13,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
     flexShrink: 1,
   },
@@ -638,19 +643,27 @@ const styles = StyleSheet.create({
     paddingTop: puraShopSpace.md,
   },
   brand: {
+    // Tracked uppercase brand line — sits as a quiet eyebrow above the serif.
     ...puraShopType.brand,
+    letterSpacing: 1.3,
     color: puraShopHome.quietInk,
-    marginBottom: 4,
+    marginBottom: 5,
   },
   name: {
+    // Hero product name — the editorial display moment of the card. Sized up
+    // and tracked tighter than the legacy token so the serif lands with
+    // confidence instead of reading timid.
     ...puraShopType.heroProductSerif,
+    fontSize: 28,
+    lineHeight: 31,
+    letterSpacing: -0.8,
     color: puraShopHome.ink,
-    marginBottom: 8,
+    marginBottom: 9,
   },
   reason: {
     fontFamily: 'Inter-Regular',
     fontSize: 14.5,
-    lineHeight: 20,
+    lineHeight: 21,
     letterSpacing: -0.1,
     color: puraShop.inkSecondary,
   },
@@ -668,6 +681,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   compareText: {
+    // Carries a price delta — tabular figures so the digit can't jitter the
+    // chip width as it animates in.
+    ...tnum,
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
     letterSpacing: 0.1,
@@ -696,7 +712,8 @@ const styles = StyleSheet.create({
   },
   compareEyebrow: {
     ...puraShopType.tagLabel,
-    letterSpacing: 1.1,
+    fontSize: 11,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
     color: puraShopHome.quietInk,
   },
@@ -719,7 +736,8 @@ const styles = StyleSheet.create({
   compareRole: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 9.5,
-    letterSpacing: 1,
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
     color: puraShopHome.quietInk,
     marginBottom: 8,
   },
@@ -744,7 +762,8 @@ const styles = StyleSheet.create({
   compareBrand: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10.5,
-    letterSpacing: 0.4,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
     color: puraShopHome.quietInk,
     marginBottom: 3,
     textAlign: 'center',
@@ -759,8 +778,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   comparePrice: {
+    ...tnum,
     fontFamily: 'Inter-Bold',
     fontSize: 16.5,
+    letterSpacing: -0.3,
     color: puraShopHome.ink,
   },
   compareDivider: {
@@ -780,15 +801,21 @@ const styles = StyleSheet.create({
     marginVertical: 6,
   },
   compareDeltaText: {
+    // The delta badge on the divider — tabular figures keep the ± amount
+    // optically centered in its pill.
+    ...tnum,
     fontFamily: 'Inter-Bold',
     fontSize: 12.5,
     letterSpacing: 0.2,
     color: puraShopHome.white,
   },
   compareFoot: {
+    // Leads with a price figure — tabular so it doesn't shimmy against the
+    // surrounding sentence.
+    ...tnum,
     fontFamily: 'Inter-Regular',
     fontSize: 12.5,
-    lineHeight: 17.5,
+    lineHeight: 18,
     letterSpacing: -0.05,
     color: puraShop.inkSecondary,
     textAlign: 'center',
@@ -798,7 +825,7 @@ const styles = StyleSheet.create({
   compareDismiss: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 9.5,
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     color: puraShopHome.quietInk,
     textAlign: 'center',
     marginTop: 12,
@@ -818,11 +845,19 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   price: {
+    // Primary price figure — sized up a touch and tracked tighter so it lands
+    // as the footer's confident data moment. Tabular figures (shared tnum) keep
+    // the digits column-aligned and jitter-free.
     ...puraShopType.priceLarge,
+    ...tnum,
+    fontSize: 19,
+    lineHeight: 22,
+    letterSpacing: -0.4,
     color: puraShopHome.ink,
   },
   priceWas: {
     ...puraShopType.price,
+    ...tnum,
     color: puraShopHome.quietInk,
     textDecorationLine: 'line-through',
     marginLeft: 8,
@@ -841,7 +876,7 @@ const styles = StyleSheet.create({
   addedPillText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12.5,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
     color: puraShopHome.budgetInk,
   },
 
@@ -868,17 +903,20 @@ const styles = StyleSheet.create({
   },
   endEyebrow: {
     ...puraShopType.tagLabel,
-    letterSpacing: 1.4,
+    fontSize: 11,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
     color: puraShopHome.quietInk,
     textAlign: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   endReason: {
+    // Terminal-card sign-off — a confident editorial serif moment to close the
+    // deck. Larger and tracked tighter than before so it reads as a statement.
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 24,
-    lineHeight: 30,
-    letterSpacing: -0.4,
+    fontSize: 29,
+    lineHeight: 33,
+    letterSpacing: -0.7,
     color: puraShopHome.ink,
     textAlign: 'center',
   },

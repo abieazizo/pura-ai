@@ -707,7 +707,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 13,
     lineHeight: 18,
+    letterSpacing: -0.05,
     color: C.body,
-    marginTop: 4,
+    marginTop: 5,
   },
 });

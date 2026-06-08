@@ -41,6 +41,7 @@ import type {
   RoutineStep,
   RoutineTimeOfDay,
 } from '@/types/routine';
+import { tnum } from '@/theme';
 import { CC, DAY_ATMOSPHERE, companionGeo, companionMotion, companionType } from './companionTokens';
 import { buildCompanionModel, type CompanionRow } from './companionModel';
 import { buildCompanionGreeting } from './companionGreeting';
@@ -293,9 +294,9 @@ export function RoutineCompanionScreen({
           <Animated.View style={[styles.header, headerStyle]}>
             <View style={styles.titleRow}>
               <View style={styles.titleLeft}>
-                <Text style={companionType.pageTitle}>Routine</Text>
+                <Text style={[companionType.pageTitle, styles.pageTitle]}>Routine</Text>
                 <Sparkle
-                  size={18}
+                  size={19}
                   weight="fill"
                   color={CC.blue}
                   style={styles.sparkle}
@@ -312,7 +313,7 @@ export function RoutineCompanionScreen({
                 <Text style={companionType.link}>Customize</Text>
               </Pressable>
             </View>
-            <Text style={companionType.date}>{formatToday()}</Text>
+            <Text style={[companionType.date, styles.date]}>{formatToday()}</Text>
             <View style={styles.toggleWrap}>
               <AmPmToggle value={timeOfDay} onChange={onChangeTimeOfDay} />
             </View>
@@ -320,7 +321,7 @@ export function RoutineCompanionScreen({
 
           {/* Zone 2 — streak-aware greeting. */}
           <Animated.View style={[styles.greetingWrap, greetingStyle]}>
-            <Text style={companionType.greeting}>{greeting}</Text>
+            <Text style={[companionType.greeting, styles.greeting]}>{greeting}</Text>
           </Animated.View>
 
           {/* Zone 3 — hero focus card. */}
@@ -501,9 +502,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  pageTitle: {
+    // Editorial page mark — larger and tighter than the timid 26px default.
+    fontSize: 32,
+    lineHeight: 35,
+    letterSpacing: -0.7,
+  },
+  date: {
+    // Tabular date so the day number doesn't shift the line day-to-day.
+    ...tnum,
+    marginTop: 5,
+    letterSpacing: 0.2,
+  },
+  greeting: {
+    // The streak-aware line carries real editorial weight now.
+    fontSize: 23,
+    lineHeight: 29,
+    letterSpacing: -0.3,
+  },
   sparkle: {
-    marginLeft: 7,
-    marginTop: 2,
+    marginLeft: 8,
+    marginTop: 3,
   },
   toggleWrap: {
     marginTop: 14,
@@ -518,15 +537,17 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   section: {
-    paddingTop: 22,
+    paddingTop: 24,
   },
   eyebrow: {
     paddingHorizontal: 20,
+    // Hold the caps eyebrow at a confident, even track.
+    letterSpacing: 2,
   },
   hint: {
     paddingHorizontal: 20,
-    marginTop: 3,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 14,
   },
   upcomingList: {
     paddingHorizontal: companionGeo.screenMargin,

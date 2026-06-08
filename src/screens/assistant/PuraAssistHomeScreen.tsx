@@ -70,6 +70,7 @@ import {
   puraAssistLayout,
   puraAssistRadius,
   puraAssistType,
+  tnum,
 } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
@@ -306,6 +307,9 @@ export function PuraAssistHomeScreen() {
           <Rise delay={scanReady ? 280 : 340} style={styles.readCard}>
             <View style={styles.readHead}>
               <Text style={styles.readEyebrow}>Tonight’s read</Text>
+              <Text style={styles.readTitle}>
+                {scanReady ? 'Here’s the signal.' : 'Nothing to read yet.'}
+              </Text>
               <Text style={styles.readProvenance}>
                 {scanReady
                   ? signal.timestampLabel
@@ -402,7 +406,7 @@ const styles = StyleSheet.create({
   },
   headerCopy: { flex: 1, minWidth: 0 },
   headerTitle: { ...puraAssistType.headerTitle, color: puraAssist.ink },
-  headerSub: { ...puraAssistType.headerSub, color: puraAssist.muted, marginTop: 2 },
+  headerSub: { ...dsType.labelSm, color: puraAssist.veryMuted, marginTop: 3 },
   headerSep: {
     position: 'absolute',
     left: 0,
@@ -451,7 +455,7 @@ const styles = StyleSheet.create({
   pillReady: { backgroundColor: puraAssist.blue08 },
   pillMuted: { backgroundColor: puraAssist.hairline },
   pillDot: { width: 7, height: 7, borderRadius: 3.5 },
-  pillText: { ...puraAssistType.chip },
+  pillText: { ...dsType.labelSm },
   orbWrap: {
     height: 176,
     width: 176,
@@ -462,9 +466,9 @@ const styles = StyleSheet.create({
   },
   hero: {
     fontFamily: fontFamily.serifSemi,
-    fontSize: 42,
-    lineHeight: 45,
-    letterSpacing: -1.1,
+    fontSize: 46,
+    lineHeight: 47,
+    letterSpacing: -1.6,
     color: puraAssist.ink,
     textAlign: 'center',
   },
@@ -490,20 +494,25 @@ const styles = StyleSheet.create({
     ...dsElevation.e2,
   },
   readHead: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
   },
   readEyebrow: {
-    fontFamily: fontFamily.sansSemi,
-    fontSize: 16,
-    lineHeight: 20,
-    letterSpacing: -0.3,
+    ...dsType.label,
+    color: puraAssist.blue,
+  },
+  readTitle: {
+    fontFamily: fontFamily.serifSemi,
+    fontSize: 25,
+    lineHeight: 27,
+    letterSpacing: -0.7,
     color: puraAssist.ink,
+    marginTop: dsSpace.sm,
   },
   readProvenance: {
     ...dsType.caption,
+    ...tnum,
     color: puraAssist.veryMuted,
+    marginTop: dsSpace.xs,
   },
   readRows: { marginTop: dsSpace.base, gap: dsSpace.sm },
   readRow: {
@@ -539,6 +548,8 @@ const styles = StyleSheet.create({
   },
   readValue: {
     ...puraAssistType.signalValue,
+    ...tnum,
+    letterSpacing: -0.2,
     textAlign: 'right',
   },
   readEmpty: {

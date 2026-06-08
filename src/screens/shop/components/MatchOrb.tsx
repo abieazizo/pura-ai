@@ -26,7 +26,7 @@ import Svg, {
   Circle,
   Ellipse,
 } from 'react-native-svg';
-import { puraShop, puraShopType } from '@/theme';
+import { puraShop, puraShopType, tnum } from '@/theme';
 
 export function MatchOrb({
   percent,
@@ -128,18 +128,30 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   percent: {
+    // Editorial serif data-moment: larger and tighter than the legacy token so
+    // the match figure reads with confidence inside the orb. Tabular figures
+    // keep the digit from shifting the suffix as values animate/change.
     ...puraShopType.matchPercent,
+    ...tnum,
+    fontSize: 26,
+    lineHeight: 27,
+    letterSpacing: -1.0,
     color: puraShop.orbPercentText,
   },
   percentSuffix: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 14,
+    letterSpacing: -0.3,
     color: puraShop.orbPercentText,
-    marginLeft: 1,
+    marginLeft: 0.5,
   },
   label: {
+    // Tracked uppercase eyebrow — wider tracking so the tiny caps read as a
+    // deliberate label, optically centered under the figure.
     ...puraShopType.matchLabel,
+    fontSize: 8,
+    letterSpacing: 1.5,
     color: puraShop.orbMatchText,
-    marginTop: -1,
+    marginTop: 0,
   },
 });

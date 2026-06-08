@@ -34,6 +34,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { tnum } from '@/theme';
 import { stepTypeToPillarKey, type RoutineStep } from '@/types/routine';
 import { PILLAR_IDENTITY } from '@/components/routine/pillarIdentity';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
@@ -265,7 +266,7 @@ export function HeroFocusCard({
         {/* Top row: STEP x OF y · Why this? */}
         <Animated.View style={[styles.topRow, nameStyle]}>
           <View style={styles.stepPill}>
-            <Text style={companionType.stepPill}>
+            <Text style={[companionType.stepPill, styles.stepPillText]}>
               STEP {stepIndex + 1} OF {totalSteps}
             </Text>
           </View>
@@ -284,7 +285,7 @@ export function HeroFocusCard({
           ) : null}
         </Animated.View>
 
-        <Animated.Text style={[companionType.pillarLabel, styles.pillarLabel, nameStyle]}>
+        <Animated.Text style={[companionType.pillarLabel, styles.pillarLabel, nameStyle]} allowFontScaling>
           {identity.label}
         </Animated.Text>
 
@@ -351,11 +352,14 @@ export function HeroFocusCard({
         {/* Product identity. */}
         <View style={styles.meta}>
           {brand ? (
-            <Animated.Text style={[companionType.brand, metaStyle]}>
+            <Animated.Text style={[companionType.brand, styles.brand, metaStyle]}>
               {brand}
             </Animated.Text>
           ) : null}
-          <Animated.Text style={[companionType.productName, nameStyle]} numberOfLines={2}>
+          <Animated.Text
+            style={[companionType.productName, styles.productName, nameStyle]}
+            numberOfLines={2}
+          >
             {productName}
           </Animated.Text>
           {guidance ? (
@@ -434,8 +438,15 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: CC.bluePill,
   },
+  stepPillText: {
+    // Tabular figures so the step counter never reflows as it climbs.
+    ...tnum,
+    letterSpacing: 1.5,
+  },
   pillarLabel: {
-    marginTop: 12,
+    marginTop: 14,
+    // Confident, evenly-tracked caps eyebrow above the editorial name.
+    letterSpacing: 1.7,
   },
   stage: {
     alignItems: 'center',
@@ -466,11 +477,23 @@ const styles = StyleSheet.create({
   meta: {
     marginTop: 10,
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+  },
+  brand: {
+    // Slightly airier brand kicker so it reads as a label, not a word.
+    letterSpacing: 1.8,
+  },
+  productName: {
+    // Right-size the hero serif: larger, tighter, centered — editorial
+    // confidence instead of a timid 22px line.
+    fontSize: 27,
+    lineHeight: 30,
+    letterSpacing: -0.5,
+    textAlign: 'center',
   },
   guidance: {
     textAlign: 'center',
-    marginTop: 2,
+    marginTop: 3,
   },
   whyBox: {
     marginTop: 12,

@@ -31,6 +31,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { hapt } from '@/utils/haptics';
+import { tnum } from '@/theme';
 import type { RoutineTimeOfDay } from '@/types/routine';
 import {
   CC,
@@ -155,7 +156,9 @@ export function CelebrationCard({
         {showStreak ? (
           <Animated.View style={[styles.streakChip, chipStyle]}>
             <Flame size={15} weight="fill" color={CC.blue} />
-            <Text style={companionType.streakLabel}>{streakLabel}</Text>
+            <Text style={[companionType.streakLabel, styles.streakLabel]}>
+              {streakLabel}
+            </Text>
           </Animated.View>
         ) : null}
 
@@ -217,10 +220,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   eyebrow: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   title: {
-    marginBottom: 16,
+    // The emotional climax — the boldest serif moment on the surface.
+    fontSize: 31,
+    lineHeight: 35,
+    letterSpacing: -0.7,
+    marginBottom: 18,
+    paddingHorizontal: 8,
   },
   streakChip: {
     flexDirection: 'row',
@@ -231,6 +239,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: CC.streakBg,
     marginBottom: 20,
+  },
+  streakLabel: {
+    // Tabular streak count so "11 days" lines up under "1 day".
+    ...tnum,
   },
   cta: {
     paddingVertical: 8,

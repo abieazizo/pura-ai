@@ -18,6 +18,22 @@ import type { PillarKey } from '@/types/routine';
 import { puraReveal } from '@/theme/tokens';
 
 // ---------------------------------------------------------------------------
+// Beat eyebrows — a small tracked uppercase kicker that sits above each
+// section's serif title. Editorial hierarchy device: it gives every beat a
+// quiet "section marker" so the big Instrument Serif headline lands as the
+// second, louder note instead of carrying the whole top of the screen alone.
+// Numbered 02–06 to echo the locked step counter without re-deriving it.
+// ---------------------------------------------------------------------------
+
+export const BEAT_EYEBROWS = {
+  map: 'Your scan · 02',
+  focus: 'Your scan · 03',
+  insights: 'Your scan · 04',
+  plan: 'Your scan · 05',
+  ready: 'Your scan · 06',
+} as const;
+
+// ---------------------------------------------------------------------------
 // Concern → display mapping. The reference reveal uses five concern tags
 // (Texture / Oil / Redness / Dark Circles / Spots), each with a zone color.
 // We map the canonical ConcernType axes onto that visual language so the

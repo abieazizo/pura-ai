@@ -71,7 +71,9 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     paddingHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 14,
+    // Match the surface's other caps eyebrows for a consistent track.
+    letterSpacing: 2,
   },
   row: {
     paddingHorizontal: 20,

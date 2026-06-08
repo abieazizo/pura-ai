@@ -174,7 +174,7 @@ export function MeScreen() {
               </Text>
             </Pressable>
           </View>
-          <Text style={styles.greeting} maxFontSizeMultiplier={1.15} accessibilityRole="header">
+          <Text style={styles.greeting} maxFontSizeMultiplier={1.12} accessibilityRole="header">
             {greeting}
           </Text>
           <Text style={styles.greetingSub} maxFontSizeMultiplier={1.2}>
@@ -400,7 +400,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   eyebrow: {
+    // Masthead kicker — tracked uppercase caps, a touch wider than the base
+    // label token for editorial breathing room at the top of the page.
     ...dsType.label,
+    letterSpacing: 1.7,
     color: ds.textTertiary,
   },
   avatar: {
@@ -420,16 +423,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   greeting: {
-    ...dsType.title,
+    // Editorial hero — right-sized from the timid 32pt title to a confident
+    // display serif with tighter optical tracking. The one dominant line on Me.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 41,
+    lineHeight: 43,
+    letterSpacing: -1.3,
     color: ds.textPrimary,
     paddingHorizontal: H,
     marginTop: dsSpace.base,
   },
   greetingSub: {
-    ...dsType.body,
+    // Italic serif lead-in — sets an editorial voice under the hero instead of
+    // a flat UI body line. Slightly larger with calm line-height.
+    fontFamily: 'InstrumentSerif-Italic',
+    fontSize: 19,
+    lineHeight: 25,
+    letterSpacing: -0.2,
     color: ds.textSecondary,
     paddingHorizontal: H,
-    marginTop: dsSpace.xs,
+    marginTop: dsSpace.sm,
   },
 
   // Hero
@@ -453,21 +466,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
+    // Editorial data numerals — tabular so the three columns stay rock-steady
+    // as they count up, sized up a notch with tighter tracking for confidence.
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 30,
-    lineHeight: 34,
-    letterSpacing: -0.6,
+    fontSize: 34,
+    lineHeight: 36,
+    letterSpacing: -0.9,
     color: ds.textPrimary,
     ...tnum,
   },
   statLabel: {
     ...dsType.labelSm,
+    letterSpacing: 1.4,
     color: ds.textTertiary,
-    marginTop: dsSpace.xs,
+    marginTop: dsSpace.sm,
   },
   statDivider: {
     width: StyleSheet.hairlineWidth,
-    height: 34,
+    height: 38,
     backgroundColor: ds.border,
   },
 
@@ -477,13 +493,18 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   emptyTitle: {
-    ...dsType.title,
+    // Same confident display serif as the greeting hero so the empty state
+    // carries equal editorial weight, not a smaller fallback title.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 34,
+    lineHeight: 37,
+    letterSpacing: -1.0,
     color: ds.textPrimary,
   },
   emptyBody: {
     ...dsType.body,
     color: ds.textSecondary,
-    marginTop: dsSpace.sm,
+    marginTop: dsSpace.md,
     marginBottom: dsSpace.lg,
   },
   emptyCta: {
@@ -492,10 +513,13 @@ const styles = StyleSheet.create({
 
   // Settings labels
   listLabel: {
+    // Section caps — tracked to match the masthead eyebrow so every uppercase
+    // label on the page shares one editorial rhythm.
     ...dsType.label,
+    letterSpacing: 1.7,
     color: ds.textTertiary,
     paddingHorizontal: H,
-    marginBottom: dsSpace.sm,
+    marginBottom: dsSpace.md,
   },
 
   // Sign out

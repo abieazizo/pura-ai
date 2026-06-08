@@ -101,6 +101,10 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
           />
         </Animated.View>
 
+        <Animated.Text style={[styles.eyebrow, headStyle]} maxFontSizeMultiplier={1.2}>
+          THE SCAN
+        </Animated.Text>
+
         <Animated.Text
           style={[styles.headline, headStyle]}
           maxFontSizeMultiplier={1.15}
@@ -133,24 +137,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   glyphWrap: {
-    marginBottom: 28,
+    marginBottom: 26,
+  },
+  eyebrow: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1.6,
+    color: palette.clay,
+    textAlign: 'center',
+    marginBottom: 14,
   },
   headline: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.6,
+    fontSize: 42,
+    lineHeight: 46,
+    letterSpacing: -1.2,
     color: palette.ink,
     textAlign: 'center',
   },
   sub: {
     fontFamily: 'Inter-Regular',
     fontSize: 16,
-    lineHeight: 26,
+    lineHeight: 25,
+    letterSpacing: -0.1,
     color: palette.inkSecondary,
     textAlign: 'center',
-    marginTop: 16,
-    maxWidth: 330,
+    marginTop: 18,
+    maxWidth: 326,
   },
   ctaWrap: {
     paddingTop: 8,

@@ -262,9 +262,9 @@ const styles = StyleSheet.create({
   },
   voice: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 26,
-    lineHeight: 32,
-    letterSpacing: -0.4,
+    fontSize: 31,
+    lineHeight: 37,
+    letterSpacing: -0.7,
     color: palette.ink,
     textAlign: 'center',
   },
@@ -280,8 +280,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   input: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 18,
+    fontFamily: 'Inter-Medium',
+    fontSize: 19,
+    letterSpacing: -0.2,
     color: palette.ink,
     padding: 0,
     alignSelf: 'stretch',
@@ -295,12 +296,14 @@ const styles = StyleSheet.create({
   placeholder: {
     fontFamily: 'Inter-Regular',
     fontStyle: 'italic',
-    fontSize: 18,
+    fontSize: 19,
+    letterSpacing: -0.2,
     color: palette.inkTertiary,
   },
   helper: {
     fontFamily: 'Inter-Regular',
     fontSize: 13,
+    letterSpacing: -0.1,
     color: palette.inkTertiary,
     marginTop: 12,
     minHeight: 18,
@@ -311,8 +314,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   skipText: {
-    fontFamily: 'Inter-Regular',
+    fontFamily: 'Inter-Medium',
     fontSize: 13,
+    letterSpacing: 0.1,
     color: palette.inkSecondary,
   },
 });

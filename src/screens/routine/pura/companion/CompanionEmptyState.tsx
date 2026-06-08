@@ -253,16 +253,22 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     lineHeight: 14,
-    letterSpacing: 1.6,
+    letterSpacing: 2,
     textTransform: 'uppercase',
     color: CC.blue,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   title: {
-    marginBottom: 10,
+    // Right-size the empty-state hero serif to match the live companion.
+    fontSize: 31,
+    lineHeight: 35,
+    letterSpacing: -0.7,
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
   body: {
-    maxWidth: 280,
+    maxWidth: 296,
+    lineHeight: 21,
     marginBottom: 28,
   },
   button: {

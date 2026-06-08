@@ -175,8 +175,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingTop: 6,
-    paddingBottom: 20,
+    // A touch more breathing room above the centerpiece deck so it separates
+    // cleanly from the concerns row (hierarchy refinement supporting the
+    // editorial type pass).
+    paddingTop: 12,
+    paddingBottom: 22,
   },
   pageHatches: {
     paddingHorizontal: 20,

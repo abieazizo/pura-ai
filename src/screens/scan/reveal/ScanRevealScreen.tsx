@@ -46,7 +46,9 @@ import {
   puraRevealShadow,
   puraRevealType,
 } from '@/theme/tokens';
+import { tnum } from '@/theme';
 import {
+  BEAT_EYEBROWS,
   concernChips,
   deriveFocusAreas,
   deriveInsights,
@@ -80,6 +82,97 @@ const TREND_ICON: Record<TrendIcon, typeof TrendUp> = {
   flat: Minus,
   new: Sparkle,
 };
+
+// ---------------------------------------------------------------------------
+// Editorial type layer (Cycle 9) — a thin set of local overrides on top of the
+// shipped puraRevealType tokens. The reveal arc's headlines were a touch timid
+// (28px serif, gentle tracking); editorial display wants to be LARGER and
+// TIGHTER, uppercase markers want POSITIVE tracking, and every digit-bearing
+// label wants tabular figures so meters/trends never jitter. We override only
+// the few keys that carry the typographic weight of each beat — fonts, colors,
+// and layout below stay on the locked tokens.
+// ---------------------------------------------------------------------------
+
+const SERIF_SEMI = 'InstrumentSerif-SemiBold';
+const SERIF_REG = 'InstrumentSerif-Regular';
+const SERIF_ITALIC = 'InstrumentSerif-Italic';
+
+const rt = StyleSheet.create({
+  // Section hero — right-sized up from 28→33 with tighter negative tracking so
+  // the serif reads with editorial confidence at the top of each beat.
+  heroTitle: {
+    fontFamily: SERIF_SEMI,
+    fontSize: 33,
+    lineHeight: 35,
+    letterSpacing: -1.0,
+  },
+  // The italic counter-line ("starts tonight" / "build it.") — paired one size
+  // under the roman hero, generously tracked-in.
+  heroItalic: {
+    fontFamily: SERIF_ITALIC,
+    fontSize: 31,
+    lineHeight: 34,
+    letterSpacing: -0.7,
+  },
+  // The "Ready when you are." opener — slightly quieter than the blue payoff
+  // line beneath it, establishing a two-beat read.
+  readyLead: {
+    fontFamily: SERIF_SEMI,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.8,
+  },
+  // The Focus beat's "what it is" line — the data-moment serif. Pushed up a
+  // step (20→22) and tightened so it lands as the editorial payoff it is.
+  focusPhrase: {
+    fontFamily: SERIF_REG,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.4,
+  },
+  // Tracked uppercase eyebrow — the section kicker above each hero.
+  eyebrow: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10.5,
+    lineHeight: 13,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  // In-card uppercase labels ("Why it matters" / "What to do" / "What it
+  // means") — retracked from a timid 0.8 up to a crisp 1.3.
+  microCaps: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+  },
+  // Severity + trend pills — uppercase, tracked, AND tabular so the level word
+  // and any digits sit on a stable rhythm next to the meter.
+  metaPill: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    lineHeight: 13,
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+    ...tnum,
+  },
+});
+
+/** Small tracked section kicker rendered above each beat's serif hero. */
+function Eyebrow({ label, align = 'left' }: { label: string; align?: 'left' | 'center' }) {
+  return (
+    <Text
+      style={[
+        rt.eyebrow,
+        { color: puraReveal.blue, textAlign: align },
+        align === 'center' && styles.eyebrowCenter,
+      ]}
+    >
+      {label}
+    </Text>
+  );
+}
 
 export interface ScanRevealScreenProps {
   skinState: SkinState;
@@ -166,7 +259,8 @@ export function ScanRevealScreen({
         return (
           <Slide footer={<FloatingNext onPress={handleNext} />}>
             <View style={styles.titleBlock}>
-              <Text style={[puraRevealType.sectionTitle, { color: puraReveal.ink }]}>
+              <Eyebrow label={BEAT_EYEBROWS.map} />
+              <Text style={[rt.heroTitle, styles.heroTitleText, { color: puraReveal.ink }]}>
                 Your Skin Map
               </Text>
               <Text style={[puraRevealType.body, styles.subtext]}>
@@ -190,10 +284,10 @@ export function ScanRevealScreen({
             ) : null}
 
             <View style={styles.card}>
-              <Text style={[puraRevealType.cardTitle, { color: puraReveal.ink }]}>
+              <Text style={[rt.microCaps, { color: puraReveal.veryMuted }]}>
                 What it means
               </Text>
-              <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 8 }]}>
+              <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 9 }]}>
                 {skinState.summaryBody}
               </Text>
             </View>
@@ -204,7 +298,8 @@ export function ScanRevealScreen({
         return (
           <Slide footer={<FloatingNext onPress={handleNext} />}>
             <View style={styles.titleBlock}>
-              <Text style={[puraRevealType.sectionTitle, { color: puraReveal.ink }]}>
+              <Eyebrow label={BEAT_EYEBROWS.focus} />
+              <Text style={[rt.heroTitle, styles.heroTitleText, { color: puraReveal.ink }]}>
                 Top Focus Areas
               </Text>
               <Text style={[puraRevealType.body, styles.subtext]}>
@@ -234,14 +329,12 @@ export function ScanRevealScreen({
 
                           <View style={styles.meterRow}>
                             <SeverityMeter rank={f.severityRank} color={sev.color} />
-                            <Text style={[puraRevealType.priorityPill, { color: sev.color }]}>
+                            <Text style={[rt.metaPill, { color: sev.color }]}>
                               {sev.label}
                             </Text>
                           </View>
 
-                          <Text
-                            style={[puraRevealType.focusPhrase, { color: puraReveal.ink }]}
-                          >
+                          <Text style={[rt.focusPhrase, { color: puraReveal.ink }]}>
                             {f.phrase}
                           </Text>
                         </View>
@@ -250,10 +343,10 @@ export function ScanRevealScreen({
                       <View style={styles.findingDivider} />
 
                       <View style={styles.findingNote}>
-                        <Text style={[puraRevealType.brandCaps, { color: puraReveal.veryMuted }]}>
+                        <Text style={[rt.microCaps, { color: puraReveal.veryMuted }]}>
                           Why it matters
                         </Text>
-                        <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 5 }]}>
+                        <Text style={[puraRevealType.body, { color: puraReveal.muted, marginTop: 6 }]}>
                           {f.why}
                         </Text>
                       </View>
@@ -261,10 +354,10 @@ export function ScanRevealScreen({
                       <View style={styles.findingAction}>
                         <View style={[styles.actionMark, { backgroundColor: f.color }]} />
                         <View style={styles.findingActionCol}>
-                          <Text style={[puraRevealType.brandCaps, { color: puraReveal.blueText }]}>
+                          <Text style={[rt.microCaps, { color: puraReveal.blueText }]}>
                             What to do
                           </Text>
-                          <Text style={[puraRevealType.body, { color: puraReveal.ink, marginTop: 5 }]}>
+                          <Text style={[puraRevealType.body, { color: puraReveal.ink, marginTop: 6 }]}>
                             {f.action}
                           </Text>
                         </View>
@@ -284,10 +377,13 @@ export function ScanRevealScreen({
               <View style={styles.insightDisc}>
                 <Sparkle size={44} weight="fill" color={puraReveal.blue} />
               </View>
+              <View style={styles.insightEyebrow}>
+                <Eyebrow label={BEAT_EYEBROWS.insights} align="center" />
+              </View>
               <Text
                 style={[
-                  puraRevealType.sectionTitle,
-                  { color: puraReveal.ink, textAlign: 'center', marginTop: 18 },
+                  rt.heroTitle,
+                  { color: puraReveal.ink, textAlign: 'center', marginTop: 6 },
                 ]}
               >
                 Personalized Insights
@@ -328,10 +424,11 @@ export function ScanRevealScreen({
         return (
           <Slide footer={<FloatingNext onPress={handleNext} />}>
             <View style={styles.titleBlock}>
-              <Text style={[puraRevealType.sectionTitle, { color: puraReveal.ink }]}>
+              <Eyebrow label={BEAT_EYEBROWS.plan} />
+              <Text style={[rt.heroTitle, styles.heroTitleText, { color: puraReveal.ink }]}>
                 Your Skin Plan
               </Text>
-              <Text style={[puraRevealType.displayItalic, { color: puraReveal.blue }]}>
+              <Text style={[rt.heroItalic, styles.heroItalicText, { color: puraReveal.blue }]}>
                 starts tonight
               </Text>
               <Text style={[puraRevealType.body, styles.subtext]}>
@@ -379,12 +476,12 @@ export function ScanRevealScreen({
             }
           >
             <View style={styles.readyHero}>
-              <Text style={[puraRevealType.sectionTitle, styles.readyTitle]}>
+              <Text style={[rt.readyLead, styles.readyTitle, { color: puraReveal.veryMuted }]}>
                 Ready when you are.
               </Text>
-              <Text style={styles.readyTitle}>
-                <Text style={[puraRevealType.sectionTitle, { color: puraReveal.ink }]}>Let’s </Text>
-                <Text style={[puraRevealType.displayItalic, { color: puraReveal.blue }]}>
+              <Text style={[styles.readyTitle, styles.readyPayoff]}>
+                <Text style={[rt.heroTitle, { color: puraReveal.ink }]}>Let’s </Text>
+                <Text style={[rt.heroItalic, { color: puraReveal.blue }]}>
                   build it.
                 </Text>
               </Text>
@@ -513,7 +610,7 @@ function TrendChip({
   return (
     <View style={[styles.trendChip, { backgroundColor: bg }]}>
       <Icon size={11} weight="bold" color={color} />
-      <Text style={[puraRevealType.priorityPill, { color }]}>{label}</Text>
+      <Text style={[rt.metaPill, { color }]}>{label}</Text>
     </View>
   );
 }
@@ -640,10 +737,16 @@ const styles = StyleSheet.create({
   footerStretch: { alignItems: 'stretch' },
 
   titleBlock: { marginBottom: 6 },
-  subtext: { color: puraReveal.muted, marginTop: 10, maxWidth: 320 },
+  // Eyebrow → hero spacing: a tight 8pt gap so the kicker reads as attached to
+  // the headline, then the serif drops in.
+  heroTitleText: { marginTop: 8 },
+  heroItalicText: { marginTop: 1 },
+  eyebrowCenter: { textAlign: 'center', alignSelf: 'center' },
+  insightEyebrow: { marginTop: 16 },
+  subtext: { color: puraReveal.muted, marginTop: 11, maxWidth: 320 },
   subtextCenter: {
     color: puraReveal.muted,
-    marginTop: 8,
+    marginTop: 9,
     textAlign: 'center',
     maxWidth: 300,
     alignSelf: 'center',
@@ -796,6 +899,7 @@ const styles = StyleSheet.create({
   // Screen 6 — Ready
   readyHero: { alignItems: 'center', paddingHorizontal: 8 },
   readyTitle: { textAlign: 'center', color: puraReveal.ink },
+  readyPayoff: { marginTop: 2 },
   readyCircles: { flexDirection: 'row', gap: 16, marginTop: 30 },
   readyCircle: {
     width: puraRevealLayout.readyIcon,

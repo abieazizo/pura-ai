@@ -70,7 +70,7 @@ export function UpcomingCard({ row, onPress }: UpcomingCardProps) {
         )}
       </View>
       <View style={styles.meta}>
-        <Text style={companionType.upcomingPillar}>{label}</Text>
+        <Text style={[companionType.upcomingPillar, styles.pillar]}>{label}</Text>
         <Text style={companionType.upcomingProduct} numberOfLines={1}>
           {productName}
         </Text>
@@ -111,6 +111,10 @@ const styles = StyleSheet.create({
   },
   meta: {
     flex: 1,
-    gap: 2,
+    gap: 3,
+  },
+  pillar: {
+    // Tighten the row title a hair so it reads as the anchor of the pair.
+    letterSpacing: -0.1,
   },
 });
