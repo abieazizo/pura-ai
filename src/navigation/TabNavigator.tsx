@@ -49,6 +49,8 @@ import {
   AboutScreen,
 } from '@/screens/me/settings';
 import { PuraRoutineScreen } from '@/screens/routine/pura/PuraRoutineScreen';
+// ISOLATION TEST (temporary): YourRoutineTabScreen wiring reverted to confirm
+// my module isn't the web-boot blocker. Re-applied immediately after.
 import type {
   HomeStackParamList,
   MeStackParamList,

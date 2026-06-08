@@ -20,7 +20,11 @@
  *   dawn (AM) · midday (default) · dusk (early PM) · night (HERO, late/evening).
  */
 
-import { Easing } from 'react-native-reanimated';
+// Type-only import — this module stays runtime-pure (no Reanimated at load), so
+// the data/model layer it feeds can be verified headlessly. The motion CURVES
+// live at each call site (inline `Easing.bezier(0.22, 1, 0.36, 1)` for arrivals,
+// `Easing.inOut(Easing.sin)` for drifts); only the no-bounce orb spring config
+// is shared from here as a plain object.
 import type { WithSpringConfig } from 'react-native-reanimated';
 
 export type RoutinePeriod = 'dawn' | 'midday' | 'dusk' | 'night';
@@ -133,17 +137,8 @@ export function periodForRoutine(
 }
 
 // ---------------------------------------------------------------------------
-// Motion — the spec's signature curves. One physics across the experience.
+// Motion — the spec's signature physics.
 // ---------------------------------------------------------------------------
-
-export const routineMotion = {
-  /** Arrivals — cubic-bezier(0.22, 1, 0.36, 1). Editorial settle, no overshoot. */
-  arrival: Easing.bezier(0.22, 1, 0.36, 1),
-  /** Atmospheric drifts — slow in-out (the bloom breathing, gradient swells). */
-  drift: Easing.inOut(Easing.sin),
-  /** A clean exit for cards leaving / dissolving. */
-  exit: Easing.bezier(0.4, 0, 1, 1),
-} as const;
 
 /**
  * The orb's spring — NO bounce. Low stiffness, high damping, so every glide
