@@ -187,10 +187,12 @@ function clock(ms: number): string {
 // ---------------------------------------------------------------------------
 
 const CARD_ORB_MAX = 92;
+// Readable at rest — the idle/no-scan orb was a tiny speck at 56px; it now fills
+// its 92px well as a real luminous presence (Fix 8), still growing on thinking.
 const CARD_ORB_SCALE: Record<AssistantOrbState, number> = {
-  idle: 56 / CARD_ORB_MAX,
-  listening: 60 / CARD_ORB_MAX,
-  responding: 72 / CARD_ORB_MAX,
+  idle: 72 / CARD_ORB_MAX,
+  listening: 78 / CARD_ORB_MAX,
+  responding: 84 / CARD_ORB_MAX,
   thinking: 1,
 };
 
@@ -362,6 +364,17 @@ export function PuraAssistConversationScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params?.initialMessage]);
+
+  // Auto-focus the composer when arriving from the Home dock (Fix 7): the dock
+  // is a button that taps straight into "ready to type" here. Skipped when a
+  // message is auto-sending (no keyboard needed mid-answer). The short delay
+  // lets the navigator's cross-fade settle before the keyboard rises.
+  useEffect(() => {
+    if (!route.params?.focusInput || route.params?.initialMessage) return;
+    const t = setTimeout(() => inputRef.current?.focus(), reduce ? 0 : 320);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep the latest message visible when the keyboard opens (Fix 2).
   useEffect(() => {
@@ -692,6 +705,51 @@ function UserBubble({ text, reduce }: { text: string; reduce: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// Body shaping — split the answer into a short prose lead, clean bullet rows,
+// and any trailing prose, so an answer with raw "• " lines reads as a tidy
+// lead + lightweight rows instead of a wall of text (Fix 8). Presentation only
+// — the words are unchanged; bullets just render as rows rather than inline.
+// ---------------------------------------------------------------------------
+
+function splitBody(body: string): { lead: string; bullets: string[]; trail: string } {
+  const lines = body.split('\n');
+  const lead: string[] = [];
+  const bullets: string[] = [];
+  const trail: string[] = [];
+  let seen = false;
+  for (const raw of lines) {
+    const t = raw.trim();
+    const m = /^[•\-*]\s+(.*)$/.exec(t);
+    if (m) {
+      bullets.push(m[1].trim());
+      seen = true;
+    } else if (!seen) {
+      lead.push(raw);
+    } else if (t.length > 0) {
+      trail.push(t);
+    }
+  }
+  return { lead: lead.join('\n').trim(), bullets, trail: trail.join(' ').trim() };
+}
+
+function BulletRows({ items, reduce }: { items: string[]; reduce: boolean }) {
+  return (
+    <View style={styles.bulletRows}>
+      {items.map((it, i) => (
+        <Animated.View
+          key={`${it}-${i}`}
+          entering={reduce ? undefined : FadeInDown.duration(240).delay(i * 60)}
+          style={styles.bulletRow}
+        >
+          <View style={styles.bulletDot} />
+          <Text style={styles.bulletText}>{it}</Text>
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Assistant turn
 // ---------------------------------------------------------------------------
 
@@ -714,6 +772,7 @@ function AssistantTurn({
 
   const structured = turn.message?.structured;
   const body = structured?.summary ?? turn.message?.text ?? '';
+  const { lead, bullets, trail } = useMemo(() => splitBody(body), [body]);
   const steps = structured?.steps ?? [];
   const avoid = structured?.avoid ?? [];
   const why = structured?.why;
@@ -747,12 +806,25 @@ function AssistantTurn({
           <ErrorBlock onRetry={onRetry} />
         ) : (
           <>
+            {/* Short prose lead (streamed). An empty lead still mounts so its
+                onComplete fires and the rows/steps below reveal. */}
             <StreamingBody
-              text={body}
+              text={lead}
               reduce={reduce}
               instant={turn.status === 'done'}
               onComplete={onBodyDone}
             />
+            {revealed && bullets.length > 0 ? (
+              <BulletRows items={bullets} reduce={reduce} />
+            ) : null}
+            {revealed && trail.length > 0 ? (
+              <Animated.Text
+                entering={reduce ? undefined : FadeIn.duration(240)}
+                style={styles.answerBody}
+              >
+                {trail}
+              </Animated.Text>
+            ) : null}
             {revealed && steps.length > 0 ? (
               <TonightSubCard
                 steps={steps}
@@ -1189,6 +1261,28 @@ const styles = StyleSheet.create({
   cursor: {
     ...puraAssistType.answerBody,
     color: puraAssist.blue,
+  },
+
+  // ---- Bullet rows (Fix 8 — raw "• " lines → clean lightweight rows) ----
+  bulletRows: {
+    gap: 8,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  bulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: puraAssist.blue,
+    marginTop: 7,
+  },
+  bulletText: {
+    ...puraAssistType.answerBody,
+    flex: 1,
+    color: puraAssist.ink,
   },
 
   // ---- Tonight sub-card ----

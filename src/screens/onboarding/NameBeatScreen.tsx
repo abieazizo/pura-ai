@@ -42,7 +42,9 @@ import { useStepTransition } from './orb/useStepTransition';
 import { orbBottom, targetFor } from './orb/orbLayout';
 
 const QUESTION = 'So — what should I call you?';
-const BORDER_SOFT = 'rgba(20, 124, 255, 0.18)'; // soft Pura Blue
+// ONE clean border: an ink hairline at rest, Pura Blue on focus.
+const BORDER_REST = 'rgba(8,10,15,0.12)';
+const BORDER_FOCUS = '#147CFF';
 
 export interface NameBeatScreenProps {
   onAdvance: () => void;
@@ -114,15 +116,13 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
     transform: [{ translateY: (1 - bodyA.value) * 12 }],
   }));
   const fieldStyle = useAnimatedStyle(() => ({
-    borderColor: focus.value > 0.5 ? palette.clay : BORDER_SOFT,
+    borderColor: focus.value > 0.5 ? BORDER_FOCUS : BORDER_REST,
   }));
 
   const acknowledge = (name: string | null) => {
     // Persist (empty string = "I'd rather not say" → warm neutral fallback).
     setName(name ?? '');
     hapt.tap();
-    orb.setExpression('warm');
-    orb.emphasisPulse(); // the brief glow pulse
 
     const first = name ? name.trim().split(/\s+/)[0] : '';
     const line = first ? `Lovely to meet you, ${first}.` : 'Lovely to meet you.';
@@ -130,11 +130,15 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
     setPhase('ack');
     AccessibilityInfo.announceForAccessibility?.(line);
 
-    // Fade the field out under the ack, then advance (orb persists).
+    // A designed warm beat: the orb's eyes curve up into a smile + a glow bloom
+    // lands AS the line does (full happy reaction, the warmest register).
+    orb.reactArchetype('warm', { lineMs: 1300 });
+
+    // Fade the field out under the ack, then hold the warm beat before advancing.
     if (!reduceMotion) {
       bodyA.value = withTiming(0, { duration: 260 });
     }
-    const t = setTimeout(() => runExit(onAdvance), reduceMotion ? 350 : 900);
+    const t = setTimeout(() => runExit(onAdvance), reduceMotion ? 600 : 1800);
     timers.current.push(t);
   };
 
@@ -195,7 +199,12 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
                   onBlur={() => {
                     focus.value = withTiming(value.length > 0 ? 1 : 0, { duration: 200 });
                   }}
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    // Remove the browser's default focus ring on web — THAT inner
+                    // blue ring (atop the field border) was the "double border".
+                    Platform.OS === 'web' && ({ outlineWidth: 0, outlineStyle: 'none' } as any),
+                  ]}
                   accessibilityLabel="Your name"
                   textAlign="center"
                 />
@@ -262,8 +271,8 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: 16, alignItems: 'center' },
   field: {
     alignSelf: 'stretch',
-    height: 64,
-    borderRadius: 32,
+    height: 60,
+    borderRadius: 16,
     borderWidth: 1.5,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',

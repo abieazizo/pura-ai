@@ -23,7 +23,7 @@
  * (no raw AI output; pre-scan degrades to an honest invitation, per CLAUDE.md).
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -80,8 +80,9 @@ import type {
   TabParamList,
 } from '@/navigation/types';
 import { Button } from '@/components/ui';
+import { ScanFrameGlyph } from '@/components/ScanFrameGlyph';
 import { AssistInputBar } from './AssistInputBar';
-import { AssistantAuroraOrb, type AssistantOrbState } from './AssistantAuroraOrb';
+import { AssistantAuroraOrb } from './AssistantAuroraOrb';
 
 type IconCmp = React.FC<IconProps>;
 
@@ -159,11 +160,6 @@ export function PuraAssistHomeScreen() {
   const homeNav = useNavigation<NavigationProp<HomeStackParamList>>();
   const signal = useAssistSignal();
 
-  const [draft, setDraft] = useState('');
-
-  const homeOrbState: AssistantOrbState =
-    draft.trim().length > 0 ? 'listening' : 'idle';
-
   // Scroll-linked header — a hairline + subtle lift fade in once the hero
   // begins to leave, so the sticky header reads as a layer over the content.
   const scrollY = useSharedValue(0);
@@ -174,19 +170,12 @@ export function PuraAssistHomeScreen() {
     opacity: interpolate(scrollY.value, [0, 36], [0, 1], Extrapolation.CLAMP),
   }));
 
+  // The Home dock is a BUTTON, not a live input — tapping it navigates to the
+  // conversation, which auto-focuses its real input. No inline keyboard/zoom.
   const openConversation = useCallback(() => {
     hapt.tap();
-    rootNav.navigate('AssistChat');
+    rootNav.navigate('AssistChat', { focusInput: true });
   }, [rootNav]);
-
-  const openWithMessage = useCallback(
-    (text: string) => {
-      hapt.tap();
-      rootNav.navigate('AssistChat', { initialMessage: text });
-      setDraft('');
-    },
-    [rootNav],
-  );
 
   const goScan = useCallback(() => {
     hapt.tap();
@@ -284,7 +273,7 @@ export function PuraAssistHomeScreen() {
             </Rise>
 
             <Rise delay={70} style={styles.orbWrap}>
-              <AssistantAuroraOrb size={158} state={homeOrbState} scanTone={signal.scanTone} />
+              <AssistantAuroraOrb size={158} state="idle" scanTone={signal.scanTone} />
             </Rise>
 
             <Rise delay={150}>
@@ -308,7 +297,7 @@ export function PuraAssistHomeScreen() {
                 size="lg"
                 fullWidth
                 onPress={goScan}
-                icon={<Scan size={20} color={puraAssist.white} weight="bold" />}
+                icon={<ScanFrameGlyph size={20} color={puraAssist.white} strokeWidth={2} />}
               />
             </Rise>
           ) : null}
@@ -389,13 +378,7 @@ export function PuraAssistHomeScreen() {
             colors={[puraAssist.bgClear, puraAssist.bg]}
             style={[styles.dockFade, { height: fadeHeight, top: -fadeHeight }]}
           />
-          <AssistInputBar
-            mode="launcher"
-            value={draft}
-            onChangeText={setDraft}
-            onSubmit={openWithMessage}
-            bottomInset={0}
-          />
+          <AssistInputBar mode="launcher" onOpen={openConversation} bottomInset={0} />
         </View>
       </KeyboardAvoidingView>
     </View>

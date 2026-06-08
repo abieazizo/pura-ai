@@ -23,7 +23,6 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
-  Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -36,6 +35,7 @@ import {
   User as UserIcon,
   type IconProps as PhosphorIconProps,
 } from 'phosphor-react-native';
+import { ScanFrameGlyph } from '@/components/ScanFrameGlyph';
 import {
   motion,
   spring,
@@ -47,7 +47,6 @@ import {
   puraShopSpace,
 } from '@/theme';
 import { hapt } from '@/utils/haptics';
-import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { tabs as tabsStrings } from '@/copy/strings';
 import { useRoutineFocus } from '@/state/v26/routineFocus';
 import { useRoutineStore, countUnconfirmedRequiredSteps } from '@/state/routine/routineStore';
@@ -253,8 +252,9 @@ function TabButton({
 // never static tab chrome.
 //   • White scan-frame brackets centered in the Pura-Blue disc
 //   • Spring "squish" + Light haptic on press for tactile personality
-//   • One-shot "focus pulse" (1.06 → 1.0) when the tab becomes active, like a
-//     camera locking focus — rests under Reduce Motion
+// No idle breathing and no focus pulse: tapping Scan opens the full-screen
+// ScanModal (the tab itself never enters a `focused` state), so the orb stays
+// calm tab chrome and only reacts to the press. Restraint over decoration.
 // ---------------------------------------------------------------------------
 
 function ScanTabButton({
@@ -266,31 +266,12 @@ function ScanTabButton({
   focused: boolean;
   onPress: () => void;
 }) {
-  const reduceMotion = useReduceMotion();
   const pressScale = useSharedValue(1);
-  const focusPulse = useSharedValue(1); // one-shot 1.06 → 1.0 on activation
 
-  // Fire a single "focus pulse" each time the tab becomes active — a quick
-  // ease-out settle from 1.06 → 1.0, like a camera locking focus. Skipped
-  // entirely under Reduce Motion so it never reads as decoration.
-  useEffect(() => {
-    if (!focused || reduceMotion) return;
-    focusPulse.value = 1.06;
-    focusPulse.value = withTiming(1, {
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [focused, reduceMotion, focusPulse]);
-
-  // The orb scales with the press squish only — no idle breathing. As tab
-  // chrome (not a living face) it stays calm at rest; restraint is the point.
+  // Scale with the press squish only — no idle breath, no pulse. As tab chrome
+  // (not a living face) the orb stays calm at rest; restraint is the point.
   const orbAnim = useAnimatedStyle(() => ({
     transform: [{ scale: pressScale.value }],
-  }));
-
-  // The focus pulse animates the bracket glyph wrapper only, on the UI thread.
-  const glyphAnim = useAnimatedStyle(() => ({
-    transform: [{ scale: focusPulse.value }],
   }));
 
   const onPressIn = () => {
@@ -318,9 +299,12 @@ function ScanTabButton({
     >
       <Animated.View style={[styles.scanOrbWrap, orbAnim]}>
         <ScanOrbDisc focused={focused} />
-        <Animated.View style={[styles.scanGlyph, glyphAnim]} pointerEvents="none">
-          <Scan size={26} color="#FFFFFF" weight="bold" />
-        </Animated.View>
+        <View style={styles.scanGlyph} pointerEvents="none">
+          {/* White scan-frame brackets (shared with the "Take a 30-second scan"
+              CTA), never a face/smiley — the orb's face is reserved for live
+              moments, never static tab chrome. */}
+          <ScanFrameGlyph size={26} color="#FFFFFF" strokeWidth={2} />
+        </View>
       </Animated.View>
       <Text
         style={[styles.label, { color: labelColor, marginTop: 4 }]}

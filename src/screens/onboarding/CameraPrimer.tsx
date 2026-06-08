@@ -9,7 +9,7 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { PuraGlyph } from '@/components/PuraGlyph';
+import { AuroraOrb } from '@/components/AuroraOrb';
 import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { palette } from '@/theme';
@@ -25,7 +25,7 @@ export interface CameraPrimerProps {
  * a small typographic Pura mark, the headline, and a privacy promise. No
  * fake iOS dialog mock (that pantomimed the system sheet), no progress bar.
  *
- *   (P)                                    ← PuraGlyph (Instrument Serif)
+ *   ( ◍ )                                  ← the companion AuroraOrb (continuity)
  *
  *   Now, the scan.                         ← Instrument Serif headline
  *   Pura uses your camera to read your     ← Inter subhead, generous leading
@@ -36,8 +36,9 @@ export interface CameraPrimerProps {
  *   [ Continue ]                           ← Ink CTA → CameraPermission
  *
  * Continue fires the real system camera prompt on the next screen
- * (CameraPermission). The droplet `PuraMark` that used to brand this
- * surface was replaced with `PuraGlyph` in this rebuild.
+ * (CameraPermission). This is the last beat before the camera, so the
+ * companion ORB brands it (not a static "P" monogram) — the companion stays
+ * continuous right up to the scan.
  */
 export function CameraPrimer({ onContinue }: CameraPrimerProps) {
   const insets = useSafeAreaInsets();
@@ -92,7 +93,12 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
 
       <View style={styles.body}>
         <Animated.View style={[styles.glyphWrap, glyphStyle]}>
-          <PuraGlyph size={60} tone="ink" ring />
+          <AuroraOrb
+            size={96}
+            state="idle"
+            reduceMotion={reduceMotion}
+            auraTheme="blue-warm"
+          />
         </Animated.View>
 
         <Animated.Text

@@ -215,23 +215,25 @@ const AURORA: Record<AssistantScanTone, Tone> = {
     wisps: ['#F2DCFF', '#CDBEF2', '#BCD4F2'],
   },
 
-  // NONE — no scan yet. ~15% less saturation, gentler and more neutral.
+  // NONE — no scan yet. Still LUMINOUS (it's the companion, not a gray speck);
+  // just a touch gentler than balanced. Leans the same cyan/violet/blue so the
+  // orb reads alive pre-scan, then warms into a tone once a scan lands.
   none: {
     core: [
-      { offset: '0%', color: '#EAF2FB', opacity: 0.9 },
-      { offset: '25%', color: '#AEB8D2', opacity: 0.78 },
-      { offset: '55%', color: '#8089AE', opacity: 0.68 },
-      { offset: '80%', color: '#7C8AAC', opacity: 0.52 },
-      { offset: '100%', color: '#93A0BE', opacity: 0.36 },
+      { offset: '0%', color: '#E6F1FF', opacity: 0.95 },
+      { offset: '25%', color: '#A7A0DE', opacity: 0.85 },
+      { offset: '55%', color: '#7B72C6', opacity: 0.74 },
+      { offset: '80%', color: '#6E89C6', opacity: 0.6 },
+      { offset: '100%', color: '#8E9AD2', opacity: 0.4 },
     ],
     halo: [
-      { offset: '0%', color: '#9AA8C8', opacity: 0.28 },
-      { offset: '40%', color: '#8FA4C2', opacity: 0.16 },
-      { offset: '70%', color: '#98B4C6', opacity: 0.1 },
-      { offset: '100%', color: '#98B4C6', opacity: 0 },
+      { offset: '0%', color: '#9A8FD6', opacity: 0.33 },
+      { offset: '40%', color: '#7BA1DE', opacity: 0.19 },
+      { offset: '70%', color: '#90C2DC', opacity: 0.11 },
+      { offset: '100%', color: '#90C2DC', opacity: 0 },
     ],
-    ripple: '#AEB6CE',
-    wisps: ['#DCE6F2', '#C2CADE', '#CAD6E6'],
+    ripple: '#A6B0E4',
+    wisps: ['#DCEEFF', '#C5BCEF', '#BCD2F0'],
   },
 };
 

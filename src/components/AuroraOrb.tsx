@@ -94,7 +94,8 @@ export type OrbExpression =
   | 'curious'
   | 'reassuring'
   | 'competent' // calm authority — brows level/settled, direct gaze
-  | 'validating'; // gentle symmetric warmth — the easy middle
+  | 'validating' // gentle symmetric warmth — the easy middle
+  | 'attentive'; // cards-visible: open eyes, calm brows, listening
 
 /** The reaction archetypes Screens 4+ calibrate per option (face = soul). */
 export type OrbArchetype = 'warm' | 'competent' | 'validating';
@@ -152,6 +153,12 @@ export interface AuroraOrbHandle {
   /** Patient hesitation mode — gaze drifts gently across the cards, waiting
    *  WITH the user (on), or returns to forward (off). */
   setPatient(on: boolean): void;
+  /** Cards-visible attentiveness: eyes open and angle slightly DOWN toward the
+   *  options (looking at them WITH the user), brows calm. */
+  attend(): void;
+  /** A subtle, never-naggy "I'm here, take your time" beat after a pause:
+   *  brows lift a touch + one soft glow pulse, then settle to attentive. */
+  encourage(): void;
   // POLISH-PASS HOOK (do NOT implement in v1): gaze-follows-finger eye-tracking
   // would land here as e.g. trackPointer(x, y) driving gazeX/gazeY directly.
 }
@@ -234,6 +241,9 @@ const EXPRESSIONS: Record<
   competent: { raise: 0.05, tilt: -0.05, eyeOpen: 1.0 },
   // gentle symmetric warmth — the easy middle, a touch softer than neutral
   validating: { raise: 0.28, tilt: 0.18, eyeOpen: 0.92 },
+  // cards-visible: eyes open + calm brows, ready and listening (gaze angles down
+  // toward the options separately, via `attend`).
+  attentive: { raise: 0.18, tilt: 0.12, eyeOpen: 1.0 },
 };
 
 // Auto performance tier — a weak heuristic when the host doesn't pass one.
@@ -310,8 +320,11 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const HALO = S * 1.45;
     const RIPPLE = S * 1.04; // ring base diameter (orb edge), scales to 1.6×
     const seedScale = 8 / S; // the 8px point the core blooms from
-    const stroke = Math.max(1.6, S * 0.0085);
-    const eyeR = S * 0.023; // dot radius (~4.6% dia)
+    // Face stroke + eye size carry a higher FLOOR so the features stay legible
+    // at the small companion sizes (a 1.6px stroke / tiny dot nearly vanished at
+    // ~72–88px); the floor barely changes the large cold-open orb.
+    const stroke = Math.max(2.0, S * 0.011);
+    const eyeR = Math.max(2.2, S * 0.027); // dot radius (kept readable when small)
     const eyeSep = S * 0.086; // half-separation (centers ~17% apart — see note)
     const eyeY = S * 0.42;
     const browY = S * 0.322;
@@ -336,6 +349,17 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     // Right brow: inner end = left, outer = right.
     const browRPath = `M ${stroke} ${browYB} Q ${browBW / 2} ${browPeak} ${browBW - stroke} ${browYB}`;
     const browDash = browBW; // ≥ path length
+
+    // Happy "smiling eyes" — an upward ∩ arc the dots morph into on a reaction
+    // (the orb smiles with its eyes; it has no mouth). Symmetric, so both eyes
+    // share the shape. Mirrors the spec curve "M -7 1 Q -4 -4 -1 1", scaled to S.
+    const arcW = S * 0.082; // arc box width (~the eye's reach)
+    const arcRise = S * 0.034; // how far the middle lifts above the ends
+    const arcSW = Math.max(2.4, S * 0.013); // a touch bolder than the brow line
+    const arcH = arcRise + arcSW * 2;
+    const arcBaseY = arcH - arcSW; // ends sit near the bottom of the box
+    const arcPeakY = arcSW; // middle lifts to the top → ∩ smile
+    const arcPath = `M ${arcSW} ${arcBaseY} Q ${arcW / 2} ${arcPeakY} ${arcW - arcSW} ${arcBaseY}`;
 
     // ---- Shared values (init to formed for idle/static; pre-birth for born) --
     const seedO = useSharedValue(0);
@@ -381,6 +405,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const shimmerPos = useSharedValue(0); // 0..1 shimmer sweep position
     const auraMix = useSharedValue(auraTheme === 'blue-warm' ? 1 : 0); // 0=violet 1=blue
     const patientSweep = useSharedValue(0); // hesitation gaze drift (−1..1)
+    const joy = useSharedValue(0); // 0 = dot eyes, 1 = happy ∩ arcs (reaction)
 
     // ---- Gyro parallax (front plane). Hook always called; output ignored when
     //      disabled or under reduce-motion. No-op (zeros) without a sensor. -----
@@ -518,6 +543,30 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             gazeY.value = withTiming(0, { duration: 500, easing: EASE_IO });
           }
         },
+        attend() {
+          if (animsOffRef.current) {
+            gazeY.value = 0.3;
+            applyExpression('attentive', 0);
+            return;
+          }
+          // Eyes angle down toward the cards (looking at the options WITH the
+          // user); brows settle calm + attentive.
+          gazeY.value = withTiming(0.32, { duration: 600, easing: EASE_IO });
+          applyExpression('attentive', 500);
+        },
+        encourage() {
+          if (animsOffRef.current) return;
+          // Brows lift a touch then ease back to attentive — "take your time".
+          browRaise.value = withSequence(
+            withTiming(0.6, { duration: 480, easing: EASE_IO }),
+            withDelay(760, withTiming(EXPRESSIONS.attentive.raise, { duration: 720, easing: EASE_IO })),
+          );
+          // One soft glow pulse — present, never a nag.
+          glowBoost.value = withSequence(
+            withTiming(0.1, { duration: 560, easing: EASE_OUT }),
+            withTiming(0, { duration: 900, easing: EASE_IN_QUAD }),
+          );
+        },
       }),
       // Shared values are stable; refs carry the latest mode/tier. Built once.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -630,15 +679,67 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
         competent: 'competent',
         validating: 'validating',
       };
+      // Per-kind HAPPY calibration. EVERY option visibly reacts; the confident
+      // "competent" register stays the CALMEST (smaller hop + bloom, steadier),
+      // the warm register blooms fullest. None are static.
+      const J = {
+        warm: { joy: 1.0, hop: 1.12, settle: 1.04, glow: 0.22, brow: 0.82, warm: 0.14 },
+        validating: { joy: 0.86, hop: 1.1, settle: 1.035, glow: 0.16, brow: 0.64, warm: 0.08 },
+        competent: { joy: 0.72, hop: 1.06, settle: 1.03, glow: 0.12, brow: 0.46, warm: 0 },
+      }[kind];
+      const rest = EXPRESSIONS[exprByKind[kind]];
+
       if (animsOffRef.current) {
+        // Reduce motion: an INSTANT happy swap — eyes curve up + a brighter,
+        // steady glow. No bounce, no bloom-and-settle. Still reads as happy.
         applyExpression(exprByKind[kind], 0);
+        joy.value = J.joy;
+        glowBoost.value = J.glow * 0.7;
         return;
       }
+
       const Lm = Math.max(360, opts?.lineMs ?? 800);
       const now = Date.now();
+
+      // ── The happy reaction (one shape, calibrated magnitude) ───────────────
+      // 1) eyes curve UP into ∩ arcs, hold ~600ms, then settle back to dots.
+      joy.value = withSequence(
+        withTiming(J.joy, { duration: 220, easing: EASE_OUT }),
+        withDelay(560, withTiming(0, { duration: 440, easing: EASE_IO_CUBIC })),
+      );
+      // 2) SCALE HOP — snap to the peak, spring-settle (320/18), then relax.
+      leanScale.value = withSequence(
+        withTiming(J.hop, { duration: 170, easing: EASE_OUT }),
+        withSpring(J.settle, { stiffness: 320, damping: 18, mass: 0.7 }),
+        withDelay(360, withTiming(1, { duration: 520, easing: EASE_IO })),
+      );
+      // 3) BROWS lift + soften, then ease to the archetype's resting expression.
+      browRaise.value = withSequence(
+        withTiming(J.brow, { duration: 200, easing: EASE_OUT }),
+        withDelay(540, withTiming(rest.raise, { duration: 440, easing: EASE_IO_CUBIC })),
+      );
+      browTilt.value = withSequence(
+        withTiming(0.5, { duration: 200, easing: EASE_OUT }),
+        withDelay(540, withTiming(rest.tilt, { duration: 440, easing: EASE_IO_CUBIC })),
+      );
+      eyeOpen.value = withTiming(rest.eyeOpen, { duration: 340, easing: EASE_IO_CUBIC });
+      // 4) GLOW BLOOM — a visible swell of light that brightens, then settles.
+      glowBoost.value = withSequence(
+        withTiming(J.glow, { duration: 240, easing: EASE_OUT }),
+        withTiming(J.glow * 0.45, { duration: 560, easing: EASE_IO }),
+        withDelay(120, withTiming(0.03, { duration: 640, easing: EASE_IO })),
+      );
+      // 5) WARMTH bloom — warm options warm the aura a touch, then settle back.
+      if (J.warm > 0) {
+        const base = warmth.value;
+        warmth.value = withSequence(
+          withTiming(Math.min(1, base + J.warm), { duration: 300, easing: EASE_OUT }),
+          withDelay(420, withTiming(base, { duration: 820, easing: EASE_IO })),
+        );
+      }
+
+      // ── The DISTINCT blink rhythm per kind (the master "alive" detail) ─────
       if (kind === 'warm') {
-        applyExpression('warm', 440);
-        // a slow deliberate blink that lands ~on the warm word of the line
         const blinkAt = Math.max(160, Math.min(Lm * 0.45, Lm - 260));
         blink.value = withDelay(
           blinkAt,
@@ -647,17 +748,10 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             withTiming(1, { duration: 320, easing: EASE_OUT_QUAD }),
           ),
         );
-        // warmth → a warm, steady glow that HOLDS (steadiness, not brightness)
-        glowBoost.value = withSequence(
-          withTiming(0.12, { duration: 540, easing: EASE_OUT }),
-          withTiming(0.06, { duration: 820, easing: EASE_IO }),
-        );
-        suppressBlinkUntilRef.current = now + blinkAt + 700; // hold a beat longer
+        suppressBlinkUntilRef.current = now + blinkAt + 700;
       } else if (kind === 'competent') {
-        applyExpression('competent', 280);
-        // steady, direct — NO blink during the differentiating clause...
+        // steady, direct — NO blink during the clause, one slow blink AFTER.
         suppressBlinkUntilRef.current = now + Lm + 140;
-        // ...then a single slow blink AFTER the line lands (a period).
         blink.value = withDelay(
           Lm + 200,
           withSequence(
@@ -665,13 +759,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             withTiming(1, { duration: 300, easing: EASE_OUT_QUAD }),
           ),
         );
-        // the CALMEST register: a barely-there glow, never a salesy spike.
-        glowBoost.value = withSequence(
-          withTiming(0.05, { duration: 720, easing: EASE_IO }),
-          withTiming(0.02, { duration: 760, easing: EASE_IO }),
-        );
       } else {
-        applyExpression('validating', 360);
         const blinkAt = Math.max(140, Math.min(Lm * 0.32, Lm - 220));
         blink.value = withDelay(
           blinkAt,
@@ -680,11 +768,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             withTiming(1, { duration: 220, easing: EASE_OUT_QUAD }),
           ),
         );
-        glowBoost.value = withSequence(
-          withTiming(0.09, { duration: 440, easing: EASE_OUT }),
-          withTiming(0.04, { duration: 560, easing: EASE_IO }),
-        );
-        suppressBlinkUntilRef.current = now + blinkAt + 320; // quickest return
+        suppressBlinkUntilRef.current = now + blinkAt + 320;
       }
     }
 
@@ -706,13 +790,14 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
         r3.value = withRepeat(withTiming(1, { duration: 13000, easing: Easing.linear }), -1, false);
       }
 
-      // Breath — sine, never a hard stop at the extremes.
+      // Breath — sine, never a hard stop at the extremes. A touch deeper + a
+      // hair quicker (~3.6s) so the orb visibly LIVES while it waits.
       breath.value = withDelay(
         born ? T.breath : 0,
         withRepeat(
           withSequence(
-            withTiming(1.025, { duration: 4000, easing: EASE_IO }),
-            withTiming(1.0, { duration: 4000, easing: EASE_IO }),
+            withTiming(1.03, { duration: 1800, easing: EASE_IO }),
+            withTiming(1.0, { duration: 1800, easing: EASE_IO }),
           ),
           -1,
           false,
@@ -824,7 +909,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             withTiming(0.08, { duration: 90, easing: EASE_IN_QUAD }),
             withTiming(1, { duration: 110, easing: EASE_OUT_QUAD }),
           );
-          const next = 4000 + Math.random() * 2000;
+          const next = 3000 + Math.random() * 2000; // slow-blink every 3–5s
           const t2 = setTimeout(tick, next);
           pendingTimers.current.push(t2);
         }, firstDelay);
@@ -839,7 +924,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
           browLO, browRO, noseO, blink, breath, drift, r1, r2, r3,
           gazeX, gazeY, ambientX, ambientY, browRaise, browTilt, eyeOpen,
           glowBoost, leanScale, orbTilt, warmth, shimmerAmp, shimmerPos,
-          auraMix, patientSweep,
+          auraMix, patientSweep, joy,
           ...ripples,
         ].forEach(cancelAnimation);
         pendingTimers.current.forEach(clearTimeout);
@@ -918,8 +1003,9 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const rot3 = useAnimatedStyle(() => ({ transform: [{ rotate: `${r3.value * 360}deg` }] }));
 
     // Eyes — gaze (explicit + ambient) translate, blink × sustained openness.
+    // Fade OUT as `joy` rises so the dots cleanly hand off to the happy arcs.
     const eyeLStyle = useAnimatedStyle(() => ({
-      opacity: interpolate(eyeLO.value, [0, 0.2, 1], [0, 1, 1], 'clamp'),
+      opacity: interpolate(eyeLO.value, [0, 0.2, 1], [0, 1, 1], 'clamp') * (1 - joy.value),
       transform: [
         { translateX: (gazeX.value + ambientX.value + patientSweep.value) * S * 0.03 },
         { translateY: (gazeY.value + ambientY.value) * S * 0.03 },
@@ -927,11 +1013,20 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       ],
     }));
     const eyeRStyle = useAnimatedStyle(() => ({
-      opacity: interpolate(eyeRO.value, [0, 0.2, 1], [0, 1, 1], 'clamp'),
+      opacity: interpolate(eyeRO.value, [0, 0.2, 1], [0, 1, 1], 'clamp') * (1 - joy.value),
       transform: [
         { translateX: (gazeX.value + ambientX.value + patientSweep.value) * S * 0.03 },
         { translateY: (gazeY.value + ambientY.value) * S * 0.03 },
         { scaleY: interpolate(eyeRO.value, [0, 1], [0.08, 1]) * blink.value * eyeOpen.value },
+      ],
+    }));
+    // Happy ∩ arcs — appear with `joy`, following the same gaze as the eyes so
+    // they sit exactly where the dots were. Symmetric → both share this style.
+    const arcStyle = useAnimatedStyle(() => ({
+      opacity: joy.value,
+      transform: [
+        { translateX: (gazeX.value + ambientX.value + patientSweep.value) * S * 0.03 },
+        { translateY: (gazeY.value + ambientY.value) * S * 0.03 },
       ],
     }));
     // Brows — raise (translateY) + tilt (rotate around own center, mirrored) +
@@ -1192,6 +1287,25 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
           <Animated.View
             style={[styles.eyeDot, eyeRStyle, { width: eyeR * 2, height: eyeR * 2, borderRadius: eyeR, left: xR - eyeR, top: eyeY - eyeR }]}
           />
+
+          {/* Happy smiling-eye arcs (∩) — fade in over the dots on a reaction.
+              The orb smiles with its EYES (it has no mouth). */}
+          <Animated.View
+            style={[{ position: 'absolute', left: xL - arcW / 2, top: eyeY - arcH / 2, width: arcW, height: arcH }, arcStyle]}
+            pointerEvents="none"
+          >
+            <Svg width={arcW} height={arcH}>
+              <Path d={arcPath} stroke={C.face} strokeWidth={arcSW} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </Svg>
+          </Animated.View>
+          <Animated.View
+            style={[{ position: 'absolute', left: xR - arcW / 2, top: eyeY - arcH / 2, width: arcW, height: arcH }, arcStyle]}
+            pointerEvents="none"
+          >
+            <Svg width={arcW} height={arcH}>
+              <Path d={arcPath} stroke={C.face} strokeWidth={arcSW} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </Svg>
+          </Animated.View>
 
           {/* Left brow */}
           <Animated.View

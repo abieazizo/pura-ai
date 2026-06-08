@@ -51,10 +51,14 @@ import {
   type QuestionOption,
 } from './questionConfig';
 import {
-  auraAccent,
   useOnboardingTheme,
   useReduceTransparency,
 } from './orb/onboardingTheme';
+
+// The progress rail is standardized to Pura Blue across every step so its color
+// reads as intentional brand — not an accidental per-question violet→blue swap.
+const RAIL_ACCENT_LIGHT = '#147CFF';
+const RAIL_ACCENT_DARK = '#5AA0FF';
 
 const Q_STAGGER = 70;
 const Q_DURATION = 340;
@@ -68,6 +72,9 @@ interface SpeechState {
   duration: number;
   accent: string[];
   key: number;
+  /** 'question' = the prompt (larger serif); 'reaction' = the orb's spoken
+   *  reply (smaller, more intimate serif). Drives the text size only. */
+  kind: 'question' | 'reaction';
 }
 
 export interface QuestionScreenProps {
@@ -118,7 +125,7 @@ export function QuestionScreen({
   const lineTop = orbBottom(target) + 18;
   const cardsTop = Math.round(height * 0.34);
   const trackWidth = width - 48;
-  const accent = auraAccent(config.orbAuraTheme, dark ? 'dark' : 'light');
+  const accent = dark ? RAIL_ACCENT_DARK : RAIL_ACCENT_LIGHT;
 
   const resolved = resolveQuestion(config, { goal, threadKey });
   const displayName = (name ?? '').trim();
@@ -133,6 +140,7 @@ export function QuestionScreen({
     duration: Q_DURATION,
     accent: resolved.accentWords,
     key: 0,
+    kind: 'question',
   });
 
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -161,7 +169,10 @@ export function QuestionScreen({
 
   const armHesitation = useCallback(() => {
     push(() => {
-      if (!selectedRef.current) orb.setPatient(true);
+      if (!selectedRef.current) {
+        orb.encourage(); // brows lift + one soft glow pulse — "take your time"
+        orb.setPatient(true); // gaze drifts gently across the cards
+      }
     }, HESITATE_MS);
     push(() => {
       if (!selectedRef.current) {
@@ -198,6 +209,7 @@ export function QuestionScreen({
     const askMs = 150 + resolved.text.split(' ').length * Q_STAGGER + 280;
     push(() => {
       setCardsIn(true);
+      orb.attend(); // the cards are up — look down at them WITH the user
       armHesitation();
     }, askMs);
 
@@ -232,10 +244,11 @@ export function QuestionScreen({
       duration: Q_DURATION,
       accent: resolved.accentWords,
       key: s.key + 1,
+      kind: 'question',
     }));
 
   const speak = (text: string, v: { stagger: number; duration: number }, accentWords: string[] = []) =>
-    setSpeech((s) => ({ text, stagger: v.stagger, duration: v.duration, accent: accentWords, key: s.key + 1 }));
+    setSpeech((s) => ({ text, stagger: v.stagger, duration: v.duration, accent: accentWords, key: s.key + 1, kind: 'reaction' }));
 
   // The single idempotent commit — performs the actual advance. Whichever
   // trigger reaches it first wins; later calls are harmless no-ops.
@@ -389,19 +402,24 @@ export function QuestionScreen({
           </Text>
         )}
 
-        {/* The orb's voice — the question, then the spoken reaction. */}
+        {/* The orb's voice — the question, then the spoken reaction. Width is
+            bound to the 24px side margins so it ALWAYS wraps within them; the
+            question (larger) also fit-shrinks rather than spilling to a 4th line. */}
         <View style={[styles.lines, { top: lineTop }]} pointerEvents="none">
           <OrbSpeech
             key={`speak-${speech.key}`}
             text={speech.text}
             reduceMotion={reduceMotion || backward}
-            textStyle={[styles.question, { color: colors.serif }]}
+            textStyle={[speech.kind === 'reaction' ? styles.reaction : styles.question, { color: colors.serif }]}
             accentWords={speech.accent}
             accentStyle={{ color: colors.serifAccent }}
             accessibilityRole="header"
             wordStagger={speech.stagger}
             wordDuration={speech.duration}
-            maxWidth={width - 64}
+            maxWidth={width - 48}
+            numberOfLines={speech.kind === 'reaction' ? undefined : 3}
+            adjustsFontSizeToFit={speech.kind !== 'reaction'}
+            minimumFontScale={speech.kind === 'reaction' ? undefined : 0.82}
           />
         </View>
 
@@ -453,9 +471,17 @@ const styles = StyleSheet.create({
   lines: { position: 'absolute', left: 24, right: 24, alignItems: 'center' },
   question: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 27,
-    lineHeight: 32,
+    fontSize: 26,
+    lineHeight: 31,
     letterSpacing: -0.4,
+    textAlign: 'center',
+  },
+  // The orb's spoken reply — a touch smaller + more intimate than the prompt.
+  reaction: {
+    fontFamily: 'InstrumentSerif-Regular',
+    fontSize: 19,
+    lineHeight: 25,
+    letterSpacing: -0.2,
     textAlign: 'center',
   },
   cards: { position: 'absolute', left: 0, right: 0, bottom: 0 },

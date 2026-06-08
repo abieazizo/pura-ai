@@ -25,19 +25,21 @@ export const ORB_BASE_SIZE = 200;
  */
 export const ORB_SIZES = {
   birth: 188, // S1 cold open
-  speaks: 90, // S2 — settled companion (~22% from top)
-  name: 80, // name beat (~18% from top)
-  question: 72, // S3 — smallest; cards lead
+  speaks: 106, // S2 — a larger luminous PRESENCE (the emotional focus)
+  name: 94, // name beat
+  question: 88, // S3 — bigger + clearly alive (was a muddy 72)
   /** S3 "takes the floor" lift while reacting to an answer. */
-  reactionLift: 84,
+  reactionLift: 98,
 } as const;
 
 /** Vertical anchor (center of the orb) as a fraction of usable screen height. */
+// Statement beats (speaks / name) sit in the UPPER-CENTER so the orb + its line
+// form a balanced cluster instead of clinging to the top over an empty half.
 export const ORB_ANCHORS = {
   birth: 0.4,
-  speaks: 0.22,
-  name: 0.18,
-  question: 0.14,
+  speaks: 0.34,
+  name: 0.22, // a modest drop — the field + keyboard still need the lower half
+  question: 0.15,
 } as const;
 
 export type OrbBeat = keyof typeof ORB_ANCHORS;

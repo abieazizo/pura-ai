@@ -186,8 +186,10 @@ export type RootStackParamList = {
    * the floating tab dock (the reference shows no tab bar in
    * conversation). Opened from the Home tab's input dock; `initialMessage`
    * optionally pre-sends a question (e.g. a deep link / quick action).
+   * `focusInput` auto-focuses the composer on arrival (the Home dock taps
+   * straight into "ready to type").
    */
-  AssistChat: { initialMessage?: string } | undefined;
+  AssistChat: { initialMessage?: string; focusInput?: boolean } | undefined;
   /** v10.25 — dev-only AI status & smoke-test surface. Reachable by
    *  tapping the AISourceBadge that floats in dev builds. The route
    *  is registered unconditionally; in production no UI surfaces a

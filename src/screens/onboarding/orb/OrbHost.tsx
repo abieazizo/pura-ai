@@ -83,6 +83,10 @@ export interface OrbController {
   ): void;
   /** Patient hesitation mode (gaze drifts across the cards). */
   setPatient(on: boolean): void;
+  /** Cards-visible attentiveness: gaze angles down to the options, brows calm. */
+  attend(): void;
+  /** A soft "take your time" beat (brows lift + one glow pulse). */
+  encourage(): void;
 }
 
 const OrbControllerCtx = createContext<OrbController | null>(null);
@@ -195,6 +199,8 @@ export function OrbProvider({
       setAura: (theme) => orbRef.current?.setAura(theme),
       reactArchetype: (kind, opts) => orbRef.current?.reactArchetype(kind, opts),
       setPatient: (on) => orbRef.current?.setPatient(on),
+      attend: () => orbRef.current?.attend(),
+      encourage: () => orbRef.current?.encourage(),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
