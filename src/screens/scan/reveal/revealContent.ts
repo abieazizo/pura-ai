@@ -16,6 +16,7 @@ import type { ConcernType, Direction, Severity } from '@/ai/ai-contracts';
 import type { SkinConcernSummary, SkinState } from '@/types/canonical';
 import type { PillarKey } from '@/types/routine';
 import { puraReveal } from '@/theme/tokens';
+import { warning } from '@/theme';
 
 // ---------------------------------------------------------------------------
 // Beat eyebrows — a small tracked uppercase kicker that sits above each
@@ -200,6 +201,16 @@ export interface SeverityTone {
   label: string;
 }
 
+/**
+ * Cycle 10 — the severity meter reads as one coherent escalation rather than a
+ * rainbow. It now climbs gray → green → amber → deeper amber → coral, so more
+ * lit AND warmer always means "worth more attention." "Mild" previously borrowed
+ * the brand blue, which (a) broke the ordered ramp and (b) spent the accent on a
+ * control that repeats on every finding card. Pulling it to the warning ramp's
+ * light step keeps the blue free to punctuate, and seats every level on a
+ * canonical semantic color (success / warning / the shared concern-coral that
+ * the trend "Watch" chip also uses) so nothing clashes within a card.
+ */
 export function severityTone(s: Severity): SeverityTone {
   switch (s) {
     case 'high':
@@ -207,7 +218,7 @@ export function severityTone(s: Severity): SeverityTone {
     case 'moderate':
       return { color: puraReveal.priorityMedium, label: 'Moderate' };
     case 'mild':
-      return { color: puraReveal.blue, label: 'Mild' };
+      return { color: warning[300], label: 'Mild' };
     case 'low':
       return { color: puraReveal.priorityLow, label: 'Low' };
     case 'none':

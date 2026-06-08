@@ -129,8 +129,9 @@ export function CelebrationCard({
     <View style={[styles.card, companionShadows.hero]}>
       <LinearGradient
         colors={CELEBRATION_GRADIENT}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.9, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.inner}>
@@ -142,6 +143,12 @@ export function CelebrationCard({
             </>
           ) : null}
           <Animated.View style={[styles.halo, orbStyle]}>
+            <LinearGradient
+              colors={['rgba(20, 124, 255, 0.18)', 'rgba(20, 124, 255, 0.04)']}
+              start={{ x: 0.3, y: 0.2 }}
+              end={{ x: 0.8, y: 0.95 }}
+              style={[StyleSheet.absoluteFill, { borderRadius: ORB / 2 }]}
+            />
             <Sparkle size={34} weight="fill" color={CC.blue} />
           </Animated.View>
         </View>
@@ -215,9 +222,10 @@ const styles = StyleSheet.create({
     width: ORB,
     height: ORB,
     borderRadius: ORB / 2,
-    backgroundColor: 'rgba(20, 124, 255, 0.10)',
+    backgroundColor: 'rgba(20, 124, 255, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   eyebrow: {
     marginBottom: 12,

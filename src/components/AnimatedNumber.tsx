@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Text, type TextProps, type TextStyle } from 'react-native';
+import { Text, type StyleProp, type TextProps, type TextStyle } from 'react-native';
 import {
   useAnimatedReaction,
   useSharedValue,
@@ -17,7 +17,7 @@ export interface AnimatedNumberProps extends Omit<TextProps, 'children'> {
   prefix?: string;
   /** Suffix (e.g. "%"). */
   suffix?: string;
-  style?: TextStyle;
+  style?: StyleProp<TextStyle>;
 }
 
 /**

@@ -46,7 +46,7 @@ import {
   puraRevealShadow,
   puraRevealType,
 } from '@/theme/tokens';
-import { tnum } from '@/theme';
+import { blue, dsAmbient, dsGradient, tnum } from '@/theme';
 import {
   BEAT_EYEBROWS,
   concernChips,
@@ -69,6 +69,35 @@ import { hapt } from '@/utils/haptics';
 const SKIN_GRADIENT = ['#E8D2C2', '#D8B6A2', '#C99A86'] as const;
 const TOTAL_STEPS = 6;
 const LAST_STEP = 4; // step 0..4 → screens 2..6
+
+// ---------------------------------------------------------------------------
+// Color & gradient layer (Cycle 10) — richer, more sophisticated color depth
+// without touching beat order, timing, or any business logic.
+//
+// The reveal arc used to sit on a single flat porcelain field with a SOLID
+// Pura-Blue "Next" pill repeated across four beats — the accent flooded the
+// surface and the page read depthless. This layer:
+//   • lays a subtle time-neutral porcelain→ice ambient wash behind every beat
+//     (dsAmbient.day.sky), so depth no longer rests on elevation alone;
+//   • pulls the blue back: the persistent forward control is now INK
+//     (dsGradient.inkCta), so blue PUNCTUATES (eyebrow, the sparkle hero, the
+//     "build it." payoff, live data accents) instead of repeating;
+//   • blooms the porcelain icon discs with a faint blue-wash gradient so the
+//     sparkle / insight / ready circles gain color-based depth;
+//   • fades content into the ambient field with a porcelain veil behind the
+//     floating control. All stops come from the design system / shipped ramps.
+// ---------------------------------------------------------------------------
+
+/** Ambient page wash — porcelain leaning to a faint ice-blue at the foot. */
+const AMBIENT_SKY = dsAmbient.day.sky;
+/** Soft disc gradient — porcelain top → whisper of brand blue. Premium depth
+ *  on the icon circles that were flat #EFF4FB fields. */
+const DISC_WASH = [puraReveal.white, dsGradient.blueWash[0]] as const;
+/** The sparkle disc is the Insights hero — a slightly richer blue bloom. */
+const SPARKLE_WASH = [dsGradient.blueWash[0], dsGradient.blueWash[1]] as const;
+/** Porcelain veil — dissolves scroll content into the ambient field behind the
+ *  floating Next, echoing dsGradient.pageVeil but tuned to the wash foot. */
+const VEIL = ['rgba(252,253,255,0)', 'rgba(247,250,255,0.92)'] as const;
 
 const INSIGHT_ICON: Record<InsightIcon, typeof Drop> = {
   barrier: Drop,
@@ -158,6 +187,17 @@ const rt = StyleSheet.create({
     ...tnum,
   },
 });
+
+/**
+ * The forward control, retinted INK for Cycle 10. The shipped FloatingNext is
+ * a SOLID Pura-Blue pill; repeated across four beats it made the accent flood
+ * the surface. Overriding only its background (via the chrome's own `style`
+ * prop — no chrome edit) to near-black pulls the blue back so it can punctuate
+ * the genuine accent moments. Its white label/caret already read on ink.
+ */
+function NextInk({ onPress }: { onPress: () => void }) {
+  return <FloatingNext onPress={onPress} style={styles.nextInk} />;
+}
 
 /** Small tracked section kicker rendered above each beat's serif hero. */
 function Eyebrow({ label, align = 'left' }: { label: string; align?: 'left' | 'center' }) {
@@ -257,7 +297,7 @@ export function ScanRevealScreen({
     switch (step) {
       case 0:
         return (
-          <Slide footer={<FloatingNext onPress={handleNext} />}>
+          <Slide footer={<NextInk onPress={handleNext} />}>
             <View style={styles.titleBlock}>
               <Eyebrow label={BEAT_EYEBROWS.map} />
               <Text style={[rt.heroTitle, styles.heroTitleText, { color: puraReveal.ink }]}>
@@ -269,7 +309,16 @@ export function ScanRevealScreen({
             </View>
 
             <View style={styles.mapBlock}>
-              <ZoneMapFrame photoUri={photoUri} overlays={overlays} width={mapW} height={mapH} />
+              <View style={{ width: mapW, height: mapH }}>
+                <LinearGradient
+                  colors={SPARKLE_WASH}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={styles.mapGlow}
+                  pointerEvents="none"
+                />
+                <ZoneMapFrame photoUri={photoUri} overlays={overlays} width={mapW} height={mapH} />
+              </View>
             </View>
 
             {chips.length > 0 ? (
@@ -296,7 +345,7 @@ export function ScanRevealScreen({
 
       case 1:
         return (
-          <Slide footer={<FloatingNext onPress={handleNext} />}>
+          <Slide footer={<NextInk onPress={handleNext} />}>
             <View style={styles.titleBlock}>
               <Eyebrow label={BEAT_EYEBROWS.focus} />
               <Text style={[rt.heroTitle, styles.heroTitleText, { color: puraReveal.ink }]}>
@@ -372,9 +421,17 @@ export function ScanRevealScreen({
 
       case 2:
         return (
-          <Slide footer={<FloatingNext onPress={handleNext} />}>
+          <Slide footer={<NextInk onPress={handleNext} />}>
             <View style={styles.insightHero}>
               <View style={styles.insightDisc}>
+                <LinearGradient
+                  colors={SPARKLE_WASH}
+                  start={{ x: 0.3, y: 0 }}
+                  end={{ x: 0.7, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <View style={styles.discRing} pointerEvents="none" />
                 <Sparkle size={44} weight="fill" color={puraReveal.blue} />
               </View>
               <View style={styles.insightEyebrow}>
@@ -400,6 +457,13 @@ export function ScanRevealScreen({
                   <StaggerItem key={card.key} index={i}>
                     <View style={styles.insightCard}>
                       <View style={styles.insightIcon}>
+                        <LinearGradient
+                          colors={DISC_WASH}
+                          start={{ x: 0.3, y: 0 }}
+                          end={{ x: 0.7, y: 1 }}
+                          style={StyleSheet.absoluteFill}
+                          pointerEvents="none"
+                        />
                         <Icon size={30} weight="regular" color={card.iconColor} />
                       </View>
                       <View style={styles.insightCol}>
@@ -422,7 +486,7 @@ export function ScanRevealScreen({
 
       case 3:
         return (
-          <Slide footer={<FloatingNext onPress={handleNext} />}>
+          <Slide footer={<NextInk onPress={handleNext} />}>
             <View style={styles.titleBlock}>
               <Eyebrow label={BEAT_EYEBROWS.plan} />
               <Text style={[rt.heroTitle, styles.heroTitleText, { color: puraReveal.ink }]}>
@@ -489,12 +553,27 @@ export function ScanRevealScreen({
               <View style={styles.readyCircles}>
                 {[Sparkle, Drop, Star].map((Icon, i) => (
                   <View key={i} style={styles.readyCircle}>
+                    <LinearGradient
+                      colors={DISC_WASH}
+                      start={{ x: 0.3, y: 0 }}
+                      end={{ x: 0.7, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                      pointerEvents="none"
+                    />
                     <Icon size={26} weight="regular" color={puraReveal.blue} />
                   </View>
                 ))}
               </View>
 
               <View style={styles.shieldRow}>
+                <LinearGradient
+                  colors={DISC_WASH}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <View style={styles.shieldRing} pointerEvents="none" />
                 <ShieldCheck size={16} weight="fill" color={puraReveal.blue} />
                 <Text style={[puraRevealType.body, { color: puraReveal.muted, flex: 1 }]}>
                   Every product is checked for your skin’s safety.
@@ -509,6 +588,13 @@ export function ScanRevealScreen({
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
+      <LinearGradient
+        colors={AMBIENT_SKY}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       <View style={styles.page}>
         <RevealHeader step={step + 2} total={TOTAL_STEPS} onBack={handleBack} />
         <Animated.View style={[styles.slide, slideStyle]}>{renderStep()}</Animated.View>
@@ -542,7 +628,16 @@ function Slide({
         {children}
       </ScrollView>
       {footer ? (
-        <View style={[styles.footer, footerAlign === 'end' ? styles.footerEnd : styles.footerStretch]}>
+        <View
+          style={[styles.footer, footerAlign === 'end' ? styles.footerEnd : styles.footerStretch]}
+        >
+          <LinearGradient
+            colors={VEIL}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.footerVeil}
+            pointerEvents="none"
+          />
           {footer}
         </View>
       ) : null}
@@ -646,6 +741,13 @@ function CropPanel({
           style={StyleSheet.absoluteFill}
         />
       )}
+      <LinearGradient
+        colors={['transparent', 'rgba(8,16,38,0.22)']}
+        start={{ x: 0.5, y: 0.45 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       <View style={[styles.cropAccent, { backgroundColor: accent }]} pointerEvents="none" />
       <View style={styles.cropEdge} pointerEvents="none" />
     </View>
@@ -698,8 +800,8 @@ function ZoneMapFrame({
       </Svg>
 
       <LinearGradient
-        colors={['transparent', 'rgba(8,10,15,0.16)']}
-        start={{ x: 0.5, y: 0.6 }}
+        colors={['transparent', 'rgba(8,16,38,0.10)', 'rgba(8,16,38,0.24)']}
+        start={{ x: 0.5, y: 0.5 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.frameScrim}
         pointerEvents="none"
@@ -717,7 +819,10 @@ function clampStep(s: number): number {
 }
 
 const styles = StyleSheet.create({
+  // The ambient LinearGradient owns the field now; the porcelain anchor below
+  // it keeps the very base on-brand if the gradient ever fails to mount.
   root: { flex: 1, backgroundColor: puraReveal.bg },
+  ambient: { ...StyleSheet.absoluteFillObject },
   page: {
     flex: 1,
     paddingHorizontal: puraRevealLayout.screenPadding,
@@ -735,6 +840,15 @@ const styles = StyleSheet.create({
   footer: { paddingVertical: 14 },
   footerEnd: { alignItems: 'flex-end' },
   footerStretch: { alignItems: 'stretch' },
+  // Porcelain veil rising behind the footer so scroll content dissolves into
+  // the ambient field instead of clipping hard under the floating control.
+  footerVeil: {
+    position: 'absolute',
+    left: -puraRevealLayout.screenPadding,
+    right: -puraRevealLayout.screenPadding,
+    bottom: 0,
+    top: -34,
+  },
 
   titleBlock: { marginBottom: 6 },
   // Eyebrow → hero spacing: a tight 8pt gap so the kicker reads as attached to
@@ -753,7 +867,19 @@ const styles = StyleSheet.create({
   },
 
   // Screen 2 — Skin Map
-  mapBlock: { alignItems: 'center', marginVertical: 18 },
+  mapBlock: { alignItems: 'center', justifyContent: 'center', marginVertical: 18 },
+  // Soft ice-blue halo blooming symmetrically just past the portrait frame
+  // (negative insets on a frame-sized wrapper), seating it in the ambient field
+  // instead of floating on flat porcelain.
+  mapGlow: {
+    position: 'absolute',
+    top: -16,
+    bottom: -16,
+    left: -20,
+    right: -20,
+    borderRadius: puraRevealRadius.cardLg + 16,
+    opacity: 0.7,
+  },
   frame: {
     borderRadius: puraRevealRadius.cardLg,
     overflow: 'hidden',
@@ -858,8 +984,17 @@ const styles = StyleSheet.create({
     height: puraRevealLayout.sparkleDisc,
     borderRadius: puraRevealRadius.iconCircle,
     backgroundColor: puraReveal.porcelain,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Faint brand ring around the sparkle hero — color-based depth, no extra blue
+  // fill. Sits above the wash, under the glyph.
+  discRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: puraRevealRadius.iconCircle,
+    borderWidth: 1,
+    borderColor: puraReveal.blue12,
   },
   insightCard: {
     flexDirection: 'row',
@@ -876,6 +1011,7 @@ const styles = StyleSheet.create({
     height: puraRevealLayout.insightIcon,
     borderRadius: puraRevealRadius.iconCircle,
     backgroundColor: puraReveal.porcelain,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -906,6 +1042,7 @@ const styles = StyleSheet.create({
     height: puraRevealLayout.readyIcon,
     borderRadius: puraRevealRadius.iconCircle,
     backgroundColor: puraReveal.porcelain,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -918,6 +1055,25 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: puraRevealRadius.card,
     backgroundColor: puraReveal.porcelain,
+    overflow: 'hidden',
+  },
+  // Hairline brand ring on the trust strip — lets the blue-wash fill read as a
+  // deliberate, contained safety note rather than a flat porcelain block.
+  shieldRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: puraRevealRadius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: puraReveal.blue15,
   },
   readyFooter: { gap: 6 },
+
+  // Forward "Next" pill, retinted from solid Pura-Blue to near-black ink so the
+  // accent stops repeating across four beats. A faint cool-ink shadow keeps it
+  // reading as the primary forward action; the white label/caret stay legible.
+  nextInk: {
+    backgroundColor: puraReveal.ctaInk,
+    shadowColor: dsGradient.inkCta[1],
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+  },
 });

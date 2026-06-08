@@ -53,7 +53,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuroraOrb } from '@/components/AuroraOrb';
-import { auroraOrb as C } from '@/theme';
+import { auroraOrb as C, dsAmbient, dsGradient } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
@@ -295,6 +295,11 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
     backgroundColor: interpolateColor(bgN.value, [0, 1], [C.heldBreathBg, C.porcelain]),
   }));
 
+  // Ambient porcelain wash — blooms in only as the inhale resolves to the
+  // settled ground (bgN 0→1), so the held-breath warm field stays pure. Adds
+  // tasteful color-based depth where the flat porcelain read thin.
+  const ambientStyle = useAnimatedStyle(() => ({ opacity: bgN.value }));
+
   const textPlane = useAnimatedStyle(() => ({
     transform: [{ translateX: lagX.value * 3 }, { translateY: lagY.value * 3 }],
   }));
@@ -339,6 +344,27 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
 
   return (
     <Animated.View style={[styles.root, bgStyle]}>
+      {/* Ambient porcelain atmosphere — a vertical sky wash plus a soft veil
+          grounding the CTA zone, so the field carries gradient depth instead
+          of reading as flat paper. Sits beneath all content; fades in with
+          the settle (never during the held-breath inhale). pointerEvents none. */}
+      <Animated.View style={[StyleSheet.absoluteFill, ambientStyle]} pointerEvents="none">
+        <LinearGradient
+          colors={dsAmbient.day.sky}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={dsGradient.pageVeil}
+          locations={[0, 0.6, 1]}
+          start={{ x: 0.5, y: 0.45 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
       {/* Orb + hero + subline cluster (optically above center). */}
       <View style={styles.cluster} pointerEvents="box-none">
         {showContent && (

@@ -31,6 +31,15 @@ const SANS_SEMI = 'Inter-SemiBold';
 
 // ---------------------------------------------------------------------------
 // Locked palette
+//
+// Cycle 10 (colour & gradient) — the anchors are untouched (Porcelain, Ink,
+// Pura Blue), but the accent is no longer allowed to flood. Blue now PUNCTUATES
+// (the AM/PM highlight, the active button-fill, the live progress spine, the
+// completion ceremony). Secondary chrome — the "Customize"/"Why this?"/"Ask"/
+// "Rebuild" links, eyebrows, carets, the spine *track* — moved to ink/neutral so
+// the accent re-earns attention each time it appears. The supporting cool
+// neutrals (`inkSoft`/`slate`/`mist`) come from the shared graphite ramp so the
+// surface reads as one tonal family rather than blue-on-white everywhere.
 // ---------------------------------------------------------------------------
 
 export const CC = {
@@ -38,22 +47,42 @@ export const CC = {
   porcelain: '#FCFDFF',
   /** Ink — primary text + the Mark-as-done button. */
   ink: '#080A0F',
-  /** Pura Blue — the one accent. */
+  /** Pura Blue — the one accent. PUNCTUATES, never floods. */
   blue: '#147CFF',
   blueDeep: '#075FD1',
+  /** Legible blue text on blue tints (ramp blue[900]) — for the rare blue word. */
+  blueText: '#063D8F',
   /** Muted gray — secondary text. */
   muted: '#6E6E73',
+  /** Cool graphite (neutral[700]) — secondary links/actions pulled off blue. */
+  inkSoft: '#3A4150',
+  /** Cool slate (neutral[600]) — quiet metadata, carets, eyebrows. */
+  slate: '#5D6673',
+  /** Faint cool mist (neutral[100]) — neutral chip fills, tinted scrims. */
+  mist: '#EEF4FB',
   white: '#FFFFFF',
-  /** Hairline at low alpha for the Why-this expansion + dividers. */
-  hairline: 'rgba(20, 124, 255, 0.15)',
-  /** Track for the vertical progress line (muted gray @15%). */
-  lineTrack: 'rgba(110, 110, 115, 0.15)',
-  /** STEP X OF Y pill — Pura Blue on 12% alpha. */
+  /** Hairline at low alpha for the Why-this expansion + dividers (cool ink). */
+  hairline: 'rgba(8, 22, 56, 0.08)',
+  /** Track for the vertical progress line — quiet cool neutral, not blue. */
+  lineTrack: 'rgba(91, 102, 115, 0.16)',
+  /** Neutral hairline border for resting cards/pills (cool ink @6%). */
+  cardLine: 'rgba(8, 22, 56, 0.06)',
+  /** STEP X OF Y pill — Pura Blue on 12% alpha (a true data accent → stays blue). */
   bluePill: 'rgba(20, 124, 255, 0.12)',
+  /** Neutral pill fill — secondary chips that should NOT pull blue. */
+  neutralPill: 'rgba(91, 102, 115, 0.10)',
   /** Celebration bloom ring — Pura Blue at a soft alpha that radiates out. */
   blueRing: 'rgba(20, 124, 255, 0.16)',
   /** Streak chip fill — Pura Blue @10% (chip text reuses CC.blue). */
   streakBg: 'rgba(20, 124, 255, 0.10)',
+  /** Soft success green — the "done" semantic (from the shared success ramp). */
+  done: '#20A67A',
+  doneDeep: '#188A65',
+  /** Foot-of-card scrim that lifts the dark button off the wash (cool ink). */
+  footScrim: 'rgba(8, 22, 56, 0.05)',
+  /** Sheet top veil — a whisper of cool light over flat porcelain. */
+  veilTop: 'rgba(234, 244, 255, 0.6)',
+  veilMid: 'rgba(247, 250, 255, 0.32)',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -61,46 +90,86 @@ export const CC = {
 // ---------------------------------------------------------------------------
 
 export interface PillarAtmosphere {
-  /** Hero gradient: [top-left tint, →white]. */
-  hero: readonly [string, string];
-  /** Upcoming-preview gradient (softer): [tint, →white]. */
-  upcoming: readonly [string, string];
+  /**
+   * Hero wash — a 3-stop diagonal: [saturated top-left tint, mid relief,
+   * →white]. The middle stop turns the old flat two-stop fade into a soft
+   * mesh-like field so the hero has real colour *depth*, not a single ramp.
+   */
+  hero: readonly [string, string, string];
+  /** Upcoming-preview gradient (softer 3-stop): [tint, mid, →white]. */
+  upcoming: readonly [string, string, string];
   /** Visible-but-calm glow behind the product image. */
   halo: string;
+  /** Deeper halo edge — paired with `halo` for a radial-feel product bloom. */
+  haloDeep: string;
 }
 
 /**
- * Per-pillar atmosphere. Hero top-left tints are the spec values
- * (Cleanse #F0F6FE / Treat #FDF6F0 / Moisturize #F2F7F3 / Protect
- * #FEF8EE), each fading to white. Upcoming tints are the softer
- * variants. Halos are a touch more saturated than the wash so the
- * product reads as floating in coloured light rather than on flat paper.
+ * Per-pillar atmosphere — harmonized in Cycle 10.
+ *
+ * Each pillar's wash now AGREES with its identity accent (see
+ * `pillarIdentity`): cleanse + treat are the Pura-Blue pair (treat sits a
+ * half-step cooler/deeper so the two blues stay distinguishable), moisturize
+ * is the sage-green family, protect the amber family. This removes the old
+ * orphaned peach `treat` field (its icon was already blue) so no wash clashes
+ * with the glyph sitting in it. Warmth is retained ONLY where the pillar
+ * identity itself is warm (moisturize/protect) — the deliberate Cycle-6 win —
+ * but pulled to a quieter, more sophisticated saturation. Every stop is a
+ * tasteful porcelain tint; the third stop resolves to white so cards still
+ * read as light surfaces. Halos carry a soft→deep pair for a radial bloom.
  */
 export const PILLAR_ATMOSPHERE: Record<PillarKey, PillarAtmosphere> = {
   cleanse: {
-    hero: ['#F0F6FE', '#FFFFFF'],
-    upcoming: ['#F8FAFE', '#FFFFFF'],
-    halo: '#CFE3FF',
+    hero: ['#EAF2FE', '#F4F8FE', '#FFFFFF'],
+    upcoming: ['#F4F8FE', '#FAFCFF', '#FFFFFF'],
+    halo: '#D7E7FF',
+    haloDeep: '#BBD6FF',
   },
   treat: {
-    hero: ['#FDF6F0', '#FFFFFF'],
-    upcoming: ['#FEFAF7', '#FFFFFF'],
-    halo: '#F8DEC8',
+    // The second blue — a touch deeper/cooler than cleanse so the pair reads
+    // as two related-but-distinct steps, not a repeat.
+    hero: ['#E4EEFC', '#EFF5FD', '#FFFFFF'],
+    upcoming: ['#EFF5FD', '#F7FAFE', '#FFFFFF'],
+    halo: '#CBDEFF',
+    haloDeep: '#AEC9FB',
   },
   moisturize: {
-    hero: ['#F2F7F3', '#FFFFFF'],
-    upcoming: ['#F9FBFA', '#FFFFFF'],
-    halo: '#CFE8D6',
+    // Sage family — quieter, more sophisticated than the old flat mint.
+    hero: ['#ECF4EE', '#F4F9F5', '#FFFFFF'],
+    upcoming: ['#F4F9F5', '#FAFCFB', '#FFFFFF'],
+    halo: '#CFE6D5',
+    haloDeep: '#B6D7BF',
   },
   protect: {
-    hero: ['#FEF8EE', '#FFFFFF'],
-    upcoming: ['#FFFBF6', '#FFFFFF'],
-    halo: '#FBE6BE',
+    // Amber family — warm dawn defense, pulled back from the old buttery tint.
+    hero: ['#FBF3E6', '#FCF8F0', '#FFFFFF'],
+    upcoming: ['#FCF8F0', '#FEFBF6', '#FFFFFF'],
+    halo: '#F6E2BC',
+    haloDeep: '#EFD29A',
   },
 };
 
-/** Celebration hero wash — soft blue, used when the routine is complete. */
-export const CELEBRATION_GRADIENT: readonly [string, string] = ['#F4F8FE', '#FFFFFF'];
+/**
+ * Celebration hero wash — a richer 3-stop Pura-Blue ambient (the payoff is one
+ * of the few moments blue is *meant* to bloom). Deepens from a soft blue crown
+ * through a relief stop to white, so the ceremony card reads as lit, not flat.
+ */
+export const CELEBRATION_GRADIENT: readonly [string, string, string] = [
+  '#E6F1FF',
+  '#F2F7FE',
+  '#FFFFFF',
+];
+
+/**
+ * Sheet veil — a soft cool wash drawn at the TOP of the product/customize
+ * sheets so the flat porcelain panel gains a little ambient depth behind the
+ * packshot. Fades fully to transparent; never tints the body copy region.
+ */
+export const SHEET_VEIL: readonly [string, string, string] = [
+  CC.veilTop,
+  CC.veilMid,
+  'rgba(252, 253, 255, 0)',
+];
 
 // ---------------------------------------------------------------------------
 // Day atmosphere (AM / PM ambient sky)
@@ -133,15 +202,21 @@ export interface DayAtmosphere {
 
 export const DAY_ATMOSPHERE: Record<RoutineTimeOfDay, DayAtmosphere> = {
   // Morning — a golden first-light crown lifting into a clean, cool day.
+  // Cycle 10 kept the signature temperature swing (this is the Cycle-6 win)
+  // but refined the hand-off: the warm crown now resolves through a true
+  // neutral porcelain mid before the cool base, so the transition reads as
+  // dawn light warming the room rather than two tints meeting at a seam.
   morning: {
-    sky: ['#FFF0D6', '#FCFBF6', '#E9F1FF'],
-    glow: '#FFD08A',
+    sky: ['#FFEFD2', '#FBFAF6', '#E8F1FF'],
+    glow: '#FFCE83',
     glowOpacity: 0.8,
     glowHeight: 0.52,
   },
-  // Evening — a cool periwinkle twilight settling into a soft dusk lilac.
+  // Evening — a cool periwinkle twilight settling into a soft dusk. Pulled a
+  // step away from lilac toward a calmer blue-slate so it never reads violet
+  // (the locked DNA forbids purple surfaces; the orb keeps its own aura).
   evening: {
-    sky: ['#E1EAFF', '#F2F5FF', '#EAE4F8'],
+    sky: ['#DEE8FF', '#EFF3FE', '#E4E6F4'],
     glow: '#A6BEFF',
     glowOpacity: 0.62,
     glowHeight: 0.42,
@@ -247,12 +322,12 @@ export const companionType = {
     letterSpacing: -0.2,
     color: CC.ink,
   },
-  /** Top-right "Customize" link. */
+  /** Top-right "Customize" link — neutral ink (a quiet utility, not the accent). */
   link: {
     fontFamily: SANS_MED,
     fontSize: 14,
     lineHeight: 18,
-    color: CC.blue,
+    color: CC.inkSoft,
   },
   /** AM/PM segmented label. */
   toggle: {
@@ -311,12 +386,13 @@ export const companionType = {
     lineHeight: 20,
     color: CC.ink,
   },
-  /** Inline "Why this?" link. */
+  /** Inline "Why this?" link — neutral ink so the hero's blue button-fill stays
+   *  the only accent on the card. */
   whyLink: {
     fontFamily: SANS_MED,
     fontSize: 13,
     lineHeight: 17,
-    color: CC.blue,
+    color: CC.inkSoft,
   },
   /** Why-this expanded body. */
   whyBody: {

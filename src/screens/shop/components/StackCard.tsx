@@ -44,10 +44,13 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Heart, Check, ArrowsLeftRight, X } from 'phosphor-react-native';
 
 import {
   dsElevation,
+  warning,
+  neutral,
   puraShop,
   puraShopHome,
   puraShopRadius,
@@ -64,6 +67,34 @@ import { AddButton } from './AddButton';
 
 const SCREEN_W = Dimensions.get('window').width;
 const H_PAD = puraShopSpace.xl; // 20
+
+// ---------------------------------------------------------------------------
+// Cycle-10 color harmonization (component-local, derived from the design
+// system — no new brand hue introduced).
+//
+// SPLURGE ROUTE: the legacy splurge tint was a one-off amethyst
+// (`puraShopHome.splurgeTint/Ink`) — a violet that fought the locked
+// porcelain/ink/blue DNA and agreed with nothing else on the surface. We
+// re-point the "invest / premium" route to the shared WARNING (amber) ramp,
+// so it now harmonizes with the amber rating star and reads as a coherent
+// "spend more" signal beside the green BUDGET route (success ramp). Budget
+// keeps its existing green tokens, which already come from the success ramp.
+const ROUTE = {
+  splurgeTint: warning.tint,
+  splurgeInk: warning.text,
+} as const;
+
+// CARD SURFACE: a near-white vertical wash (luminous porcelain top → a hair
+// cooler at the foot, from the neutral ramp) so a resting card carries
+// color-based depth, not shadow alone — the fix for "white card on white
+// field" flatness. Kept extremely subtle so the surface still reads as clean
+// ivory.
+const CARD_FIELD = [puraShopHome.white, neutral[50]] as [string, string];
+// A soft ink scrim that grounds the price/footer zone against the field.
+const FOOTER_SCRIM = ['rgba(8,22,56,0)', 'rgba(8,22,56,0.035)'] as [
+  string,
+  string,
+];
 
 export interface StackCardViewProps {
   card: StackCard;
@@ -217,6 +248,15 @@ export function StackCardView({
   if (card.type === 'end' || !card.product) {
     return (
       <View style={[styles.card, liftShadow, styles.endCard, { width }]}>
+        {/* Same porcelain luminosity as the product cards so the deck's
+            sign-off closes on a card with tone-depth, not a flat white slab. */}
+        <LinearGradient
+          colors={CARD_FIELD}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
         <View style={[styles.eyebrowTick, styles.endTick]} />
         <Text style={styles.endEyebrow}>{card.eyebrow}</Text>
         <Text style={styles.endReason}>{card.reason}</Text>
@@ -245,11 +285,37 @@ export function StackCardView({
   // <button> inside a <button> (RN Pressable → <button> on react-native-web).
   return (
     <Animated.View style={[styles.card, liftShadow, { width }, pressStyle]}>
+      {/* Surface luminosity — a near-white porcelain wash gives the card
+          color-based depth so it lifts off the field by tone, not shadow
+          alone. Behind all content; clipped by the card's rounded overflow. */}
+      <LinearGradient
+        colors={CARD_FIELD}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {/* Footer scrim — a faint ink gather at the foot so the price + add zone
+          reads as grounded weight, not floating type on white. */}
+      <LinearGradient
+        colors={FOOTER_SCRIM}
+        locations={[0, 1]}
+        start={{ x: 0.5, y: 0.72 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
       {/* Header — editorial eyebrow + save heart. */}
       <View style={styles.header}>
         <View style={styles.eyebrowRow}>
+          {/* The pillar accent now PUNCTUATES through the tick alone — the
+              eyebrow text reads in ink so the blue (the dominant "treat"
+              pillar's #147CFF) no longer repeats as a full coloured run on
+              every card. The accent re-earns attention at the match orb and
+              the save state instead of flooding the header. */}
           <View style={[styles.eyebrowTick, { backgroundColor: accent }]} />
-          <Text style={[styles.eyebrow, { color: accent }]} numberOfLines={1}>
+          <Text style={styles.eyebrow} numberOfLines={1}>
             {card.eyebrow}
           </Text>
         </View>
@@ -301,8 +367,13 @@ export function StackCardView({
                 fx="48%"
                 fy="38%"
               >
+                {/* Richer four-stop falloff (was 3) — a brighter concentrated
+                    core that eases through a soft mid-bloom to nothing, so the
+                    product sits in a luminous pool of its pillar's atmosphere
+                    rather than on a flat tinted disc. */}
                 <Stop offset="0%" stopColor={halo} stopOpacity={1} />
-                <Stop offset="62%" stopColor={halo} stopOpacity={0.5} />
+                <Stop offset="34%" stopColor={halo} stopOpacity={0.78} />
+                <Stop offset="66%" stopColor={halo} stopOpacity={0.42} />
                 <Stop offset="100%" stopColor={halo} stopOpacity={0} />
               </RadialGradient>
             </Defs>
@@ -380,14 +451,14 @@ export function StackCardView({
               {
                 backgroundColor: compareLess
                   ? puraShopHome.budgetTint
-                  : puraShopHome.splurgeTint,
+                  : ROUTE.splurgeTint,
               },
             ]}
           >
             <ArrowsLeftRight
               size={13}
               weight="bold"
-              color={compareLess ? puraShopHome.budgetInk : puraShopHome.splurgeInk}
+              color={compareLess ? puraShopHome.budgetInk : ROUTE.splurgeInk}
             />
             <Text
               style={[
@@ -395,7 +466,7 @@ export function StackCardView({
                 {
                   color: compareLess
                     ? puraShopHome.budgetInk
-                    : puraShopHome.splurgeInk,
+                    : ROUTE.splurgeInk,
                 },
               ]}
               numberOfLines={1}
@@ -483,7 +554,7 @@ export function StackCardView({
                     {
                       backgroundColor: compareLess
                         ? puraShopHome.budgetInk
-                        : puraShopHome.splurgeInk,
+                        : ROUTE.splurgeInk,
                     },
                   ]}
                 >
@@ -504,7 +575,7 @@ export function StackCardView({
                 packshot={p.catalogPackshot}
                 halo={halo}
                 emphasisColor={
-                  compareLess ? puraShopHome.budgetInk : puraShopHome.splurgeInk
+                  compareLess ? puraShopHome.budgetInk : ROUTE.splurgeInk
                 }
               />
             </View>
@@ -609,12 +680,15 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     // Tracked uppercase eyebrow — wider positive tracking reads as a deliberate
-    // editorial kicker, not a cramped tag.
+    // editorial kicker, not a cramped tag. Inked (not pillar-accent) so the
+    // blue stops flooding the header; the coloured tick beside it carries the
+    // pillar signal. Strong ink keeps it AA over the porcelain card.
     ...puraShopType.tagLabel,
     fontSize: 11,
     lineHeight: 13,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
+    color: puraShop.inkSecondary,
     flexShrink: 1,
   },
 

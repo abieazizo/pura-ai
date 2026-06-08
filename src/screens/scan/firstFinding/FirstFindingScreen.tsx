@@ -225,8 +225,8 @@ export function FirstFindingScreen({
 
   // ── React to the outcome: drive the pivot → reveal, or a hard-case path. ────
   useEffect(() => {
-    if (phase !== 'analyzing') return;
     if (outcome.status === 'pending') return;
+    if (phase === 'reveal' || phase === 'error') return; // already resolved
 
     if (outcome.status === 'service_error') {
       stopAnalyzing();

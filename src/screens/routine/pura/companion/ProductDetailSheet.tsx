@@ -21,6 +21,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { stepTypeToPillarKey, type RoutineStep } from '@/types/routine';
 import { PILLAR_IDENTITY } from '@/components/routine/pillarIdentity';
@@ -28,6 +29,7 @@ import { hapt } from '@/utils/haptics';
 import {
   CC,
   PILLAR_ATMOSPHERE,
+  SHEET_VEIL,
   companionShadows,
   companionType,
 } from './companionTokens';
@@ -89,6 +91,18 @@ export function ProductDetailSheet({
           },
         ]}
       >
+        {/* Ambient top veil — a cool wash behind the packshot gives the flat
+            porcelain sheet a little depth without tinting the body copy. */}
+        <View pointerEvents="none" style={styles.veilClip}>
+          <LinearGradient
+            colors={SHEET_VEIL}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+
         <View style={styles.handle} />
 
         <ScrollView
@@ -97,7 +111,14 @@ export function ProductDetailSheet({
           bounces={false}
         >
           <View style={styles.stage}>
-            <View style={[styles.halo, { backgroundColor: atmosphere.halo }]}>
+            <View style={[styles.halo, { backgroundColor: atmosphere.haloDeep }]}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
+                start={{ x: 0.3, y: 0.2 }}
+                end={{ x: 0.85, y: 0.95 }}
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, { borderRadius: 78 }]}
+              />
               {packshot ? (
                 <Image
                   source={packshot}
@@ -210,6 +231,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 12,
   },
+  veilClip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 240,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
   handle: {
     alignSelf: 'center',
     width: 44,
@@ -232,6 +263,7 @@ const styles = StyleSheet.create({
     borderRadius: 78,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   image: {
     width: 116,
@@ -286,10 +318,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   askText: {
+    // Quiet neutral — the sheet's one accent is the pillar-tinted chip; this
+    // secondary hand-off shouldn't compete with it in blue.
     fontFamily: 'Inter-Medium',
     fontSize: 14,
     lineHeight: 18,
-    color: CC.blue,
+    color: CC.inkSoft,
   },
   doneBtn: {
     height: 54,

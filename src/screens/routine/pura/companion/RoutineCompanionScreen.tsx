@@ -428,6 +428,7 @@ function DayAtmosphere({
     <>
       <LinearGradient
         colors={atm.sky}
+        locations={[0, 0.46, 1]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}

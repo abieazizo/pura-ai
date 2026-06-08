@@ -12,6 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
 import { SKIN_READ_FIXTURES } from '@/api/skinRead';
 import type { SkinReadOutcome } from '@/types/skinRead';
@@ -68,6 +69,7 @@ export function FirstFindingDevHarness() {
   const key = `${theme}-${reduceMotion ? 'rm' : 'fm'}-${nonce}`;
 
   return (
+    <SafeAreaProvider>
     <View style={[styles.root, { backgroundColor: theme === 'dark' ? '#0A0B12' : '#FCFDFF' }]}>
       <OrbProvider key={key} reduceMotion={reduceMotion} birth={false} dark={theme === 'dark'}>
         <FirstFindingScreen
@@ -108,6 +110,7 @@ export function FirstFindingDevHarness() {
         </View>
       </OrbProvider>
     </View>
+    </SafeAreaProvider>
   );
 }
 

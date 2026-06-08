@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import Animated, {
   useAnimatedStyle,
@@ -51,9 +52,13 @@ import {
 
 import {
   ds,
+  blue,
   dsType,
   dsSpace,
+  dsRadius,
   dsTiming,
+  dsAmbient,
+  dsGradient,
   stagger,
   tnum,
   puraShopLayout,
@@ -149,6 +154,21 @@ export function MeScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
+      {/* ── Ambient porcelain wash — a calm day-sky mesh replaces the flat
+          porcelain field so the page has real atmospheric depth behind the
+          editorial masthead. Subtly cool, never garish; the locked DNA. ── */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={dsAmbient.day.sky}
+        locations={[0, 0.46, 1]}
+        style={styles.ambient}
+      />
+      {/* Faint top-light bloom so the greeting hero sits in a pool of light. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={[ds.accentSoft, 'rgba(234,244,255,0)']}
+        style={styles.ambientGlow}
+      />
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -169,6 +189,15 @@ export function MeScreen() {
               hitSlop={8}
               style={({ pressed }) => [styles.avatar, pressed && styles.pressedSoft]}
             >
+              {/* Faint porcelain→ice fill so the identity chip reads as a
+                  dimensional disc, not a flat outline. Neutral, not branded. */}
+              <LinearGradient
+                pointerEvents="none"
+                colors={[ds.surface, ds.pageDeep]}
+                start={{ x: 0.3, y: 0 }}
+                end={{ x: 0.7, y: 1 }}
+                style={styles.avatarFill}
+              />
               <Text style={styles.avatarText} maxFontSizeMultiplier={1.1}>
                 {userInitials || (name ? name[0].toUpperCase() : 'Y')}
               </Text>
@@ -189,14 +218,24 @@ export function MeScreen() {
               <ProgressHeroSection scans={scans} insight={insight} />
             </Rise>
 
-            {/* ── Count-up stat ribbon ── */}
+            {/* ── Count-up stat ribbon — the surface that echoes the hero's
+                intelligence. A whisper of blue wash gives it color-based depth
+                and lets the ONE blue data accent (Scans, the number that drives
+                the whole "over time" story) re-earn the eye. ── */}
             <Rise index={2} style={styles.block}>
-              <Card tint="surface" level="e1" style={styles.statCard}>
-                <StatCol value={scansCount} label="Scans" />
-                <View style={styles.statDivider} />
-                <StatCol value={routineCount} label="In routine" />
-                <View style={styles.statDivider} />
-                <StatCol value={wishlistCount} label="Saved" />
+              <Card tint="clear" level="e1" padding={0} style={styles.statCard}>
+                <LinearGradient
+                  colors={dsGradient.blueWash}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.statWash}
+                >
+                  <StatCol value={scansCount} label="Scans" accent />
+                  <View style={styles.statDivider} />
+                  <StatCol value={routineCount} label="In routine" />
+                  <View style={styles.statDivider} />
+                  <StatCol value={wishlistCount} label="Saved" />
+                </LinearGradient>
               </Card>
             </Rise>
 
@@ -225,25 +264,33 @@ export function MeScreen() {
             </Rise>
           </>
         ) : (
-          /* ── Empty state with personality ── */
+          /* ── Empty state with personality — a soft blue dawn wash gives the
+              invitation real warmth and depth, harmonized with its accent CTA. ── */
           <Rise index={1} style={styles.block}>
-            <Card tint="surface" level="e2" padding={dsSpace.xl} style={styles.emptyCard}>
-              <Text style={styles.emptyTitle} maxFontSizeMultiplier={1.15}>
-                Your skin story starts here.
-              </Text>
-              <Text style={styles.emptyBody} maxFontSizeMultiplier={1.2}>
-                One 30-second scan unlocks your score, your trend, and your first
-                before-and-after.
-              </Text>
-              <Button
-                label="Take your first scan"
-                variant="accent"
-                fullWidth
-                onPress={openScan}
-                icon={<Camera size={18} color="#FFFFFF" weight="duotone" />}
-                accessibilityHint="Opens the camera to scan your skin"
-                style={styles.emptyCta}
-              />
+            <Card tint="clear" level="e2" padding={0} style={styles.emptyCard}>
+              <LinearGradient
+                colors={[ds.surface, ds.accentSoft]}
+                start={{ x: 0.1, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
+                style={styles.emptyWash}
+              >
+                <Text style={styles.emptyTitle} maxFontSizeMultiplier={1.15}>
+                  Your skin story starts here.
+                </Text>
+                <Text style={styles.emptyBody} maxFontSizeMultiplier={1.2}>
+                  One 30-second scan unlocks your score, your trend, and your first
+                  before-and-after.
+                </Text>
+                <Button
+                  label="Take your first scan"
+                  variant="accent"
+                  fullWidth
+                  onPress={openScan}
+                  icon={<Camera size={18} color="#FFFFFF" weight="duotone" />}
+                  accessibilityHint="Opens the camera to scan your skin"
+                  style={styles.emptyCta}
+                />
+              </LinearGradient>
             </Card>
           </Rise>
         )}
@@ -366,11 +413,25 @@ function Rise({
   return <Animated.View style={[style, animStyle]}>{children}</Animated.View>;
 }
 
-function StatCol({ value, label }: { value: number; label: string }) {
+function StatCol({
+  value,
+  label,
+  accent = false,
+}: {
+  value: number;
+  label: string;
+  accent?: boolean;
+}) {
   return (
     <View style={styles.statCol}>
-      <AnimatedNumber value={value} style={styles.statValue} />
-      <Text style={styles.statLabel} maxFontSizeMultiplier={1.1}>
+      <AnimatedNumber
+        value={value}
+        style={[styles.statValue, accent && styles.statValueAccent]}
+      />
+      <Text
+        style={[styles.statLabel, accent && styles.statLabelAccent]}
+        maxFontSizeMultiplier={1.1}
+      >
         {label}
       </Text>
     </View>
@@ -385,6 +446,17 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: ds.page,
+  },
+  // Page atmosphere — full-bleed day-sky porcelain mesh + a faint top bloom.
+  ambient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  ambientGlow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 280,
   },
   scroll: {
     paddingTop: dsSpace.sm,
@@ -415,6 +487,10 @@ const styles = StyleSheet.create({
     borderColor: ds.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarFill: {
+    ...StyleSheet.absoluteFillObject,
   },
   avatarText: {
     fontFamily: 'Inter-SemiBold',
@@ -455,11 +531,17 @@ const styles = StyleSheet.create({
     marginTop: dsSpace.xl,
   },
 
-  // Stat ribbon
+  // Stat ribbon — the Card is now a clear shell that clips a blue-wash fill.
   statCard: {
     marginHorizontal: H,
+    borderRadius: dsRadius.xl,
+    overflow: 'hidden',
+  },
+  statWash: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: dsSpace.lg,
+    paddingHorizontal: dsSpace.md,
   },
   statCol: {
     flex: 1,
@@ -468,6 +550,7 @@ const styles = StyleSheet.create({
   statValue: {
     // Editorial data numerals — tabular so the three columns stay rock-steady
     // as they count up, sized up a notch with tighter tracking for confidence.
+    // Default columns sit in ink so the single blue accent earns the eye.
     fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 34,
     lineHeight: 36,
@@ -475,21 +558,35 @@ const styles = StyleSheet.create({
     color: ds.textPrimary,
     ...tnum,
   },
+  statValueAccent: {
+    // The ONE blue data accent on the surface — Scans, the number the whole
+    // "over time" story is built on. Deep enough to hold AA on the wash.
+    color: ds.accentDeep,
+  },
   statLabel: {
     ...dsType.labelSm,
     letterSpacing: 1.4,
     color: ds.textTertiary,
     marginTop: dsSpace.sm,
   },
+  statLabelAccent: {
+    // Caption under the accent stat lifts to the brand text tone so the label
+    // and its numeral read as one harmonized unit.
+    color: ds.accentText,
+  },
   statDivider: {
     width: StyleSheet.hairlineWidth,
     height: 38,
-    backgroundColor: ds.border,
+    // Blue-tinted hairline so the dividers belong to the wash, not the page.
+    backgroundColor: blue[200],
   },
 
   // Empty state
   emptyCard: {
     marginHorizontal: H,
+  },
+  emptyWash: {
+    padding: dsSpace.xl,
     alignItems: 'flex-start',
   },
   emptyTitle: {

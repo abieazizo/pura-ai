@@ -134,12 +134,19 @@ export function CompanionEmptyState({
             <View style={[styles.card, companionShadows.hero]}>
               <LinearGradient
                 colors={CELEBRATION_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                locations={[0, 0.5, 1]}
+                start={{ x: 0.15, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
               <View style={styles.inner}>
                 <View style={styles.iconHalo}>
+                  <LinearGradient
+                    colors={['rgba(20, 124, 255, 0.16)', 'rgba(20, 124, 255, 0.03)']}
+                    start={{ x: 0.3, y: 0.2 }}
+                    end={{ x: 0.8, y: 0.95 }}
+                    style={[StyleSheet.absoluteFill, { borderRadius: 34 }]}
+                  />
                   <Icon size={30} weight="regular" color={CC.blue} />
                 </View>
                 <Text style={styles.eyebrow}>{copy.eyebrow}</Text>
@@ -244,10 +251,11 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: 'rgba(20, 124, 255, 0.10)',
+    backgroundColor: 'rgba(20, 124, 255, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
+    overflow: 'hidden',
   },
   eyebrow: {
     fontFamily: 'Inter-SemiBold',

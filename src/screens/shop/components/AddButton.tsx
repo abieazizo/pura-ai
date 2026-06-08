@@ -26,8 +26,19 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { Plus, Check } from 'phosphor-react-native';
-import { puraShop, puraShopShadow } from '@/theme';
+import { ds, neutral, puraShop, puraShopShadow } from '@/theme';
 import { hapt } from '@/utils/haptics';
+
+// Cycle-10 blue restraint: the idle add affordance repeated a blue ring + blue
+// glyph on EVERY product card, so the accent never punctuated. We quiet the
+// resting state to a neutral hairline ring + an ink glyph; the Pura Blue blooms
+// only on PRESS (addActiveBg/addActiveIcon, unchanged) and the committed state
+// still settles to success green. The accent thus re-earns attention on
+// interaction instead of flooding the card grid at rest.
+const IDLE = {
+  border: neutral[200],
+  icon: ds.textPrimary,
+} as const;
 
 export type AddButtonSize = 'lg' | 'md' | 'sm';
 
@@ -113,7 +124,7 @@ export function AddButton({
             ? puraShop.plusBgConfirmed
             : pressed
               ? puraShop.addActiveBg
-              : puraShop.addBorder;
+              : IDLE.border;
           return [
             styles.btn,
             {
@@ -131,7 +142,7 @@ export function AddButton({
             ? puraShop.addConfirmedIcon
             : pressed
               ? puraShop.addActiveIcon
-              : puraShop.addIcon;
+              : IDLE.icon;
           return confirmed ? (
             <Check size={iconSize} color={iconColor} weight="bold" />
           ) : (

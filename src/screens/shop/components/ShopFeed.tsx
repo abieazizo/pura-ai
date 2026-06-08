@@ -27,7 +27,7 @@ import React, { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { puraShopHome } from '@/theme';
+import { dsAmbient, puraShopHome } from '@/theme';
 import type { ShopHomeModel } from '../shopStackModel';
 import { CardStack, type CardStackHandle } from './CardStack';
 import { FeedHeader } from './FeedHeader';
@@ -70,17 +70,54 @@ export function ShopFeed({
 
   // Living backdrop — melts toward the top card's pillar as the deck advances;
   // a calm porcelain wash pre-scan (no pillar to belong to yet).
+  const activeTheme = isPost ? model.cards[topIdx]?.pillarTheme ?? null : null;
   const corners =
-    isPost && model.cards[topIdx]?.pillarTheme
-      ? model.cards[topIdx]!.pillarTheme!.corners
-      : ([puraShopHome.canvas, puraShopHome.canvasDeep] as const);
+    activeTheme?.corners ??
+    ([puraShopHome.canvas, puraShopHome.canvasDeep] as const);
+
+  // The field is built in THREE passes rather than one flat corner→corner ramp,
+  // so depth comes from color, not just from the cards floating on top:
+  //   1. a 3-stop pillar wash (light corner → porcelain mid → deep corner) that
+  //      keeps the page centre luminous instead of muddying to the deep hue;
+  //   2. a top porcelain lift (dawn-bright sky) so content reads off a clean
+  //      light source at the header;
+  //   3. ONE restrained ambient bloom — the active pillar's halo post-scan, a
+  //      whisper of day-blue pre-scan — anchored top-centre behind the deck.
+  // Pure light/atmosphere; the single Pura-Blue accent is reserved for the
+  // match orb + primary actions and never floods this field.
+  const field: [string, string, string] = [
+    corners[0],
+    dsAmbient.day.sky[0],
+    corners[1],
+  ];
+  const bloom = activeTheme?.halo ?? dsAmbient.day.glow;
 
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={[corners[0], corners[1]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        colors={field}
+        locations={[0, 0.46, 1]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.9, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {/* Top luminous lift — a clean porcelain light source under the header. */}
+      <LinearGradient
+        colors={[dsAmbient.dawn.sky[0], 'transparent']}
+        locations={[0, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 0.42 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {/* Single ambient bloom — the pillar's atmosphere (or a day-blue whisper
+          pre-scan) gathered top-centre, fading to nothing by mid-page. */}
+      <LinearGradient
+        colors={[bloom, 'transparent']}
+        locations={[0, 1]}
+        start={{ x: 0.5, y: 0.04 }}
+        end={{ x: 0.5, y: 0.6 }}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />

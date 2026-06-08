@@ -26,7 +26,7 @@ import Svg, {
   Circle,
   Ellipse,
 } from 'react-native-svg';
-import { puraShop, puraShopType, tnum } from '@/theme';
+import { blue, puraShop, puraShopType, tnum } from '@/theme';
 
 export function MatchOrb({
   percent,
@@ -59,11 +59,16 @@ export function MatchOrb({
     >
       <Svg width={size} height={size} viewBox="0 0 100 100">
         <Defs>
-          {/* Base — soft warm interior. */}
+          {/* Base — a luminous Pura-Blue interior. Now that the card eyebrows
+              read in ink, the orb is the surface's earned blue punctuation, so
+              its falloff descends into a REAL blue (ramp 200→400) instead of
+              the old washed ice-blues — it reads as a confident recommendation
+              signal, not a pale sticker. Bright core keeps the figure legible. */}
           <RadialGradient id="orbBase" cx="50%" cy="46%" rx="56%" ry="56%" fx="42%" fy="34%">
             <Stop offset="0%" stopColor={puraShop.orbCenter} stopOpacity={1} />
-            <Stop offset="55%" stopColor={puraShop.orbBg} stopOpacity={1} />
-            <Stop offset="100%" stopColor={puraShop.peachGlow} stopOpacity={1} />
+            <Stop offset="46%" stopColor={blue[100]} stopOpacity={1} />
+            <Stop offset="78%" stopColor={blue[200]} stopOpacity={1} />
+            <Stop offset="100%" stopColor={blue[400]} stopOpacity={1} />
           </RadialGradient>
           {/* Inner rim glow — sits just inside the outer edge for depth. */}
           <RadialGradient id="orbInnerRim" cx="50%" cy="50%" rx="60%" ry="60%">
@@ -76,10 +81,12 @@ export function MatchOrb({
             <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.95} />
             <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
           </RadialGradient>
-          {/* Bottom shadow — anchors the orb visually. */}
+          {/* Bottom shadow — a deeper Pura-Blue gather (ramp 700) anchors the
+              now-saturated orb so it reads as a dimensional bead, not a flat
+              chip. Slightly stronger to balance the richer base. */}
           <RadialGradient id="orbShadow" cx="52%" cy="72%" rx="42%" ry="32%">
-            <Stop offset="0%" stopColor={puraShop.coralDeep} stopOpacity={0.16} />
-            <Stop offset="100%" stopColor={puraShop.coralDeep} stopOpacity={0} />
+            <Stop offset="0%" stopColor={blue[700]} stopOpacity={0.24} />
+            <Stop offset="100%" stopColor={blue[700]} stopOpacity={0} />
           </RadialGradient>
         </Defs>
         <Circle cx={50} cy={50} r={48} fill="url(#orbBase)" />

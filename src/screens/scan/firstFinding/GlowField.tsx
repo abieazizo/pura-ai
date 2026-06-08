@@ -78,11 +78,16 @@ export interface GlowFieldProps {
   reduceTransparency: boolean;
   /** VoiceOver text equivalent, e.g. "redness shown on both cheeks, stronger on the left". */
   a11yLabel: string;
+  /** Screen 1 pairs each glow with an on-photo chip + 1px leader line. Screen 2
+   *  ("Your Skin") owns its own single location label and forbids leader lines,
+   *  so it reuses the SAME additive glow with `renderChips={false}`. Defaults to
+   *  true → the First-Finding screen is unchanged. */
+  renderChips?: boolean;
 }
 
 export const GlowField = forwardRef<GlowFieldHandle, GlowFieldProps>(
   function GlowField(
-    { spots, tint, frameW, frameH, lowConfidence, reduceMotion, reduceTransparency, a11yLabel },
+    { spots, tint, frameW, frameH, lowConfidence, reduceMotion, reduceTransparency, a11yLabel, renderChips = true },
     ref,
   ) {
     // Fixed pool so hook order is stable regardless of spot count.
@@ -154,7 +159,7 @@ export const GlowField = forwardRef<GlowFieldHandle, GlowFieldProps>(
         ))}
 
         {/* Chips + leader lines (never blended) — Differentiate-Without-Color. */}
-        {spots.slice(0, MAX_CHIPS).map((s, i) => (
+        {renderChips && spots.slice(0, MAX_CHIPS).map((s, i) => (
           <Chip
             key={`chip-${s.geometry.region}-${i}`}
             phase={pool[i]}

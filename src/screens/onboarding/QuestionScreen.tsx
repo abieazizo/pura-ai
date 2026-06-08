@@ -34,6 +34,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
+import { dsAmbient } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useOrb } from './orb/OrbHost';
@@ -368,6 +369,26 @@ export function QuestionScreen({
               </RadialGradient>
             </Defs>
             <Circle cx={width / 2} cy={target.cy} r={width * 0.7} fill="url(#orbPool)" />
+          </Svg>
+        </View>
+      )}
+
+      {/* Light: a soft porcelain bloom behind the orb + a cool floor wash, so
+          light mode gains the same color-based depth the dark pool gives —
+          the orb sits in its own light instead of on flat paper. The bloom
+          tint is the ambient day glow (a whisper of brand), never a second
+          accent. pointerEvents none — purely atmospheric. */}
+      {!dark && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={width} height={height}>
+            <Defs>
+              <RadialGradient id="orbBloomLight" cx="50%" cy={`${(target.cy / height) * 100}%`} r="60%">
+                <Stop offset="0%" stopColor={dsAmbient.day.glow} />
+                <Stop offset="48%" stopColor={dsAmbient.day.sky[1]} />
+                <Stop offset="100%" stopColor={colors.base} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={width / 2} cy={target.cy} r={width * 0.78} fill="url(#orbBloomLight)" />
           </Svg>
         </View>
       )}

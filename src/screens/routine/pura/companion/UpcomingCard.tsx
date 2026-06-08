@@ -52,12 +52,20 @@ export function UpcomingCard({ row, onPress }: UpcomingCardProps) {
     >
       <LinearGradient
         colors={atmosphere.upcoming}
+        locations={[0, 0.55, 1]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        end={{ x: 1, y: 0.7 }}
         pointerEvents="none"
         style={styles.gradient}
       />
-      <View style={[styles.imageWrap, { backgroundColor: atmosphere.halo }]}>
+      <View style={[styles.imageWrap, { backgroundColor: atmosphere.haloDeep }]}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.25, y: 0.15 }}
+          end={{ x: 0.9, y: 1 }}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
         {packshot ? (
           <Image
             source={packshot}
@@ -89,6 +97,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: companionGeo.upcomingRadius,
     backgroundColor: CC.white,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: CC.cardLine,
     overflow: 'hidden',
   },
   pressed: {

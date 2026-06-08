@@ -26,12 +26,13 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { palette } from '@/theme';
+import { palette, dsAmbient, ds, blue } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAppStore } from '@/store/useAppStore';
 import { hapt } from '@/utils/haptics';
@@ -42,9 +43,10 @@ import { useStepTransition } from './orb/useStepTransition';
 import { orbBottom, targetFor } from './orb/orbLayout';
 
 const QUESTION = 'So — what should I call you?';
-// ONE clean border: an ink hairline at rest, Pura Blue on focus.
-const BORDER_REST = 'rgba(8,10,15,0.12)';
-const BORDER_FOCUS = '#147CFF';
+// ONE clean border, harmonized to the ramp: a neutral hairline at rest, the
+// brand Pura Blue (the single accent on this beat) on focus.
+const BORDER_REST = ds.borderStrong;
+const BORDER_FOCUS = blue[500];
 
 export interface NameBeatScreenProps {
   onAdvance: () => void;
@@ -145,6 +147,17 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
+
+      {/* Ambient porcelain sky — keeps the name beat continuous with the orb's
+          atmosphere instead of a flat field. Beneath all content. */}
+      <LinearGradient
+        colors={dsAmbient.day.sky}
+        locations={[0, 0.55, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
 
       <Animated.View style={[StyleSheet.absoluteFill, exitStyle]} pointerEvents="box-none">
         {/* The orb's question / acknowledgment, tied just below the orb. */}
@@ -274,10 +287,17 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 16,
     borderWidth: 1.5,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: ds.surface,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
+    // Cool-ink ambient lift so the field floats over the porcelain wash
+    // (color-based depth, not just a flat outlined box).
+    shadowColor: ds.shadow,
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   input: {
     fontFamily: 'Inter-Medium',

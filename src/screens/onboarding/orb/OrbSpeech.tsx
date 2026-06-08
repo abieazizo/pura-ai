@@ -51,12 +51,20 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
+import { blue } from '@/theme';
 
 const EASE_OUT = Easing.out(Easing.cubic);
 
 // Un-revealed words sit at this opacity — faint, but the SAME ink (never gray),
 // and already in their final wrapped position so the line can't shift/overflow.
 const OPACITY_FLOOR = 0.1;
+
+// Default whisper-of-distinction for accent words when a caller marks
+// `accentWords` but passes no explicit `accentStyle`. Pulled from the brand
+// ramp (blue[600]) so every accented word across the orb's voice reads as the
+// SAME considered Pura-Blue — never a one-off tint. Callers that pass their
+// own `accentStyle` (e.g. a theme-aware serifAccent) still override this.
+const DEFAULT_ACCENT: TextStyle = { color: blue[600] };
 
 const clean = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -220,7 +228,7 @@ function Word({
     <Animated.Text
       allowFontScaling
       maxFontSizeMultiplier={1.6}
-      style={[textStyle, accent && accentStyle, styles.word, aStyle]}
+      style={[textStyle, accent && (accentStyle ?? DEFAULT_ACCENT), styles.word, aStyle]}
     >
       {word}
     </Animated.Text>
@@ -273,7 +281,7 @@ function ReducedSpeech({
         style={[textStyle, { textAlign: align }]}
       >
         {words.map((w, i) => (
-          <Text key={`${w}-${i}`} style={isAccent(w) ? accentStyle : undefined}>
+          <Text key={`${w}-${i}`} style={isAccent(w) ? (accentStyle ?? DEFAULT_ACCENT) : undefined}>
             {w}
             {i < words.length - 1 ? ' ' : ''}
           </Text>

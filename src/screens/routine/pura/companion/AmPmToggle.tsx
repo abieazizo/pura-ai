@@ -69,7 +69,9 @@ export function AmPmToggle({ value, onChange }: AmPmToggleProps) {
       ) : null}
       {SEGMENTS.map((seg) => {
         const selected = seg.key === value;
-        const tint = selected ? CC.white : CC.blue;
+        // Selected rides the blue highlight in white; unselected sits in quiet
+        // ink so the single blue pill is the only accent the eye is pulled to.
+        const tint = selected ? CC.white : CC.inkSoft;
         return (
           <Pressable
             key={seg.key}
@@ -102,7 +104,9 @@ export function AmPmToggle({ value, onChange }: AmPmToggleProps) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(110, 110, 115, 0.06)',
+    // Cool-neutral track (harmonized with the surface's graphite family) so the
+    // unselected side recedes and the blue highlight pops against it.
+    backgroundColor: 'rgba(91, 102, 115, 0.07)',
     borderRadius: 14,
     padding: PAD,
     position: 'relative',
@@ -125,6 +129,6 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   unselected: {
-    color: CC.blue,
+    color: CC.inkSoft,
   },
 });

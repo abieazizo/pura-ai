@@ -1,0 +1,95 @@
+# Scan Results — First Finding (Analyzing → First Finding)
+
+The scan-results FIRST screen: the **Analyzing** moment flowing into the **First
+Finding** as ONE continuous, cinematic shared-element sequence. A single
+persistent photo and the single persistent companion orb carry the whole story —
+nothing swaps, everything transforms. The signature beat: the orb speaks a
+located finding and a soft glow blooms on that **exact spot** of the user's real
+photo, on the spoken word, clipped to that face's geometry, as **additive light**.
+
+This screen begins AFTER a selfie is captured. It does **not** touch the camera
+capture flow. `See everything →` hands off to the next (existing/placeholder)
+results screen.
+
+## Files
+
+| File | Role |
+|---|---|
+| `../../../types/skinRead.ts` | **Canonical, UI-ready contract** (`SkinRead`). The screen never reads raw AI. |
+| `../../../api/skinRead.ts` | Real GPT-4V wiring: `SKIN_READ_SYSTEM_PROMPT` + strict `SKIN_READ_JSON_SCHEMA`, `readSkinFromPhoto`, fixtures. |
+| `normalizeSkinRead.ts` | Validator/normalizer: banned-jargon / empty-spots / stranger-test → **reject + regenerate once**. |
+| `faceRegions.ts` | Region polygons (geometry layer). Proportional detector today; native Vision/MediaPipe drop-in. Handles person-left/right + mirroring. |
+| `metricTint.ts` | ONE tint per metric (Pura Blue is never a concern), both themes. |
+| `motion.ts` | The single dial-board: timeline, sweep path, status copy, type scale, **both** theme token sets. |
+| `GazeSweep.tsx` | Looping feathered gaze sprite (position+opacity only). Not a scan line. |
+| `PhotoStage.tsx` | The one persistent photo (fill): mute → glows read as added light. |
+| `GlowField.tsx` | The signature beat: additive (`mixBlendMode:'screen'`), region-clipped, per-spot bloom + chips + leader lines. |
+| `FindingCard.tsx` | Raised finding card (level pill + micro-rows + confidence). |
+| `FirstFindingScreen.tsx` | The orchestrator (one timeline; drives the orb via `useOrb()`). |
+| `FirstFindingContainer.tsx` | Production wrapper — runs the real call, feeds the screen. |
+| `FirstFindingDevHarness.tsx` | Preview/verification harness (fixtures + toggles). |
+
+## Integrate (production)
+
+Mount **inside the onboarding `OrbProvider`** (the screen drives the persistent
+orb — it does not mount one):
+
+```tsx
+import { FirstFindingContainer } from '@/screens/scan/firstFinding';
+
+<FirstFindingContainer
+  photoUri={capturedPhotoUri}
+  mirrored                          // front-camera selfie
+  onSeeEverything={() => nav.navigate('YourSkin' /* next results screen */)}
+  onRetake={() => nav.navigate('ScanCapture')}
+  theme="dark"                      // hero default
+/>
+```
+
+**Server route to add** (one handler, mirrors `analyzeFaceScan`): a `readSkin`
+proxy op that imports `SKIN_READ_SYSTEM_PROMPT` + `SKIN_READ_JSON_SCHEMA` from
+`src/api/skinRead.ts` (server tsconfig already includes `../api/**`), sends the
+image at `detail:"high"` with `response_format: json_schema (strict)`, and returns
+the raw JSON. The client validates + regenerates-once; the screen only ever sees
+the canonical `SkinRead`.
+
+## Preview the harness
+
+Render `FirstFindingDevHarness` from a flag-guarded dev entry (intentionally NOT
+wired into `App.tsx` here to avoid clobbering the concurrent screen-2 sweep). On
+web: chips switch scenario / photo (incl. a **deep-skin** test face) / theme /
+reduced-motion / live-transition.
+
+## Verification status
+
+- `npx tsc --noEmit` — **0 errors in these files.**
+- `npx tsx scripts/verifyFirstFinding.ts` — **25/25 deterministic assertions pass.**
+- Motion (sweep, pivot, word↔glow sync, bloom, dark-mode luminosity) is
+  UI-thread Reanimated and is verified by design + the deterministic core; it can
+  only be fully judged on-device / in a recording (a still can't capture it), and
+  preview screenshots hang on orb screens — drive the harness live to view.
+
+## PASS / FAIL checklist (acceptance criteria)
+
+| Criterion | Status |
+|---|---|
+| One continuous sequence — no screen swap; the ONE photo + orb transform | ✅ shared-element reflow + driven orb |
+| Analyzing lasts the REAL API duration; loops soft sweep + transparency status lines; long-call line | ✅ |
+| No %/countdown/skeleton; no scan-line/laser/grid | ✅ feathered sweep only |
+| Shared-element resize at the pivot (same photo) + soft haptic | ✅ |
+| Orb reused (not re-mounted), looks down, warm "got it" beat before any word | ✅ `useOrb()` + `reactArchetype('warm')` |
+| Opening line word-by-word, **never** overflows/truncates | ✅ reuses `OrbSpeech` (fade-in-place, pre-wrapped) |
+| Glow blooms on the EXACT spots, ON the spoken word, additive, clipped, alpha-capped | ✅ `mixBlendMode:'screen'` + ClipPath; word-index sync |
+| Stronger side brighter + a beat sooner | ✅ strongest-first sort + monotonic bloom order |
+| No whole-face wash — proven on any skin tone (incl. deep) | ✅ geometry: glow ≤14% face; both cheeks 12.3% |
+| Differentiate-without-color: location chip + leader line | ✅ |
+| Low confidence → fainter glow + tentative chip/line | ✅ alpha halved, dashed leader |
+| First finding card: name + level pill + What I see / What it means / THE MOVE / how_sure; only findings[0] | ✅ |
+| Quiet `See everything →` (not a loud filled CTA) | ✅ |
+| Dark mode hero + light mode, both fully designed | ✅ `tokensFor()` |
+| Bad photo → honest choice, no triumphant resize, no fake finding | ✅ |
+| No concerns → positive wash + "keep it up" note | ✅ positive metric variant |
+| API error/timeout → "try once more", never a fake result | ✅ |
+| Reduced Motion / Reduce Transparency / Differentiate-Without-Color / Dynamic Type / VoiceOver | ✅ all complete branches |
+| Plain language only; never "your face never leaves your device" | ✅ banned-word gate + approved privacy line |
+| Canonical state law (no screen reads raw AI) | ✅ `SkinRead` + validator |

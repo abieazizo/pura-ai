@@ -58,18 +58,21 @@ import {
 } from 'phosphor-react-native';
 
 import {
-  blue,
   ds,
+  dsAmbient,
   dsElevation,
+  dsGradient,
   dsRadius,
   dsSpace,
   dsTiming,
   dsType,
   fontFamily,
+  neutral,
   puraAssist,
   puraAssistLayout,
   puraAssistRadius,
   puraAssistType,
+  success,
   tnum,
 } from '@/theme';
 import { hapt } from '@/utils/haptics';
@@ -100,13 +103,18 @@ interface ToneStyle {
   value: string;
 }
 function toneStyle(tone: AssistSignalRow['tone']): ToneStyle {
+  // Positive signal reads from the design-system clinical `success` ramp so the
+  // green agrees with the rest of the app's data language (the bright iOS green
+  // stays reserved for the live "scan ready" status dot, not data rows).
   if (tone === 'green') {
-    return { edge: puraAssist.green, icon: puraAssist.green, chip: puraAssist.green10, value: puraAssist.greenText };
+    return { edge: success[500], icon: success[700], chip: success.soft, value: success.text };
   }
   if (tone === 'muted') {
     return { edge: puraAssist.border, icon: puraAssist.veryMuted, chip: puraAssist.hairline, value: puraAssist.muted };
   }
-  return { edge: puraAssist.blue, icon: puraAssist.blue, chip: puraAssist.blue12, value: puraAssist.blueText };
+  // Blue tone — the data accent. The edge stays full Pura Blue (a punctuating
+  // key-metric mark); the chip is a restrained tint so blue doesn't flood.
+  return { edge: puraAssist.blue, icon: puraAssist.blueDeep, chip: puraAssist.blue10, value: puraAssist.blueText };
 }
 
 interface QuickAction {
@@ -118,10 +126,16 @@ interface QuickAction {
   onPress: () => void;
 }
 
+// Quick-action chips are DELIBERATELY neutral. The "Jump to" list is secondary
+// navigation, so its discs read as quiet ink-on-porcelain — no per-row accent
+// hue (the old blue / purple / green) competing with the primary CTA. Pulling
+// these back to neutral lets the single blue accent + the scan-ready signal
+// re-earn attention, and removes the off-system second hues (purple/iOS-green).
+const NEUTRAL_CHIP = { icon: neutral[700], chip: neutral[100] } as const;
 const ACCENT: Record<QuickAction['accent'], { icon: string; chip: string }> = {
-  blue: { icon: puraAssist.blue, chip: puraAssist.blue12 },
-  purple: { icon: puraAssist.purple, chip: puraAssist.purple10 },
-  green: { icon: puraAssist.green, chip: puraAssist.green10 },
+  blue: NEUTRAL_CHIP,
+  purple: NEUTRAL_CHIP,
+  green: NEUTRAL_CHIP,
 };
 
 // ---------------------------------------------------------------------------
@@ -229,7 +243,7 @@ export function PuraAssistHomeScreen() {
             onPress={openConversation}
             style={({ pressed }) => [styles.waveBtn, pressed && styles.pressedDim]}
           >
-            <Waveform size={20} color={puraAssist.blue} weight="bold" />
+            <Waveform size={20} color={puraAssist.ink} weight="bold" />
           </Pressable>
           <Animated.View style={[styles.headerSep, headerSepStyle]} pointerEvents="none" />
         </View>
@@ -245,10 +259,25 @@ export function PuraAssistHomeScreen() {
             paddingBottom: fadeHeight + dsSpace.md,
           }}
         >
-          {/* ---- Ambient atmosphere behind the presence zone ---- */}
+          {/* ---- Ambient atmosphere ---------------------------------------
+              Two layered washes give the porcelain real depth instead of a
+              flat field: (1) a calm day-ambient porcelain SKY behind the whole
+              page (top→bottom, cool-icy → porcelain), and (2) a focused Pura-
+              Blue BLOOM behind the presence zone — the orb's halo grounded into
+              the surface, fading to clear before the read card. Subtle, premium,
+              never garish; no second hue (DNA: porcelain / ink / blue only). */}
           <LinearGradient
             pointerEvents="none"
-            colors={[puraAssist.blue05, puraAssist.bgClear]}
+            colors={dsAmbient.day.sky}
+            locations={[0, 0.5, 1]}
+            style={styles.skyWash}
+          />
+          <LinearGradient
+            pointerEvents="none"
+            colors={[puraAssist.blue08, puraAssist.blue05, puraAssist.bgClear]}
+            locations={[0, 0.45, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
             style={styles.atmosphere}
           />
 
@@ -305,6 +334,15 @@ export function PuraAssistHomeScreen() {
 
           {/* ---- Tonight's read — elevated, visually-encoded ---- */}
           <Rise delay={scanReady ? 280 : 340} style={styles.readCard}>
+            {/* Faint cool top-light veil — deepens the surface with color, not
+                just elevation, and echoes the orb's intelligence halo. */}
+            <LinearGradient
+              pointerEvents="none"
+              colors={[puraAssist.blue05, puraAssist.bgClear]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.readVeil}
+            />
             <View style={styles.readHead}>
               <Text style={styles.readEyebrow}>Tonight’s read</Text>
               <Text style={styles.readTitle}>
@@ -379,7 +417,7 @@ export function PuraAssistHomeScreen() {
         <View style={styles.dockBar} pointerEvents="box-none">
           <LinearGradient
             pointerEvents="none"
-            colors={[puraAssist.bgClear, puraAssist.bg]}
+            colors={dsGradient.pageVeil}
             style={[styles.dockFade, { height: fadeHeight, top: -fadeHeight }]}
           />
           <AssistInputBar mode="launcher" onOpen={openConversation} bottomInset={0} />
@@ -429,12 +467,23 @@ const styles = StyleSheet.create({
   pressedDim: { opacity: 0.7 },
 
   // Atmosphere
+  // (1) Page-base ambient sky — a calm vertical porcelain wash so the surface
+  // reads as atmosphere, not a flat fill. Sits behind all scroll content.
+  skyWash: {
+    position: 'absolute',
+    left: -puraAssistLayout.screenPadding,
+    right: -puraAssistLayout.screenPadding,
+    top: -dsSpace.sm,
+    height: 720,
+  },
+  // (2) Focused Pura-Blue bloom behind the presence zone — the orb's halo
+  // grounded into the surface, fading to clear before the read card.
   atmosphere: {
     position: 'absolute',
     left: -puraAssistLayout.screenPadding,
     right: -puraAssistLayout.screenPadding,
     top: 0,
-    height: 360,
+    height: 380,
   },
 
   // Presence zone
@@ -491,14 +540,26 @@ const styles = StyleSheet.create({
     borderColor: puraAssist.border,
     padding: dsSpace.lg,
     marginTop: dsSpace.xl,
+    overflow: 'hidden', // clip the cool top-light veil to the card radius
     ...dsElevation.e2,
+  },
+  // Cool top-light veil — top ~third of the card, fading to clear.
+  readVeil: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 160,
   },
   readHead: {
     flexDirection: 'column',
   },
+  // Eyebrow stays NEUTRAL — a label shouldn't wear the accent. Pulling this off
+  // Pura Blue is the biggest restraint win: the blue now punctuates (CTA + key
+  // data marks) instead of flooding every caption.
   readEyebrow: {
     ...dsType.label,
-    color: puraAssist.blue,
+    color: ds.textTertiary,
   },
   readTitle: {
     fontFamily: fontFamily.serifSemi,
@@ -519,7 +580,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: dsSpace.md,
-    backgroundColor: puraAssist.bg,
+    // Cool sunken porcelain (vs. the white card) — color-based depth so each
+    // row separates without another border. Ink label stays AA+ on this tint.
+    backgroundColor: neutral[50],
     borderRadius: dsRadius.md,
     paddingVertical: dsSpace.md,
     paddingRight: dsSpace.base,

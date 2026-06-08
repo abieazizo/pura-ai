@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -12,7 +13,7 @@ import Animated, {
 import { AuroraOrb } from '@/components/AuroraOrb';
 import { OnboardingPrimaryButton } from '@/components/onboarding/PrimaryButton';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import { palette } from '@/theme';
+import { palette, dsAmbient, ds } from '@/theme';
 
 export interface CameraPrimerProps {
   onContinue: () => void;
@@ -91,8 +92,23 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
 
+      {/* Ambient porcelain sky — a calm top→bottom wash so the last beat before
+          the camera carries gradient depth, not flat paper. Beneath content. */}
+      <LinearGradient
+        colors={dsAmbient.day.sky}
+        locations={[0, 0.55, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
       <View style={styles.body}>
         <Animated.View style={[styles.glyphWrap, glyphStyle]}>
+          {/* Soft ambient halo so the companion orb sits in its own pool of
+              light on the porcelain (the orb keeps its own aura; this is a
+              faint surface bloom, not a second accent). */}
+          <View style={styles.orbBloom} pointerEvents="none" />
           <AuroraOrb
             size={96}
             state="idle"
@@ -138,13 +154,26 @@ const styles = StyleSheet.create({
   },
   glyphWrap: {
     marginBottom: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  // Faint surface bloom behind the orb — a low-alpha brand wash that grounds
+  // the companion in light. Soft, premium, never a hard disc.
+  orbBloom: {
+    position: 'absolute',
+    width: 168,
+    height: 168,
+    borderRadius: 84,
+    backgroundColor: dsAmbient.day.glow,
+  },
+  // Eyebrow pulled OFF full Pura Blue → restrained graphite. The blue accent
+  // re-earns attention on the orb + the ink CTA; the label stays quiet.
   eyebrow: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     lineHeight: 14,
     letterSpacing: 1.6,
-    color: palette.clay,
+    color: ds.textTertiary,
     textAlign: 'center',
     marginBottom: 14,
   },

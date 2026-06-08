@@ -9,6 +9,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Check } from 'phosphor-react-native';
 import { PILLAR_IDENTITY } from '@/components/routine/pillarIdentity';
 import {
@@ -44,7 +45,14 @@ export function CompletedTail({ rows, timeOfDay }: CompletedTailProps) {
           const packshot = resolveRoutineProductImage(r.step.product);
           return (
             <View key={r.step.id} style={styles.pill}>
-              <View style={[styles.imageCircle, { backgroundColor: atmosphere.halo }]}>
+              <View style={[styles.imageCircle, { backgroundColor: atmosphere.haloDeep }]}>
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']}
+                  start={{ x: 0.25, y: 0.15 }}
+                  end={{ x: 0.9, y: 1 }}
+                  pointerEvents="none"
+                  style={StyleSheet.absoluteFill}
+                />
                 {packshot ? (
                   <Image source={packshot} style={styles.image} contentFit="contain" />
                 ) : (
@@ -97,6 +105,7 @@ const styles = StyleSheet.create({
     borderRadius: companionGeo.tailImage / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   image: {
     width: 30,
@@ -109,7 +118,9 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: CC.blue,
+    // "Done" reads as success green (shared success ramp) — semantically
+    // consistent with completion everywhere, and it lets blue rest here.
+    backgroundColor: CC.done,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,

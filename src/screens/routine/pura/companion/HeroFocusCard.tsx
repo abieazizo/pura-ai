@@ -256,11 +256,23 @@ export function HeroFocusCard({
       <Animated.View pointerEvents="none" style={[styles.gradient, washStyle]}>
         <LinearGradient
           colors={atmosphere.hero}
+          locations={[0, 0.5, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
+
+      {/* Foot scrim — a whisper of cool ink rising from the base lifts the dark
+          "Mark as done" button off the wash so the CTA reads as elevated, not
+          stamped onto flat colour. Purely depth; no new hue. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(8, 22, 56, 0)', CC.footScrim]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.footScrim}
+      />
 
       <View style={[styles.inner, compact && styles.innerCompact]}>
         {/* Top row: STEP x OF y · Why this? */}
@@ -300,11 +312,20 @@ export function HeroFocusCard({
                 width: haloSize,
                 height: haloSize,
                 borderRadius: haloSize / 2,
-                backgroundColor: atmosphere.halo,
-                shadowColor: atmosphere.halo,
+                backgroundColor: atmosphere.haloDeep,
+                shadowColor: atmosphere.haloDeep,
               },
             ]}
-          />
+          >
+            {/* Soft luminous core → deeper rim: a diagonal sheen turns the flat
+                disc into coloured light the product floats inside. */}
+            <LinearGradient
+              colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
+              start={{ x: 0.3, y: 0.2 }}
+              end={{ x: 0.85, y: 0.95 }}
+              style={[StyleSheet.absoluteFill, { borderRadius: haloSize / 2 }]}
+            />
+          </Animated.View>
           <AnimatedPressable
             onPress={onOpenDetail}
             accessibilityRole="imagebutton"
@@ -416,6 +437,15 @@ const styles = StyleSheet.create({
     borderRadius: companionGeo.heroRadius,
     overflow: 'hidden',
     transformOrigin: 'top left',
+  },
+  footScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 132,
+    borderBottomLeftRadius: companionGeo.heroRadius,
+    borderBottomRightRadius: companionGeo.heroRadius,
   },
   inner: {
     flex: 1,

@@ -30,7 +30,7 @@ import { useNavigation, type NavigationProp } from '@react-navigation/native';
 
 import { useAppStore } from '@/store/useAppStore';
 import { hapt } from '@/utils/haptics';
-import { puraShopHome, puraShopLayout } from '@/theme';
+import { dsAmbient, puraShopLayout } from '@/theme';
 import type { HomeStackParamList, RootStackParamList } from '@/navigation/types';
 
 import { useShopHomeModel } from './shopStackModel';
@@ -111,6 +111,9 @@ export function PuraShopScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: puraShopHome.canvas,
+    // Seam color behind the feed's own living gradient. The top safe-area
+    // band reads as the SAME luminous porcelain the day-ambient sky opens
+    // on, so the status-bar inset never flashes a colder white than the feed.
+    backgroundColor: dsAmbient.day.sky[0],
   },
 });

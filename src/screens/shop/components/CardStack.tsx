@@ -44,8 +44,18 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { puraShopHome, puraShopSpace } from '@/theme';
+import { success, neutral, puraShopHome, puraShopSpace } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+
+// Cycle-10 stamp legibility: the KEEP / SKIP labels keep their existing reveal
+// TINTS (success-green wash for keep, quiet-neutral wash for skip — already
+// drawn from the shared ramps) but ink their text one ramp step deeper so each
+// word clears AA over its own pale pill. Semantics unchanged: keep = success,
+// skip = neutral.
+const STAMP_INK = {
+  keep: success[700],
+  skip: neutral[700],
+} as const;
 import { hapt } from '@/utils/haptics';
 import { shopHomeMotion } from '../shopHomeTokens';
 import type { StackCard } from '../shopStackModel';
@@ -356,7 +366,7 @@ function SwipeCard({
               style={[styles.stamp, styles.stampKeep, keepStampStyle]}
               pointerEvents="none"
             >
-              <Text style={[styles.stampText, { color: puraShopHome.saveRevealInk }]}>
+              <Text style={[styles.stampText, { color: STAMP_INK.keep }]}>
                 KEEP
               </Text>
             </Animated.View>
@@ -364,7 +374,7 @@ function SwipeCard({
               style={[styles.stamp, styles.stampSkip, skipStampStyle]}
               pointerEvents="none"
             >
-              <Text style={[styles.stampText, { color: puraShopHome.skipRevealInk }]}>
+              <Text style={[styles.stampText, { color: STAMP_INK.skip }]}>
                 SKIP
               </Text>
             </Animated.View>
