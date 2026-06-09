@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   clamp,
@@ -20,7 +21,7 @@ export interface CompareSliderProps {
   style?: StyleProp<ViewStyle>;
 }
 
-const HANDLE_SIZE = 36;
+const HANDLE_SIZE = 40;
 
 export function CompareSlider({
   leftUri,
@@ -67,6 +68,7 @@ export function CompareSlider({
           source={rightUri}
           style={[StyleSheet.absoluteFillObject, { borderRadius: radius.xl }]}
           contentFit="cover"
+          transition={220}
         />
         {/* Left image (before) clipped to slider position from the left. */}
         <Animated.View
@@ -83,8 +85,24 @@ export function CompareSlider({
             source={leftUri}
             style={{ width, height }}
             contentFit="cover"
+            transition={220}
           />
         </Animated.View>
+
+        {/* Cycle 12 — soft top + bottom scrims so the corner labels stay AA+
+            legible over any face photo, and the portrait gains editorial depth
+            instead of sitting as a raw rectangle. Scrims sit beneath the
+            divider so the drag handle still reads crisply on top. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(8,10,15,0.34)', 'rgba(8,10,15,0)']}
+          style={styles.scrimTop}
+        />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(8,10,15,0)', 'rgba(8,10,15,0.30)']}
+          style={styles.scrimBottom}
+        />
 
         <View style={[styles.pillLabel, styles.labelLeft]}>
           <Text style={styles.pillLabelText}>{leftLabel}</Text>
@@ -101,14 +119,19 @@ export function CompareSlider({
           </View>
           <View style={styles.dividerLine} />
         </Animated.View>
+
+        {/* Inner hairline frame — the brand "every image is framed" rule, drawn
+            on top so it rides above both photos and the scrims. */}
+        <View pointerEvents="none" style={styles.innerFrame} />
       </View>
     </GestureDetector>
   );
 }
 
 // v9.7 — chrome aligned with v9 visual language. Label pills use paper bg
-// with ink text (was black-at-65% with light text; harsher, less premium).
-// Handle is a clean paper circle with slim caret chevrons, warm shadow.
+// with ink text. Cycle 12 — glassy ink label pills + dual scrims + an inner
+// hairline so the comparison reads as a framed editorial portrait pair, and a
+// slightly larger handle for a more premium, grabbable divider.
 const styles = StyleSheet.create({
   frame: {
     overflow: 'hidden',
@@ -121,6 +144,26 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: 'hidden',
   },
+  scrimTop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 96,
+  },
+  scrimBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 88,
+  },
+  innerFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
   divider: {
     position: 'absolute',
     top: 0,
@@ -131,7 +174,7 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    width: 1.5,
+    width: 2,
     backgroundColor: 'rgba(248,250,252,0.95)',
   },
   handle: {
@@ -142,12 +185,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 3,
+    gap: 4,
     shadowColor: colors.shadowTint,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 7,
   },
   handleArrowLeft: {
     width: 0,
@@ -169,14 +212,17 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
     borderLeftColor: colors.ink,
   },
-  // v9.7 — labels sit as small paper pills with ink text, tighter type
+  // Cycle 12 — labels sit as glassy ink pills with light text so they stay
+  // legible on bright skin tones while reading as part of the framed photo.
   pillLabel: {
     position: 'absolute',
     top: space.md,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(248,250,252,0.92)',
+    backgroundColor: 'rgba(8,10,15,0.46)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.20)',
   },
   labelLeft: {
     left: space.md,
@@ -186,8 +232,8 @@ const styles = StyleSheet.create({
   },
   pillLabelText: {
     ...typography.micro,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: colors.ink,
+    fontSize: 9.5,
+    letterSpacing: 1.3,
+    color: colors.inkInverse,
   },
 });

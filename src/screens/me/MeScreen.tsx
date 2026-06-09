@@ -35,6 +35,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import Animated, {
   useAnimatedStyle,
@@ -229,12 +230,30 @@ export function MeScreen() {
         {hasScanned ? (
           <>
             {/* ════════════════════════════════════════════════════════════
+                THE FACE HERO — Cycle 12 imagery signature. The user's most
+                recent scanned face, framed as a premium editorial portrait
+                (~4:5, generous radius, a soft bottom scrim, a brand hairline)
+                so it is the FIRST and most visible thing on the page. The
+                scrim carries the day + score in light so any overlay stays
+                AA+ legible. When the latest scan has no photo we render an
+                honest portrait placeholder — never a raw or broken image. ══ */}
+            <Rise index={1} style={styles.block}>
+              <FaceHero
+                photoUri={latestScan?.photoUri}
+                dayLabel={dayLine}
+                score={scoreValue}
+                band={insight.scoreBand}
+                onTakeScan={openScan}
+              />
+            </Rise>
+
+            {/* ════════════════════════════════════════════════════════════
                 THE SCORE COLOSSUS — Cycle 11's bold structural hero.
                 A deep-ink "skin theatre" panel floated on a blue aura. The
                 score numeral is the single dominant element on the page at a
                 colossal scale; the band + delta + transformation ribbon make
                 it feel alive and earned. All values are canonical. ════════ */}
-            <Rise index={1} style={styles.colossusWrap}>
+            <Rise index={2} style={styles.colossusWrap}>
               {/* Blue aura bleeding out behind the dark panel — the hero glows. */}
               <LinearGradient
                 pointerEvents="none"
@@ -345,7 +364,7 @@ export function MeScreen() {
                 A whisper of blue wash gives color-based depth and lets the ONE
                 blue data accent (Scans, the number that drives the "over time"
                 story) re-earn the eye. ── */}
-            <Rise index={2} style={styles.block}>
+            <Rise index={3} style={styles.block}>
               <Card tint="clear" level="e1" padding={0} style={styles.statCard}>
                 <LinearGradient
                   colors={dsGradient.blueWash}
@@ -365,7 +384,7 @@ export function MeScreen() {
             {/* ── The canonical arc dial — now a SUPPORTING detail beneath the
                 colossus, headed so it reads as "the full picture", not a
                 competing hero. ── */}
-            <Rise index={3} style={styles.block}>
+            <Rise index={4} style={styles.block}>
               <Text style={styles.sectionHead} maxFontSizeMultiplier={1.15}>
                 YOUR DIAL
               </Text>
@@ -373,17 +392,17 @@ export function MeScreen() {
             </Rise>
 
             {/* ── What's driving the score (self-suppresses when no metrics) ── */}
-            <Rise index={4} style={styles.block}>
+            <Rise index={5} style={styles.block}>
               <ScoreBreakdownCard metrics={insight.metrics} />
             </Rise>
 
             {/* ── The trend — Me's whole reason for being: "over time" ── */}
-            <Rise index={5} style={styles.block}>
+            <Rise index={6} style={styles.block}>
               <ScoreTrendSection trend={insight.trendSummary} />
             </Rise>
 
             {/* ── Before & after — the emotional proof (self-heads + self-locks) ── */}
-            <Rise index={6} style={styles.block}>
+            <Rise index={7} style={styles.block}>
               <BeforeAfterSection
                 comparison={insight.comparison}
                 latestDayNumber={latestScan?.dayNumber ?? 0}
@@ -392,7 +411,7 @@ export function MeScreen() {
             </Rise>
 
             {/* ── Your scan history over time (self-suppresses when empty) ── */}
-            <Rise index={7} style={styles.block}>
+            <Rise index={8} style={styles.block}>
               <ScanTimelineSection timeline={insight.timeline} />
             </Rise>
           </>
@@ -451,7 +470,7 @@ export function MeScreen() {
         )}
 
         {/* ── Quiet shortcuts (demoted below the story) ── */}
-        <Rise index={hasScanned ? 8 : 2} style={styles.block}>
+        <Rise index={hasScanned ? 9 : 2} style={styles.block}>
           <Card tint="surface" level="e1" padding={H}>
             <ListRow
               icon={<CalendarCheck size={18} color={ds.textSecondary} weight="duotone" />}
@@ -470,7 +489,7 @@ export function MeScreen() {
         </Rise>
 
         {/* ── Account ── */}
-        <Rise index={hasScanned ? 9 : 3} style={styles.block}>
+        <Rise index={hasScanned ? 10 : 3} style={styles.block}>
           <Text style={styles.listLabel} maxFontSizeMultiplier={1.15}>
             ACCOUNT
           </Text>
@@ -500,7 +519,7 @@ export function MeScreen() {
         </Rise>
 
         {/* ── Support ── */}
-        <Rise index={hasScanned ? 10 : 4} style={styles.block}>
+        <Rise index={hasScanned ? 11 : 4} style={styles.block}>
           <Text style={styles.listLabel} maxFontSizeMultiplier={1.15}>
             SUPPORT
           </Text>
@@ -566,6 +585,110 @@ function Rise({
   }));
 
   return <Animated.View style={[style, animStyle]}>{children}</Animated.View>;
+}
+
+/**
+ * FaceHero — the Cycle 12 imagery signature for Me. The latest scanned face,
+ * framed as a premium editorial portrait: a ~4:5 frame with generous radius,
+ * a brand hairline, a soft bottom scrim so the overlaid day + score stay AA+
+ * legible, and a top-corner LATEST chip. Honest placeholder when no photo —
+ * a calm porcelain frame inviting the first photo-capture scan, never a raw
+ * or broken image.
+ */
+function FaceHero({
+  photoUri,
+  dayLabel,
+  score,
+  band,
+  onTakeScan,
+}: {
+  photoUri?: string;
+  dayLabel: string;
+  score: number;
+  band: string;
+  onTakeScan: () => void;
+}) {
+  const hasPhoto = !!photoUri?.trim();
+
+  if (!hasPhoto) {
+    // Honest portrait placeholder — same frame language as the real hero so the
+    // empty state reads as a reward waiting, not a broken image. A faint blue
+    // wash + camera badge invites a photo-capture scan.
+    return (
+      <Pressable
+        onPress={onTakeScan}
+        accessibilityRole="button"
+        accessibilityLabel="Take a photo scan to unlock your portrait"
+        style={({ pressed }) => [styles.faceWrap, pressed && styles.pressedSoft]}
+      >
+        <View style={[styles.facePortrait, styles.facePlaceholder]}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={dsGradient.blueWash}
+            start={{ x: 0.2, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.facePlaceholderBadge}>
+            <Camera size={26} color={ds.accentDeep} weight="duotone" />
+          </View>
+          <Text style={styles.facePlaceholderTitle} maxFontSizeMultiplier={1.1}>
+            Your portrait, in focus
+          </Text>
+          <Text style={styles.facePlaceholderBody} maxFontSizeMultiplier={1.15}>
+            Add a photo scan to see your face here as a living before-and-after.
+          </Text>
+        </View>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.faceWrap}>
+      <View style={styles.facePortrait}>
+        <Image
+          source={photoUri}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={220}
+          accessibilityLabel="Your latest skin scan portrait"
+        />
+        {/* Soft bottom scrim so the day + score read in light, AA+ legible. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(8,10,15,0)', 'rgba(8,10,15,0.20)', 'rgba(8,10,15,0.78)']}
+          locations={[0, 0.55, 1]}
+          style={styles.faceScrim}
+        />
+        {/* Top-corner LATEST chip — a glassy pill that frames the portrait. */}
+        <View style={styles.faceTopChip}>
+          <Sparkle size={11} color={ds.onInk} weight="fill" />
+          <Text style={styles.faceTopChipText} maxFontSizeMultiplier={1.1}>
+            LATEST SCAN
+          </Text>
+        </View>
+        {/* Overlaid caption — day on the left, the canonical score on the right. */}
+        <View style={styles.faceCaption}>
+          <View style={styles.faceCaptionText}>
+            <Text style={styles.faceDay} maxFontSizeMultiplier={1.1}>
+              {dayLabel}
+            </Text>
+            <Text style={styles.faceBand} maxFontSizeMultiplier={1.1}>
+              {band}
+            </Text>
+          </View>
+          <View style={styles.faceScorePill}>
+            <Text style={styles.faceScoreNum} maxFontSizeMultiplier={1.05}>
+              {score}
+            </Text>
+            <Text style={styles.faceScoreUnit} maxFontSizeMultiplier={1.05}>
+              /100
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 function StatCol({
@@ -831,6 +954,135 @@ const styles = StyleSheet.create({
   // Generic spaced block
   block: {
     marginTop: dsSpace.xl,
+  },
+
+  // ══ THE FACE HERO — editorial portrait of the latest scan ════════════════
+  faceWrap: {
+    marginHorizontal: H,
+  },
+  facePortrait: {
+    // ~4:5 editorial portrait. Generous radius + brand hairline + a real lift
+    // so the scanned face reads as a framed photograph on porcelain, never raw.
+    width: '100%',
+    aspectRatio: 4 / 5,
+    borderRadius: dsRadius.xl,
+    overflow: 'hidden',
+    backgroundColor: ds.pageDeep,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: ds.hairline,
+    ...dsElevation.e3,
+  },
+  faceScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '62%',
+  },
+  faceTopChip: {
+    position: 'absolute',
+    top: dsSpace.md,
+    left: dsSpace.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: dsSpace.xs,
+    paddingVertical: 5,
+    paddingHorizontal: dsSpace.sm + 2,
+    borderRadius: dsRadius.pill,
+    backgroundColor: 'rgba(8,10,15,0.42)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  faceTopChipText: {
+    ...dsType.labelSm,
+    letterSpacing: 1.4,
+    color: ds.onInk,
+  },
+  faceCaption: {
+    position: 'absolute',
+    left: dsSpace.lg,
+    right: dsSpace.lg,
+    bottom: dsSpace.lg,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: dsSpace.md,
+  },
+  faceCaptionText: {
+    flex: 1,
+  },
+  faceDay: {
+    ...dsType.label,
+    letterSpacing: 1.6,
+    color: 'rgba(255,255,255,0.78)',
+  },
+  faceBand: {
+    // The confident verdict, set in editorial serif on the portrait.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.7,
+    color: ds.onInk,
+    marginTop: dsSpace.xs,
+  },
+  faceScorePill: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    paddingVertical: dsSpace.xs + 1,
+    paddingHorizontal: dsSpace.md,
+    borderRadius: dsRadius.lg,
+    backgroundColor: 'rgba(8,10,15,0.46)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.20)',
+  },
+  faceScoreNum: {
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 32,
+    lineHeight: 34,
+    letterSpacing: -1,
+    color: ds.onInk,
+    ...tnum,
+  },
+  faceScoreUnit: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    marginLeft: 2,
+  },
+  // Honest placeholder — calm porcelain frame inviting a photo-capture scan.
+  facePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: dsSpace.xl,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: ds.borderStrong,
+  },
+  facePlaceholderBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ds.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: ds.borderStrong,
+    marginBottom: dsSpace.base,
+    ...dsElevation.e1,
+  },
+  facePlaceholderTitle: {
+    ...dsType.title,
+    fontSize: 26,
+    lineHeight: 30,
+    color: ds.textPrimary,
+    textAlign: 'center',
+  },
+  facePlaceholderBody: {
+    ...dsType.bodySm,
+    color: ds.textSecondary,
+    textAlign: 'center',
+    marginTop: dsSpace.sm,
+    maxWidth: 280,
   },
 
   // Section heads under the hero — the supporting sections announce themselves.

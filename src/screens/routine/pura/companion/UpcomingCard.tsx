@@ -9,7 +9,6 @@
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CaretRight } from 'phosphor-react-native';
 import { PILLAR_IDENTITY } from '@/components/routine/pillarIdentity';
@@ -22,6 +21,7 @@ import {
   companionType,
 } from './companionTokens';
 import { resolveRoutineProductImage } from './productImage';
+import { FramedProductImage } from './FramedProductImage';
 import type { CompanionRow } from './companionModel';
 
 export interface UpcomingCardProps {
@@ -66,16 +66,14 @@ export function UpcomingCard({ row, onPress }: UpcomingCardProps) {
           pointerEvents="none"
           style={StyleSheet.absoluteFill}
         />
-        {packshot ? (
-          <Image
-            source={packshot}
-            style={styles.image}
-            contentFit="contain"
-            transition={150}
-          />
-        ) : (
-          <identity.Icon size={24} weight="regular" color={identity.accent} />
-        )}
+        {/* Cycle 12 — shared product-image treatment, grounded on the halo. */}
+        <FramedProductImage
+          source={packshot}
+          size={40}
+          PlaceholderIcon={identity.Icon}
+          placeholderColor={identity.accent}
+          transition={150}
+        />
       </View>
       <View style={styles.meta}>
         <Text style={[companionType.upcomingPillar, styles.pillar]}>{label}</Text>
@@ -114,10 +112,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  },
-  image: {
-    width: 40,
-    height: 40,
   },
   meta: {
     flex: 1,

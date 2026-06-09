@@ -447,6 +447,25 @@ export function PuraRoutineScreen() {
     [completionDates],
   );
 
+  // Cycle 12 — caption beneath the scanned-face hero portrait. Reads canonical
+  // scan facts only (its day number + capture date); empty when no scan.
+  const scanMeta = useMemo(() => {
+    if (!latestScan) return undefined;
+    const parts: string[] = [];
+    if (typeof latestScan.dayNumber === 'number' && latestScan.dayNumber > 0) {
+      parts.push(`Day ${latestScan.dayNumber}`);
+    }
+    if (latestScan.capturedAt) {
+      const d = new Date(latestScan.capturedAt);
+      if (!Number.isNaN(d.getTime())) {
+        parts.push(
+          `scanned ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        );
+      }
+    }
+    return parts.length ? parts.join(' · ') : undefined;
+  }, [latestScan]);
+
   const headerTitle = lifecycle === 'building' ? 'Routine'
     : lifecycle === 'ready_to_review' ? 'Routine'
     : lifecycle === 'confirming_products' ? 'Your Custom Routine'
@@ -521,6 +540,9 @@ export function PuraRoutineScreen() {
           onOpenDetail={handleOpenProductDetail}
           onCustomize={handleOpenCustomize}
           onHowItWorks={handleHowItWorks}
+          facePhotoUri={latestScan?.photoUri}
+          scanMeta={scanMeta}
+          onRevisitScan={latestScan ? goViewScanResults : goScan}
         />
         <ProductDetailSheet
           visible={!!detailStep}

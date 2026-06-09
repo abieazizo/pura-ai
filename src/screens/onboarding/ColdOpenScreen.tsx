@@ -53,7 +53,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuroraOrb } from '@/components/AuroraOrb';
-import { auroraOrb as C, dsAmbient, dsGradient } from '@/theme';
+import { auroraOrb as C, dsAmbient, dsGradient, ds, dsRadius } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
@@ -382,6 +382,23 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
                 lifts toward Screen 2), proving the shared-element handoff; the
                 copy below fades/lifts independently. */}
             <Animated.View style={[styles.orbMast, orbExitStyle]} pointerEvents="none">
+              {/* Portrait-frame medallion behind the orb — the shared Cycle 12
+                  imagery language (a rounded-portrait hairline frame, matching
+                  the scan capture card), so even the first beat frames the
+                  companion as a portrait subject. Travels with the orb through
+                  the shared-element exit (it's inside orbExitStyle). */}
+              <View
+                style={[
+                  styles.orbFrame,
+                  {
+                    width: Math.round(orbSize * 1.34),
+                    height: Math.round(orbSize * 1.34 * 1.16),
+                    left: Math.round((orbSize - orbSize * 1.34) / 2),
+                    top: Math.round((orbSize - orbSize * 1.34 * 1.16) / 2),
+                  },
+                ]}
+                pointerEvents="none"
+              />
               <AuroraOrb
                 size={orbSize}
                 state={variant === 'first' ? 'awakening' : 'idle'}
@@ -530,6 +547,15 @@ const styles = StyleSheet.create({
   // The orb crowns the headline as a luminous signature, nudged left so it
   // reads as a mark on the masthead rather than a centered centerpiece.
   orbMast: { alignItems: 'flex-start', marginLeft: -6, marginBottom: 18 },
+  // Portrait-frame medallion behind the orb mark (Cycle 12 shared imagery
+  // language) — a soft rounded-portrait hairline frame + faint bloom.
+  orbFrame: {
+    position: 'absolute',
+    borderRadius: dsRadius.xxl,
+    borderWidth: 1,
+    borderColor: ds.hairline,
+    backgroundColor: dsAmbient.day.glow,
+  },
   kicker: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,

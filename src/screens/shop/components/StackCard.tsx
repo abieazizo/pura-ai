@@ -589,6 +589,7 @@ export function StackCardView({
                 price={compare.price}
                 packshot={compare.packshot}
                 halo={halo}
+                accent={accent}
               />
 
               {/* Divider carrying the price delta. */}
@@ -620,6 +621,7 @@ export function StackCardView({
                 price={p.price}
                 packshot={p.catalogPackshot}
                 halo={halo}
+                accent={accent}
                 emphasisColor={
                   compareLess ? puraShopHome.budgetInk : ROUTE.splurgeInk
                 }
@@ -640,9 +642,20 @@ export function StackCardView({
   );
 }
 
-// One column of the side-by-side comparison: a haloed packshot over brand,
-// name, and price. The alternative column tints its price with the route
-// accent (green for budget, amethyst for splurge); the anchor stays ink.
+// Dimensions of one compare-column packshot stage. Kept as constants so the
+// SVG plinth and the contained image share one coordinate system.
+const COMPARE_STAGE_W = 112;
+const COMPARE_STAGE_H = 118;
+const COMPARE_IMG_W = 78;
+const COMPARE_IMG_H = 92;
+
+// One column of the side-by-side comparison: a packshot lit on the SAME spotlit
+// plinth the hero card uses (halo + museum spotlight + layered contact shadow),
+// over brand, name, and price. Bringing the compare packshots up to the hero's
+// gallery treatment is the Cycle-12 consistency win — every product image on
+// the surface now sits on the same lit pedestal, never a flat disc. The
+// alternative column tints its price with the route accent; the anchor stays
+// ink.
 function CompareCol({
   roleLabel,
   brand,
@@ -650,6 +663,7 @@ function CompareCol({
   price,
   packshot,
   halo,
+  accent,
   emphasisColor,
 }: {
   roleLabel: string;
@@ -658,15 +672,86 @@ function CompareCol({
   price: number;
   packshot: ImageSourcePropType;
   halo: string;
+  /** Pillar accent — tints the broad plinth pool, matching the hero zone. */
+  accent: string;
   emphasisColor?: string;
 }) {
+  // Unique gradient ids per column so the two SVGs never collide on web.
+  const gid = React.useId();
   return (
     <View style={styles.compareCol}>
       <Text style={styles.compareRole} numberOfLines={1}>
         {roleLabel}
       </Text>
       <View style={styles.compareImgWrap}>
-        <View style={[styles.compareHalo, { backgroundColor: halo }]} />
+        <Svg
+          width={COMPARE_STAGE_W}
+          height={COMPARE_STAGE_H}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        >
+          <Defs>
+            <RadialGradient
+              id={`${gid}-halo`}
+              cx="50%"
+              cy="44%"
+              rx="60%"
+              ry="58%"
+              fx="48%"
+              fy="36%"
+            >
+              <Stop offset="0%" stopColor={halo} stopOpacity={1} />
+              <Stop offset="36%" stopColor={halo} stopOpacity={0.78} />
+              <Stop offset="70%" stopColor={halo} stopOpacity={0.36} />
+              <Stop offset="100%" stopColor={halo} stopOpacity={0} />
+            </RadialGradient>
+            <RadialGradient
+              id={`${gid}-spot`}
+              cx="50%"
+              cy="2%"
+              rx="44%"
+              ry="76%"
+              fx="50%"
+              fy="0%"
+            >
+              <Stop offset="0%" stopColor={puraShopHome.white} stopOpacity={0.85} />
+              <Stop offset="50%" stopColor={puraShopHome.white} stopOpacity={0.28} />
+              <Stop offset="100%" stopColor={puraShopHome.white} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Rect
+            x={0}
+            y={0}
+            width={COMPARE_STAGE_W}
+            height={COMPARE_STAGE_H}
+            fill={`url(#${gid}-halo)`}
+          />
+          <Rect
+            x={0}
+            y={0}
+            width={COMPARE_STAGE_W}
+            height={COMPARE_STAGE_H}
+            fill={`url(#${gid}-spot)`}
+          />
+          {/* The same layered plinth the hero rests on, scaled to the tile:
+              a broad accent-tinted pool, then a tight grounded contact core. */}
+          <Ellipse
+            cx={COMPARE_STAGE_W / 2}
+            cy={COMPARE_STAGE_H - 16}
+            rx={COMPARE_IMG_W * 0.58}
+            ry={13}
+            fill={accent}
+            opacity={0.07}
+          />
+          <Ellipse
+            cx={COMPARE_STAGE_W / 2}
+            cy={COMPARE_STAGE_H - 13}
+            rx={COMPARE_IMG_W * 0.34}
+            ry={6}
+            fill={puraShopHome.ink}
+            opacity={0.1}
+          />
+        </Svg>
         <Image
           source={packshot}
           style={styles.compareImg}
@@ -898,22 +983,19 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   compareImgWrap: {
-    width: 100,
-    height: 108,
+    width: COMPARE_STAGE_W,
+    height: COMPARE_STAGE_H,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
     marginBottom: 10,
   },
-  compareHalo: {
-    position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
   compareImg: {
-    width: 80,
-    height: 94,
+    width: COMPARE_IMG_W,
+    height: COMPARE_IMG_H,
+    // Lift the contained bottle off the plinth's contact core so it reads as
+    // resting ON the pedestal, matching the hero zone's grounded still-life.
+    marginBottom: 8,
   },
   compareBrand: {
     fontFamily: 'Inter-SemiBold',

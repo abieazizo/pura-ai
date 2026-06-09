@@ -32,7 +32,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { palette, dsAmbient, ds, blue } from '@/theme';
+import { palette, dsAmbient, ds, blue, dsRadius } from '@/theme';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAppStore } from '@/store/useAppStore';
 import { hapt } from '@/utils/haptics';
@@ -73,6 +73,13 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
 
   const target = targetFor('name', width, height, insets.top);
   const lineTop = orbBottom(target) + 22;
+
+  // Portrait-frame medallion geometry — a soft rounded-portrait halo + hairline
+  // frame centered on the orb's settle, echoing the scan capture card so the
+  // companion reads as a framed portrait subject, not a bare mark on porcelain.
+  // (Cycle 12 shared imagery language — purely atmospheric, beneath content.)
+  const medW = Math.round(target.size * 1.9);
+  const medH = Math.round(medW * 1.16);
 
   const [value, setValue] = useState(storedName ?? '');
   const [phase, setPhase] = useState<'asking' | 'ack'>('asking');
@@ -158,6 +165,26 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+
+      {/* Portrait-frame medallion behind the orb — the shared Cycle 12 imagery
+          language: a soft brand bloom + a rounded-portrait hairline frame, so
+          the companion sits inside a framed "portrait" the same way the scan
+          capture card frames the real face. Sits beneath the floating orb. */}
+      <View
+        style={[
+          styles.medallion,
+          {
+            width: medW,
+            height: medH,
+            left: target.cx - medW / 2,
+            top: target.cy - medH / 2,
+          },
+        ]}
+        pointerEvents="none"
+      >
+        <View style={styles.medallionBloom} />
+        <View style={styles.medallionFrame} />
+      </View>
 
       <Animated.View style={[StyleSheet.absoluteFill, exitStyle]} pointerEvents="box-none">
         {/* The orb's question / acknowledgment, tied just below the orb. */}
@@ -268,6 +295,23 @@ export function NameBeatScreen({ onAdvance }: NameBeatScreenProps) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.bg },
   flex: { flex: 1 },
+  // Portrait-frame medallion (Cycle 12 shared imagery language).
+  medallion: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medallionBloom: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: dsRadius.xxl,
+    backgroundColor: dsAmbient.day.glow,
+  },
+  medallionFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: dsRadius.xxl,
+    borderWidth: 1,
+    borderColor: ds.hairline,
+  },
   lines: {
     position: 'absolute',
     left: 24,

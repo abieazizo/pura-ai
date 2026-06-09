@@ -175,6 +175,41 @@ export const SHEET_VEIL: readonly [string, string, string] = [
   'rgba(252, 253, 255, 0)',
 ];
 
+/**
+ * Cycle 12 (imagery) — the SCANNED FACE as the recurring hero.
+ *
+ * The face portrait is the surface's signature image: the user's real scan
+ * (`Scan.photoUri`) framed as a premium editorial portrait at the very top of
+ * the live companion. A bottom scrim (ink → transparent, rising from the base)
+ * keeps the greeting + date AA+ legible over any photo; a soft hairline frame
+ * and a real lift separate it from the porcelain sky. These constants drive
+ * BOTH the portrait and its honest locked placeholder so the two never drift.
+ *
+ * `FACE_SCRIM` is the bottom-up scrim (read top→bottom by the gradient): a
+ * transparent crown, a relief stop, then a deep ink foot the text sits on. It
+ * is intentionally darker than the porcelain veils above (this is a photo, not
+ * a panel) so white text clears AA on light skin tones / bright captures.
+ */
+export const FACE_SCRIM: readonly [string, string, string, string] = [
+  'rgba(8, 10, 15, 0)',
+  'rgba(8, 10, 15, 0.18)',
+  'rgba(8, 10, 15, 0.62)',
+  'rgba(8, 10, 15, 0.82)',
+];
+
+/** A faint cool top-light over the portrait so the capture gains ambient depth. */
+export const FACE_TOPLIGHT: readonly [string, string] = [
+  'rgba(255, 255, 255, 0.16)',
+  'rgba(255, 255, 255, 0)',
+];
+
+/** Locked placeholder wash (no real photo yet) — a calm Pura-Blue dawn field. */
+export const FACE_PLACEHOLDER_WASH: readonly [string, string, string] = [
+  '#EAF2FE',
+  '#F3F7FE',
+  '#FCFDFF',
+];
+
 // ---------------------------------------------------------------------------
 // Day atmosphere (AM / PM ambient sky)
 // ---------------------------------------------------------------------------
@@ -260,6 +295,17 @@ export const companionGeo = {
   tailPill: 80,
   tailPillHeight: 88,
   tailImage: 40,
+  // Cycle 12 (imagery) — the scanned-face hero portrait. A wide editorial
+  // band (the capture is portrait-cropped via contentFit="cover") that opens
+  // the live companion. `faceRadius` matches the hero card's generous corner
+  // so the two big rounded surfaces rhyme; the compact height keeps it a
+  // banner, not a full portrait, so the ritual stays above the fold.
+  faceBannerHeight: 188,
+  faceBannerHeightCompact: 150,
+  faceRadius: 26,
+  /** Contact-shadow ellipse beneath a product packshot — grounds it on the halo. */
+  productContactWidth: 0.62,
+  productContactHeight: 16,
 } as const;
 
 export const companionShadows = {
@@ -297,6 +343,30 @@ export const companionShadows = {
     shadowOpacity: 0.55,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  /**
+   * Cycle 12 — the scanned-face portrait lift. A real, soft, downward
+   * shadow (≈e3) so the hero capture separates cleanly from the porcelain
+   * sky and reads as a premium framed photograph, not a flat inset.
+   */
+  facePortrait: {
+    shadowColor: '#0A1A2F',
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 9,
+  },
+  /**
+   * Cycle 12 — product contact shadow. A diffuse cool-ink pool that the
+   * grounding ellipse beneath every packshot carries, so the product reads
+   * as resting in the halo's light rather than pasted flat. Soft + wide.
+   */
+  productContact: {
+    shadowColor: '#0A1A2F',
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
 } as const satisfies Record<string, ViewStyle>;
@@ -517,6 +587,50 @@ export const companionType = {
     lineHeight: 16,
     letterSpacing: 0.2,
     color: CC.blue,
+  },
+  // -------------------------------------------------------------------------
+  // Cycle 12 — text set OVER the scanned-face portrait. White/near-white so it
+  // clears AA on the scrim foot; a subtle shadow on the serif title adds the
+  // last bit of separation from a bright capture.
+  // -------------------------------------------------------------------------
+  /** "TODAY'S SKIN" caps eyebrow on the portrait. */
+  faceEyebrow: {
+    fontFamily: SANS_SEMI,
+    fontSize: 10.5,
+    lineHeight: 14,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.92)',
+  },
+  /** The greeting line over the portrait — editorial serif, white. */
+  faceGreeting: {
+    fontFamily: SERIF,
+    fontSize: 25,
+    lineHeight: 29,
+    letterSpacing: -0.4,
+    color: CC.white,
+  },
+  /** Date / scan-day metadata over the portrait. */
+  faceMeta: {
+    fontFamily: SANS_MED,
+    fontSize: 12.5,
+    lineHeight: 16,
+    letterSpacing: 0.2,
+    color: 'rgba(255,255,255,0.86)',
+  },
+  /** Locked-placeholder copy (no photo yet) — sits on porcelain, so ink. */
+  facePlaceholderTitle: {
+    fontFamily: SERIF,
+    fontSize: 22,
+    lineHeight: 27,
+    letterSpacing: -0.3,
+    color: CC.ink,
+  },
+  facePlaceholderBody: {
+    fontFamily: SANS_REG,
+    fontSize: 13,
+    lineHeight: 18,
+    color: CC.slate,
   },
 } as const satisfies Record<string, TextStyle>;
 

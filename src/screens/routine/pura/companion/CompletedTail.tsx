@@ -8,7 +8,6 @@
 
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Check } from 'phosphor-react-native';
 import { PILLAR_IDENTITY } from '@/components/routine/pillarIdentity';
@@ -19,6 +18,7 @@ import {
   companionType,
 } from './companionTokens';
 import { resolveRoutineProductImage } from './productImage';
+import { FramedProductImage } from './FramedProductImage';
 import type { CompanionRow } from './companionModel';
 import type { RoutineTimeOfDay } from '@/types/routine';
 
@@ -56,11 +56,16 @@ export function CompletedTail({ rows, timeOfDay }: CompletedTailProps) {
                     { borderRadius: companionGeo.tailImage / 2 },
                   ]}
                 />
-                {packshot ? (
-                  <Image source={packshot} style={styles.image} contentFit="contain" />
-                ) : (
-                  <identity.Icon size={18} weight="regular" color={identity.accent} />
-                )}
+                {/* Cycle 12 — shared product-image treatment. The contact
+                    shadow is omitted at this micro scale (it would muddy the
+                    badged pill); contain-fit + placeholder stay consistent. */}
+                <FramedProductImage
+                  source={packshot}
+                  size={30}
+                  PlaceholderIcon={identity.Icon}
+                  placeholderColor={identity.accent}
+                  grounded={false}
+                />
                 <View style={styles.checkBadge}>
                   <Check size={10} weight="bold" color={CC.white} />
                 </View>
@@ -108,10 +113,6 @@ const styles = StyleSheet.create({
     borderRadius: companionGeo.tailImage / 2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  image: {
-    width: 30,
-    height: 30,
   },
   checkBadge: {
     position: 'absolute',

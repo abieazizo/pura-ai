@@ -21,7 +21,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   FadeIn,
@@ -48,6 +47,7 @@ import {
   companionType,
 } from './companionTokens';
 import { resolveRoutineProductImage } from './productImage';
+import { FramedProductImage } from './FramedProductImage';
 import { ProductCheckmark } from './ProductCheckmark';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -357,31 +357,14 @@ export function HeroFocusCard({
             accessibilityLabel={`${productName}. Tap for details.`}
             style={[styles.imageWrap, imageBreath]}
           >
-            {packshot ? (
-              <Image
-                source={packshot}
-                style={{ width: imageSize, height: imageSize, borderRadius: 16 }}
-                contentFit="contain"
-                transition={200}
-              />
-            ) : (
-              <View
-                style={[
-                  styles.placeholder,
-                  {
-                    width: imageSize,
-                    height: imageSize,
-                    backgroundColor: identity.tint,
-                  },
-                ]}
-              >
-                <identity.Icon
-                  size={Math.round(imageSize * 0.42)}
-                  weight="regular"
-                  color={identity.accent}
-                />
-              </View>
-            )}
+            {/* Cycle 12 — the shared product-image treatment: contain-fit,
+                centered on the halo, grounded with a soft contact shadow. */}
+            <FramedProductImage
+              source={packshot}
+              size={imageSize}
+              PlaceholderIcon={identity.Icon}
+              placeholderColor={identity.accent}
+            />
           </AnimatedPressable>
 
           {completing ? (
@@ -564,11 +547,6 @@ const styles = StyleSheet.create({
   },
   checkOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholder: {
-    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

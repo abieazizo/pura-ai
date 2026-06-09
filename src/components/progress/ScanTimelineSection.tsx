@@ -18,8 +18,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { ArrowUp, ArrowDown, Minus, Sparkle } from 'phosphor-react-native';
-import { palette, ds, dsElevation } from '@/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowUp, ArrowDown, Minus, Sparkle, Camera } from 'phosphor-react-native';
+import { palette, ds, dsElevation, dsRadius } from '@/theme';
 import type {
   InsightTimelineItem,
   ProgressRoutineInsight,
@@ -113,23 +114,50 @@ function TimelineRow({
 }
 
 function Thumbnail({ item }: { item: InsightTimelineItem }) {
+  const dayNum = item.dayLabel.replace(/^Day\s+/i, '');
+
   if (item.imageUri) {
+    // Cycle 12 — a framed editorial film-frame: the real scan photo with a
+    // soft bottom scrim so the burned-in day number stays AA+ legible, plus a
+    // brand hairline so it reads as a framed portrait, never a raw thumbnail.
     return (
       <View style={styles.thumbFrame}>
         <Image
           source={item.imageUri}
           style={StyleSheet.absoluteFillObject}
           contentFit="cover"
+          transition={200}
+          accessibilityLabel={`${item.dayLabel} scan photo`}
         />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(8,10,15,0)', 'rgba(8,10,15,0.62)']}
+          locations={[0.45, 1]}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <Text style={styles.thumbDay} maxFontSizeMultiplier={1.1}>
+          {dayNum}
+        </Text>
+        <View pointerEvents="none" style={styles.thumbInnerFrame} />
       </View>
     );
   }
-  // Designed fallback — soft gradient + day initial. Not a loading skeleton.
+  // Designed fallback — soft clay→ice wash, day number in serif + a faint
+  // camera glyph so a missing photo reads as an intentional frame, never a
+  // loading skeleton or a gray box.
   return (
     <View style={[styles.thumbFrame, styles.thumbFallback]}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[palette.clayPaper, palette.bgDeep]}
+        start={{ x: 0.3, y: 0 }}
+        end={{ x: 0.7, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
       <Text style={styles.thumbFallbackText} maxFontSizeMultiplier={1.1}>
-        {item.dayLabel.replace(/^Day\s+/i, '')}
+        {dayNum}
       </Text>
+      <Camera size={12} color={palette.clayDeep} weight="duotone" style={styles.thumbFallbackIcon} />
     </View>
   );
 }
@@ -200,26 +228,52 @@ const styles = StyleSheet.create({
     ...dsElevation.e1,
   },
   thumbFrame: {
-    width: 56,
-    height: 72,
-    borderRadius: 12,
+    // Cycle 12 — a slightly larger 4:5 editorial film-frame with brand radius +
+    // a hairline so every timeline photo reads as a framed portrait.
+    width: 60,
+    height: 76,
+    borderRadius: dsRadius.md,
     overflow: 'hidden',
     backgroundColor: palette.bgDeep,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.hairline,
+  },
+  thumbInnerFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: dsRadius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  // Day number burned into the bottom-left of a real photo frame.
+  thumbDay: {
+    position: 'absolute',
+    left: 6,
+    bottom: 5,
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 17,
+    lineHeight: 19,
+    letterSpacing: -0.3,
+    color: palette.inkInverse,
+    fontVariant: ['tabular-nums'],
   },
   thumbFallback: {
     alignItems: 'center',
     justifyContent: 'center',
     // Soft brand-tinted fallback so a missing photo never reads as a
     // loading skeleton.
-    backgroundColor: palette.clayPaper,
-    borderWidth: 1,
     borderColor: palette.clay,
   },
   thumbFallbackText: {
     fontFamily: 'InstrumentSerif-SemiBold',
-    fontSize: 22,
+    fontSize: 24,
     letterSpacing: -0.4,
     color: palette.clayDeep,
+  },
+  thumbFallbackIcon: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    opacity: 0.7,
   },
   body: {
     flex: 1,

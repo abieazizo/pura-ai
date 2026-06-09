@@ -15,7 +15,14 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -51,6 +58,7 @@ import { VerticalProgressLine } from './VerticalProgressLine';
 import { AmPmToggle } from './AmPmToggle';
 import { UpcomingCard } from './UpcomingCard';
 import { CompletedTail } from './CompletedTail';
+import { ScanFacePortrait } from './ScanFacePortrait';
 
 const WEEKDAYS = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
@@ -86,6 +94,15 @@ export interface RoutineCompanionScreenProps {
   /** Header "Customize" → customize sheet (wired later). */
   onCustomize: () => void;
   onHowItWorks: () => void;
+  /**
+   * Cycle 12 — the recurring hero image. The canonical `Scan.photoUri` of the
+   * latest scan; undefined when none exists (the portrait shows its honest
+   * locked placeholder). `scanMeta` is a short caption ("Day 6 · Jun 8").
+   */
+  facePhotoUri?: string;
+  scanMeta?: string;
+  /** Tap the portrait → revisit the scan; placeholder CTA → start a scan. */
+  onRevisitScan?: () => void;
 }
 
 export function RoutineCompanionScreen({
@@ -98,6 +115,9 @@ export function RoutineCompanionScreen({
   onOpenDetail,
   onCustomize,
   onHowItWorks,
+  facePhotoUri,
+  scanMeta,
+  onRevisitScan,
 }: RoutineCompanionScreenProps) {
   const model = React.useMemo(
     () => buildCompanionModel({ routine, timeOfDay, doneIds }),
@@ -105,6 +125,8 @@ export function RoutineCompanionScreen({
   );
 
   const reduceMotion = useReduceMotion();
+  const { height: vh } = useWindowDimensions();
+  const compact = vh < companionGeo.compactBelow;
 
   // Entrance reveal (Signature #1). One master clock, driven 0→1 on every
   // tab focus; the hero reads five staggered windows off it while the
@@ -319,9 +341,20 @@ export function RoutineCompanionScreen({
             </View>
           </Animated.View>
 
-          {/* Zone 2 — streak-aware greeting. */}
-          <Animated.View style={[styles.greetingWrap, greetingStyle]}>
-            <Text style={[companionType.greeting, styles.greeting]}>{greeting}</Text>
+          {/* Zone 2 — the scanned-face hero portrait (Cycle 12). The user's
+              real capture frames the greeting; the streak-aware line + scan
+              metadata ride its bottom scrim. Falls back to an honest locked
+              placeholder when no scan photo exists. */}
+          <Animated.View style={[styles.portraitWrap, greetingStyle]}>
+            <ScanFacePortrait
+              photoUri={facePhotoUri}
+              eyebrow={timeOfDay === 'morning' ? 'TODAY’S SKIN' : 'TONIGHT’S SKIN'}
+              greeting={greeting}
+              meta={scanMeta}
+              compact={compact}
+              onPress={facePhotoUri ? onRevisitScan : undefined}
+              onScan={onRevisitScan}
+            />
           </Animated.View>
 
           {/* Zone 3 — hero focus card. */}
@@ -515,12 +548,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     letterSpacing: 0.2,
   },
-  greeting: {
-    // The streak-aware line carries real editorial weight now.
-    fontSize: 23,
-    lineHeight: 29,
-    letterSpacing: -0.3,
-  },
   sparkle: {
     marginLeft: 8,
     marginTop: 3,
@@ -528,10 +555,10 @@ const styles = StyleSheet.create({
   toggleWrap: {
     marginTop: 12,
   },
-  greetingWrap: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
+  portraitWrap: {
+    paddingHorizontal: companionGeo.screenMargin,
+    paddingTop: 12,
+    paddingBottom: 6,
   },
   heroWrap: {
     paddingHorizontal: companionGeo.screenMargin,

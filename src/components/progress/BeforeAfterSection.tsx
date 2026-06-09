@@ -14,9 +14,10 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Camera, Lock } from 'phosphor-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Camera, Lock, ArrowRight } from 'phosphor-react-native';
 import { CompareSlider } from '@/components/CompareSlider';
-import { palette, space, ds, dsElevation } from '@/theme';
+import { palette, space, ds, dsElevation, dsRadius } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import type { ProgressRoutineInsight } from '@/state/progressRoutineInsight';
 
@@ -60,19 +61,13 @@ export function BeforeAfterSection({
           lighting tricks.
         </Text>
 
+        {/* Cycle 12 — two honest portrait placeholders in the same 4:5 frame
+            language as the real comparison, with a soft blue wash + corner
+            label, so the locked state reads as a reward waiting, not a broken
+            image or a disabled box. */}
         <View style={styles.framesRow}>
-          <View style={styles.frame}>
-            <Lock size={14} color={palette.inkTertiary} weight="duotone" />
-            <Text style={styles.frameLabel} maxFontSizeMultiplier={1.1}>
-              DAY 1
-            </Text>
-          </View>
-          <View style={styles.frame}>
-            <Lock size={14} color={palette.inkTertiary} weight="duotone" />
-            <Text style={styles.frameLabel} maxFontSizeMultiplier={1.1}>
-              NEXT SCAN
-            </Text>
-          </View>
+          <PlaceholderFrame label="DAY 1" />
+          <PlaceholderFrame label="NEXT SCAN" />
         </View>
 
         {onTakeScan ? (
@@ -120,25 +115,61 @@ export function BeforeAfterSection({
   return (
     <View style={styles.block}>
       <View style={styles.head}>
-        <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
-          BEFORE & AFTER
-        </Text>
-        <Text style={styles.dates} maxFontSizeMultiplier={1.1}>
-          {`Day 1 → Day ${latestDayNumber}`}
-        </Text>
+        <View style={styles.headText}>
+          <Text style={styles.kicker} maxFontSizeMultiplier={1.1}>
+            BEFORE & AFTER
+          </Text>
+          <Text style={styles.headTitle} maxFontSizeMultiplier={1.1}>
+            Your face, side by side
+          </Text>
+        </View>
+        <View style={styles.datesPill}>
+          <Text style={styles.datesText} maxFontSizeMultiplier={1.1}>
+            {`Day 1`}
+          </Text>
+          <ArrowRight size={11} color={palette.clayDeep} weight="bold" />
+          <Text style={styles.datesText} maxFontSizeMultiplier={1.1}>
+            {`Day ${latestDayNumber}`}
+          </Text>
+        </View>
       </View>
+      {/* Cycle 12 — the slider sits on a soft contact shadow so the framed
+          portrait pair lifts off the porcelain as a single editorial object. */}
       <View style={[styles.fullBleed, { marginHorizontal: -space.lg }]}>
-        <CompareSlider
-          leftUri={comparison.beforeUri}
-          rightUri={comparison.afterUri}
-          leftLabel="DAY 1"
-          rightLabel={`DAY ${latestDayNumber}`}
-          width={width}
-          height={compareHeight}
-        />
+        <View style={styles.sliderLift}>
+          <CompareSlider
+            leftUri={comparison.beforeUri}
+            rightUri={comparison.afterUri}
+            leftLabel="DAY 1"
+            rightLabel={`DAY ${latestDayNumber}`}
+            width={width}
+            height={compareHeight}
+          />
+        </View>
       </View>
       <Text style={styles.caption} maxFontSizeMultiplier={1.15}>
         {comparison.caption}
+      </Text>
+    </View>
+  );
+}
+
+/** An honest 4:5 portrait placeholder for the locked before/after empty state. */
+function PlaceholderFrame({ label }: { label: string }) {
+  return (
+    <View style={styles.frame}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[palette.clayPaper, palette.bgDeep]}
+        start={{ x: 0.3, y: 0 }}
+        end={{ x: 0.7, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.frameLockBadge}>
+        <Lock size={15} color={palette.clayDeep} weight="duotone" />
+      </View>
+      <Text style={styles.frameLabel} maxFontSizeMultiplier={1.1}>
+        {label}
       </Text>
     </View>
   );
@@ -150,10 +181,14 @@ const styles = StyleSheet.create({
   },
   head: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     marginBottom: space.md,
     paddingHorizontal: space.lg,
+    gap: space.md,
+  },
+  headText: {
+    flex: 1,
   },
   kicker: {
     fontFamily: 'Inter-SemiBold',
@@ -162,15 +197,40 @@ const styles = StyleSheet.create({
     color: palette.inkTertiary,
     textTransform: 'uppercase',
   },
-  dates: {
+  headTitle: {
+    // Cycle 12 — an editorial serif line so the section announces the imagery,
+    // not just a tiny caps kicker over a raw slider.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.5,
+    color: palette.ink,
+    marginTop: 3,
+  },
+  datesPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: dsRadius.pill,
+    backgroundColor: palette.clayPaper,
+  },
+  datesText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
-    letterSpacing: 0.6,
+    letterSpacing: 0.4,
     color: palette.clayDeep,
     fontVariant: ['tabular-nums'],
   },
   fullBleed: {
     marginTop: 4,
+  },
+  // Soft contact shadow under the full-bleed slider so the framed portrait
+  // pair lifts as one editorial object on the porcelain page.
+  sliderLift: {
+    borderRadius: dsRadius.xl,
+    ...dsElevation.e3,
   },
   caption: {
     marginTop: 12,
@@ -222,22 +282,36 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   frame: {
+    // Cycle 12 — a real 4:5 portrait frame (matches the live comparison ratio)
+    // with a soft clay→ice wash + brand hairline, so the locked state reads as
+    // a framed photo waiting to develop, not a dashed empty box.
     flex: 1,
-    aspectRatio: 0.78,
-    borderRadius: 14,
+    aspectRatio: 4 / 5,
+    borderRadius: dsRadius.lg,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: palette.hairline,
-    borderStyle: 'dashed',
+    borderColor: palette.clay,
     backgroundColor: palette.bgDeep,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
+    ...dsElevation.e1,
+  },
+  frameLockBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ds.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.clay,
   },
   frameLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
     letterSpacing: 1.4,
-    color: palette.inkTertiary,
+    color: palette.clayDeep,
     textTransform: 'uppercase',
   },
   primaryCta: {

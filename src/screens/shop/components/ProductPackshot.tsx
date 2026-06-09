@@ -92,9 +92,20 @@ export function ProductPackshot({
   const innerW = width * (1 - inset * 2);
   const innerH = height * (1 - inset * 2);
 
+  // Unique gradient ids per instance — multiple packshots mount at once
+  // (carousels, grids), and duplicate SVG ids collide on web.
+  const gid = React.useId();
+
+  // The grounded contact plinth sits a hair higher on compact tiles where the
+  // bottle is closer to the floor.
+  const plinthCy = height - (compact ? 11 : 15);
+
   return (
     <View style={[styles.wrap, { width, height }, style]}>
-      {/* Backdrop: SVG radial gradient — luminous, never muddy. */}
+      {/* Backdrop: the shared gallery vocabulary — a luminous tonal wash, a
+          museum SPOTLIGHT cone from the top, and a layered CONTACT-SHADOW
+          plinth — so every packshot tile reads as a lit still-life on a pedestal,
+          consistent with the hero card and the compare panel. */}
       <Svg
         width={width}
         height={height}
@@ -102,24 +113,42 @@ export function ProductPackshot({
         pointerEvents="none"
       >
         <Defs>
-          <RadialGradient id="bg" cx="50%" cy="42%" rx="64%" ry="64%" fx="46%" fy="36%">
+          <RadialGradient id={`${gid}-bg`} cx="50%" cy="42%" rx="64%" ry="64%" fx="46%" fy="36%">
             <Stop offset="0%" stopColor={grad.core} stopOpacity={1} />
             <Stop offset="60%" stopColor={grad.mid} stopOpacity={1} />
             <Stop offset="100%" stopColor={grad.rim} stopOpacity={1} />
           </RadialGradient>
+          {/* Museum spotlight — a soft vertical cone of light falling onto the
+              hero so the packshot is lit, not pasted on a flat disc. */}
+          <RadialGradient id={`${gid}-spot`} cx="50%" cy="0%" rx="46%" ry="78%" fx="50%" fy="0%">
+            <Stop offset="0%" stopColor={puraShop.white} stopOpacity={0.7} />
+            <Stop offset="52%" stopColor={puraShop.white} stopOpacity={0.22} />
+            <Stop offset="100%" stopColor={puraShop.white} stopOpacity={0} />
+          </RadialGradient>
         </Defs>
-        <Rect x={0} y={0} width={width} height={height} fill="url(#bg)" />
-        {/* Soft floor reflection — adds product still-life weight. */}
+        <Rect x={0} y={0} width={width} height={height} fill={`url(#${gid}-bg)`} />
+        <Rect x={0} y={0} width={width} height={height} fill={`url(#${gid}-spot)`} />
+        {/* Layered plinth — a broad soft pool grounds into a tight contact
+            core, so the bottle reads as resting ON a pedestal with real weight,
+            not floating. Matches the hero zone's plinth, scaled to the tile. */}
         {!compact ? (
           <Ellipse
             cx={width / 2}
-            cy={height - 14}
-            rx={width * 0.34}
-            ry={6}
-            fill="#0A1A2F"
-            opacity={0.07}
+            cy={plinthCy + 2}
+            rx={width * 0.4}
+            ry={9}
+            fill={puraShop.ink}
+            opacity={0.05}
           />
         ) : null}
+        <Ellipse
+          cx={width / 2}
+          cy={plinthCy}
+          rx={width * (compact ? 0.26 : 0.3)}
+          ry={compact ? 4.5 : 6}
+          fill={puraShop.ink}
+          opacity={0.1}
+        />
       </Svg>
 
       {/* The real product photo, contained. */}

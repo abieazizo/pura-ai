@@ -34,7 +34,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { dsAmbient } from '@/theme';
+import { dsAmbient, ds, dsRadius } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useOrb } from './orb/OrbHost';
@@ -129,6 +129,13 @@ export function QuestionScreen({
   const cardsTop = Math.round(height * 0.37);
   const trackWidth = width - 48;
   const accent = dark ? RAIL_ACCENT_DARK : RAIL_ACCENT_LIGHT;
+
+  // Portrait-frame medallion geometry — a rounded-portrait hairline frame
+  // centered on the orb's settle, layered over the existing pool/bloom so the
+  // companion reads as a framed portrait subject (Cycle 12 shared imagery
+  // language, matching the scan capture card). Purely atmospheric.
+  const medW = Math.round(target.size * 1.95);
+  const medH = Math.round(medW * 1.16);
 
   const resolved = resolveQuestion(config, { goal, threadKey });
   const displayName = (name ?? '').trim();
@@ -395,6 +402,23 @@ export function QuestionScreen({
         </View>
       )}
 
+      {/* Portrait-frame medallion — a rounded-portrait hairline frame centered
+          on the orb, the shared Cycle 12 imagery language (matches the scan
+          capture card). Layered over the pool/bloom, beneath all content. */}
+      <View
+        style={[
+          styles.medallion,
+          {
+            width: medW,
+            height: medH,
+            left: width / 2 - medW / 2,
+            top: target.cy - medH / 2,
+            borderColor: dark ? 'rgba(255,255,255,0.10)' : ds.hairline,
+          },
+        ]}
+        pointerEvents="none"
+      />
+
       {/* Tap anywhere (off a card) to skip the reaction faster. */}
       {anySelected && (
         <Pressable
@@ -480,6 +504,12 @@ export function QuestionScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // Portrait-frame medallion (Cycle 12 shared imagery language).
+  medallion: {
+    position: 'absolute',
+    borderRadius: dsRadius.xxl,
+    borderWidth: 1,
+  },
   railWrap: { position: 'absolute', left: 24, right: 24, alignItems: 'center' },
   eyebrow: {
     position: 'absolute',

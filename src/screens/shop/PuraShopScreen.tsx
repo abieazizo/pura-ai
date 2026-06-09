@@ -27,6 +27,7 @@ import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import { useShallow } from 'zustand/react/shallow';
 
 import { useAppStore } from '@/store/useAppStore';
 import { hapt } from '@/utils/haptics';
@@ -47,6 +48,18 @@ export function PuraShopScreen() {
   const rootNav = useNavigation<RootNav>();
 
   const model = useShopHomeModel();
+
+  // The user's SCANNED FACE is the shared imagery HERO. Read the latest real
+  // scan's photo straight from canonical state (never fabricated) so the Shop
+  // feed can frame it as a premium editorial portrait at the top of the page.
+  // Falls back to null pre-scan, where ShopFeed shows no portrait band.
+  const heroPhotoUri = useAppStore(
+    useShallow((s) => {
+      const scans = Array.isArray(s.scans) ? s.scans : [];
+      const latest = scans[scans.length - 1];
+      return latest?.photoUri ?? null;
+    }),
+  );
 
   const toggleWishlist = useAppStore((s) => s.toggleWishlist);
   const addToRoutine = useAppStore((s) => s.addUserRoutineProduct);
@@ -95,6 +108,7 @@ export function PuraShopScreen() {
       <StatusBar style="dark" />
       <ShopFeed
         model={model}
+        heroPhotoUri={heroPhotoUri}
         onPressProduct={onPressProduct}
         onToggleSave={onToggleSave}
         onAdd={onAdd}

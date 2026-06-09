@@ -21,6 +21,19 @@
  * is a designed card — a real severity meter + trend chip (canonical data that
  * used to be discarded), the summary as the "what it is" line, and grounded
  * "why it matters" / "what to do" copy — with the captured face as a hero crop.
+ *
+ * Cycle 12 (IMAGERY): the scanned face is promoted to the recurring HERO of the
+ * reveal and given ONE consistent editorial treatment across every beat that
+ * shows it — Skin Map portrait, Focus cover banner, and the secondary finding
+ * crop rails. Wherever the real `photoUri` exists it is framed as a premium
+ * portrait: a true 4:5 (or banner) ratio, generous rounded corners, a deep
+ * LAYERED bottom scrim (ds.scrim → transparent) so any overlaid white text
+ * stays AA+ legible, a hairline brand frame + soft edge sheen, and a small
+ * pinned "YOUR SCAN" capture kicker so each face reads as a figure from one
+ * personal skin report. When no photo exists every surface falls back to the
+ * SAME framed neutral-skin placeholder (never a raw/gray box). Imagery + the
+ * compositing around it only — beat order, the 5 beats, titles, step numbering,
+ * and the ~300ms pager timing are untouched.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -37,7 +50,7 @@ import Animated, {
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { Drop, Leaf, Minus, ShieldCheck, Sparkle, Star, TrendDown, TrendUp } from 'phosphor-react-native';
+import { Camera, Drop, Leaf, Minus, ShieldCheck, Sparkle, Star, TrendDown, TrendUp } from 'phosphor-react-native';
 import type { SkinState } from '@/types/canonical';
 import {
   puraReveal,
@@ -46,7 +59,7 @@ import {
   puraRevealShadow,
   puraRevealType,
 } from '@/theme/tokens';
-import { dsAmbient, dsGradient, tnum } from '@/theme';
+import { ds, dsAmbient, dsElevation, dsGradient, dsRadius, tnum } from '@/theme';
 import {
   BEAT_EYEBROWS,
   concernChips,
@@ -99,6 +112,59 @@ const SPARKLE_WASH = [dsGradient.blueWash[0], dsGradient.blueWash[1]] as const;
 /** Porcelain veil — dissolves scroll content into the ambient field behind the
  *  floating Next, echoing dsGradient.pageVeil but tuned to the wash foot. */
 const VEIL = ['rgba(252,253,255,0)', 'rgba(247,250,255,0.92)'] as const;
+
+// ---------------------------------------------------------------------------
+// Cycle 12 — SHARED IMAGERY SPEC. One editorial treatment for the scanned face
+// across every beat, so the whole reveal frames the hero photo ONE way.
+//   • Portrait ratio ~4:5 (PORTRAIT_RATIO) for the Skin Map; the Focus cover
+//     uses a taller editorial banner but the same scrim + frame language.
+//   • A DEEP, layered bottom scrim built on the design-system ink scrim so
+//     overlaid WHITE text clears AA+ no matter how light the photo is. The
+//     middle stop never drops to near-zero (the old cover dipped to 0.04 and
+//     risked illegible kickers); it steps 0 → soft → strong → near-opaque.
+//   • A hairline brand frame + a faint inner white sheen so the portrait reads
+//     as a deliberately mounted figure, never a raw image on porcelain.
+//   • The SAME neutral-skin gradient placeholder (honest, never gray) when no
+//     real photo is available.
+// All overlay text colors are pure white / near-white on the scrim foot.
+// ---------------------------------------------------------------------------
+
+/** Editorial portrait aspect (height = width × this). 4:5. */
+const PORTRAIT_RATIO = 1.25;
+
+// The scrim ink is the design-system scrim color (ds.scrim) — same cool ink the
+// rest of the app dims with — pushed to full opacity at the foot so white text
+// clears AA+. Building the ramp from ds.scrim keeps the reveal's image dimming
+// on the canonical token, not a one-off hex.
+const SCRIM_INK = ds.scrim.replace(/[\d.]+\)$/, '');
+
+/** Deep hero scrim for the FULL portrait (Skin Map) — legible white at the
+ *  foot, glass-clear at the crown so the face stays the subject. */
+const HERO_SCRIM = [
+  `${SCRIM_INK}0)`,
+  `${SCRIM_INK}0.06)`,
+  `${SCRIM_INK}0.42)`,
+  `${SCRIM_INK}0.84)`,
+] as const;
+
+/** Cover banner scrim — deep enough at the foot to carry the big serif concern
+ *  title; the crown stays mostly clear for the pinned kicker + trend chip, which
+ *  also get their own crown scrim. */
+const COVER_SCRIM = [
+  `${SCRIM_INK}0.14)`,
+  `${SCRIM_INK}0.05)`,
+  `${SCRIM_INK}0.34)`,
+  `${SCRIM_INK}0.88)`,
+] as const;
+
+/** Crop-rail scrim — lighter (the rank/name live beside the rail, not on it)
+ *  but still grounds the foot so the accent bar + region tag read as a caption
+ *  edge. */
+const CROP_SCRIM = [`${SCRIM_INK}0)`, `${SCRIM_INK}0.16)`, `${SCRIM_INK}0.52)`] as const;
+
+/** Faint crown scrim behind a pinned white kicker so it clears AA over a bright
+ *  forehead/skin crown. */
+const KICKER_SCRIM = [`${SCRIM_INK}0.44)`, `${SCRIM_INK}0)`] as const;
 
 const INSIGHT_ICON: Record<InsightIcon, typeof Drop> = {
   barrier: Drop,
@@ -282,6 +348,34 @@ const rt = StyleSheet.create({
     textTransform: 'uppercase',
     ...tnum,
   },
+  // ---- Cycle 12 imagery overlays (WHITE on the hero scrim) ----
+  // The pinned "YOUR SCAN" capture marker that brands every face as a figure
+  // from one report. Tracked uppercase, near-white so it clears the top scrim.
+  scanKicker: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.94)',
+  },
+  // The zone-legend labels printed along the Skin Map portrait foot.
+  mapLegend: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    lineHeight: 14,
+    letterSpacing: 0.1,
+    color: 'rgba(255,255,255,0.92)',
+  },
+  // The region tag printed at the foot of a secondary finding's crop rail.
+  cropTag: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    lineHeight: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.94)',
+  },
 });
 
 /**
@@ -307,6 +401,21 @@ function Eyebrow({ label, align = 'left' }: { label: string; align?: 'left' | 'c
     >
       {label}
     </Text>
+  );
+}
+
+/**
+ * ScanKicker (Cycle 12) — the white "YOUR SCAN" capture marker pinned to the
+ * crown of a hero face. A frosted camera glyph + tracked label that sits on the
+ * top scrim, so every framed face declares itself as a figure from the same
+ * personal report.
+ */
+function ScanKicker({ label = 'Your scan' }: { label?: string }) {
+  return (
+    <View style={styles.scanKickerWrap}>
+      <Camera size={12} weight="fill" color="rgba(255,255,255,0.94)" />
+      <Text style={rt.scanKicker}>{label}</Text>
+    </View>
   );
 }
 
@@ -386,8 +495,11 @@ export function ScanRevealScreen({
 
   const contentW =
     Math.min(vw, puraRevealLayout.maxContentWidth) - puraRevealLayout.screenPadding * 2;
-  const mapW = Math.round(contentW * 0.72);
-  const mapH = Math.round(mapW * 1.2);
+  // Cycle 12 — the Skin Map portrait is now the FULL-WIDTH hero of the beat (was
+  // a timid 72%-width crop). A true editorial 4:5 portrait, capped so it never
+  // crowds the chips/legend off a short screen.
+  const mapW = contentW;
+  const mapH = Math.round(Math.min(mapW * PORTRAIT_RATIO, 460));
 
   const renderStep = () => {
     switch (step) {
@@ -404,17 +516,25 @@ export function ScanRevealScreen({
               </Text>
             </View>
 
+            {/* Cycle 12 — the scanned face as the full-width editorial HERO:
+                4:5 portrait, deep foot scrim, brand frame, with the report's
+                "YOUR SCAN" marker pinned at the crown and a concern-zone legend
+                printed along the foot so the figure reads as a personal map. */}
             <View style={styles.mapBlock}>
-              <View style={{ width: mapW, height: mapH }}>
-                <LinearGradient
-                  colors={SPARKLE_WASH}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={styles.mapGlow}
-                  pointerEvents="none"
-                />
-                <ZoneMapFrame photoUri={photoUri} overlays={overlays} width={mapW} height={mapH} />
-              </View>
+              <LinearGradient
+                colors={SPARKLE_WASH}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.mapGlow}
+                pointerEvents="none"
+              />
+              <ZoneMapFrame
+                photoUri={photoUri}
+                overlays={overlays}
+                width={mapW}
+                height={mapH}
+                legend={chips}
+              />
             </View>
 
             {chips.length > 0 ? (
@@ -468,21 +588,31 @@ export function ScanRevealScreen({
                   <StaggerItem key={f.key} index={i}>
                     {hero ? (
                       <View style={styles.coverCard}>
-                        {/* Full-bleed hero face banner with the headline data-viz overlaid */}
+                        {/* Cycle 12 — the scanned face as the report's HERO cover:
+                            a tall editorial banner cropped to the finding's
+                            region, a deep legible foot scrim, the "primary focus"
+                            marker + trend chip on a crown scrim, the big white
+                            serif concern title and a "your scan" capture tag at
+                            the foot, all inside the shared brand frame. */}
                         <View style={styles.coverBanner}>
                           <CoverImage photoUri={photoUri} region={f.region} />
                           <View style={styles.coverTopRow} pointerEvents="none">
-                            <View style={styles.coverKicker}>
+                            <View style={styles.coverKickerPill}>
                               <View style={[styles.coverKickerDot, { backgroundColor: f.color }]} />
                               <Text style={rt.coverKicker}>Primary focus</Text>
                             </View>
                             <TrendChip icon={dir.icon} label={dir.label} color={dir.color} bg={dir.bg} />
                           </View>
                           <View style={styles.coverHeadline} pointerEvents="none">
+                            <View style={styles.coverCaptureTag}>
+                              <Camera size={11} weight="fill" color="rgba(255,255,255,0.92)" />
+                              <Text style={rt.scanKicker}>{`Your scan · ${cap(f.region)}`}</Text>
+                            </View>
                             <Text style={[rt.coverTitle, { color: '#FFFFFF' }]} numberOfLines={2}>
                               {f.name}
                             </Text>
                           </View>
+                          <View style={styles.coverFrame} pointerEvents="none" />
                         </View>
 
                         {/* Severity data-viz strip — the magazine "score" moment */}
@@ -921,6 +1051,7 @@ function CoverImage({ photoUri, region }: { photoUri?: string; region: string })
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           contentPosition={regionFocus(region)}
+          transition={220}
         />
       ) : (
         <LinearGradient
@@ -930,8 +1061,18 @@ function CoverImage({ photoUri, region }: { photoUri?: string; region: string })
           style={StyleSheet.absoluteFill}
         />
       )}
+      {/* Crown scrim — backs the "primary focus" + trend chips. */}
       <LinearGradient
-        colors={['rgba(8,12,24,0.10)', 'rgba(8,12,24,0.04)', 'rgba(8,12,24,0.78)']}
+        colors={KICKER_SCRIM}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 0.4 }}
+        style={styles.heroTopScrim}
+        pointerEvents="none"
+      />
+      {/* Deep, layered foot scrim — carries the big white serif title with AA+
+          headroom (the old middle stop dipped to 0.04 and risked illegibility). */}
+      <LinearGradient
+        colors={COVER_SCRIM}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -966,8 +1107,11 @@ function TrendChip({
 }
 
 // ---------------------------------------------------------------------------
-// CropPanel — the captured face, framed to the finding's region. Stretches to
-// the height of the card's top row so it reads as a hero rail, not a thumbnail.
+// CropPanel (Cycle 12) — the captured face on a SECONDARY finding, framed to the
+// finding's region and given the SAME editorial DNA as the heroes: a 4:5-leaning
+// rail, a deep foot scrim, a small white region capture tag, the accent caption
+// edge, and the shared brand frame + inner sheen. Stretches to the card's top
+// row so it reads as a mounted portrait rail, not a bare thumbnail.
 // ---------------------------------------------------------------------------
 
 function CropPanel({
@@ -987,6 +1131,7 @@ function CropPanel({
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           contentPosition={regionFocus(region)}
+          transition={220}
         />
       ) : (
         <LinearGradient
@@ -997,12 +1142,15 @@ function CropPanel({
         />
       )}
       <LinearGradient
-        colors={['transparent', 'rgba(8,16,38,0.22)']}
-        start={{ x: 0.5, y: 0.45 }}
+        colors={CROP_SCRIM}
+        start={{ x: 0.5, y: 0.4 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      <Text style={[rt.cropTag, styles.cropTag]} numberOfLines={1} pointerEvents="none">
+        {cap(region)}
+      </Text>
       <View style={[styles.cropAccent, { backgroundColor: accent }]} pointerEvents="none" />
       <View style={styles.cropEdge} pointerEvents="none" />
     </View>
@@ -1010,8 +1158,12 @@ function CropPanel({
 }
 
 // ---------------------------------------------------------------------------
-// ZoneMapFrame — portrait photo (or neutral skin gradient) under translucent
-// concern-colored zone ellipses, with a soft grounding scrim. Static SVG only.
+// ZoneMapFrame (Cycle 12) — the SCANNED FACE as the beat's editorial hero.
+// Full-width 4:5 portrait (real photo or the framed neutral-skin placeholder)
+// under translucent concern-colored zone ellipses, then a DEEP design-system
+// foot scrim that carries: the pinned "YOUR SCAN" capture marker at the crown,
+// and a concern-zone legend printed along the foot. A hairline brand frame +
+// inner sheen mount it as a figure from a personal report. Static SVG only.
 // ---------------------------------------------------------------------------
 
 function ZoneMapFrame({
@@ -1019,16 +1171,23 @@ function ZoneMapFrame({
   overlays,
   width,
   height,
+  legend = [],
 }: {
   photoUri?: string;
   overlays: MapOverlay[];
   width: number;
   height: number;
+  legend?: { key: string; label: string; color: string }[];
 }) {
   return (
     <View style={[styles.frame, { width, height }]}>
       {photoUri ? (
-        <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <Image
+          source={{ uri: photoUri }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={220}
+        />
       ) : (
         <LinearGradient
           colors={SKIN_GRADIENT}
@@ -1038,6 +1197,8 @@ function ZoneMapFrame({
         />
       )}
 
+      {/* Concern zones — vivid on the face (above the photo, under the foot
+          scrim so the crown/cheeks stay saturated). */}
       <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
         {overlays.map((o) => (
           <Ellipse
@@ -1048,19 +1209,45 @@ function ZoneMapFrame({
             ry={o.blob.ry * height}
             fill={o.wash}
             stroke={o.color}
-            strokeWidth={1.2}
+            strokeWidth={1.4}
             opacity={0.95}
           />
         ))}
       </Svg>
 
+      {/* Faint crown scrim so the white capture marker clears AA over a bright
+          forehead, and the deep foot scrim that backs the legend. */}
       <LinearGradient
-        colors={['transparent', 'rgba(8,16,38,0.10)', 'rgba(8,16,38,0.24)']}
-        start={{ x: 0.5, y: 0.5 }}
-        end={{ x: 0.5, y: 1 }}
-        style={styles.frameScrim}
+        colors={KICKER_SCRIM}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 0.34 }}
+        style={styles.heroTopScrim}
         pointerEvents="none"
       />
+      <LinearGradient
+        colors={HERO_SCRIM}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
+      <View style={styles.mapKickerSlot} pointerEvents="none">
+        <ScanKicker label="Your scan · skin map" />
+      </View>
+
+      {legend.length > 0 ? (
+        <View style={styles.mapLegendSlot} pointerEvents="none">
+          <View style={styles.mapLegendDots}>
+            {legend.slice(0, 5).map((c) => (
+              <View key={c.key} style={[styles.mapLegendDot, { backgroundColor: c.color }]} />
+            ))}
+          </View>
+          <Text style={rt.mapLegend} numberOfLines={1}>
+            {legend.length === 1 ? 'Top concern, mapped' : 'Top concerns, mapped'}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.frameEdge} pointerEvents="none" />
     </View>
@@ -1076,6 +1263,15 @@ function clampStep(s: number): number {
 /** Zero-padded count for the editorial running index ("01", "03"). */
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
+}
+
+/** Humanize a canonical region key for an image caption ("left_cheek" →
+ *  "Left cheek", "t_zone" → "T zone"). Keeps overlay captions readable without
+ *  inventing data — falls back to a neutral "Overall" for the catch-all. */
+function cap(region?: string): string {
+  if (!region || region === 'overall') return 'Overall';
+  const words = region.replace(/_/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 const styles = StyleSheet.create({
@@ -1126,39 +1322,54 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
-  // Screen 2 — Skin Map
-  mapBlock: { alignItems: 'center', justifyContent: 'center', marginVertical: 18 },
-  // Soft ice-blue halo blooming symmetrically just past the portrait frame
-  // (negative insets on a frame-sized wrapper), seating it in the ambient field
-  // instead of floating on flat porcelain.
+  // Screen 2 — Skin Map (Cycle 12: full-width editorial portrait hero)
+  mapBlock: { alignItems: 'center', justifyContent: 'center', marginTop: 16, marginBottom: 18 },
+  // Soft ice-blue halo blooming symmetrically just past the portrait frame,
+  // seating the hero in the ambient field instead of floating on flat porcelain.
   mapGlow: {
     position: 'absolute',
-    top: -16,
-    bottom: -16,
-    left: -20,
-    right: -20,
-    borderRadius: puraRevealRadius.cardLg + 16,
+    top: -14,
+    bottom: -18,
+    left: -10,
+    right: -10,
+    borderRadius: dsRadius.xl + 18,
     opacity: 0.7,
   },
+  // The portrait mount — generous xl corners, a real lift, porcelain base under
+  // the photo so a transparent PNG never flashes the page.
   frame: {
-    borderRadius: puraRevealRadius.cardLg,
+    borderRadius: dsRadius.xl,
     overflow: 'hidden',
     backgroundColor: puraReveal.porcelainDeep,
-    ...puraRevealShadow.float,
+    ...dsElevation.e3,
   },
-  frameScrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '42%',
+  // Pinned "your scan · skin map" marker, top-left of the portrait.
+  mapKickerSlot: { position: 'absolute', top: 14, left: 14 },
+  // Concern caption printed along the portrait foot, on the deep scrim: a row
+  // of concern-accent dots + a quiet "Top concerns, mapped" figure caption.
+  mapLegendSlot: { position: 'absolute', left: 16, right: 16, bottom: 15 },
+  mapLegendDots: { flexDirection: 'row', gap: 5, marginBottom: 7 },
+  mapLegendDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
   },
+  // Shared brand frame — a faint 1px white inner sheen that, with the dsElevation
+  // lift below, mounts the portrait as a deliberate figure rather than a raw
+  // image bleeding onto porcelain.
   frameEdge: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: puraRevealRadius.cardLg,
+    borderRadius: dsRadius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: 'rgba(255,255,255,0.30)',
   },
+
+  // Crown scrim shared by the portrait + cover (backs the white kicker/chips).
+  heroTopScrim: { position: 'absolute', left: 0, right: 0, top: 0, height: '36%' },
+  // The frosted "Your scan" capture marker (camera glyph + tracked label).
+  scanKickerWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   chip: {
     flexDirection: 'row',
@@ -1208,8 +1419,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...puraRevealShadow.float,
   },
+  // Cycle 12 — taller editorial cover (was a squat 232). A magazine-cover crop
+  // of the scanned face that opens the report; porcelain base under the photo.
   coverBanner: {
-    height: 232,
+    height: 304,
     backgroundColor: puraReveal.porcelainDeep,
     justifyContent: 'space-between',
   },
@@ -1217,16 +1430,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
   },
-  coverKicker: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  // Frosted "Primary focus" pill — reads on the photo crown without a hard chip.
+  coverKickerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: puraRevealRadius.pill,
+    backgroundColor: 'rgba(8,10,15,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
   coverKickerDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  coverHeadline: { paddingHorizontal: 20, paddingBottom: 18 },
+  coverHeadline: { paddingHorizontal: 20, paddingBottom: 18, gap: 9 },
+  // Small "your scan · region" capture tag sat above the big white title.
+  coverCaptureTag: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // Shared brand frame on the cover banner (matches the portrait + crop rails).
+  coverFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   // The severity data-viz strip directly under the banner.
   coverGaugeRow: {
     flexDirection: 'row',
@@ -1293,15 +1525,18 @@ const styles = StyleSheet.create({
   findingActionCol: { flex: 1 },
   actionMark: { width: 6, height: 6, borderRadius: 3, marginTop: 6 },
 
-  // Face-crop rail
+  // Face-crop rail (Cycle 12 — a mounted portrait rail, same DNA as the heroes)
   cropPanel: {
-    width: 88,
+    width: 96,
     alignSelf: 'stretch',
-    minHeight: 118,
-    borderRadius: puraRevealRadius.thumb,
+    minHeight: 132,
+    borderRadius: dsRadius.md,
     overflow: 'hidden',
     backgroundColor: puraReveal.porcelainDeep,
+    ...dsElevation.e1,
   },
+  // Region capture tag, foot-left on the rail's scrim.
+  cropTag: { position: 'absolute', left: 9, right: 8, bottom: 9 },
   cropAccent: {
     position: 'absolute',
     left: 0,
@@ -1311,7 +1546,7 @@ const styles = StyleSheet.create({
   },
   cropEdge: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: puraRevealRadius.thumb,
+    borderRadius: dsRadius.md,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
   },

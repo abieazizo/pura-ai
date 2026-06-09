@@ -9,10 +9,13 @@
  *   • Sticky header — "Home" + a hairline that fades in on scroll.
  *   • Masthead hero — a tracked eyebrow, then a GIANT left-aligned Instrument-
  *     Serif headline at true display scale (~60px) that states tonight's skin
- *     status, framed by generous whitespace, with the scan-tinted orb floating
- *     to the upper-right as a glowing intelligence accent (no longer the crown).
- *     A focused Pura-Blue bloom grounds the headline. This is the one-second
- *     moment. Below it: the scan-status pill + subhead on one editorial baseline.
+ *     status, framed by generous whitespace. Cycle 12 (imagery): the user's
+ *     latest SCAN-FACE rides the upper-right as a framed ~4:5 editorial
+ *     portrait (bottom scrim + hairline + the scan-aware orb as a corner
+ *     badge), tying Home to this user the moment it opens; pre-scan it is an
+ *     honest framed placeholder, never a fake image. A focused Pura-Blue bloom
+ *     grounds it. This is the one-second moment. Below it: the scan-status pill
+ *     + subhead on one editorial baseline.
  *   • Weight-ladder primary — pre-scan: a glowing "Take a scan" CTA; post-scan:
  *     the elevated "Tonight's read" panel is the focal content.
  *   • Tonight's read — an elevated card with provenance + tonal accent rows
@@ -79,6 +82,7 @@ import {
 } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { useAppStore } from '@/store/useAppStore';
 import { useAssistSignal, type AssistSignalRow } from '@/state/assistSignal';
 import type {
   HomeStackParamList,
@@ -88,7 +92,7 @@ import type {
 import { Button } from '@/components/ui';
 import { ScanFrameGlyph } from '@/components/ScanFrameGlyph';
 import { AssistInputBar } from './AssistInputBar';
-import { AssistantAuroraOrb } from './AssistantAuroraOrb';
+import { ScanHeroPortrait } from './components/ScanHeroPortrait';
 
 type IconCmp = React.FC<IconProps>;
 
@@ -176,6 +180,15 @@ export function PuraAssistHomeScreen() {
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
   const homeNav = useNavigation<NavigationProp<HomeStackParamList>>();
   const signal = useAssistSignal();
+
+  // Cycle 12 (Imagery) — the latest-scan FACE is the recurring hero. Read the
+  // newest scan's photoUri straight from canonical store state (the single
+  // source of truth for captured photos). No recompute; just the raw URI so
+  // the hero plate can frame it. `null` → honest locked placeholder.
+  const latestPhotoUri = useAppStore((s) => {
+    const arr = Array.isArray(s.scans) ? s.scans : [];
+    return arr.length > 0 ? arr[arr.length - 1].photoUri ?? null : null;
+  });
 
   // Scroll-linked header — a hairline + subtle lift fade in once the hero
   // begins to leave, so the sticky header reads as a layer over the content.
@@ -288,13 +301,24 @@ export function PuraAssistHomeScreen() {
           />
 
           {/* ---- Masthead hero — GIANT left-aligned display headline is the
-              focal point; the scan-tinted orb floats to the upper-right as a
-              glowing intelligence accent (no longer the crown). ---- */}
+              focal point; the user's framed SCAN-FACE portrait (orb badge in
+              its corner) floats to the upper-right as the human accent. ---- */}
           <View style={styles.masthead}>
-            {/* Orb — floated, absolute, overlapping the headline's top-right.
-                Smaller than before so the SERIF dominates the composition. */}
-            <Rise delay={60} style={styles.orbFloat}>
-              <AssistantAuroraOrb size={132} state="idle" scanTone={signal.scanTone} />
+            {/* Scan-face HERO — the recurring signature image. A framed
+                editorial portrait of the user's latest scan floats to the
+                upper-right (carrying the scan-aware orb as a corner badge),
+                tying Home to THIS user the moment it opens. Pre-scan it is an
+                honest, framed locked placeholder — never a fake image. The
+                giant serif still dominates; the portrait is the accent. */}
+            <Rise delay={60} style={styles.heroPortraitFloat}>
+              <ScanHeroPortrait
+                photoUri={latestPhotoUri}
+                scanReady={scanReady}
+                focusZoneLabel={signal.focusZoneLabel}
+                timestampLabel={signal.timestampLabel}
+                scanTone={signal.scanTone}
+                onPress={goScan}
+              />
             </Rise>
 
             <Rise delay={0}>
@@ -511,22 +535,22 @@ const styles = StyleSheet.create({
     paddingBottom: dsSpace.sm,
     minHeight: 360,
   },
-  // Orb floated to the upper-right, overlapping the headline's top edge so the
-  // SERIF reads as the dominant element and the orb as its intelligence accent.
-  orbFloat: {
+  // Scan-face portrait floated to the upper-right, slightly overlapping the
+  // headline's top band so the SERIF still reads as dominant and the real
+  // photo is the warm, human accent. zIndex lifts it (and its orb badge) above
+  // the headline text + ambient washes.
+  heroPortraitFloat: {
     position: 'absolute',
-    top: -dsSpace.sm,
-    right: -dsSpace.md,
-    width: 132,
-    height: 132,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 0,
+    top: dsSpace.xs,
+    right: 0,
+    zIndex: 2,
   },
   heroEyebrow: {
     ...dsType.label,
     color: puraAssist.blueText,
     marginBottom: dsSpace.md,
+    // Keep the eyebrow clear of the floated portrait's left edge.
+    maxWidth: 200,
   },
   // THE moment — display-scale Instrument Serif, left-aligned, tight leading.
   hero: {
