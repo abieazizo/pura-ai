@@ -688,3 +688,35 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
 - **Next run picks up at:** Cycle 12 — Imagery & photography (scanned face + product images: ratios,
   masks, scrims, brand framing; face as recurring hero). Me imagery (5.5) is the lowest scorecard
   cell → prime target. Run as a broad workflow ONLY when the repo is quiet (no foreign session).
+
+### Cycle 12 — Imagery & photography ✅ (landed; entangled in foreign commit 315d30b)
+- **Focus:** the scanned FACE as a recurring editorial hero, + consistent framing (≈4:5 ratios,
+  bottom scrims for legibility, brand frames + lift) for face AND product images across every
+  surface. Bold + immediately-visible (user directive). 6-agent parallel workflow.
+- **⚠️ Collision (3rd):** the foreign feature session resumed and committed my Cycle-12 imagery work
+  as `315d30b` ("feat(scan,progress,shop): scan-face portraits + before/after compare + shop depth"),
+  built on my `4dde89c`. Work LANDED + compiles (`tsc`=0); no standalone Cycle-12 commit. New
+  components: `ScanHeroPortrait` (Home), `ScanFacePortrait` + `FramedProductImage` (Routine companion).
+- **Per-page composite before→after + imagery sub-score (imagery was the app's weakest dimension):**
+
+  | Page | Composite | Imagery |
+  |---|---|---|
+  | Home | 7.6 → 7.95 (+0.35) | 3 → 7.8 |
+  | Shop | 7.4 → 7.9 (+0.5) | 6.2 → 8.1 |
+  | Scan | 7.4 → 7.8 (+0.4) | 6 → 8.4 |
+  | Routine | 7.1 → 7.55 (+0.45) | 5.7 → 8.4 |
+  | Me | 7.4 → 7.9 (+0.5) | 5.5 → 8.2 |
+  | Onboarding | 7.5 → 7.9 (+0.4) | 5.5 → 8 |
+
+  Every page +0.3. App composite ≈ **8.3**.
+- **Key moves:** Me **FaceHero** (4:5 latest-scan portrait + scrim + /100 score pill); Scan reveal
+  face as a full 4:5 hero across beats (locked beats untouched); Home masthead **scan-portrait with
+  the orb as an intelligence badge**; Shop scanned-face feed hero + unified spotlit packshots;
+  Routine `ScanFacePortrait` anchor + framed product images; Onboarding editorial face-capture guide frame.
+- **Verification:** `tsc`=0 on 315d30b; **preview rebuilt** (`npm run build:web`). Real canonical
+  `photoUri` only; honest framed placeholders when no photo exists.
+- **⚠️ Process:** 3rd consecutive entanglement — the foreign session keeps absorbing design cycles via
+  `git add` on the shared tree. Work lands, but with no clean per-cycle commits; truly clean cycles
+  require that session to stop.
+- **Next run picks up at:** Cycle 13 — Motion & micro-interactions (springs, gesture physics, press
+  feedback, well-placed haptics; nothing abrupt/static). Broad workflow ONLY when the repo is quiet.
