@@ -51,6 +51,7 @@ import type { SkinRead } from '@/types/skinRead';
 import { hapt } from '@/utils/haptics';
 
 import { buildYourSkinViewModel } from './viewModel';
+import { guardRead } from './coverageGuard';
 import { LAYOUT, SECTION_GAP, COPY2, TYPE2, tokensFor } from './yourSkinMotion';
 import { SectionReveal } from './SectionReveal';
 import { SynthesisSection } from './SynthesisSection';
@@ -114,19 +115,31 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
 
   const insets = useSafeAreaInsets();
   const tokens = useMemo(() => tokensFor(theme), [theme]);
-  const vm = useMemo(() => buildYourSkinViewModel(read), [read]);
+
+  // Coverage-cap guard: strip any over-cap spot / whole-face wash BEFORE the
+  // screen derives anything, so a wash is impossible to render and the markers,
+  // tints, plan, and map all read the SAME sanitized findings. Honest data passes
+  // through untouched; a flagged wash signals the upstream normalizer to regenerate.
+  const { findings: guardedFindings, report: coverageReport } = useMemo(() => guardRead(read), [read]);
+  const gRead = useMemo(() => ({ ...read, findings: guardedFindings }), [read, guardedFindings]);
+  useEffect(() => {
+    if (__DEV__ && coverageReport.regenerateAdvised) {
+      console.warn('[YourSkin] coverage-cap guard rejected a whole-face wash — regenerate advised:', coverageReport.rejectedIds);
+    }
+  }, [coverageReport]);
+  const vm = useMemo(() => buildYourSkinViewModel(gRead), [gRead]);
 
   const findingsById = useMemo(() => {
-    const m: Record<string, (typeof read.findings)[number]> = {};
-    for (const f of read.findings) m[f.id] = f;
+    const m: Record<string, (typeof gRead.findings)[number]> = {};
+    for (const f of gRead.findings) m[f.id] = f;
     return m;
-  }, [read.findings]);
+  }, [gRead.findings]);
 
   const tintByFinding = useMemo(() => {
     const m: Record<string, MetricTint> = {};
-    for (const f of read.findings) m[f.id] = metricTint(f.metric, theme);
+    for (const f of gRead.findings) m[f.id] = metricTint(f.metric, theme);
     return m;
-  }, [read.findings, theme]);
+  }, [gRead.findings, theme]);
 
   // ── Screen state ──────────────────────────────────────────────────────────
   const [selectedId, setSelectedId] = useState<string | null>(vm.hero?.id ?? null);
@@ -164,8 +177,8 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
   }, [vm.moves, coShapePriorityId]);
 
   const concernFindings = useMemo(
-    () => read.findings.filter((f) => f.metric !== 'positive' && f.spots.length > 0 && !downweighted.has(f.id)),
-    [read.findings, downweighted],
+    () => gRead.findings.filter((f) => f.metric !== 'positive' && f.spots.length > 0 && !downweighted.has(f.id)),
+    [gRead.findings, downweighted],
   );
 
   // ── Warm orb beats — a single sticky instance, gently reactive. ─────────────
@@ -286,7 +299,7 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
       >
         {/* SECTION A — synthesis + horizon. */}
         <SectionReveal scrollY={scrollY} viewportH={viewportH} index={sectionIndex++} reduceMotion={reduceMotion}>
-          <SynthesisSection summaryLine={summaryLine} horizonLine={read.horizonLine} tokens={tokens} />
+          <SynthesisSection summaryLine={summaryLine} horizonLine={read.horizonLine} tokens={tokens} scanTone={vm.scanTone} />
         </SectionReveal>
 
         {/* Bad-photo carry-over banner (calm, honest, never blocks). */}
@@ -303,7 +316,7 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
             toneBackdrop={toneBackdrop}
             faceBox={faceBox}
             mirrored={mirrored}
-            findings={read.findings}
+            findings={gRead.findings}
             activeFindingId={activeGlowId}
             onSelectFinding={selectFromMap}
             theme={theme}

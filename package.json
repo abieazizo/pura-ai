@@ -16,6 +16,7 @@
     "verify": "tsx scripts/verifyAll.ts",
     "verify:products": "tsx scripts/verifyProductsTab.ts",
     "verify:home": "tsx scripts/verifyHomeNight.ts",
+    "verify:firstfinding": "tsx scripts/verifyFirstFinding.ts",
     "verify:ai": "tsx --env-file=.env scripts/verifyAi.ts",
     "lanip": "tsx --env-file=.env scripts/lanip.ts",
     "firewall:allow": "powershell -ExecutionPolicy Bypass -File scripts/allow-firewall.ps1",

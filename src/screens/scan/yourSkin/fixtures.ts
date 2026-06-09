@@ -371,12 +371,61 @@ const badPhotoCarry: SkinRead = {
   ],
 };
 
+// ── 6 · Coverage-cap test — an attempted WHOLE-FACE WASH. The guard MUST reject
+//      it (combined region area > WHOLE_FACE_CAP) so it can never render as a
+//      face-wide filter. Shown on a DEEP tone so the proof doubles as "dark marks
+//      caught, face never washed". Used by the gallery + scripts/verifyYourSkin.ts.
+//      NOT a normal flow.
+export const WHOLE_FACE_WASH_READ: SkinRead = {
+  openingLine: 'Your skin looks healthy overall — the main thing is a bit of warmth in a few places.',
+  skinSummaryLine: 'Your skin looks healthy and even — there’s just a little warmth we can calm down.',
+  horizonLine: 'A few gentle days should settle it.',
+  findings: [
+    {
+      id: 'read-finding-0',
+      name: 'A little warmth',
+      metric: 'redness',
+      whatISee: 'Your skin runs a touch warmer than usual in a few spots.',
+      level: 'a lot',
+      spots: [
+        { region: 'forehead', place: 'Forehead', strength: 0.9 },
+        { region: 'left_cheek', place: 'Left cheek', strength: 0.9 },
+        { region: 'right_cheek', place: 'Right cheek', strength: 0.9 },
+        { region: 'nose', place: 'Nose', strength: 0.9 },
+        { region: 'under_eyes', place: 'Under your eyes', strength: 0.9 },
+        { region: 'around_mouth', place: 'Around your mouth', strength: 0.9 },
+        { region: 'chin', place: 'Chin', strength: 0.9 },
+        { region: 'jaw', place: 'Jaw', strength: 0.9 },
+      ],
+      whatItMeans: 'Warmth like this usually just means skin felt a little sensitive that day.',
+      doThis: 'Keep tonight gentle — cool water, nothing harsh.',
+      howSure: 'fairly sure',
+      lowConfidence: false,
+      strongestRegion: 'forehead',
+    },
+  ],
+  goodThings: ['Even tone overall', 'Healthy glow'],
+  photoCheck: { light: 'good', clear: true, wholeFaceShown: true, makeupOn: false, betterPhotoWouldHelp: false },
+  sureLevel: 'fairly sure',
+  hasRealConcerns: true,
+  routineFocus: [
+    {
+      id: 'move-0',
+      title: 'Be gentle for a few days',
+      why: 'Cooling things down is the quickest way to calm that warmth.',
+      addresses: ['A little warmth'],
+      addressesIds: ['read-finding-0'],
+    },
+  ],
+};
+
 export const YOUR_SKIN_FIXTURES: YourSkinFixture[] = [
   { key: 'redness', label: 'Redness (2)', read: redness, toneBackdrop: 'medium', goal: 'Calmer, less red skin', mirrored: true, theme: 'dark' },
   { key: 'six', label: 'Six findings', read: sixFindings, toneBackdrop: 'medium', goal: 'Clearer, more even skin', mirrored: true, theme: 'dark' },
   { key: 'deep', label: 'Deep skin (3)', read: deepSkin, toneBackdrop: 'deep', goal: 'Fade old marks, even tone', mirrored: true, theme: 'dark' },
   { key: 'great', label: 'Great skin', read: greatSkin, toneBackdrop: 'light', goal: 'Keep my skin healthy', mirrored: true, theme: 'dark' },
   { key: 'badphoto', label: 'Bad photo', read: badPhotoCarry, toneBackdrop: 'light', goal: 'Calmer skin', mirrored: true, theme: 'dark' },
+  { key: 'wash', label: 'Wash → guarded', read: WHOLE_FACE_WASH_READ, toneBackdrop: 'deep', goal: 'Calmer skin', mirrored: true, theme: 'dark' },
 ];
 
 export const FIXTURE_BY_KEY: Record<string, YourSkinFixture> = Object.fromEntries(

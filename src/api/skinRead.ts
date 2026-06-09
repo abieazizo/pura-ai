@@ -20,6 +20,8 @@
 
 import type { RawSkinRead } from '@/screens/scan/firstFinding/normalizeSkinRead';
 import { normalizeSkinRead } from '@/screens/scan/firstFinding/normalizeSkinRead';
+import { guardRead } from '@/screens/scan/yourSkin/coverageGuard';
+import { withPlan, type RawPlanFields } from '@/screens/scan/yourSkin/normalizePlan';
 import type { SkinRead, SkinReadOutcome } from '@/types/skinRead';
 import { aiGateway } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
@@ -168,10 +170,12 @@ async function readImageAsBase64(photoUri: string): Promise<string> {
   });
 }
 
+type RawSkinReadResponse = RawSkinRead & RawPlanFields;
+
 async function postReadSkin(
   imageBase64: string,
   signal?: AbortSignal,
-): Promise<RawSkinRead> {
+): Promise<RawSkinReadResponse> {
   const base = aiGateway.proxyUrl();
   if (!base) throw new Error('AI proxy not configured');
   const token = process.env.EXPO_PUBLIC_PURA_AI_PROXY_TOKEN ?? '';
@@ -184,9 +188,9 @@ async function postReadSkin(
     signal,
   });
   if (!res.ok) throw new Error(`readSkin proxy error ${res.status}`);
-  const json = (await res.json()) as RawSkinRead | { result?: RawSkinRead };
+  const json = (await res.json()) as RawSkinReadResponse | { result?: RawSkinReadResponse };
   // Accept either the raw object or a { result } envelope.
-  return (json as { result?: RawSkinRead }).result ?? (json as RawSkinRead);
+  return (json as { result?: RawSkinReadResponse }).result ?? (json as RawSkinReadResponse);
 }
 
 // ===========================================================================
@@ -227,9 +231,12 @@ export async function readSkinFromPhoto(args: {
     };
   }
 
-  let { read, needsRegen, reasons } = normalizeSkinRead(raw);
+  let { read, needsRegen, reasons } = finalizeRead(raw);
 
-  // Reject + regenerate ONCE, then accept best-effort.
+  // Reject + regenerate ONCE, then accept best-effort. The regenerate signal now
+  // fires on a plain-language / stranger-test failure OR a COVERAGE-CAP wash (a
+  // finding the model spread across the whole face) — so a face-wide wash never
+  // survives to the screen on a clean second pass.
   if (needsRegen) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
@@ -237,7 +244,7 @@ export async function readSkinFromPhoto(args: {
     }
     try {
       const raw2 = await postReadSkin(imageBase64, signal);
-      const second = normalizeSkinRead(raw2);
+      const second = finalizeRead(raw2);
       if (second.read) read = second.read;
     } catch {
       /* keep first read if the regen failed */
@@ -245,6 +252,50 @@ export async function readSkinFromPhoto(args: {
   }
 
   return outcomeFromRead(read);
+}
+
+/**
+ * The full validation pipeline for ONE raw response — shared by the first pass
+ * and the single regenerate, so both go through the same three gates in order:
+ *
+ *   1. `normalizeSkinRead` — plain-language + stranger-test on the hero, mapping
+ *      the model's words onto the canonical read (and its reject/regen signal).
+ *   2. `guardRead` — the COVERAGE-CAP guard: drop any spot whose region is too
+ *      large, and EMPTY any finding that tried to wash the whole face (advising a
+ *      regenerate). A face-wide wash is therefore structurally unable to render,
+ *      and `hasRealConcerns` is recomputed from what actually survived.
+ *   3. `withPlan` — fold in the screen-2 plan fields (skin_summary_line,
+ *      horizon_line, routine_focus) off the SAME response, each move's
+ *      `addresses` resolved onto finding ids. The screen reads ONLY this result —
+ *      never the raw model output, and never an unguarded read.
+ */
+function finalizeRead(raw: RawSkinReadResponse): {
+  read: SkinRead | null;
+  needsRegen: boolean;
+  reasons: string[];
+} {
+  const base = normalizeSkinRead(raw);
+  if (!base.read) return base;
+
+  const guarded = guardRead(base.read);
+  const concernsLeft = guarded.findings.some(
+    (f) => f.metric !== 'positive' && f.spots.length > 0,
+  );
+  const guardedRead: SkinRead = {
+    ...base.read,
+    findings: guarded.findings,
+    hasRealConcerns: concernsLeft,
+  };
+
+  const read = withPlan(guardedRead, raw);
+  const reasons = guarded.report.regenerateAdvised
+    ? [...base.reasons, `coverage wash → regenerate (${guarded.report.rejectedIds.join(', ')})`]
+    : base.reasons;
+  return {
+    read,
+    needsRegen: base.needsRegen || guarded.report.regenerateAdvised,
+    reasons,
+  };
 }
 
 /** Map a validated read → the outcome the screen branches on. */

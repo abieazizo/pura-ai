@@ -109,6 +109,23 @@ export const TYPE2 = {
     lineHeight: 30,
     letterSpacing: -0.4,
   } satisfies TextStyle,
+  /** The oversized editorial "moment" — Section A's serif hero, tucked into the
+   *  orb's negative space. 40/44, tracking -0.8. Wraps + shrinks to fit; the orb
+   *  voice never truncates (adjustsFontSizeToFit on the consumer). */
+  momentXL: {
+    fontFamily: SERIF,
+    fontSize: 40,
+    lineHeight: 44,
+    letterSpacing: -0.8,
+  } satisfies TextStyle,
+  /** Wide-tracked Inter caps eyebrow ("DAY 1 · YOUR SKIN"). 11px, +1.6 tracking. */
+  eyebrow: {
+    fontFamily: INTER_MED,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase' as const,
+  } satisfies TextStyle,
   /** horizon_line — the bounded, hopeful forward-look. */
   horizon: {
     fontFamily: SERIF,
