@@ -641,3 +641,50 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
 - **Next run picks up at:** Cycle 10 — CHECKPOINT + color & gradient sophistication (re-audit the
   whole app and lock a consistent scorecard; refine ambient/mesh gradients; enforce Pura-Blue
   restraint; harmonize semantic colors), run as a broad workflow. Carried debts unchanged.
+
+### Cycle 10 — Checkpoint + color & gradient sophistication ✅ (landed; entangled in foreign commits)
+- **Focus:** richer ambient/mesh gradients, Pura-Blue RESTRAINT (accent pulled back so it punctuates),
+  harmonized semantic colors + color-based depth across every surface; plus a fresh full-rubric
+  re-score (the checkpoint). 6-agent parallel workflow.
+- **⚠️ Collision:** a foreign feature session committed mid-workflow; its `git add` ABSORBED the
+  Cycle-10 color edits into foreign commits `e78320b`/`224107c` (mixed with its YourSkin feature) — so
+  no standalone Cycle-10 commit exists, but the color work LANDED on the branch. `tsc`=0, nothing lost.
+- **Per-page composite before→after (fresh-eyes):** Home 7.4→7.8 · Shop 7.3→7.9 · Scan 7.7→8.05 ·
+  Routine 7.65→7.95 · Me 6.8→7.15 · Onboarding 7.4→7.8 — every page +0.3.
+- **🔒 LOCKED checkpoint scorecard (consistent baseline; ia·type·color·spacing·comp·imagery·dataViz·states·motion·voice):**
+  Home 8·8·8·8·7·7·7·7·8·8 · Shop 7.5·8·8·7.5·7.5·7·7·8·8·8 · Scan 8·8.5·8.5·8·8·7.5·8·7.5·8·8.5 ·
+  Routine 7.5·8.5·8.5·8·7.9·7.5·7.2·7.9·8.5·8 · Me 7.5·8·7.6·7.4·7·5.5·7·6.5·7·7.5 ·
+  Onboarding 8·8.5·8·7.5·7.5·8·6.5·7.5·8.5·8. (Me imagery 5.5 + states 6.5 = lowest cells, priority.)
+
+### Cycle 11 — BOLD structural elevation ✅ (landed; entangled in foreign commit 8c24fd9)
+- **Focus:** the user said they "barely see any changes," so this cycle is DRAMATIC + immediately
+  visible — dominant heroes, display-scale serif, big data moments. 6-agent parallel workflow under
+  the GO-BOLDER directive.
+- **⚠️ Collision:** the foreign session committed `8c24fd9` mid-workflow, ABSORBING all Cycle-11 bold
+  edits (Me +541, ScanReveal +451, StackCard +231, …) into it alongside its yourRoutine activation.
+  Work LANDED (tree clean, `tsc`=0); no standalone Cycle-11 commit.
+- **Per-page composite before→after (fresh-eyes; big jumps):** Home 7.4→7.9 (+0.5) · Shop 6.8→8.4
+  (+1.6) · Scan 6.6→8.1 (+1.5) · Routine 7.1→8.4 (+1.3) · Me 6.4→8.1 (+1.7) · Onboarding 7.0→8.5
+  (+1.5). App composite ≈ **8.2**.
+- **The bold move per surface:**
+  - **Home** — giant 60px left-aligned Instrument-Serif masthead (final line Pura Blue); orb demoted
+    from a 158px centered crown to a 132px upper-right intelligence accent.
+  - **Shop** — card → lit gallery still-life: packshot 0.78→1.04× on a spotlit plinth, 36px serif
+    name, 34px display price, 88px match medallion, serif "WHY THIS" pull-quote.
+  - **Scan** — Focus beat → "Your skin report" magazine spread: 232px face banner + 270° severity
+    dial with a giant "3 / 4" tabular numeral (WITHIN the locked beats — composition/type only).
+  - **Routine** — hero focus card 360→524px, 72px "01 / 03" step numeral + full-width step meter.
+  - **Me** — full-bleed dark "Score Colossus": ~116pt count-up score on an ink panel + Pura-Blue
+    aura + "+N pts since day one" ribbon (was a small mid-page card).
+  - **Onboarding** — ColdOpen → editorial poster: 70px stacked serif headline ("Your face / already
+    / knows."), orb reduced to a signature mark.
+- **Verification:** `tsc --noEmit` = 0 (merged state); locked Scan reveal beats/timing preserved.
+  **Preview REBUILT** — `npm run build:web` → `dist/` (exit 0), served by the running pura-web-static
+  on port 4173, so the bold work is finally VISIBLE (reload the preview).
+- **⚠️ Process note:** Cycles 10 & 11 both entangled because a foreign feature session edited the
+  SAME working tree and ran `git add -A` mid-workflow, absorbing the design agents' edits into ITS
+  commits. The design work all LANDED, but with mixed attribution. Clean cycles require ONE session
+  editing the repo at a time (memory feedback-concurrent-loop-sessions).
+- **Next run picks up at:** Cycle 12 — Imagery & photography (scanned face + product images: ratios,
+  masks, scrims, brand framing; face as recurring hero). Me imagery (5.5) is the lowest scorecard
+  cell → prime target. Run as a broad workflow ONLY when the repo is quiet (no foreign session).
