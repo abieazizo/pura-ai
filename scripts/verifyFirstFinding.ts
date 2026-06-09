@@ -24,7 +24,10 @@ import {
 } from '@/screens/scan/firstFinding/faceRegions';
 import { normalizeSkinRead, type RawSkinRead } from '@/screens/scan/firstFinding/normalizeSkinRead';
 import { metricTint } from '@/screens/scan/firstFinding/metricTint';
+import { computeBloomSchedule, anchorWordIndex } from '@/screens/scan/firstFinding/bloomSchedule';
+import { landmarksFromFaceGeometry } from '@/screens/scan/firstFinding/landmarksFromGeometry';
 import type { FaceRegionKey } from '@/types/skinRead';
+import type { FaceLandmarkResult } from '@/types/scanResults';
 
 let pass = 0;
 let fail = 0;
@@ -179,6 +182,48 @@ ok('rolled (tilted) face → cheeks rotate with the head', Math.abs(tiltAsym) > 
 // Localization preserved under warp.
 const fbArea = canonLm.faceBounds.w * FW * (canonLm.faceBounds.h * FH);
 ok('warped glow stays local (no whole-face wash)', (lmLeft.bbox.w * lmLeft.bbox.h) / fbArea < 0.22, `${(((lmLeft.bbox.w * lmLeft.bbox.h) / fbArea) * 100).toFixed(1)}%`);
+
+console.log('\n── 7 · Bloom schedule: bloom ON the spoken place, stronger-first ──');
+const BLOOM_OPTS = { startDelayMs: 120, wordStaggerMs: 60, onWordOffsetMs: 140, bloomStaggerMs: 120 };
+const cheekAnchor = anchorWordIndex(words, 'left_cheek');
+ok('cheek glow anchors on the general "cheek(s)" word, not the trailing "left"', /cheek/i.test(words[cheekAnchor] ?? ''), `idx=${cheekAnchor} word="${words[cheekAnchor]}"`);
+const sched = computeBloomSchedule(words, ['left_cheek', 'right_cheek'], BLOOM_OPTS);
+ok('stronger (left) cheek blooms FIRST in time', sched.firstIndex === 0 && sched.times[0] < sched.times[1], `t=[${sched.times.map((t) => Math.round(t)).join(', ')}] first=${sched.firstIndex}`);
+ok('same-word spots stay one beat (120ms) apart', Math.abs((sched.times[1] - sched.times[0]) - 120) < 1, `Δ=${Math.round(sched.times[1] - sched.times[0])}ms`);
+const lastWordT = 120 + (words.length - 1) * 60 + 140;
+ok('blooms land mid-sentence (on the place), not delayed to the final word', sched.times[0] < lastWordT - 200, `bloom=${Math.round(sched.times[0])} « lastWord=${Math.round(lastWordT)}`);
+const noName = computeBloomSchedule(['skin', 'looks', 'calm'], ['forehead'], BLOOM_OPTS);
+ok('region not named in the line → falls back to the last word (never lost)', noName.times[0] >= 120 + 2 * 60, `t=${Math.round(noName.times[0])}`);
+
+console.log('\n── 8 · Production face-tracking adapter (scan geometry → FaceLandmarks) ──');
+const goodGeom: FaceLandmarkResult = {
+  faceBounds: { x: 0.2, y: 0.12, width: 0.6, height: 0.78 },
+  landmarks: {
+    leftEye: { x: 0.41, y: 0.43 }, rightEye: { x: 0.59, y: 0.42 },
+    noseTip: { x: 0.5, y: 0.55 }, mouthCenter: { x: 0.5, y: 0.69 },
+    chin: { x: 0.5, y: 0.85 }, foreheadCenter: { x: 0.5, y: 0.25 },
+  },
+  orientation: { yaw: 0, pitch: 0, roll: 0 },
+  usableForOverlay: true,
+};
+const adapted = landmarksFromFaceGeometry(goodGeom);
+ok('usable scan geometry → FaceLandmarks (width/height → w/h)', !!adapted && adapted.faceBounds.w === 0.6 && adapted.faceBounds.h === 0.78);
+ok('landmark anchors pass through 1:1', !!adapted && adapted.leftEye.x === 0.41 && adapted.mouthCenter.y === 0.69 && adapted.foreheadCenter.y === 0.25);
+ok('unusable geometry (usableForOverlay=false) → null (proportional fallback)', landmarksFromFaceGeometry({ ...goodGeom, usableForOverlay: false }) === null);
+ok('degenerate (tiny) face box → null', landmarksFromFaceGeometry({ ...goodGeom, faceBounds: { x: 0.45, y: 0.45, width: 0.08, height: 0.1 } }) === null);
+ok('null / undefined geometry → null', landmarksFromFaceGeometry(null) === null && landmarksFromFaceGeometry(undefined) === null);
+const offGeom: FaceLandmarkResult = {
+  ...goodGeom,
+  faceBounds: { x: 0.35, y: 0.12, width: 0.6, height: 0.78 },
+  landmarks: {
+    leftEye: { x: 0.56, y: 0.43 }, rightEye: { x: 0.74, y: 0.42 },
+    noseTip: { x: 0.65, y: 0.55 }, mouthCenter: { x: 0.65, y: 0.69 },
+    chin: { x: 0.65, y: 0.85 }, foreheadCenter: { x: 0.65, y: 0.25 },
+  },
+};
+const gC = regionGeometryFromLandmarks('left_cheek', landmarksFromFaceGeometry(goodGeom)!, FW, FH, true);
+const gO = regionGeometryFromLandmarks('left_cheek', landmarksFromFaceGeometry(offGeom)!, FW, FH, true);
+ok('adapted off-center face → glow tracks via the screen’s own affine warp', gO.centroid.x - gC.centroid.x > 0.08 * FW, `Δx=${(gO.centroid.x - gC.centroid.x).toFixed(0)}px`);
 
 console.log(`\n──────────────\nPASS ${pass} · FAIL ${fail}`);
 if (fail > 0) {

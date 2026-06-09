@@ -19,11 +19,13 @@ results screen.
 | `../../../api/skinRead.ts` | Real GPT-4V wiring: `SKIN_READ_SYSTEM_PROMPT` + strict `SKIN_READ_JSON_SCHEMA`, `readSkinFromPhoto`, fixtures. |
 | `normalizeSkinRead.ts` | Validator/normalizer: banned-jargon / empty-spots / stranger-test → **reject + regenerate once**. |
 | `faceRegions.ts` | Region polygons (geometry layer). Proportional detector today; native Vision/MediaPipe drop-in. Handles person-left/right + mirroring. |
+| `landmarksFromGeometry.ts` | **Production face-tracking bridge**: adapts the canonical scan `FaceLandmarkResult` (`faceGeometryProvider`) → `FaceLandmarks`. Returns `null` when geometry isn't overlay-usable (→ proportional fallback). |
+| `bloomSchedule.ts` | **WHEN** each glow blooms: anchors on the spoken **place** word (general noun, e.g. "cheeks" — not the trailing "left"), stronger-first + one-beat ties. |
 | `metricTint.ts` | ONE tint per metric (Pura Blue is never a concern), both themes. |
 | `motion.ts` | The single dial-board: timeline, sweep path, status copy, type scale, **both** theme token sets. |
 | `GazeSweep.tsx` | Looping feathered gaze sprite (position+opacity only). Not a scan line. |
 | `PhotoStage.tsx` | The one persistent photo (fill): mute → glows read as added light. |
-| `GlowField.tsx` | The signature beat: additive (`mixBlendMode:'screen'`), region-clipped, per-spot bloom + chips + leader lines. |
+| `GlowField.tsx` | The signature beat: additive (`mixBlendMode:'screen'`), region-clipped, per-spot bloom + chips + leader lines. A no-concerns read reuses it as a soft, chip-less **positive wash**. |
 | `FindingCard.tsx` | Raised finding card (level pill + micro-rows + confidence). |
 | `FirstFindingScreen.tsx` | The orchestrator (one timeline; drives the orb via `useOrb()`). |
 | `FirstFindingContainer.tsx` | Production wrapper — runs the real call, feeds the screen. |
@@ -40,11 +42,19 @@ import { FirstFindingContainer } from '@/screens/scan/firstFinding';
 <FirstFindingContainer
   photoUri={capturedPhotoUri}
   mirrored                          // front-camera selfie
+  faceGeometry={scanFaceGeometry}   // OPTIONAL: from faceGeometryProvider →
+                                    // glows AFFINE-warp to the real face.
+                                    // Omit → proportional fallback (centered box).
   onSeeEverything={() => nav.navigate('YourSkin' /* next results screen */)}
   onRetake={() => nav.navigate('ScanCapture')}
   theme="dark"                      // hero default
 />
 ```
+
+To activate real face-tracking in production, hand the container the scan's
+`FaceLandmarkResult` as `faceGeometry` — the container adapts it via
+`landmarksFromFaceGeometry` and the screen warps the glows. No native ML needed;
+it reuses the project's existing `faceGeometryProvider` (AI `face_overlay`).
 
 **Server route to add** (one handler, mirrors `analyzeFaceScan`): a `readSkin`
 proxy op that imports `SKIN_READ_SYSTEM_PROMPT` + `SKIN_READ_JSON_SCHEMA` from
@@ -68,13 +78,24 @@ real anchors (eyes + mouth) from the project's `faceGeometryProvider` / AI
 off-center or **tilted (rolled)**. Absent anchors → the proportional fallback
 (identity warp). Person-left/right + mirroring handled either way.
 
+The bridge is `landmarksFromGeometry.landmarksFromFaceGeometry(FaceLandmarkResult)`:
+a near-1:1 adapter (`width/height → w/h`, anchors verbatim) that gates on
+`usableForOverlay` (and a min-box check), returning `null` when the geometry
+isn't trustworthy so the screen falls back rather than warp onto bad coordinates.
+`FirstFindingContainer` runs it from its optional `faceGeometry` prop.
+
 ## Verification status
 
 - `npx tsc --noEmit` — **0 errors in these files.**
-- `npx tsx scripts/verifyFirstFinding.ts` — **30/30 deterministic assertions pass**,
-  incl. landmark warp: identity Δ=0px, off-center tracks +25px, roll rotates the
-  cheeks (Δasym 35px), and the warped glow stays local (6.2% of face → no
-  whole-face wash on any skin tone).
+- `npm run verify:firstfinding` (`npx tsx scripts/verifyFirstFinding.ts`) —
+  **41/41 deterministic assertions pass**, incl.:
+  - landmark warp: identity Δ=0px, off-center tracks +25px, roll rotates the
+    cheeks (Δasym 35px), warped glow stays local (6.2% → no whole-face wash);
+  - bloom schedule: cheek glow anchors on "cheeks" (mid-sentence, 1700ms) not the
+    trailing "left." (2060ms), stronger-first, one 120ms beat apart, unnamed
+    region safely falls back to the last word;
+  - face-tracking adapter: usable geometry maps (w/h + anchors 1:1), unusable /
+    degenerate / null → `null`, adapted off-center face tracks +37px via the warp.
 - Motion (sweep, pivot, word↔glow sync, bloom, dark-mode luminosity) is
   UI-thread Reanimated and is verified by design + the deterministic core; it can
   only be fully judged on-device / in a recording (a still can't capture it), and
@@ -91,8 +112,8 @@ off-center or **tilted (rolled)**. Absent anchors → the proportional fallback
 | Shared-element resize at the pivot (same photo) + soft haptic | ✅ |
 | Orb reused (not re-mounted), looks down, warm "got it" beat before any word | ✅ `useOrb()` + `reactArchetype('warm')` |
 | Opening line word-by-word, **never** overflows/truncates | ✅ reuses `OrbSpeech` (fade-in-place, pre-wrapped) |
-| Glow blooms on the EXACT spots, ON the spoken word, additive, clipped, alpha-capped | ✅ `mixBlendMode:'screen'` + ClipPath; word-index sync |
-| Stronger side brighter + a beat sooner | ✅ strongest-first sort + monotonic bloom order |
+| Glow blooms on the EXACT spots, ON the spoken word, additive, clipped, alpha-capped | ✅ `mixBlendMode:'screen'` + ClipPath; blooms on the spoken **place** word (`bloomSchedule`) |
+| Stronger side brighter + a beat sooner | ✅ strength-driven brightness + strongest-first ties (`bloomSchedule`) |
 | No whole-face wash — proven on any skin tone (incl. deep) | ✅ geometry: glow ≤14% face; both cheeks 12.3% |
 | Glow tracks the real face (off-center / tilted), not a fixed box | ✅ affine landmark warp (reuses faceGeometryProvider) |
 | Differentiate-without-color: location chip + leader line | ✅ |

@@ -5,11 +5,13 @@
  * onboarding OrbProvider so the screen drives the persistent companion orb.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readSkinFromPhoto } from '@/api/skinRead';
 import type { SkinReadOutcome } from '@/types/skinRead';
+import type { FaceLandmarkResult } from '@/types/scanResults';
 import { FirstFindingScreen } from './FirstFindingScreen';
 import type { FaceLandmarks } from './faceRegions';
+import { landmarksFromFaceGeometry } from './landmarksFromGeometry';
 import type { ScreenTheme } from './metricTint';
 
 export interface FirstFindingContainerProps {
@@ -20,9 +22,13 @@ export interface FirstFindingContainerProps {
   onRetake: () => void;
   theme?: ScreenTheme;
   mirrored?: boolean;
-  /** Real face anchors (faceGeometryProvider / AI overlay) → glows track the
-   *  actual face. Wire from the scan flow's detected geometry when available. */
+  /** Real face anchors → glows track the actual face. Pass these directly, OR
+   *  pass `faceGeometry` to derive them. */
   landmarks?: FaceLandmarks;
+  /** The scan's canonical face geometry (services/scanResults/faceGeometry →
+   *  faceGeometryProvider). When present + usable, glows AFFINE-warp to the real
+   *  face; an explicit `landmarks` prop takes precedence. */
+  faceGeometry?: FaceLandmarkResult;
 }
 
 export function FirstFindingContainer({
@@ -32,9 +38,17 @@ export function FirstFindingContainer({
   theme = 'dark',
   mirrored = true,
   landmarks,
+  faceGeometry,
 }: FirstFindingContainerProps) {
   const [outcome, setOutcome] = useState<SkinReadOutcome>({ status: 'pending' });
   const reqId = useRef(0);
+
+  // Explicit landmarks win; else derive real face-tracking from the scan
+  // geometry; else undefined → the screen's proportional fallback.
+  const trackedLandmarks = useMemo(
+    () => landmarks ?? landmarksFromFaceGeometry(faceGeometry) ?? undefined,
+    [landmarks, faceGeometry],
+  );
 
   const run = useCallback(() => {
     const id = ++reqId.current;
@@ -69,7 +83,7 @@ export function FirstFindingContainer({
       onTryAgain={run}
       theme={theme}
       mirrored={mirrored}
-      landmarks={landmarks}
+      landmarks={trackedLandmarks}
     />
   );
 }

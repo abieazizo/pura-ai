@@ -925,6 +925,33 @@ function DevToolsCard() {
           Renders fixtures for every truth-first state
         </Text>
       </Pressable>
+
+      {/* The FINAL scan-results screen 2 ("Your Skin"). Its live data path —
+          the plain-language, region-located read + plan — only comes from the
+          `readSkin` server route (not built yet), so it can't auto-open after a
+          real scan WITHOUT fabricating findings (a CLAUDE.md no). Until that
+          route lands, this opens the REAL screen with the realistic fixtures
+          (incl. the deep-skin multi-finding face). */}
+      <Pressable
+        onPress={() => {
+          // @ts-expect-error — dev route present in __DEV__ builds only.
+          navigation.navigate('YourSkinDev');
+        }}
+        style={({ pressed }) => [
+          devToolStyles.row,
+          pressed && { opacity: 0.7 },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Open Your Skin scan-results screen 2"
+        nativeID="dev-open-your-skin"
+      >
+        <Text style={devToolStyles.label} maxFontSizeMultiplier={1.15}>
+          Your Skin · scan-results screen 2
+        </Text>
+        <Text style={devToolStyles.hint} maxFontSizeMultiplier={1.15}>
+          The full results screen — 6 cases, dark/light, a11y modes
+        </Text>
+      </Pressable>
     </View>
   );
 }

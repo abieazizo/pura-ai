@@ -49,6 +49,7 @@ import {
   primaryFinding,
   REGION_CHIP,
   REGION_LABEL,
+  type FaceRegionKey,
   type SkinRead,
   type SkinReadFinding,
   type SkinReadOutcome,
@@ -58,10 +59,10 @@ import {
   proportionalFaceDetector,
   regionGeometry,
   regionGeometryFromLandmarks,
-  regionWordIndex,
   type FaceBox,
   type FaceLandmarks,
 } from './faceRegions';
+import { computeBloomSchedule } from './bloomSchedule';
 import { metricTint, type ScreenTheme } from './metricTint';
 import {
   COPY,
@@ -81,6 +82,13 @@ import { OrbSpeech } from '@/screens/onboarding/orb/OrbSpeech';
 
 const ORB_SIZE = 64;
 const ORB_ZONE = ORB_SIZE + LAYOUT.orbToPhoto;
+
+// A no-concerns read earns a single soft, DISTRIBUTED positive wash — not one hot
+// spot, not a whole-face blob: gentle low-strength light across a few regions with
+// chips OFF, assembled from the same region-clipped additive primitive as concerns
+// so the good-news moment feels as authored as the concern path.
+const POSITIVE_WASH_REGIONS: FaceRegionKey[] = ['forehead', 'left_cheek', 'right_cheek', 'chin'];
+const POSITIVE_WASH_STRENGTH = 0.16;
 
 export interface FirstFindingScreenProps {
   /** The captured selfie (front camera; mirrored at display by default). */
@@ -183,16 +191,29 @@ export function FirstFindingScreen({
   // Dark mode reads the additive glow as luminous heat → lift strength ~15%
   // (the renderer still hard-caps the alpha, so it never blows out).
   const darkLift = theme === 'dark' ? 1.15 : 1;
+  // One source of spots for BOTH render and bloom timing (so pool indices line
+  // up): the model's located spots, or — for a positive read with nothing to
+  // locate — the soft positive wash.
+  const isPositiveWash =
+    !!finding && finding.metric === 'positive' && finding.spots.length === 0;
+  const effectiveSpots = useMemo(
+    () =>
+      isPositiveWash
+        ? POSITIVE_WASH_REGIONS.map((region) => ({ region, place: '', strength: POSITIVE_WASH_STRENGTH }))
+        : finding
+          ? finding.spots.slice(0, 4)
+          : [],
+    [finding, isPositiveWash],
+  );
   const glowSpots: GlowSpotInput[] = useMemo(() => {
-    if (!finding) return [];
-    return finding.spots.slice(0, 4).map((s) => ({
+    return effectiveSpots.map((s) => ({
       geometry: landmarks
         ? regionGeometryFromLandmarks(s.region, landmarks, rW, rH, mirrored)
         : regionGeometry(s.region, faceBox, rW, rH, mirrored),
       strength: Math.min(1, s.strength * darkLift),
       chipLabel: s.place || REGION_CHIP[s.region],
     }));
-  }, [finding, faceBox, rW, rH, mirrored, landmarks, darkLift]);
+  }, [effectiveSpots, faceBox, rW, rH, mirrored, landmarks, darkLift]);
   const lowConfidence = !!finding?.lowConfidence || hedge;
 
   // ── Mount: detect face once, start analyzing motion, place + wake the orb. ──
@@ -325,25 +346,30 @@ export function FirstFindingScreen({
     [reduceMotion],
   );
 
-  // Bloom each spot ON its spoken word; strongest first (brighter + sooner).
+  // Bloom each glow ON its spoken PLACE word (general noun, not the trailing
+  // side word), strongest-first + brighter. One soft haptic on the first bloom
+  // (none for the calm positive wash). Derives from `read` so it can't go stale.
   const scheduleGlows = useCallback(
     (read: SkinRead) => {
       const f = primaryFinding(read);
-      if (!f || f.spots.length === 0) return;
+      if (!f) return;
+      const positiveWash = f.metric === 'positive' && f.spots.length === 0;
+      const regions: FaceRegionKey[] = positiveWash
+        ? POSITIVE_WASH_REGIONS
+        : f.spots.slice(0, 4).map((s) => s.region);
+      if (regions.length === 0) return;
+
       const words = read.openingLine.split(/\s+/);
-      const startDelay = 120;
-      let prev = -Infinity;
-      const times = f.spots.slice(0, 4).map((s) => {
-        let idx = regionWordIndex(words, s.region);
-        if (idx < 0) idx = words.length - 1;
-        let t = startDelay + idx * TIMELINE.wordStaggerMs + 140;
-        if (t <= prev) t = prev + TIMELINE.bloomStaggerMs; // strongest-first order
-        prev = t;
-        return t;
+      const { times, firstIndex } = computeBloomSchedule(words, regions, {
+        startDelayMs: 120, // == OrbSpeech startDelay → glow + word share t0
+        wordStaggerMs: TIMELINE.wordStaggerMs,
+        onWordOffsetMs: 140,
+        bloomStaggerMs: TIMELINE.bloomStaggerMs,
       });
+
       times.forEach((t, i) => {
         after(t, () => {
-          if (i === 0) {
+          if (!positiveWash && i === firstIndex) {
             try {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             } catch {
@@ -431,6 +457,7 @@ export function FirstFindingScreen({
                   reduceMotion={reduceMotion}
                   reduceTransparency={reduceTransparency}
                   a11yLabel={glowA11y}
+                  renderChips={!isPositiveWash}
                 />
               )}
             </PhotoStage>

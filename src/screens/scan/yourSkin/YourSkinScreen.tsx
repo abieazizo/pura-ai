@@ -33,6 +33,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedScrollHandler,
@@ -273,7 +274,18 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
       {optionsOpen && (
         <>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setOptionsOpen(false)} accessibilityElementsHidden />
-          <View style={[styles.optionsPanel, { top: insets.top + 56, right: gutter, backgroundColor: tokens.cardSurface, borderColor: tokens.depth.hairline }]}>
+          <View style={[styles.optionsPanel, { top: insets.top + 56, right: gutter, borderColor: tokens.depth.hairline, overflow: 'hidden' }]}>
+            {/* Real glass — native blur + a tint wash + a top-edge light hairline.
+                Reduce Transparency falls back to the solid card surface (a11y). */}
+            {reduceTransparency ? (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.cardSurface }]} pointerEvents="none" />
+            ) : (
+              <>
+                <BlurView intensity={28} tint={theme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: theme === 'dark' ? 'rgba(20,22,30,0.52)' : 'rgba(255,255,255,0.58)' }]} pointerEvents="none" />
+                <LinearGradient colors={[theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.85)', 'transparent']} style={styles.glassTopLight} pointerEvents="none" />
+              </>
+            )}
             <OptionRow
               label={justFindings ? COPY2.warmView : COPY2.justFindings}
               tokens={tokens}
@@ -475,6 +487,7 @@ const styles = StyleSheet.create({
   },
   optionRow: { paddingHorizontal: 16, paddingVertical: 13 },
   optionDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 12 },
+  glassTopLight: { position: 'absolute', top: 0, left: 0, right: 0, height: 22 },
   empty: { alignItems: 'center', paddingHorizontal: 32 },
   emptyCta: { height: 52, paddingHorizontal: 40, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginTop: 28 },
 });
