@@ -27,6 +27,16 @@ export function useReduceMotion(): boolean {
       } catch {}
       const mql = window.matchMedia?.('(prefers-reduced-motion: reduce)');
       if (mql?.matches) return true;
+      // Mobile / touch web (phones, tablets) have a far tighter memory ceiling
+      // and a single-threaded animation budget vs. desktop. The continuous orb +
+      // reveal loops can push mobile Safari past its per-tab memory limit and
+      // crash the page (not reproducible in desktop Chrome). Default these
+      // devices to the (complete, designed-for) reduced-motion render; desktop
+      // web (fine pointer) keeps the full animation. Native iOS/Android are
+      // unaffected — this branch is web-only.
+      try {
+        if (window.matchMedia?.('(pointer: coarse)')?.matches) return true;
+      } catch {}
     }
     return false;
   });
