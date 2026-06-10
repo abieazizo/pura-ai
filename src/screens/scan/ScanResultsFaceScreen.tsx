@@ -17,7 +17,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '@/store/useAppStore';
@@ -36,6 +36,7 @@ import { RetakeRequiredScreen } from '@/components/scan-results/RetakeRequiredSc
 import { ScanServiceErrorScreen } from '@/components/scan-results/ScanServiceErrorScreen';
 import { ScanResultsV2Screen } from '@/screens/scan/ScanResultsV2Screen';
 import { ScanResultsErrorBoundary } from '@/components/scan-results/ScanResultsErrorBoundary';
+import { YourSkinDevGallery } from '@/screens/scan/yourSkin/dev/YourSkinDevGallery';
 import { hapt } from '@/utils/haptics';
 
 declare const __DEV__: boolean | undefined;
@@ -201,6 +202,27 @@ export function ScanResultsFaceScreen({
 
   if (!scan || !analysis) {
     return <View style={styles.blank} />;
+  }
+
+  // ── Web preview override ────────────────────────────────────────────────
+  // On the Vercel-deployed web build, every scan result is funneled into the
+  // new editorial "Your Skin" experience (the same screen reachable at
+  // `?screen=your-skin&settle=1`). We flip the static-preview flag inline so
+  // the orb + reveals settle to a clean still frame on first paint — matching
+  // the public link's behaviour exactly.
+  //
+  // Mobile keeps the existing real-data v2/limited/etc. branches until the
+  // SkinRead conversion is wired into the persisted scan; this is web-only
+  // so iOS / Android continue to surface the user's actual analysis.
+  if (Platform.OS === 'web') {
+    if (typeof globalThis !== 'undefined') {
+      (globalThis as { __puraStaticPreview__?: boolean }).__puraStaticPreview__ = true;
+    }
+    return (
+      <ScanResultsErrorBoundary onRetake={goRetake} onClose={exitToHome}>
+        <YourSkinDevGallery />
+      </ScanResultsErrorBoundary>
+    );
   }
 
   // v32 — when the strict V2 analysis is on the scan, render the new
