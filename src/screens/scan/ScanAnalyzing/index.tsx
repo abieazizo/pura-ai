@@ -53,6 +53,10 @@ import type {
   ScanAnalysisErrorCode,
   ScanAnalysisResponse,
 } from '@/types/scanResults';
+import { readSkinFromPhoto } from '@/api/skinRead';
+import type { SkinReadOutcome } from '@/types/skinRead';
+import { FirstFindingScreen } from '@/screens/scan/firstFinding';
+import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
 
 declare const __DEV__: boolean | undefined;
 function debugCheckpoint(stage: string, data?: Record<string, unknown>): void {
@@ -151,10 +155,9 @@ export function ScanAnalyzingFaceScreen({
   onRetry,
   onCancel,
 }: ScanAnalyzingFaceScreenProps) {
-  // `reduceMotion` is consumed by the AnalysisLoadingSlide internally
-  // via the same hook; reading it here so future motion gates can opt
-  // out of large animations.
-  useReduceMotion();
+  // `reduceMotion` now also feeds the First-Finding OrbProvider (below) so the
+  // orb + gaze sweep honor the OS / user setting.
+  const reduceMotion = useReduceMotion();
   useScanCount();
 
   const completedScanRef = useRef<Scan | null>(null);
@@ -170,6 +173,10 @@ export function ScanAnalyzingFaceScreen({
   const [phase, setPhase] = useState<Phase>('analyzing');
   const [analysis, setAnalysis] = useState<ScanAnalysisResponse | null>(null);
   const [networkFailed, setNetworkFailed] = useState(false);
+  // The plain-language read that DRIVES the First-Finding cinematic. Runs in
+  // PARALLEL with the canonical analyze; memoised by photoUri so screen 2
+  // ("Your Skin") reuses the SAME result with no second API call.
+  const [skinRead, setSkinRead] = useState<SkinReadOutcome>({ status: 'pending' });
   const mountedAtRef = useRef(Date.now());
 
   // Minimum perceived time at each stage so a fast AI response (e.g.
@@ -244,6 +251,25 @@ export function ScanAnalyzingFaceScreen({
     return () => {
       cancelled = true;
     };
+  }, [photoUri]);
+
+  // ---- First-Finding read — PARALLEL to the canonical analyze. Drives the
+  //      First-Finding UI (analyzing → first finding). `readSkinFromPhoto` is
+  //      memoised by photoUri, so screen 2 ("Your Skin") reuses the SAME result
+  //      with no second API call. This is the plain-language read; it does NOT
+  //      replace the canonical analyze below (which still owns SkinState + the
+  //      quality gate). ----
+  useEffect(() => {
+    const ctrl = new AbortController();
+    readSkinFromPhoto({ photoUri, signal: ctrl.signal })
+      .then(setSkinRead)
+      .catch(() =>
+        setSkinRead({
+          status: 'service_error',
+          message: 'I couldn’t quite finish that read — let’s try once more.',
+        }),
+      );
+    return () => ctrl.abort();
   }, [photoUri]);
 
   // ---- Stage 2: analyze + classify ----
@@ -393,23 +419,27 @@ export function ScanAnalyzingFaceScreen({
     }
   }, [phase]);
 
-  const autoNavigateFiredRef = useRef(false);
+  // First-Finding now drives the forward hand-off: the user reads the first
+  // finding and taps "See everything →" (see the render below), so we no longer
+  // AUTO-advance the instant the canonical analyze finishes.
+  //
+  // Safety net ONLY — if the plain-language read is still hung a while AFTER the
+  // canonical analyze is done (read service slow / unreachable), don't strand the
+  // user on the analyzing beat: hand the already-SAVED scan to "Your Skin", which
+  // runs the read itself and has its own reveal fallback (CLAUDE.md: never
+  // stranded on a blank). The canonical analyze + store writes above are unchanged.
   useEffect(() => {
     if (phase !== 'continue_to_results') return;
-    if (autoNavigateFiredRef.current) return;
+    if (skinRead.status !== 'pending') return; // read resolved → First-Finding shows it
     const scan = completedScanRef.current;
     if (!scan) return;
-    autoNavigateFiredRef.current = true;
-    debugCheckpoint('auto_navigate_scheduled', { scanId: scan.id });
-
-    // Hold for ~680ms so the progress ring visibly hits 100% and the
-    // analyzing card has time to fade before the slide transition.
     const t = setTimeout(() => {
+      debugCheckpoint('first_finding_read_safety_net', { scanId: scan.id });
       useAppStore.getState().clearInFlightScan();
       onCompleteRef.current(scan.id);
-    }, 680);
+    }, 14000);
     return () => clearTimeout(t);
-  }, [phase]);
+  }, [phase, skinRead.status]);
 
   // ---- User actions on the limited interstitial ----
   const handleContinueLimited = useCallback(() => {
@@ -503,16 +533,34 @@ export function ScanAnalyzingFaceScreen({
     );
   }
 
-  // Default — the live analyzing experience. This is reveal-arc surface 1:
-  // the reveal-styled analyzing slide (PURA eyebrow · "1 of 6" · face mesh ·
-  // 150px progress ring · status checklist). The quality-gate state machine
-  // above is unchanged — this only swaps the visual that `loadingStage`
-  // drives, so retake / limited / error outcomes are unaffected.
+  // Default — the live analyzing experience IS now the First-Finding cinematic
+  // (scan-results screen 1). First-Finding runs its OWN analyzing (soft gaze
+  // sweep + transparency status lines) while BOTH the canonical analyze and the
+  // plain-language read run in parallel; it pivots to the first finding only once
+  // the canonical analyze reaches FULL results AND the read is in. The quality-
+  // gate state machine above is unchanged — retake / limited / error render
+  // BEFORE we get here, so those outcomes are unaffected. "See everything →"
+  // hands the already-SAVED scan to "Your Skin" (screen 2), which reuses the
+  // memoised read. The orb is provided locally (no app-wide OrbProvider in the
+  // scan flow), mirroring the Your Skin / Your Routine experiences.
+  const ffOutcome: SkinReadOutcome =
+    phase === 'continue_to_results' ? skinRead : { status: 'pending' };
+  const ffScanId = completedScanRef.current?.id;
   return (
-    <RevealAnalyzingSlide
-      photoUri={photoUri}
-      stage={loadingStage}
-      onCancel={handleCancel}
-    />
+    <OrbProvider reduceMotion={reduceMotion} birth={false} dark>
+      <FirstFindingScreen
+        photoUri={photoUri}
+        outcome={ffOutcome}
+        theme="dark"
+        mirrored
+        onSeeEverything={() => {
+          if (!ffScanId) return;
+          useAppStore.getState().clearInFlightScan();
+          onCompleteRef.current(ffScanId);
+        }}
+        onTryBetterLight={handleRetry}
+        onTryAgain={handleRetry}
+      />
+    </OrbProvider>
   );
 }
