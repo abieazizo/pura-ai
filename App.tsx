@@ -39,6 +39,8 @@ import { colors, palette } from '@/theme';
 import { installDevConsole } from '@/utils/devConsole';
 import { ContextualProvider } from '@/components/contextual/ContextualProvider';
 import { probeProxyHealthz } from '@/ai/aiHealthProbe';
+import { YourSkinScreen } from '@/screens/scan/yourSkin/YourSkinScreen';
+import { FIXTURE_BY_KEY, YOUR_SKIN_FIXTURES } from '@/screens/scan/yourSkin/fixtures';
 
 // Dev-only navigation ref. Exposed on `window.__pura_nav__` in dev
 // builds so the preview harness can navigate to dev-only routes
@@ -52,10 +54,49 @@ if (typeof __DEV__ !== 'undefined' && __DEV__ && typeof globalThis !== 'undefine
   }).__pura_nav__ = navigationRef;
 }
 
-// NOTE: the production `?screen=<key>` URL deep-link hatch was REMOVED — it could
-// open a dev harness/gallery on the deployed site. Dev harnesses are now reachable
-// ONLY via the in-app dev path (dev badge → AIDiagnostics, __DEV__ builds) and the
-// __DEV__-gated `window.__pura_nav__` above. No public URL reaches a dev screen.
+// PUBLIC WEB SHOWCASE — `?screen=your-skin` renders the REAL `YourSkinScreen`
+// (the production scan-results "Your Skin" surface), NOT a dev harness/gallery:
+// there is NO fixture toolbar / chips / replay controls. It is fed a single
+// representative OFFLINE fixture purely so the finished screen is viewable on the
+// Vercel deploy without a live camera scan (the web build can't run the native
+// camera flow). `&settle=1` holds it on a clean still frame; without it the orb
+// breathes and the sections reveal as authored. The bare URL and every other
+// path are untouched — the normal onboarding/tab app loads exactly as before.
+// Web-only; native iOS/Android are unaffected. This is a TOP-LEVEL render (not a
+// navigation deep-link), so there is no nav-timing race and no dev screen is
+// reachable by URL.
+function webShowcase(): { key: string; settle: boolean } | null {
+  if (Platform.OS !== 'web') return null;
+  try {
+    const search =
+      (globalThis as unknown as { location?: { search?: string } }).location?.search ?? '';
+    const params = new URLSearchParams(search);
+    const key = params.get('screen');
+    if (!key) return null;
+    return { key, settle: params.get('settle') === '1' };
+  } catch {
+    return null;
+  }
+}
+
+function YourSkinWebShowcase({ settle }: { settle: boolean }) {
+  const fx = FIXTURE_BY_KEY['redness'] ?? YOUR_SKIN_FIXTURES[0];
+  return (
+    <YourSkinScreen
+      read={fx.read}
+      toneBackdrop={fx.toneBackdrop}
+      mirrored={fx.mirrored}
+      theme="dark"
+      goal={fx.goal}
+      forceReduceMotion={settle}
+      onBuildRoutine={() => {}}
+      onDoLater={() => {}}
+      onRescan={() => {}}
+      onShareDayOne={() => {}}
+      onDownweightFinding={() => {}}
+    />
+  );
+}
 
 const navTheme = {
   ...DefaultTheme,
@@ -106,6 +147,7 @@ export default function App() {
   // fonts resolved). Once it dismisses, we never show it again this session.
   const systemReady = hydrated && (fontsLoaded || fontsLoaded === undefined);
   const webBypassSplash = Platform.OS === 'web';
+  const showcase = webShowcase();
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -113,7 +155,9 @@ export default function App() {
         <ThemeProvider>
           <View style={styles.fill}>
             <StatusBar style="dark" />
-            {(introDone || webBypassSplash) ? (
+            {showcase?.key === 'your-skin' ? (
+              <YourSkinWebShowcase settle={showcase.settle} />
+            ) : (introDone || webBypassSplash) ? (
               <NavigationContainer ref={navigationRef} theme={navTheme}>
                 <BottomSheetModalProvider>
                   <ContextualProvider>
