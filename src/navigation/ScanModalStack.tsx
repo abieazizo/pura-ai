@@ -10,7 +10,6 @@ import { ScanAnalyzingScreen } from '@/screens/scan/ScanAnalyzingScreen';
 import { ScanAnalyzingFaceScreen } from '@/screens/scan/ScanAnalyzing';
 import { ScanResultsFaceScreen } from '@/screens/scan/ScanResultsFaceScreen';
 import { ScanRevealScreen } from '@/screens/scan/reveal/ScanRevealScreen';
-import { YourSkinContainer } from '@/screens/scan/yourSkin/YourSkinContainer';
 import { BuildRoutinePicker } from '@/screens/scan/reveal/BuildRoutinePicker';
 import { ScanBuildCeremony } from '@/screens/scan/reveal/ScanBuildCeremony';
 import { ScanResultDetailScreen } from '@/screens/scan/ScanResultDetailScreen';
@@ -58,11 +57,6 @@ export function ScanModalStack({ route }: any) {
           AnalyzingScreenHost.handleComplete). */}
       <Stack.Screen name="ScanReveal">
         {() => <RevealScreenHost />}
-      </Stack.Screen>
-      {/* scan-results screen 2 — the FINAL "Your Skin" full results, the
-          production destination after a face analyze (see handleComplete). */}
-      <Stack.Screen name="YourSkin">
-        {() => <YourSkinResultsHost />}
       </Stack.Screen>
       <Stack.Screen name="BuildRoutinePicker">
         {() => <BuildRoutinePickerHost />}
@@ -260,14 +254,15 @@ function AnalyzingScreenHost() {
   // in the future.
   const handleComplete = useCallback(
     (scanId: string) => {
-      // Face analyze complete → the FINAL results screen 2 ("Your Skin"). The
-      // host runs the real plain-language read (readSkinFromPhoto) on the
-      // captured frame and renders YourSkinScreen; if that service genuinely
-      // fails it falls back to the proven reveal arc, which itself falls back to
-      // ScanResultsFace — so a saved scan is never stranded on a blank.
-      scanNav.replace('YourSkin', { scanId, photoUri });
+      // Face analyze complete → hand off into the reveal arc (surfaces
+      // 2–6). The reveal host resolves the canonical SkinState from the
+      // just-saved scan. The reveal arc now replaces ScanResultsFace as
+      // the post-scan destination; ScanResultsFace stays registered as the
+      // defensive fallback (RevealScreenHost replaces into it if a
+      // SkinState somehow can't be resolved).
+      scanNav.replace('ScanReveal', { scanId });
     },
-    [scanNav, photoUri]
+    [scanNav]
   );
   const handleRetry = useCallback(() => {
     scanNav.replace('ScanCapture');
@@ -320,37 +315,6 @@ function AnalyzingScreenHost() {
   };
 
   return <ScanAnalyzingScreen onDone={onDone} onCancel={handleCancel} />;
-}
-
-// ---------------------------------------------------------------------------
-// scan-results screen 2 ("Your Skin") host — the production results screen.
-// Runs the real plain-language read on the captured frame and renders
-// YourSkinScreen; on a genuine service failure it hands the saved scan to the
-// reveal arc (which itself falls back to ScanResultsFace), so a face scan is
-// never stranded on a blank. "Build my routine" continues into the existing
-// routine builder.
-// ---------------------------------------------------------------------------
-
-function YourSkinResultsHost() {
-  const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
-  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<ScanStackParamList, 'YourSkin'>>();
-  const { scanId, photoUri } = route.params;
-
-  const closeToHome = useCallback(() => {
-    rootNav.getParent()?.goBack();
-  }, [rootNav]);
-
-  return (
-    <YourSkinContainer
-      photoUri={photoUri}
-      scanId={scanId}
-      onBuildRoutine={() => scanNav.navigate('BuildRoutinePicker', { scanId })}
-      onClose={closeToHome}
-      onRescan={() => scanNav.replace('ScanCapture')}
-      onFallbackToReveal={() => scanNav.replace('ScanReveal', { scanId })}
-    />
-  );
 }
 
 // ---------------------------------------------------------------------------

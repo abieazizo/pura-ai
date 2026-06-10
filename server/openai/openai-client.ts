@@ -75,14 +75,6 @@ import {
   type SearchIntentPlan,
   type SlotSelectionResult,
 } from '../../src/ai/ai-contracts';
-// v33 — the plain-language skin read (screens 1 + 2). Prompt + schema live in a
-// dependency-free module so BOTH the RN client and this Node server share one
-// source of truth (importing them from src/api/skinRead.ts would drag
-// expo-constants into Node).
-import {
-  SKIN_READ_SYSTEM_PROMPT,
-  SKIN_READ_JSON_SCHEMA,
-} from '../../src/api/skinReadPrompt';
 
 // Re-export for server consumers that previously reached these from
 // the legacy Claude client path.
@@ -682,15 +674,14 @@ export class OpenAIClient {
   private buildImageUserContent(
     imageBase64: string,
     mediaType: SupportedImageMediaType,
-    instruction: string,
-    detail: 'auto' | 'low' | 'high' = 'auto'
+    instruction: string
   ): OpenAI.Chat.Completions.ChatCompletionContentPart[] {
     return [
       {
         type: 'image_url',
         image_url: {
           url: `data:${mediaType};base64,${imageBase64}`,
-          detail,
+          detail: 'auto',
         },
       },
       {
@@ -792,39 +783,6 @@ export class OpenAIClient {
     // Both attempts failed — surface a typed error so handlers can
     // map it to a stable HTTP status + clean client message.
     throw new AIError(second.reason, params.schemaName, second.finish);
-  }
-
-  // --------------------------------------------------------------------------
-  // The plain-language "first read" (scan-results screens 1 + 2).
-  //
-  // ONE selfie → the warm, plain, located read + the screen-2 plan fields
-  // (skin_summary_line / horizon_line / routine_focus). Shares the SAME prompt +
-  // strict schema as the client (the dependency-free skinReadPrompt module),
-  // sent at image detail:"high" for the located, asymmetric specificity the UI
-  // rests on. Returns the RAW structured JSON; the client (finalizeRead) owns
-  // validation + the coverage-cap guard + folding in the plan, so the server
-  // stays a thin, honest pass-through (it never derives a finding).
-  // --------------------------------------------------------------------------
-
-  async readSkin(params: {
-    imageBase64: string;
-    mediaType: SupportedImageMediaType;
-  }): Promise<unknown> {
-    const userContent = this.buildImageUserContent(
-      params.imageBase64,
-      params.mediaType,
-      'Read this skin photo and return the structured skin read as JSON only.',
-      'high'
-    );
-    return this.runStrictStructured<unknown>({
-      system: SKIN_READ_SYSTEM_PROMPT,
-      userContent,
-      schemaName: SKIN_READ_JSON_SCHEMA.name,
-      schema: SKIN_READ_JSON_SCHEMA.schema as unknown as JsonSchema,
-      // The read carries 3–4 findings + 2–3 plan moves; generous so the strict
-      // payload never length-caps (the retry envelope doubles it if it ever does).
-      maxTokens: 6144,
-    });
   }
 
   // --------------------------------------------------------------------------
