@@ -78,17 +78,22 @@ function applyUrlScreenHatch() {
   if (Platform.OS !== 'web') return;
   try {
     const loc = (globalThis as unknown as { location?: { search?: string } }).location;
-    if (!loc?.search) return;
-    const params = new URLSearchParams(loc.search);
-    const key = params.get('screen');
-    if (!key) return;
+    const params = new URLSearchParams(loc?.search ?? '');
+    const explicitKey = params.get('screen');
+    // DEFAULT TO "your-skin" SETTLED for every bare web visit. The Vercel deploy
+    // is a Your-Skin showcase: hitting https://<host>/ with no params lands on
+    // the editorial scan-results experience directly, no scan / onboarding /
+    // tab traversal required. Explicit ?screen=<other> still wins (allowlist).
+    const key = explicitKey || 'your-skin';
     const target = URL_SCREEN_ALLOWLIST[key];
     if (!target) return;
-    // ?settle=1 → flip the dev gallery's static-preview flag BEFORE the gallery
-    // mounts. With this on, the gallery defaults Reduce Motion ON, so the orb
-    // and reveals settle to a clean still frame instead of looping animations —
-    // ideal for a Vercel link you want to land beautifully on first paint.
-    if (params.get('settle') === '1') {
+    // ?settle=1 — OR a bare URL with no explicit screen — flips the dev
+    // gallery's static-preview flag BEFORE the gallery mounts. With this on,
+    // the gallery defaults Reduce Motion ON, so the orb + reveals settle to a
+    // clean still frame instead of looping animations on first paint. Explicit
+    // ?screen=your-skin (without &settle=1) still gets the full animated
+    // experience as authored.
+    if (params.get('settle') === '1' || !explicitKey) {
       (globalThis as unknown as { __puraStaticPreview__?: boolean }).__puraStaticPreview__ = true;
     }
     // The container takes ~1 frame to be "ready" — poll briefly, then bail.
