@@ -9959,6 +9959,129 @@ var SCAN_RESULT_V2_SCHEMA = {
   }
 };
 
+// src/api/skinReadPrompt.ts
+var SKIN_READ_SYSTEM_PROMPT = `You are Pura's skin reader. You look at ONE selfie and tell the person what you actually see on their skin \u2014 like a kind friend who knows skin well, talking to someone who knows nothing about skincare. This is a beauty/skincare read, NOT medical advice. Never name diseases.
+
+HOW TO TALK (most important rule):
+- Use plain, everyday words a teenager would understand. NO skincare or medical jargon, EVER.
+- BANNED words (never use these or similar): T-zone, glabella, perioral, periorbital, barrier, sebum, erythema, hyperpigmentation, "texture irregularities," "actives," "exfoliants." Say it in plain words instead.
+- Name real places on the face in normal words: forehead, between your eyebrows, nose, around your nose, left cheek, right cheek, under your eyes, around your mouth, chin, jaw. NEVER say "T-zone" or "overall" or "across the face."
+- Keep every sentence short and warm. No lectures, no exclamation, no flattery, no fear.
+
+WHAT TO DO:
+- Only say what you can actually SEE in this photo. Don't guess or pad. If you can't tell, say so in plain words.
+- Be specific by naming the exact spot, and if something is worse on one side, say which side ("a little more on your left cheek"). That asymmetry is what makes it feel real.
+- Compare everything to THIS person's own skin, never an outside standard. Redness = areas redder than the rest of THEIR skin. Dark spots = spots darker than THEIR even tone. The person may have ANY skin tone \u2014 never treat a natural skin tone or a natural warm flush as a problem, and DO still spot dark marks on deep skin.
+- Some things you can SEE (redness, rough or bumpy spots, breakouts, dark marks/uneven tone, big pores, fine lines, under-eye darkness). Some things you can only GUESS from clues (oiliness, dryness, sensitive/stressed skin) \u2014 for those, sound less sure and make clear it's a guess.
+- First, check the photo: is the light good, is it in focus, is the whole face showing, is there makeup? If the photo's rough, sound less sure and say a clearer photo in good light would help. Do NOT make up exact findings on a bad photo.
+- Give 3 to 4 findings, most important first. The app shows findings[0] ALONE first, so findings[0] MUST be the single most important, specific, located, high-confidence thing. If the skin looks great, say so warmly, name what's good, and still give at least 3 helpful notes (good things + small tips).
+- "opening_line" MUST lead with one warm, TRUE, plain thing that looks good, then name the ONE main thing to look at, plainly and located. Shape: "Your skin tone's really even \u2014 that's the first thing I noticed. The main thing to look at: a bit of redness on your cheeks, a little more on the left."
+- For each finding: a short plain "what_i_see", a "level" ("a little"/"some"/"a lot"), "spots" (each a place from the fixed list + strength 0.0-1.0), a plain "what_it_means", an easy "do_this" for tonight needing no product knowledge, and "how_sure".
+- Lead with something kind and true. Never leave a worry hanging \u2014 always pair it with what to do.
+
+ALSO RETURN (these feed the "Your Skin" full-results screen; keep EVERY rule above \u2014 plain words, banned-word ban, only-what-you-see, compare-to-their-OWN-baseline for any skin tone, the coverage cap):
+- "skin_summary_line": ONE warm, plain, TRUE sentence summing up the whole picture and referencing the person's GOAL. A kind friend's honest gestalt, not a template. Lead positive, name the main couple of things plainly, signal a plan exists. Never a score, never scary, never generic.
+- "horizon_line": ONE bounded, HONEST, calibrated forward-look tied to the plan. Use "should"/"likely", NEVER "will". Concrete but modest, e.g. "Stick with this and in a few weeks your cheeks should look calmer." No miracle claims, no timelines you can't honor.
+- "routine_focus": 2 to 3 GENTLE moves that GROUP the findings into a short doable plan (never one task per finding). Combine related findings (redness+sensitivity -> "be gentle"; dryness+dullness -> "bring moisture back"). Each move = {"title" (plain), "why" (one plain line tying to what you saw), "addresses" (the exact finding NAMES it solves)}. Phrase as a supportive partner, not a demanding coach. Every move must be doable with what the person ALREADY owns \u2014 do NOT require buying anything. Order by what matters most for the goal.
+
+Output ONLY valid JSON matching the schema (opening_line, findings[], good_things[], photo_check{}, sure_level, skin_summary_line, horizon_line, routine_focus). No text outside the JSON.`;
+var PLACE_ENUM = [
+  "forehead",
+  "between your eyebrows",
+  "nose",
+  "around your nose",
+  "left cheek",
+  "right cheek",
+  "under your eyes",
+  "around your mouth",
+  "chin",
+  "jaw"
+];
+var SKIN_READ_JSON_SCHEMA = {
+  name: "pura_skin_read",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "opening_line",
+      "findings",
+      "good_things",
+      "photo_check",
+      "sure_level",
+      "skin_summary_line",
+      "horizon_line",
+      "routine_focus"
+    ],
+    properties: {
+      opening_line: { type: "string" },
+      skin_summary_line: { type: "string" },
+      horizon_line: { type: "string" },
+      routine_focus: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "why", "addresses"],
+          properties: {
+            title: { type: "string" },
+            why: { type: "string" },
+            addresses: { type: "array", items: { type: "string" } }
+          }
+        }
+      },
+      findings: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "what_i_see", "level", "spots", "what_it_means", "do_this", "how_sure"],
+          properties: {
+            name: { type: "string" },
+            what_i_see: { type: "string" },
+            level: { type: "string", enum: ["a little", "some", "a lot"] },
+            spots: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["place", "strength"],
+                properties: {
+                  place: { type: "string", enum: PLACE_ENUM },
+                  strength: { type: "number" }
+                }
+              }
+            },
+            what_it_means: { type: "string" },
+            do_this: { type: "string" },
+            how_sure: {
+              type: "string",
+              enum: ["pretty sure", "fairly sure", "not totally sure in this light"]
+            }
+          }
+        }
+      },
+      good_things: { type: "array", items: { type: "string" } },
+      photo_check: {
+        type: "object",
+        additionalProperties: false,
+        required: ["light", "clear", "whole_face_shown", "makeup_on", "better_photo_would_help"],
+        properties: {
+          light: { type: "string", enum: ["good", "low", "harsh", "uneven"] },
+          clear: { type: "boolean" },
+          whole_face_shown: { type: "boolean" },
+          makeup_on: { type: "boolean" },
+          better_photo_would_help: { type: "boolean" }
+        }
+      },
+      sure_level: {
+        type: "string",
+        enum: ["pretty sure", "fairly sure", "not totally sure in this light"]
+      }
+    }
+  }
+};
+
 // server/openai/openai-client.ts
 var AIError = class extends Error {
   constructor(reason, schemaName, finishReason = null) {
@@ -10460,13 +10583,13 @@ var OpenAIClient = class {
    * text instruction. Returns the array so callers may concatenate
    * additional context blocks before sending.
    */
-  buildImageUserContent(imageBase64, mediaType, instruction) {
+  buildImageUserContent(imageBase64, mediaType, instruction, detail = "auto") {
     return [
       {
         type: "image_url",
         image_url: {
           url: `data:${mediaType};base64,${imageBase64}`,
-          detail: "auto"
+          detail
         }
       },
       {
@@ -10531,6 +10654,34 @@ var OpenAIClient = class {
     const second = await attempt(secondCap, 1);
     if (second.ok) return second.value;
     throw new AIError(second.reason, params.schemaName, second.finish);
+  }
+  // --------------------------------------------------------------------------
+  // The plain-language "first read" (scan-results screens 1 + 2).
+  //
+  // ONE selfie → the warm, plain, located read + the screen-2 plan fields
+  // (skin_summary_line / horizon_line / routine_focus). Shares the SAME prompt +
+  // strict schema as the client (the dependency-free skinReadPrompt module),
+  // sent at image detail:"high" for the located, asymmetric specificity the UI
+  // rests on. Returns the RAW structured JSON; the client (finalizeRead) owns
+  // validation + the coverage-cap guard + folding in the plan, so the server
+  // stays a thin, honest pass-through (it never derives a finding).
+  // --------------------------------------------------------------------------
+  async readSkin(params) {
+    const userContent = this.buildImageUserContent(
+      params.imageBase64,
+      params.mediaType,
+      "Read this skin photo and return the structured skin read as JSON only.",
+      "high"
+    );
+    return this.runStrictStructured({
+      system: SKIN_READ_SYSTEM_PROMPT,
+      userContent,
+      schemaName: SKIN_READ_JSON_SCHEMA.name,
+      schema: SKIN_READ_JSON_SCHEMA.schema,
+      // The read carries 3–4 findings + 2–3 plan moves; generous so the strict
+      // payload never length-caps (the retry envelope doubles it if it ever does).
+      maxTokens: 6144
+    });
   }
   // --------------------------------------------------------------------------
   // 0. Scan preflight (v11.7).
@@ -13420,6 +13571,26 @@ var HANDLERS = {
     const validated = validateFaceScanAnalysis(repaired);
     if (!validated) aiBad("analyzeFaceScan");
     return validated;
+  },
+  // v33 — the plain-language "first read" (scan-results screens 1 + 2). Thin
+  // pass-through: the model returns the warm, located read + the screen-2 plan
+  // fields; the CLIENT (finalizeRead) owns plain-language validation, the
+  // coverage-cap guard, and folding in the plan, so the server only fences the
+  // image inputs and confirms the payload is a non-empty object. It never
+  // fabricates or trims a finding.
+  async readSkin(client, body) {
+    const params = {
+      imageBase64: reqString(body, "imageBase64"),
+      mediaType: reqMediaType(body, "mediaType")
+    };
+    const result = await withAIErrorTranslation(
+      "readSkin",
+      () => client.readSkin(params)
+    );
+    if (!result || typeof result !== "object" || Array.isArray(result)) {
+      aiBad("readSkin");
+    }
+    return result;
   },
   /**
    * v32 — analyzeFaceScanV2 — strict 3-to-6 findings.
