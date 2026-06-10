@@ -251,6 +251,26 @@ export const HANDLERS: Record<string, Handler> = {
     return validated;
   },
 
+  // v33 — the plain-language "first read" (scan-results screens 1 + 2). Thin
+  // pass-through: the model returns the warm, located read + the screen-2 plan
+  // fields; the CLIENT (finalizeRead) owns plain-language validation, the
+  // coverage-cap guard, and folding in the plan, so the server only fences the
+  // image inputs and confirms the payload is a non-empty object. It never
+  // fabricates or trims a finding.
+  async readSkin(client, body) {
+    const params = {
+      imageBase64: reqString(body, 'imageBase64'),
+      mediaType: reqMediaType(body, 'mediaType'),
+    };
+    const result = await withAIErrorTranslation('readSkin', () =>
+      client.readSkin(params)
+    );
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+      aiBad('readSkin');
+    }
+    return result;
+  },
+
   /**
    * v32 — analyzeFaceScanV2 — strict 3-to-6 findings.
    *

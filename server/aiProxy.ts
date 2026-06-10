@@ -24,6 +24,7 @@
  *
  * Endpoints (all POST, JSON in/JSON out, see lib/handlers.ts):
  *   /analyzeFaceScan
+ *   /readSkin
  *   /identifyProductFromImage
  *   /normalizeBarcodeResolution
  *   /matchProductsForUser
