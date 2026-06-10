@@ -926,6 +926,31 @@ function DevToolsCard() {
         </Text>
       </Pressable>
 
+      {/* Scan-results screen 1 ("First Finding" / Analyzing) — the Analyzing →
+          First-Finding cinematic. Network-decoupled; opens the REAL screen with
+          the canonical fixtures (incl. the deep-skin test face + theme / reduced
+          -motion toggles). On web/Vercel it's also at /?screen=first-finding. */}
+      <Pressable
+        onPress={() => {
+          // @ts-expect-error — dev route present in __DEV__ builds only.
+          navigation.navigate('FirstFindingDev');
+        }}
+        style={({ pressed }) => [
+          devToolStyles.row,
+          pressed && { opacity: 0.7 },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Open First Finding scan-results screen 1"
+        nativeID="dev-open-first-finding"
+      >
+        <Text style={devToolStyles.label} maxFontSizeMultiplier={1.15}>
+          First Finding · scan-results screen 1
+        </Text>
+        <Text style={devToolStyles.hint} maxFontSizeMultiplier={1.15}>
+          Analyzing → first finding · synced glow · 5 scenarios
+        </Text>
+      </Pressable>
+
       {/* The FINAL scan-results screen 2 ("Your Skin"). Its live data path —
           the plain-language, region-located read + plan — only comes from the
           `readSkin` server route (not built yet), so it can't auto-open after a
