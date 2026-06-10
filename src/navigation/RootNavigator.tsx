@@ -11,6 +11,7 @@ import { RevealDevGallery } from '@/components/dev/RevealDevGallery';
 import { ShopCardDevGallery } from '@/components/dev/ShopCardDevGallery';
 import { ColdOpenDevGallery } from '@/screens/onboarding/dev/ColdOpenDevGallery';
 import { YourSkinDevGallery } from '@/screens/scan/yourSkin/dev/YourSkinDevGallery';
+import { FirstFindingDevHarness } from '@/screens/scan/firstFinding/FirstFindingDevHarness';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { RootStackParamList } from './types';
@@ -172,6 +173,18 @@ export function RootNavigator() {
       <Stack.Screen
         name="YourSkinDev"
         component={YourSkinDevGallery}
+        options={{
+          presentation: 'fullScreenModal',
+          animation: 'fade',
+          animationDuration: 200,
+        }}
+      />
+
+      {/* Dev-only "First Finding" (scan-results screen 1 / Analyzing) harness.
+          Reachable only via window.__pura_nav__; never linked from a user surface. */}
+      <Stack.Screen
+        name="FirstFindingDev"
+        component={FirstFindingDevHarness}
         options={{
           presentation: 'fullScreenModal',
           animation: 'fade',

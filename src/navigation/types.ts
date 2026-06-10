@@ -214,4 +214,8 @@ export type RootStackParamList = {
    *  YourSkinScreen with a fixture / theme / accessibility toolbar (incl. a
    *  deep-skin multi-finding face). Reachable only via the dev nav ref. */
   YourSkinDev: undefined;
+  /** Dev-only harness for scan-results screen 1 ("First Finding" / Analyzing).
+   *  Renders the real FirstFindingScreen with scenario / photo (incl. deep-skin)
+   *  / theme / reduced-motion toggles. Reachable only via the dev nav ref. */
+  FirstFindingDev: undefined;
 };
