@@ -84,6 +84,13 @@ function applyUrlScreenHatch() {
     if (!key) return;
     const target = URL_SCREEN_ALLOWLIST[key];
     if (!target) return;
+    // ?settle=1 → flip the dev gallery's static-preview flag BEFORE the gallery
+    // mounts. With this on, the gallery defaults Reduce Motion ON, so the orb
+    // and reveals settle to a clean still frame instead of looping animations —
+    // ideal for a Vercel link you want to land beautifully on first paint.
+    if (params.get('settle') === '1') {
+      (globalThis as unknown as { __puraStaticPreview__?: boolean }).__puraStaticPreview__ = true;
+    }
     // The container takes ~1 frame to be "ready" — poll briefly, then bail.
     const tryNav = (attempt = 0) => {
       if (!navigationRef.isReady()) {
