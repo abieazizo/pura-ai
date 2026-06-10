@@ -52,61 +52,10 @@ if (typeof __DEV__ !== 'undefined' && __DEV__ && typeof globalThis !== 'undefine
   }).__pura_nav__ = navigationRef;
 }
 
-/**
- * URL deep-link escape hatch — Vercel-safe, NOT gated on __DEV__.
- *
- * On web (Vercel deploy or local), if the URL carries `?screen=<key>` and the
- * key is in our ALLOWLIST, we navigate there after the container is ready. This
- * is the public, production-safe way to land on a dev-harness screen by URL
- * (e.g. `https://<vercel-url>/?screen=your-skin`) without exposing the full
- * navigation ref to arbitrary scripts on the deployed page.
- *
- * The allowlist is small + explicit — only screens that are SELF-CONTAINED dev
- * harnesses with no side effects beyond rendering can land here. Adding a
- * screen to the allowlist is a deliberate code change. Nothing on the public
- * tab/onboarding flow is exposed this way (those have their own URLs).
- */
-const URL_SCREEN_ALLOWLIST: Readonly<Record<string, string>> = {
-  'your-skin': 'YourSkinDev',
-  'first-finding': 'FirstFindingDev',
-  'reveal': 'ScanRevealDev',
-  'cold-open': 'OnboardingColdOpenDev',
-  'shop-cards': 'ShopCardDevGallery',
-};
-
-function applyUrlScreenHatch() {
-  if (Platform.OS !== 'web') return;
-  try {
-    const loc = (globalThis as unknown as { location?: { search?: string } }).location;
-    if (!loc?.search) return;
-    const params = new URLSearchParams(loc.search);
-    const key = params.get('screen');
-    if (!key) return;
-    const target = URL_SCREEN_ALLOWLIST[key];
-    if (!target) return;
-    // ?settle=1 → flip the dev gallery's static-preview flag BEFORE the gallery
-    // mounts. With this on, the gallery defaults Reduce Motion ON, so the orb
-    // and reveals settle to a clean still frame instead of looping animations —
-    // ideal for a Vercel link you want to land beautifully on first paint.
-    if (params.get('settle') === '1') {
-      (globalThis as unknown as { __puraStaticPreview__?: boolean }).__puraStaticPreview__ = true;
-    }
-    // The container takes ~1 frame to be "ready" — poll briefly, then bail.
-    const tryNav = (attempt = 0) => {
-      if (!navigationRef.isReady()) {
-        if (attempt < 60) {
-          setTimeout(() => tryNav(attempt + 1), 50);
-        }
-        return;
-      }
-      // @ts-expect-error — navigate signature is screen-name-strict; allowlist guarantees a registered route.
-      navigationRef.navigate(target);
-    };
-    tryNav();
-  } catch {
-    /* URL parsing or nav threw — silently no-op; the home shell still works. */
-  }
-}
+// NOTE: the production `?screen=<key>` URL deep-link hatch was REMOVED — it could
+// open a dev harness/gallery on the deployed site. Dev harnesses are now reachable
+// ONLY via the in-app dev path (dev badge → AIDiagnostics, __DEV__ builds) and the
+// __DEV__-gated `window.__pura_nav__` above. No public URL reaches a dev screen.
 
 const navTheme = {
   ...DefaultTheme,
@@ -165,7 +114,7 @@ export default function App() {
           <View style={styles.fill}>
             <StatusBar style="dark" />
             {(introDone || webBypassSplash) ? (
-              <NavigationContainer ref={navigationRef} theme={navTheme} onReady={applyUrlScreenHatch}>
+              <NavigationContainer ref={navigationRef} theme={navTheme}>
                 <BottomSheetModalProvider>
                   <ContextualProvider>
                     <RootNavigator />
