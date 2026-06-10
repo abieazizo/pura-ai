@@ -145,6 +145,13 @@ export type ScanStackParamList = {
    *  SkinState from `scanId`. "Build my routine" advances to ScanCeremony;
    *  "Skip for now" / exit closes the modal (the scan is already saved). */
   ScanReveal: { scanId: string };
+  /** scan-results screen 2 ("Your Skin") — the FINAL full-results screen, the
+   *  production destination after a face analyze. The host runs the REAL
+   *  plain-language read (readSkinFromPhoto → the /readSkin proxy route) and
+   *  renders YourSkinScreen. Carries the captured photo (the lit-print map) +
+   *  scanId ("Build my routine" → the routine builder). Falls back to ScanReveal
+   *  only if the read service genuinely fails — a scan is never stranded blank. */
+  YourSkin: { scanId: string; photoUri: string };
   /** Reveal-arc surface 6.5 — the pre-build pillar picker. The user
    *  chooses which of the four pillars to include before the ceremony.
    *  "Build my routine" on the Ready screen routes here; this screen's
