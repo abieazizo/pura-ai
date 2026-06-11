@@ -27,11 +27,20 @@ import {
 } from '@/screens/scan/scanReadiness';
 import {
   resolveScanInstruction,
+  DEFAULT_FACE_READINESS,
   type FaceReadiness,
   type ProductReadiness,
   type BarcodeReadiness,
   type ScanControllerInput,
 } from '@/screens/scan/scanController';
+import { useScanQuality } from '@/scanQuality/useScanQuality';
+import { qualityToFaceReadiness } from '@/scanQuality/controllerBridge';
+import { THRESHOLDS as QUALITY_T } from '@/scanQuality/thresholds';
+import type { CaptureQualitySnapshot } from '@/scanQuality/types';
+import {
+  ScanQualityDebugOverlay,
+  isScanDebugEnabled,
+} from '@/components/scan/ScanQualityDebugOverlay';
 
 export interface ScanCaptureScreenProps {
   onClose: () => void;
@@ -40,8 +49,17 @@ export interface ScanCaptureScreenProps {
    * a separate callback (`onBarcodeScanned`) because it skips the
    * still-image capture path entirely — the camera auto-fires on
    * detection.
+   *
+   * v27 — face captures now also carry `captureQuality`: the live
+   * landmarks + quality signals frozen at the shutter moment (null
+   * for gallery picks and platforms with no detector). Downstream
+   * results screens consume the landmarks for the on-skin glow.
    */
-  onCaptured: (photoUri: string, mode: 'face' | 'product') => void;
+  onCaptured: (
+    photoUri: string,
+    mode: 'face' | 'product',
+    captureQuality?: CaptureQualitySnapshot
+  ) => void;
   /** v10.32 — fired when expo-camera's BarcodeScanner detects a code. */
   onBarcodeScanned?: (barcodeValue: string) => void;
   onOpenHelp: () => void;
@@ -215,14 +233,9 @@ export function ScanCaptureScreen({
     mode,
   });
 
-  // v24 — derive a FaceReadiness model from the honest signals we
-  // currently have: lighting probe + elapsed time since camera
-  // mount + frame state. Until a real face detector lands, we DO
-  // NOT claim faceDetected/centered/coverage from thin air. We
-  // promote them only after the lighting probe has settled, which
-  // is the user's de-facto signal that they've framed.
-  // TODO(face-detection): when a vision-camera / ML Kit detector
-  // lands, swap the elapsed-time proxy for a real bounding-box.
+  // Elapsed-since-lighting clock — still drives the product/barcode
+  // readiness baselines below (those modes are out of scope for the
+  // quality engine until label OCR / barcode decoding land).
   const [elapsedSinceLight, setElapsedSinceLight] = useState(0);
   const lightSettledAtRef = useRef<number | null>(null);
   useEffect(() => {
@@ -241,30 +254,37 @@ export function ScanCaptureScreen({
     return () => clearInterval(id);
   }, [lightingSignal]);
 
-  const faceReadiness: FaceReadiness = (() => {
-    const lightOk = lightingSignal === 'good';
-    const lightPending = lightingSignal === 'pending';
-    const settled = elapsedSinceLight >= 1500;
-    // Without real face detection we can only promote framing
-    // claims AFTER lighting is good AND we've waited long enough
-    // for the user to compose. We never promote inside `pending`.
-    const inferredDetected = lightOk && elapsedSinceLight >= 500;
-    return {
-      faceDetected: inferredDetected,
-      faceCentered: inferredDetected && settled,
-      faceCoverage: inferredDetected ? 0.62 : 0,
-      foreheadVisible: inferredDetected,
-      chinVisible: inferredDetected,
-      bothCheeksVisible: inferredDetected,
-      lightingQuality: lightOk ? 0.78 : lightPending ? 0 : 0.25,
-      backlightRisk: 0,
-      motionStability: inferredDetected ? 0.7 : 0,
-      sharpness: inferredDetected ? 0.7 : 0,
-      occlusionRisk: 0,
-      overallReadiness:
-        inferredDetected && settled ? (lightOk ? 0.78 : 0.4) : 0,
-    };
-  })();
+  // v27 — REAL face-scan quality engine. On web, useScanQuality runs
+  // MediaPipe FaceLandmarker against the live camera feed (~15 Hz)
+  // plus per-frame luma/Laplacian stats, so faceReadiness is now a
+  // projection of genuinely measured signals (see src/scanQuality/).
+  // The v24 elapsed-time inference is gone for good: on platforms
+  // with no detector the engine reports 'unavailable' and we hold the
+  // honest neutral baseline — a check is never claimed unmeasured.
+  const { signals: quality, getCaptureSnapshot } = useScanQuality({
+    enabled: mode === 'face' && !!permission?.granted,
+  });
+  const engineLive = mode === 'face' && quality.detectorStatus === 'running';
+  const qualityRef = useRef(quality);
+  useEffect(() => {
+    qualityRef.current = quality;
+  }, [quality]);
+
+  const faceReadiness: FaceReadiness = engineLive
+    ? qualityToFaceReadiness(quality)
+    : DEFAULT_FACE_READINESS;
+
+  // Screen fill-light now follows the engine's live light level with
+  // hysteresis (the one-shot probe remains the fallback when no
+  // detector is running on this platform).
+  useEffect(() => {
+    if (!engineLive) return;
+    setAutoDark((prev) => {
+      if (quality.lightLevel < QUALITY_T.FILL_LIGHT_BELOW) return true;
+      if (quality.lightLevel > QUALITY_T.FILL_LIGHT_RELEASE) return false;
+      return prev;
+    });
+  }, [engineLive, quality.lightLevel]);
 
   // Honest baselines for product / barcode modes — we don't pretend
   // we have label OCR or barcode detection until the runtime signals.
@@ -387,25 +407,20 @@ export function ScanCaptureScreen({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOverlay.value }));
 
-  // v26.3 — the shutter gate is now ADVISORY, not blocking.
+  // Debug readout visibility is static per mount (dev or ?scanDebug=1).
+  const scanDebugVisible = React.useMemo(isScanDebugEnabled, []);
+
+  // v27 — the shutter gate is REAL where the engine runs, advisory
+  // where it can't.
   //
-  // Background: in Expo Go we have no real face detector. The
-  // pre-capture `canCapture` gate was inferring readiness from
-  // elapsed time + a luminance probe. In a slightly dim room the
-  // probe reports 'low' → `inferredDetected` stays false → the
-  // gate NEVER unlocks → the user taps the shutter and nothing
-  // happens. The post-capture preflight in ScanAnalyzing already
-  // inspects the actual captured frame and routes to an honest
-  // retry if it's unusable, so the pre-capture inference gate is
-  // double duty — and the wrong duty: it stops capture on a guess.
-  //
-  // We keep the controller's `canCapture` as a visual hint
-  // (InstructionCard severity, ShutterButton appearance) but DO
-  // NOT block the actual capture. The only pre-capture gates are
-  // the ones we can prove: camera mounted, not already firing,
-  // not in countdown, and a tiny composition settle window so an
-  // accidental shutter tap during the screen's mount transition
-  // doesn't fire a blurry first frame.
+  // History: v26.3 demoted the gate to advisory because the old
+  // "readiness" was a guess (elapsed time + luminance probe) and a
+  // guess must never block a capture. The quality engine changes
+  // the premise: on web it MEASURES the live frame (face, framing,
+  // pose, light, sharpness, motion), so blocking on a failing check
+  // is honest — see onCapture. On platforms where the engine reports
+  // 'unavailable' the v26.3 reasoning still holds and capture stays
+  // advisory (countdown + post-capture preflight).
   const COMPOSE_SETTLE_MS = 600;
   const screenMountedAtRef = useRef(Date.now());
   useEffect(() => {
@@ -419,8 +434,58 @@ export function ScanCaptureScreen({
     phaseRef.current = scanInstruction.phase;
   }, [scanInstruction.phase]);
 
+  // Synchronous re-entrancy guard — `capturing` state lags a render,
+  // and auto-capture + manual tap can race within one frame.
+  const capturingRef = useRef(false);
+  useEffect(() => {
+    capturingRef.current = capturing;
+  }, [capturing]);
+
+  const runCapture = useCallback(async () => {
+    if (!cameraRef.current || capturingRef.current) return;
+    capturingRef.current = true;
+    setCapturing(true);
+    // §2.3 — 30% opacity paper flash across the whole screen for 120ms.
+    flashOverlay.value = withTiming(0.3, { duration: 60 }, () => {
+      flashOverlay.value = withTiming(0, { duration: 60 });
+    });
+    try {
+      // v27 — freeze the live landmarks + quality signals at the
+      // shutter moment, BEFORE the (async) photo lands. The results
+      // on-skin glow consumes these downstream.
+      const captureQuality = mode === 'face' ? getCaptureSnapshot() : null;
+      let uri: string | undefined;
+      if (cameraRef.current) {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.85,
+          skipProcessing: true,
+        });
+        uri = photo?.uri;
+      }
+      if (uri) {
+        if (__DEV__ && captureQuality) {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[scanQuality] capture snapshot attached: ${captureQuality.landmarks?.length ?? 0} landmarks, allPass=${captureQuality.allPass}`
+          );
+        }
+        onCaptured(uri, toAnalysisMode(mode), captureQuality ?? undefined);
+      } else {
+        capturingRef.current = false;
+        setCapturing(false);
+        setFrameState('idle');
+        setCountdownValue(null);
+      }
+    } catch {
+      capturingRef.current = false;
+      setCapturing(false);
+      setFrameState('idle');
+      setCountdownValue(null);
+    }
+  }, [flashOverlay, getCaptureSnapshot, mode, onCaptured]);
+
   const onCapture = useCallback(async () => {
-    if (!cameraRef.current || capturing) return;
+    if (!cameraRef.current || capturingRef.current) return;
     if (frameState === 'preparing') return; // already counting down
 
     // Hard non-capture phases — the camera or analyzer is doing
@@ -453,12 +518,25 @@ export function ScanCaptureScreen({
       return runCapture();
     }
 
-    // Face mode: tap → 2s "hold steady" countdown → fire. The
-    // countdown is deliberate; even though we can't validate the
-    // frame on-device, we want to give the user a beat to settle
-    // the camera and reframe if they realise they're crooked. The
-    // post-capture preflight call (in ScanAnalyzing) catches the
-    // bad photos.
+    // v27 — REAL shutter gate. With the quality engine live, the
+    // shutter fires only when every measured check passes. A tap
+    // during a failing check acknowledges but does not capture — the
+    // controller's instruction says exactly what to fix. The engine
+    // has already verified the live frame, so the legacy 2s
+    // countdown is skipped (it existed because we couldn't validate
+    // pre-capture; now we can).
+    if (engineLive) {
+      if (!qualityRef.current.allPass) {
+        hapt.select();
+        return;
+      }
+      hapt.medium();
+      return runCapture();
+    }
+
+    // No detector on this platform — keep the advisory countdown
+    // flow; the post-capture preflight in ScanAnalyzing catches the
+    // bad photos honestly after the fact.
     hapt.tap();
     setFrameState('preparing');
     const startedAt = Date.now();
@@ -479,36 +557,28 @@ export function ScanCaptureScreen({
       hapt.medium();
       await runCapture();
     }, COUNTDOWN_MS);
+  }, [engineLive, frameState, mode, runCapture]);
 
-    async function runCapture() {
-      setCapturing(true);
-      // §2.3 — 30% opacity paper flash across the whole screen for 120ms.
-      flashOverlay.value = withTiming(0.3, { duration: 60 }, () => {
-        flashOverlay.value = withTiming(0, { duration: 60 });
-      });
-      try {
-        let uri: string | undefined;
-        if (cameraRef.current) {
-          const photo = await cameraRef.current.takePictureAsync({
-            quality: 0.85,
-            skipProcessing: true,
-          });
-          uri = photo?.uri;
-        }
-        if (uri) {
-          onCaptured(uri, toAnalysisMode(mode));
-        } else {
-          setCapturing(false);
-          setFrameState('idle');
-          setCountdownValue(null);
-        }
-      } catch {
-        setCapturing(false);
-        setFrameState('idle');
-        setCountdownValue(null);
-      }
+  // v27 — AUTO-capture: when every check holds for
+  // AUTO_CAPTURE_HOLD_MS (~1.3s), the shutter fires without a tap.
+  // The latch resets only when allPass drops, so a failed capture
+  // can't machine-gun; manual tap stays available throughout.
+  // (Capture ceremony animation lands in the next design pass —
+  // this wires the logic.)
+  const autoFiredRef = useRef(false);
+  useEffect(() => {
+    if (!engineLive || !quality.allPass) {
+      autoFiredRef.current = false;
+      return;
     }
-  }, [capturing, flashOverlay, frameState, mode, onCaptured]);
+    if (autoFiredRef.current || capturing || frameState === 'preparing') return;
+    const t = setTimeout(() => {
+      autoFiredRef.current = true;
+      hapt.medium();
+      void runCapture();
+    }, QUALITY_T.AUTO_CAPTURE_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [engineLive, quality.allPass, capturing, frameState, runCapture]);
 
   const onGalleryPick = useCallback(
     (uri: string) => {
@@ -638,6 +708,14 @@ export function ScanCaptureScreen({
                persisted preference (`lightingAssistEnabled`)
                now serves as a soft "force-on" override only;
                normal users see fully automatic behavior. */}
+
+      {/* v27 — TEMPORARY quality-engine debug readout (dev or
+          ?scanDebug=1). Every continuous signal, boolean, and the
+          primary hint, live — proves detection is real. Removed
+          once the designed quality UI lands. */}
+      {mode === 'face' && scanDebugVisible ? (
+        <ScanQualityDebugOverlay signals={quality} />
+      ) : null}
 
       {/* Full-screen paper flash, 30% opacity, 120ms */}
       <Animated.View

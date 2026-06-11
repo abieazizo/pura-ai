@@ -1,6 +1,7 @@
 import type { Product, ProductTint } from '@/types';
 import type { BarcodeResolution, LiveProductCandidate } from '@/ai/ai-contracts';
 import type { PillarSelection } from '@/types/routine';
+import type { CaptureQualitySnapshot } from '@/scanQuality/types';
 
 export type ProductsRowKind =
   | 'best-for-you'
@@ -10,30 +11,23 @@ export type ProductsRowKind =
   | 'essentials';
 
 /**
- * Scan-first onboarding. Exactly three screens precede the camera:
- * Splash → AskName → CameraPrimer → CameraPermission, which hands off into
- * the scan camera (or CameraDenied on refusal). Returning users take
- * Splash → SignIn → Tabs.
+ * Scan-first onboarding (v22 momentum rebuild). The arc is the orb getting
+ * to know the user on the way to the scan:
+ * ColdOpen → OrbInterview (goal → age → skin type → sensitivities →
+ * pregnancy → synthesis, all ONE route) → CameraPrimer → CameraPermission,
+ * which hands off into the scan camera (or CameraDenied on refusal).
+ * Returning users take ColdOpen → SignIn → Tabs.
  *
- * The questionnaire arc (AuthChoice / AskAge / AskGender / AskSkinType /
- * AskConcerns / AskSensitivity / AskSunExposure / AskEffort / AskGoal /
- * AskAttribution / Processing / ProfileSummary / Tutorial) and the dead
- * V1/V2 graveyard (Welcome, Paywall, ReviewAsk, AskSkinBehavior,
- * AskLifestyle, FirstScanInvitation, PlanReveal, NotificationPermission,
- * and the entire onboarding/v2 tree) were DELETED in the scan-first
- * rebuild — both their screen files and their routes. AuthChoice survives
- * off this stack: it is repurposed as the post-scan "Save your skin
- * profile" screen.
+ * The questionnaire arc, the V1/V2 graveyard, and the Splash/AskName legacy
+ * arc were DELETED across the scan-first + momentum rebuilds — both their
+ * screen files and their routes. AuthChoice survives off this stack: it is
+ * repurposed as the post-scan "Save your skin profile" screen.
  */
 export type OnboardingStackParamList = {
-  // ---- Active scan-first arc (three screens before the camera) ----
-  Splash: undefined;
-  /** Screen 1 — the cold open (the orb's birth). New onboarding entry. */
+  /** Screen 1 — the cold open (the orb's birth). Onboarding entry. */
   ColdOpen: undefined;
-  /** The orb interview — Screen 2 + name beat + Screen 3 hosted as one route
-   *  so the companion orb stays a single continuous element across them. */
+  /** The orb interview — one question per screen, one continuous orb. */
   OrbInterview: undefined;
-  AskName: undefined;
   CameraPrimer: undefined;
   CameraPermission: undefined;
   CameraDenied: undefined;
@@ -137,7 +131,14 @@ export type ScanModalMode = 'face' | 'product' | 'barcode';
 
 export type ScanStackParamList = {
   ScanCapture: { initialMode?: ScanModalMode } | undefined;
-  ScanAnalyzing: { photoUri: string; mode: 'face' | 'product' };
+  /** v27 — `captureQuality` carries the landmarks + quality signals
+   *  frozen at the shutter moment (absent for gallery picks and
+   *  platforms without the detection engine). */
+  ScanAnalyzing: {
+    photoUri: string;
+    mode: 'face' | 'product';
+    captureQuality?: CaptureQualitySnapshot;
+  };
   ScanResultsFace: { scanId: string };
   /** Post-scan reveal arc (surfaces 2–6: Skin Map → Focus → Insights →
    *  Plan → Ready). The face analyze step hands off here instead of

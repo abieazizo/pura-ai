@@ -182,8 +182,11 @@ function CaptureScreenHost() {
     <ScanCaptureScreen
       initialMode={initialMode}
       onClose={() => rootNav.getParent()?.goBack()}
-      onCaptured={(photoUri, mode) => {
-        scanNav.navigate('ScanAnalyzing', { photoUri, mode });
+      onCaptured={(photoUri, mode, captureQuality) => {
+        // v27 — captureQuality carries the landmarks + quality signals
+        // frozen at the shutter moment (undefined for gallery picks /
+        // platforms without the detection engine).
+        scanNav.navigate('ScanAnalyzing', { photoUri, mode, captureQuality });
       }}
       // v10.32 — barcode mode auto-fires onBarcodeScanned when
       // expo-camera detects a code. Skip ScanAnalyzing (which is
