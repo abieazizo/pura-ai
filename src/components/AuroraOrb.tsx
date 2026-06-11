@@ -62,6 +62,7 @@ import Animated, {
   cancelAnimation,
   Easing,
   interpolate,
+  interpolateColor,
   useAnimatedProps,
   useAnimatedReaction,
   useAnimatedSensor,
@@ -159,6 +160,24 @@ export interface AuroraOrbHandle {
   /** A subtle, never-naggy "I'm here, take your time" beat after a pause:
    *  brows lift a touch + one soft glow pulse, then settle to attentive. */
   encourage(): void;
+  /** Your Routine: cool→warm glow temperature. 0 = the cool/violet register,
+   *  1 = warm amber. A SEPARATE channel from `warmth` (familiarity) and the
+   *  aura cross-fade — a warm twin layered over them, exactly invisible at 0.
+   *  Animates over `ms` (default 500); snaps under reduce-motion (it is
+   *  STATE, like setAura). */
+  setGlowTemperature(t: number, ms?: number): void;
+  /** Your Routine: one-shot halo bloom — scale + intensity 1.0 → peak (default
+   *  1.15) → 1.0 over ms (default 1200). Independent of the breath loop and of
+   *  `haloS` reaction blooms (composes multiplicatively). No-op under
+   *  reduce-motion (transient, like emphasisPulse). */
+  bloomOnce(opts?: { peak?: number; ms?: number }): void;
+  /** Your Routine: a soft held "noticing you" brighten — +pct (default 0.1)
+   *  then settle over ms (default 900). Reuses the reaction-glow channel; do
+   *  not fire mid-reaction. No-op under reduce-motion. */
+  brightenOnce(pct?: number, ms?: number): void;
+  /** Your Routine: scalar gaze (−1..1 each axis; +y = down). Lets the eyes
+   *  visibly TRACK a list assembling downward, where setGaze is binary. */
+  gazeTo(x: number, y: number): void;
   // POLISH-PASS HOOK (do NOT implement in v1): gaze-follows-finger eye-tracking
   // would land here as e.g. trackPointer(x, y) driving gazeX/gazeY directly.
 }
@@ -192,6 +211,16 @@ export interface AuroraOrbProps {
   dark?: boolean;
   /** Initial aura tint. `setAura` cross-fades to another at a question seam. */
   auraTheme?: OrbAuraTheme;
+  /** Idle-blink rhythm override. Default {minMs:3000, maxMs:5000, blinkMs:200}
+   *  (the onboarding rhythm). Your Routine passes a sleepier, irregular 4–9s
+   *  with a quicker ~120ms blink. Existing consumers omit it — byte-identical
+   *  behavior. Read through a ref; safe to leave constant after mount. */
+  blinkCadence?: { minMs: number; maxMs: number; blinkMs?: number };
+  /** Idle-breath override: scale 1.0→amplitude→1.0, halfMs per leg. Default
+   *  {amplitude:1.03, halfMs:1800} (~3.6s, onboarding). Your Routine passes
+   *  the calmer {amplitude:1.02, halfMs:2250} (~4.5s). Read once when the
+   *  idle timeline starts. */
+  breathProfile?: { amplitude: number; halfMs: number };
   /** Fires once the face has opened its eyes + brows + first blink (~T=2480ms
    *  in awakening; immediately in idle/static). Lets a host chain off "alive". */
   onAwake?: () => void;
@@ -264,6 +293,8 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       reduceMotion = false,
       dark = false,
       auraTheme = 'violet-cool',
+      blinkCadence,
+      breathProfile,
       onAwake,
     },
     ref,
@@ -288,6 +319,8 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
         shimmer: `aurora-shimmer-${uid}`,
         auraV: `aurora-auraV-${uid}`,
         auraB: `aurora-auraB-${uid}`,
+        tempCore: `aurora-tempCore-${uid}`,
+        tempHalo: `aurora-tempHalo-${uid}`,
       }),
       [uid],
     );
@@ -406,6 +439,9 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     const auraMix = useSharedValue(auraTheme === 'blue-warm' ? 1 : 0); // 0=violet 1=blue
     const patientSweep = useSharedValue(0); // hesitation gaze drift (−1..1)
     const joy = useSharedValue(0); // 0 = dot eyes, 1 = happy ∩ arcs (reaction)
+    const glowTemp = useSharedValue(0); // 0 = cool register, 1 = warm amber (routine)
+    const bloomS = useSharedValue(1); // one-shot halo bloom scale multiplier
+    const bloomGlow = useSharedValue(0); // one-shot bloom intensity 0..~0.3
 
     // ---- Gyro parallax (front plane). Hook always called; output ignored when
     //      disabled or under reduce-motion. No-op (zeros) without a sensor. -----
@@ -433,6 +469,12 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
 
     const onAwakeRef = useRef(onAwake);
     onAwakeRef.current = onAwake;
+    // Cadence overrides flow through refs so the [mode] master-timeline effect
+    // never restarts on a prop change (the onAwakeRef/tierLowRef pattern).
+    const blinkCadenceRef = useRef(blinkCadence);
+    blinkCadenceRef.current = blinkCadence;
+    const breathProfileRef = useRef(breathProfile);
+    breathProfileRef.current = breathProfile;
     const pendingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
     // Idle blinks pause until this timestamp (ms) — lets a 'competent' reaction
     // hold a steady, unblinking gaze through its differentiating clause.
@@ -566,6 +608,40 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             withTiming(0.1, { duration: 560, easing: EASE_OUT }),
             withTiming(0, { duration: 900, easing: EASE_IN_QUAD }),
           );
+        },
+        setGlowTemperature(t, ms = 500) {
+          const to = Math.max(0, Math.min(1, t));
+          glowTemp.value = animsOffRef.current
+            ? to // reduce-motion: temperature is state — snap, don't drop
+            : withTiming(to, { duration: ms, easing: EASE_IO });
+        },
+        bloomOnce(opts) {
+          if (animsOffRef.current) return; // transient flourish — skip under rm
+          const peak = Math.max(1, opts?.peak ?? 1.15);
+          const ms = opts?.ms ?? 1200;
+          const up = Math.round(ms * 0.38);
+          bloomS.value = withSequence(
+            withTiming(peak, { duration: up, easing: EASE_OUT }),
+            withTiming(1, { duration: ms - up, easing: EASE_IO }),
+          );
+          bloomGlow.value = withSequence(
+            withTiming(Math.min(0.3, (peak - 1) * 1.6), { duration: up, easing: EASE_OUT }),
+            withTiming(0, { duration: ms - up, easing: EASE_IN_QUAD }),
+          );
+        },
+        brightenOnce(pct = 0.1, ms = 900) {
+          if (animsOffRef.current) return;
+          const up = Math.round(ms * 0.4);
+          glowBoost.value = withSequence(
+            withTiming(Math.max(0, Math.min(0.3, pct)), { duration: up, easing: EASE_OUT }),
+            withTiming(0, { duration: ms - up, easing: EASE_IN_QUAD }),
+          );
+        },
+        gazeTo(x, y) {
+          const cl = (v: number) => Math.max(-1, Math.min(1, v));
+          const dur = animsOffRef.current ? 0 : 360;
+          gazeX.value = withTiming(cl(x), { duration: dur, easing: EASE_IO_CUBIC });
+          gazeY.value = withTiming(cl(y), { duration: dur, easing: EASE_IO_CUBIC });
         },
       }),
       // Shared values are stable; refs carry the latest mode/tier. Built once.
@@ -790,14 +866,18 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
         r3.value = withRepeat(withTiming(1, { duration: 13000, easing: Easing.linear }), -1, false);
       }
 
-      // Breath — sine, never a hard stop at the extremes. A touch deeper + a
-      // hair quicker (~3.6s) so the orb visibly LIVES while it waits.
+      // Breath — sine, never a hard stop at the extremes. Onboarding default is
+      // a touch deeper + a hair quicker (~3.6s); a host can pass a calmer
+      // profile (Your Routine: 1.02 over ~4.5s) without touching this default.
+      const bp = breathProfileRef.current;
+      const breathAmp = bp?.amplitude ?? 1.03;
+      const breathHalf = bp?.halfMs ?? 1800;
       breath.value = withDelay(
         born ? T.breath : 0,
         withRepeat(
           withSequence(
-            withTiming(1.03, { duration: 1800, easing: EASE_IO }),
-            withTiming(1.0, { duration: 1800, easing: EASE_IO }),
+            withTiming(breathAmp, { duration: breathHalf, easing: EASE_IO }),
+            withTiming(1.0, { duration: breathHalf, easing: EASE_IO }),
           ),
           -1,
           false,
@@ -905,11 +985,16 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             pendingTimers.current.push(t2);
             return;
           }
+          const cad = blinkCadenceRef.current;
+          const blinkMs = cad?.blinkMs ?? 200;
+          const closeMs = Math.max(40, Math.round(blinkMs * 0.45));
           blink.value = withSequence(
-            withTiming(0.08, { duration: 90, easing: EASE_IN_QUAD }),
-            withTiming(1, { duration: 110, easing: EASE_OUT_QUAD }),
+            withTiming(0.08, { duration: closeMs, easing: EASE_IN_QUAD }),
+            withTiming(1, { duration: blinkMs - closeMs, easing: EASE_OUT_QUAD }),
           );
-          const next = 3000 + Math.random() * 2000; // slow-blink every 3–5s
+          const next = cad
+            ? cad.minMs + Math.random() * Math.max(0, cad.maxMs - cad.minMs)
+            : 3000 + Math.random() * 2000; // slow-blink every 3–5s (default)
           const t2 = setTimeout(tick, next);
           pendingTimers.current.push(t2);
         }, firstDelay);
@@ -924,7 +1009,7 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
           browLO, browRO, noseO, blink, breath, drift, r1, r2, r3,
           gazeX, gazeY, ambientX, ambientY, browRaise, browTilt, eyeOpen,
           glowBoost, leanScale, orbTilt, warmth, shimmerAmp, shimmerPos,
-          auraMix, patientSweep, joy,
+          auraMix, patientSweep, joy, glowTemp, bloomS, bloomGlow,
           ...ripples,
         ].forEach(cancelAnimation);
         pendingTimers.current.forEach(clearTimeout);
@@ -966,9 +1051,24 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       transform: [{ translateX: lagX.value * 5 }, { translateY: lagY.value * 5 }],
     }));
     const haloStyle = useAnimatedStyle(() => ({
-      // Dark: the orb is a luminous light source — a touch more bloom.
-      opacity: haloO.value + glowBoost.value * 0.5 + warmth.value * 0.1 + (dark ? 0.06 : 0),
-      transform: [{ scale: haloS.value * (dark ? 1.15 : 1) }],
+      // Dark: the orb is a luminous light source — a touch more bloom. The cool
+      // halo recedes as glow temperature warms (its warm twin rises below);
+      // bloomS/bloomGlow are the one-shot bloom — identity at rest.
+      opacity:
+        (haloO.value + glowBoost.value * 0.5 + bloomGlow.value * 0.6 + warmth.value * 0.1 + (dark ? 0.06 : 0)) *
+        (1 - glowTemp.value * 0.55),
+      transform: [{ scale: haloS.value * bloomS.value * (dark ? 1.15 : 1) }],
+    }));
+    // Temperature twins — warm halo + warm core mirror the cool layers'
+    // envelopes, scaled by glowTemp. Both are exactly invisible at temp 0.
+    const haloWarmStyle = useAnimatedStyle(() => ({
+      opacity:
+        (haloO.value + glowBoost.value * 0.5 + bloomGlow.value * 0.6 + warmth.value * 0.1 + (dark ? 0.06 : 0)) *
+        glowTemp.value * 0.85,
+      transform: [{ scale: haloS.value * bloomS.value * (dark ? 1.15 : 1) }],
+    }));
+    const tempCoreStyle = useAnimatedStyle(() => ({
+      opacity: glowTemp.value * (dark ? 0.4 : 0.18),
     }));
     const paleStyle = useAnimatedStyle(() => ({
       opacity: interpolate(sat.value, [0.3, 1], [1, 0], 'clamp'),
@@ -977,10 +1077,12 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       opacity: interpolate(sat.value, [0.3, 1], [0, 1], 'clamp'),
     }));
     const warmStyle = useAnimatedStyle(() => ({ opacity: warmth.value * 0.12 }));
-    const reactStyle = useAnimatedStyle(() => ({ opacity: glowBoost.value }));
-    const auraVStyle = useAnimatedStyle(() => ({ opacity: (1 - auraMix.value) * auraOpacity }));
-    const auraBStyle = useAnimatedStyle(() => ({ opacity: auraMix.value * auraOpacity }));
-    const wispStyle = useAnimatedStyle(() => ({ opacity: wispO.value }));
+    const reactStyle = useAnimatedStyle(() => ({ opacity: glowBoost.value + bloomGlow.value * 0.5 }));
+    // The aura pair dims (equally — the violet⇄blue MIX is untouched) as glow
+    // temperature warms, so amber reads true at temp 1. Identity at temp 0.
+    const auraVStyle = useAnimatedStyle(() => ({ opacity: (1 - auraMix.value) * auraOpacity * (1 - glowTemp.value * 0.6) }));
+    const auraBStyle = useAnimatedStyle(() => ({ opacity: auraMix.value * auraOpacity * (1 - glowTemp.value * 0.6) }));
+    const wispStyle = useAnimatedStyle(() => ({ opacity: wispO.value * (1 - glowTemp.value * 0.3) }));
     const seedStyle = useAnimatedStyle(() => ({
       opacity: seedO.value,
       transform: [{ scale: seedS.value }],
@@ -1102,12 +1204,28 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             </Svg>
           </Animated.View>
 
+          {/* Warm halo twin — Your Routine's glow temperature (invisible at 0) */}
+          <Animated.View style={[centered(HALO), haloWarmStyle]} pointerEvents="none">
+            <Svg width={HALO} height={HALO}>
+              <Defs>
+                <RadialGradient id={ids.tempHalo} cx="50%" cy="50%" r="50%">
+                  <Stop offset="0%" stopColor={C.tempHalo0} />
+                  <Stop offset="40%" stopColor={C.tempHalo40} />
+                  <Stop offset="70%" stopColor={C.tempHalo70} />
+                  <Stop offset="100%" stopColor={C.tempHalo100} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={HALO / 2} cy={HALO / 2} r={HALO / 2} fill={`url(#${ids.tempHalo})`} />
+            </Svg>
+          </Animated.View>
+
           {/* Breath ripples (count by performance tier) */}
           {ripples.map((rp, i) =>
             i < rippleCount ? (
               <Ripple
                 key={i}
                 phase={rp}
+                temp={glowTemp}
                 diameter={RIPPLE}
                 positionStyle={centered(RIPPLE)}
                 borderWidth={Math.max(1, S * 0.004)}
@@ -1202,6 +1320,20 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
                 </RadialGradient>
               </Defs>
               <Circle cx={S * 0.48} cy={S * 0.48} r={S * 0.48} fill={`url(#${ids.warm})`} />
+            </Svg>
+          </Animated.View>
+
+          {/* Glow temperature core — warm-amber wash (invisible at temp 0) */}
+          <Animated.View style={[centered(S * 0.98), tempCoreStyle]} pointerEvents="none">
+            <Svg width={S * 0.98} height={S * 0.98}>
+              <Defs>
+                <RadialGradient id={ids.tempCore} cx="50%" cy="50%" r="52%">
+                  <Stop offset="0%" stopColor={C.tempCore0} />
+                  <Stop offset="55%" stopColor={C.tempCoreMid} />
+                  <Stop offset="100%" stopColor={C.tempCoreEdge} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={S * 0.49} cy={S * 0.49} r={S * 0.49} fill={`url(#${ids.tempCore})`} />
             </Svg>
           </Animated.View>
 
@@ -1389,11 +1521,15 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
 // a loop. Scales 1 → 1.6 and fades 0.26 → 0 over its 3s life, forever.
 function Ripple({
   phase,
+  temp,
   diameter,
   positionStyle,
   borderWidth,
 }: {
   phase: SharedValue<number>;
+  /** Glow temperature 0..1 — tints the ring cool→warm (plain View borderColor
+   *  is the one place a true animated color is safe in this RNSVG build). */
+  temp: SharedValue<number>;
   diameter: number;
   positionStyle: object;
   borderWidth: number;
@@ -1402,16 +1538,21 @@ function Ripple({
     opacity: interpolate(phase.value, [0, 0.15, 1], [0, 0.26, 0], 'clamp'),
     transform: [{ scale: interpolate(phase.value, [0, 1], [1, 1.6]) }],
   }));
+  const ringStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(temp.value, [0, 1], [C.ripple, C.rippleWarm]),
+  }));
   return (
     <Animated.View style={[positionStyle, style]} pointerEvents="none">
-      <View
-        style={{
-          width: diameter,
-          height: diameter,
-          borderRadius: diameter / 2,
-          borderWidth,
-          borderColor: C.ripple,
-        }}
+      <Animated.View
+        style={[
+          {
+            width: diameter,
+            height: diameter,
+            borderRadius: diameter / 2,
+            borderWidth,
+          },
+          ringStyle,
+        ]}
       />
     </Animated.View>
   );

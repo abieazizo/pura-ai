@@ -49,7 +49,11 @@ export function ConsistencyView({
         Misses don't count against you. Skin doesn't keep score.
       </Text>
 
-      <View style={styles.strip}>
+      <View
+        style={styles.strip}
+        accessible
+        accessibilityLabel={`${dots.filter(Boolean).length} of the last ${days} days done`}
+      >
         {dots.map((on, i) => (
           <View
             key={i}

@@ -21,10 +21,11 @@ import type {
 } from '@/types/routine';
 import type { ConcernType, VisibleFinding } from '@/types/scanResults';
 import {
-  periodForRoutine,
+  periodForHour,
   type RoutinePeriod,
 } from '@/theme/routineAtmosphere';
 import {
+  assertVoice,
   doneLanding,
   pickEveningGreeting,
   pickMorningGreeting,
@@ -33,12 +34,16 @@ import {
 import {
   buildThroughline,
   completionBenefit,
-  concernThe,
   findingNoun,
   ritualLead,
 } from './findings';
 
-/** A routine_focus "move" (from `@/state/v26/routineFocus` or derived). */
+/**
+ * A routine_focus "move" — the screen-2 cards. Persisted across the scan
+ * modal's teardown by `src/state/routineFocusMoves.ts` (keyed by scanId) and
+ * passed in by the tab screen; when absent (older scans), `deriveMoves` builds
+ * honest fallback buckets so the morph never renders empty.
+ */
 export interface RoutineFocusMove {
   title: string;
   why: string;
@@ -46,7 +51,7 @@ export interface RoutineFocusMove {
   addresses: string[];
 }
 
-export type MatchHonesty = 'strong' | 'optional' | 'maybe skip for now';
+export type MatchHonesty = 'strong' | 'optional' | 'maybe skip this for now';
 
 export interface ProductSlotVM {
   category: RoutineStepType;
@@ -61,6 +66,10 @@ export interface ProductSlotVM {
     honesty: MatchHonesty;
     /** Flag the cheapest-that-works so the orb can point at it honestly. */
     cheapestThatWorks: boolean;
+    /** Raw image refs (pure data — components resolve the catalog packshot by
+     *  id first; these are the fallbacks for live, non-catalog products). */
+    imageAsset?: number;
+    imageUrl?: string;
   };
 }
 
@@ -81,6 +90,9 @@ export interface StepVM {
   /** The primary finding this step traces to, if resolved. */
   finding: VisibleFinding | null;
   concern: ConcernType | null;
+  /** Completion-as-care plays here: the SPF, or the step carrying the scan's
+   *  top finding. (The ritual also treats the last step as meaningful.) */
+  meaningful: boolean;
   done: boolean;
   optional: boolean;
   product: ProductSlotVM;
@@ -113,7 +125,18 @@ export interface FocusVM {
 
 export interface BundleVM {
   intro: string;
-  items: { id: string; name: string; why: string; price?: number; honesty: MatchHonesty }[];
+  /** Honest commerce, said out loud: "you don't need a serum yet" when the
+   *  basics genuinely cover it. Absent when there's nothing honest to flag. */
+  honestNote?: string;
+  items: {
+    id: string;
+    name: string;
+    why: string;
+    price?: number;
+    honesty: MatchHonesty;
+    imageAsset?: number;
+    imageUrl?: string;
+  }[];
   total?: number;
   alsoFree: string;
 }
@@ -193,6 +216,8 @@ export function buildYourRoutineModel(input: BuildModelInput): YourRoutineModel 
       absorbSeconds: ABSORB_BY_TYPE[step.type] ?? 0,
       finding,
       concern,
+      meaningful:
+        step.type === 'protect' || (!!finding && !!topFinding && finding.id === topFinding.id),
       done: doneIds.includes(step.id),
       optional: step.optional,
       product: toProductSlot(step, finding),
@@ -209,12 +234,14 @@ export function buildYourRoutineModel(input: BuildModelInput): YourRoutineModel 
   const pm: RoutineCardVM = { timeOfDay: 'evening', title: 'Your evening', steps: pmSteps };
   const today = timeOfDay === 'morning' ? am : pm;
 
-  // Greeting — varies, never repeats back-to-back, honest about real calm.
+  // Greeting — varies, never repeats back-to-back, honest about real calm,
+  // and never claims "two steps" when today holds three.
   const seed = daySeed(now);
+  const stepCount = today.steps.length;
   const greeting =
     timeOfDay === 'morning'
-      ? pickMorningGreeting({ seed, lastShown: lastGreeting, calmerLately })
-      : pickEveningGreeting({ seed, lastShown: lastGreeting });
+      ? pickMorningGreeting({ seed, lastShown: lastGreeting, calmerLately, stepCount })
+      : pickEveningGreeting({ seed, lastShown: lastGreeting, stepCount });
 
   const welcomeBack = daysSinceLastUse >= 2 ? VOICE.welcomeBack : null;
 
@@ -241,7 +268,9 @@ export function buildYourRoutineModel(input: BuildModelInput): YourRoutineModel 
   const commerce = buildCommerce([...amSteps, ...pmSteps], topFinding);
 
   return {
-    period: periodForRoutine(timeOfDay, now.getHours()),
+    // The screen IS the time of day — period tracks the real clock (midday is
+    // reachable); the ritual inherits the hour it actually happens in.
+    period: periodForHour(now.getHours()),
     timeOfDay,
     greeting,
     welcomeBack,
@@ -295,7 +324,7 @@ function toProductSlot(step: RoutineStep, finding: VisibleFinding | null): Produ
   const p: RoutineProduct | undefined = step.product;
   if (!p) return { category: step.type };
   const honesty: MatchHonesty = step.optional
-    ? 'maybe skip for now'
+    ? 'maybe skip this for now'
     : finding && priorityRank(finding) >= 2
       ? 'strong'
       : 'optional';
@@ -309,17 +338,30 @@ function toProductSlot(step: RoutineStep, finding: VisibleFinding | null): Produ
       price: (p as RoutineProduct & { price?: number }).price,
       honesty,
       cheapestThatWorks: honesty !== 'strong',
+      imageAsset: p.imageAsset,
+      imageUrl: p.imageUrl,
     },
   };
 }
 
+/** Any over-promise the voice must never carry — these REJECT the upstream
+ *  copy outright (word-swapping a promise can garble grammar; a clean
+ *  finding-derived line can't). */
+const OVERPROMISE = /\bwill\b|\bguarantee[sd]?\b|\bfix(es|ed)?\b|\bcures?\b|\bclears?\b|\beliminates?\b|\berases?\b|\btransforms?\b/i;
+
 /** Calibrate a product reason: "should help", never "will fix". */
 function calibrate(why: string | undefined, finding: VisibleFinding | null): string {
-  if (why && why.trim()) {
-    return why.replace(/\bfix(es|ed)?\b/gi, 'should help').replace(/\bcures?\b/gi, 'should help');
+  const clean = why?.trim();
+  if (clean && !OVERPROMISE.test(clean) && lintClean(clean)) {
+    return clean;
   }
-  if (finding) return `Should help with the ${findingNoun(finding.type)} - gently, over time.`;
+  const noun = finding ? findingNoun(finding.type) : '';
+  if (noun) return assertVoice('calibrate', `Should help with the ${noun} - gently, over time.`);
   return 'A solid, no-fuss pick. Should help.';
+}
+
+function lintClean(text: string): boolean {
+  return !text.includes('!');
 }
 
 function fixLastLead(steps: StepVM[]): void {
@@ -343,13 +385,34 @@ function phraseDuration(seconds: number): string {
 }
 
 function progressBridge(top: VisibleFinding | null): string {
-  if (!top) return "Keep this up and we'll look for the change when you scan again.";
-  const noun = findingNoun(top.type);
-  const onCheeks = (top.zones ?? []).some((z) => z === 'left_cheek' || z === 'right_cheek');
-  if (top.type === 'redness' && onCheeks) return "Keep this up and we'll look for calmer cheeks when you scan again.";
-  if (top.type === 'dryness') return "Keep this up and we'll look for softer skin when you scan again.";
-  if (top.type === 'breakouts') return "Keep this up and we'll look for clearer skin when you scan again.";
-  return `Keep this up and we'll look for less ${noun} when you scan again.`;
+  const line = (() => {
+    if (!top) return "Keep this up and we'll look for the change when you scan again.";
+    const onCheeks = (top.zones ?? []).some((z) => z === 'left_cheek' || z === 'right_cheek');
+    switch (top.type) {
+      case 'redness':
+        return onCheeks
+          ? "Keep this up and we'll look for calmer cheeks when you scan again."
+          : "Keep this up and we'll look for less redness when you scan again.";
+      case 'dryness':
+        return "Keep this up and we'll look for softer skin when you scan again.";
+      case 'breakouts':
+        return "Keep this up and we'll look for clearer skin when you scan again.";
+      // Count nouns take "fading"/"smoother", never "less".
+      case 'dark_marks':
+        return "Keep this up and we'll look for those marks fading when you scan again.";
+      case 'texture':
+        return "Keep this up and we'll look for smoother patches when you scan again.";
+      case 'under_eye_fatigue':
+        return "Keep this up and we'll look for brighter eyes when you scan again.";
+      case 'oil_balance':
+        return "Keep this up and we'll look for less shine when you scan again.";
+      case 'barrier_stress':
+        return "Keep this up and we'll look for settled skin when you scan again.";
+      default:
+        return "Keep this up and we'll look for the change when you scan again.";
+    }
+  })();
+  return assertVoice('progressBridge', line);
 }
 
 /** Map provided routine_focus moves onto the resolved steps. */
@@ -396,13 +459,31 @@ function deriveMoves(steps: StepVM[]): MoveVM[] {
 }
 
 function whyLine(f: VisibleFinding | null, fallback: string): string {
-  if (!f) return fallback;
-  const noun = findingNoun(f.type);
+  const noun = f ? findingNoun(f.type) : '';
+  if (!noun) return fallback;
   return `There's a little ${noun} to look after.`;
 }
 
 function buildCommerce(steps: StepVM[], _top: VisibleFinding | null): YourRoutineModel['commerce'] {
-  const all = steps.map((s) => s.product.pick).filter(Boolean) as NonNullable<ProductSlotVM['pick']>[];
+  const stepsWithPicks = steps.filter((s) => s.product.pick);
+
+  // Honest commerce, said out loud:
+  //  • No (or only a skippable) treat pick → the orb says you don't need a
+  //    serum yet; the basics are doing the work.
+  //  • Exactly one non-essential pick aimed at redness → it's framed as the
+  //    one upgrade the orb would pick. Not essential, but it'd help.
+  const treatSlot = stepsWithPicks.find((s) => s.type === 'treat');
+  const noSerumYet = !treatSlot || treatSlot.product.pick!.honesty === 'maybe skip this for now';
+  const honestNote = noSerumYet ? VOICE.noSerumYet : undefined;
+
+  const optionalRedness = stepsWithPicks.filter(
+    (s) => s.concern === 'redness' && s.product.pick!.honesty !== 'strong',
+  );
+  if (optionalRedness.length === 1) {
+    optionalRedness[0].product.pick!.whyHelps = VOICE.oneUpgradeForRedness;
+  }
+
+  const all = stepsWithPicks.map((s) => s.product.pick!) as NonNullable<ProductSlotVM['pick']>[];
   // Dedupe by product id — one product used in both AM and PM counts once.
   const seen = new Set<string>();
   const picks = all.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
@@ -411,14 +492,24 @@ function buildCommerce(steps: StepVM[], _top: VisibleFinding | null): YourRoutin
   const total = priced.length ? priced.reduce((a, p) => a + (p.price ?? 0), 0) : undefined;
   const bundle: BundleVM = {
     intro: "Here's everything for your routine - each one earns its place.",
-    items: picks.map((p) => ({ id: p.id, name: p.name, why: p.whyHelps, price: p.price, honesty: p.honesty })),
+    honestNote,
+    items: picks.map((p) => ({
+      id: p.id,
+      name: p.name,
+      why: p.whyHelps,
+      price: p.price,
+      honesty: p.honesty,
+      imageAsset: p.imageAsset,
+      imageUrl: p.imageUrl,
+    })),
     total,
     alsoFree: 'You can also do this with what you have.',
   };
   return { anyPicks: true, bundle };
 }
 
-/** Stable day seed from a local date — moves greetings across days, not within. */
+/** True day ordinal (UTC) — consecutive days ALWAYS differ by exactly 1, so
+ *  seed rotation can never repeat across a month or leap-year boundary. */
 function daySeed(d: Date): number {
-  return d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate();
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000);
 }

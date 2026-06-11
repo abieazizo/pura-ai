@@ -3,8 +3,11 @@
  *
  * A thin ring fills slowly over `absorbSeconds` (no number, no ticking), so
  * waiting for a product to settle feels like a held breath rather than a
- * deadline. Pausable and resumable. `CardBreath` is the paired near-invisible
- * card breath (scale 1.0→1.012→1.0 over 4s) so the whole step breathes with it.
+ * deadline. TIME advances linearly (so pause/resume keeps the wall-clock total
+ * honest); the EASE lives in the dashoffset mapping, so the fill keeps one
+ * continuous velocity curve across pauses. `CardBreath` is the paired
+ * near-invisible breath (scale 1.0→1.012→1.0 over 4s, looping) so the whole
+ * step breathes with it.
  *
  * Reduced motion: the ring renders calm and full, and completion is offered as
  * a tap — never a forced animated wait.
@@ -25,6 +28,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const FILL_EASE = Easing.inOut(Easing.ease);
 
 interface BreathingRingProps {
   size: number;
@@ -48,7 +52,7 @@ export function BreathingRing({
   const stroke = 2.5;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const progress = useSharedValue(0);
+  const progress = useSharedValue(0); // LINEAR elapsed fraction (eased on read)
 
   useEffect(() => {
     if (reduceMotion) {
@@ -59,10 +63,12 @@ export function BreathingRing({
       cancelAnimation(progress); // freeze where it is (pause)
       return;
     }
+    // Resume linearly over exactly the remaining wall-clock time; the visible
+    // ease is applied in the mapping below, so velocity never jumps on resume.
     const remaining = Math.max(0.2, absorbSeconds * (1 - progress.value));
     progress.value = withTiming(
       1,
-      { duration: remaining * 1000, easing: Easing.inOut(Easing.ease) },
+      { duration: remaining * 1000, easing: Easing.linear },
       (finished) => {
         if (finished && onComplete) runOnJS(onComplete)();
       },
@@ -72,7 +78,7 @@ export function BreathingRing({
   }, [running, reduceMotion, absorbSeconds]);
 
   const animatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: c * (1 - progress.value),
+    strokeDashoffset: c * (1 - FILL_EASE(progress.value)),
   }));
 
   return (
@@ -97,7 +103,9 @@ export function BreathingRing({
   );
 }
 
-/** A near-invisible breath on a step card — the wait feels like breathing. */
+/** A near-invisible breath on the step — scale 1.0→1.012→1.0 over 4s, looping,
+ *  so the wait feels like breathing. Cancels cleanly if Reduce Motion flips on
+ *  mid-session (the OS setting is live). */
 export function CardBreath({
   reduceMotion,
   children,
@@ -109,8 +117,14 @@ export function CardBreath({
 }) {
   const t = useSharedValue(0);
   useEffect(() => {
-    if (reduceMotion) return;
-    t.value = withRepeat(withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.sin) }), -1, true);
+    if (reduceMotion) {
+      cancelAnimation(t);
+      t.value = 0;
+      return;
+    }
+    // 2s out + 2s back (auto-reverse) = the spec's 4s full breath.
+    t.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }), -1, true);
+    return () => cancelAnimation(t);
   }, [reduceMotion, t]);
   const breath = useAnimatedStyle(() => ({ transform: [{ scale: 1 + t.value * 0.012 }] }));
   return <Animated.View style={[style, breath]}>{children}</Animated.View>;

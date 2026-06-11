@@ -62,9 +62,11 @@ export const ritualHaptics = {
     hapt.tap();
     record('reveal-enter', 'light');
   },
-  /** Mode A — a move's header locking into place. */
-  headerLock(title?: string): void {
-    hapt.tap();
+  /** Mode A — a move's header locking into place. Under reduce-motion the
+   *  beats are logged but not fired (`physical: false`) so an rm user never
+   *  gets the whole stack's taps machine-gunned in one tick. */
+  headerLock(title?: string, opts?: { physical?: boolean }): void {
+    if (opts?.physical !== false) hapt.tap();
     record('header-lock', 'light', title);
   },
   /** Mode A — the routine fully assembled. The reveal's single fuller beat. */
@@ -84,14 +86,18 @@ export const ritualHaptics = {
     record('step-start', 'light', label);
   },
   /**
-   * Mode C — a step completing: the soft double-tick. Call this at 180ms into
-   * the checkmark draw; it fires the first light tick now and the second ~90ms
-   * later, so it lands as "light-light".
+   * Mode C — a step completing: the soft double-tick, composed across the
+   * advance. The FIRST light tick fires on the Done tap (call this then); the
+   * SECOND lands ~180ms later, mid checkmark-draw (call `stepCompleteMidDraw`
+   * from the draw's 180ms callback). Together: "light-light".
    */
   stepComplete(label?: string): void {
     hapt.tap();
     record('step-complete', 'light-light', label);
-    setTimeout(() => hapt.tap(), 90);
+  },
+  /** The double-tick's second beat — the single light haptic mid-draw. */
+  stepCompleteMidDraw(): void {
+    hapt.tap();
   },
   /** Mode C — the done-landing. The one medium warm beat in the whole ritual. */
   doneLanding(): void {

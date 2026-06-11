@@ -87,6 +87,17 @@ export interface OrbController {
   attend(): void;
   /** A soft "take your time" beat (brows lift + one glow pulse). */
   encourage(): void;
+  /** Your Routine: animate the cool→warm glow temperature (0..1) over ms.
+   *  Deliberately NOT persisted to the store (unlike setFamiliarity) — the
+   *  temperature is a scene property of the ritual, not user state; the
+   *  routine re-applies it on mount. */
+  setGlowTemperature(t: number, ms?: number): void;
+  /** Your Routine: one-shot halo bloom (peak default 1.15 over ~1200ms). */
+  bloomOnce(opts?: { peak?: number; ms?: number }): void;
+  /** Your Routine: soft held "noticing you" brightening (+pct, default 0.1). */
+  brightenOnce(pct?: number, ms?: number): void;
+  /** Your Routine: scalar gaze (−1..1 each axis; +y = down) for list-tracking. */
+  gazeTo(x: number, y: number): void;
 }
 
 const OrbControllerCtx = createContext<OrbController | null>(null);
@@ -120,6 +131,10 @@ export interface OrbProviderProps {
   dark?: boolean;
   /** Initial aura tint; `setAura` shifts it at a question seam. */
   auraTheme?: OrbAuraTheme;
+  /** Idle-blink rhythm override (Your Routine: 4–9s irregular, ~120ms blink). */
+  blinkCadence?: { minMs: number; maxMs: number; blinkMs?: number };
+  /** Idle-breath override (Your Routine: 1.02 amplitude over ~4.5s). */
+  breathProfile?: { amplitude: number; halfMs: number };
 }
 
 export function OrbProvider({
@@ -129,6 +144,8 @@ export function OrbProvider({
   initialTarget,
   dark = false,
   auraTheme = 'violet-cool',
+  blinkCadence,
+  breathProfile,
 }: OrbProviderProps) {
   const orbRef = useRef<AuroraOrbHandle>(null);
   const rmRef = useRef(reduceMotion);
@@ -201,6 +218,10 @@ export function OrbProvider({
       setPatient: (on) => orbRef.current?.setPatient(on),
       attend: () => orbRef.current?.attend(),
       encourage: () => orbRef.current?.encourage(),
+      setGlowTemperature: (t, ms) => orbRef.current?.setGlowTemperature(t, ms),
+      bloomOnce: (opts) => orbRef.current?.bloomOnce(opts),
+      brightenOnce: (pct, ms) => orbRef.current?.brightenOnce(pct, ms),
+      gazeTo: (x, y) => orbRef.current?.gazeTo(x, y),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -231,6 +252,8 @@ export function OrbProvider({
                 reduceMotion={reduceMotion}
                 dark={dark}
                 auraTheme={auraTheme}
+                blinkCadence={blinkCadence}
+                breathProfile={breathProfile}
                 onAwake={() => setAwoken(true)}
               />
             </Animated.View>

@@ -27,7 +27,7 @@ export const VOICE = {
   morningGreetings: [
     "Morning. Two steps - I'll keep you company.",
     "There you are. Let's keep those cheeks happy.",
-    'Morning. This won’t take long.',
+    "Morning. This won't take long.",
   ],
   /** Surfaced only when rescans show real calm — never invented. */
   morningCalmer: "Morning. Your skin's been calmer lately, by the way.",
@@ -35,7 +35,7 @@ export const VOICE = {
   eveningGreetings: [
     "Evening. Two steps, then you're done.",
     "There you are. Let's wind the day down.",
-    'Evening. This won’t take long.',
+    "Evening. This won't take long.",
   ],
 
   /** Welcome back after a gap. Zero guilt, by design. */
@@ -83,21 +83,37 @@ export const VOICE = {
  * (e.g. the day number), so it's stable within a day but moves across days.
  * If the user's skin is genuinely calmer lately, that honest line wins the
  * morning slot occasionally — but never two days running.
+ *
+ * The voice trades on specificity, so the locked "Two steps" lines adapt to
+ * the routine's REAL step count — the orb never claims two when there are
+ * three. With exactly two steps the locked lines render verbatim.
  */
 export function pickMorningGreeting(opts: {
   seed: number;
   lastShown?: string;
   calmerLately?: boolean;
+  stepCount?: number;
 }): string {
-  const { seed, lastShown, calmerLately } = opts;
+  const { seed, lastShown, calmerLately, stepCount } = opts;
   if (calmerLately && VOICE.morningCalmer !== lastShown && seed % 3 === 0) {
     return VOICE.morningCalmer;
   }
-  return rotate(VOICE.morningGreetings, seed, lastShown);
+  return rotate(greetingsForCount(VOICE.morningGreetings, stepCount), seed, lastShown);
 }
 
-export function pickEveningGreeting(opts: { seed: number; lastShown?: string }): string {
-  return rotate(VOICE.eveningGreetings, opts.seed, opts.lastShown);
+export function pickEveningGreeting(opts: {
+  seed: number;
+  lastShown?: string;
+  stepCount?: number;
+}): string {
+  return rotate(greetingsForCount(VOICE.eveningGreetings, opts.stepCount), opts.seed, opts.lastShown);
+}
+
+/** Swap "Two steps" for the honest count when the routine isn't two steps. */
+function greetingsForCount(lines: readonly string[], count?: number): readonly string[] {
+  if (!count || count === 2) return lines;
+  const phrase = count === 1 ? 'One step' : count === 3 ? 'Three small steps' : `${count} small steps`;
+  return lines.map((l) => l.replace(/Two steps/g, phrase));
 }
 
 /** Pick from `list` by seed, skipping `avoid` so it never repeats back-to-back. */

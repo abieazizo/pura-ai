@@ -178,6 +178,6 @@ export const routineTiming = {
   homeDissolve: 520, //    gentle cross-dissolve back home
 
   // Atmosphere.
-  bloomDriftMs: 27000, //  bloom drifts on a 24–30s sine loop
-  bloomTravelPx: 8, //     ≤ 8px travel
+  bloomDriftMs: 27000, //  FULL out-and-back sine period (24–30s window); one leg = half
+  bloomTravelPx: 8, //     ≤ 8px total travel (the drift vector is normalized to this)
 } as const;

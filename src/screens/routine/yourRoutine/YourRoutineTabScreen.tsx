@@ -8,9 +8,20 @@
  * already polished); this screen takes over only once a routine is ACTIVE. The
  * first open of a freshly-built routine plays the reveal morph; later opens land
  * on the serene daily home.
+ *
+ * Production wiring the experience depends on:
+ *   • timeOfDay comes from the CLOCK — the screen IS the time of day; the old
+ *     persisted AM/PM toggle belongs to the legacy companion screen.
+ *   • The screen-2 moves come from the routineFocusMoves slice (true morph
+ *     continuity), falling back to derived buckets for older scans.
+ *   • Welcome-back keys off days since the last OPEN (presence), never off
+ *     completions — the orb doesn't guilt, and it doesn't misremember.
+ *   • The last shown greeting persists, so rotation provably never repeats.
+ *   • calmerLately comes from the canonical progress comparison.
+ *   • Ending the ritual early marks done ONLY what was actually done.
  */
 
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { SkinState } from '@/types/canonical';
 import type { SemanticFaceZone, VisibleFinding } from '@/types/scanResults';
@@ -21,7 +32,10 @@ import {
   selectDailyDoneIds,
   selectCompletionStreak,
   defaultTimeOfDayForNow,
+  todayDateKey,
 } from '@/state/routine/routineStore';
+import { useRoutineFocusMoves, movesForScan } from '@/state/routineFocusMoves';
+import { getProgressComparison } from '@/services/routine/progressComparisonService';
 import { PuraRoutineScreen } from '../pura/PuraRoutineScreen';
 import { buildYourRoutineModel } from './model';
 import { YourRoutineExperience, type ExperienceMode } from './YourRoutineExperience';
@@ -60,32 +74,44 @@ function mapFindings(skin: SkinState | null): VisibleFinding[] {
     }));
 }
 
-function daysSince(dates: string[], now: Date): number {
-  if (!dates?.length) return 0;
-  const last = dates[dates.length - 1];
-  const [y, m, d] = last.split('-').map(Number);
+function daysBetween(prevKey: string | null, now: Date): number {
+  if (!prevKey) return 0;
+  const [y, m, d] = prevKey.split('-').map(Number);
   if (!y) return 0;
   const a = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   const b = Date.UTC(y, m - 1, d);
   return Math.max(0, Math.floor((a - b) / 86_400_000));
 }
 
+/** Hook-free shell: the dev harness branch must never change hook order. */
 export function YourRoutineTabScreen() {
-  // Dev-only: load the verification harness without touching navigation.
   if (harnessOn()) return <YourRoutineDevHarness />;
+  return <YourRoutineTabScreenLive />;
+}
 
+function YourRoutineTabScreenLive() {
   const skin = useSkinState();
   const reduceMotion = useReduceMotion();
-  const { lifecycle, routine, selectedTimeOfDay, dailyChecklist, completionDates } = useRoutineStore(
+  const { lifecycle, routine, dailyChecklist, completionDates } = useRoutineStore(
     useShallow((s) => ({
       lifecycle: s.lifecycle,
       routine: s.routine,
-      selectedTimeOfDay: s.selectedTimeOfDay,
       dailyChecklist: s.dailyChecklist,
       completionDates: s.completionDates,
     })),
   );
   const toggleStepComplete = useRoutineStore((s) => s.toggleStepComplete);
+  const byScanId = useRoutineFocusMoves((s) => s.byScanId);
+  const markOpened = useRoutineFocusMoves((s) => s.markOpened);
+  const setLastGreeting = useRoutineFocusMoves((s) => s.setLastGreeting);
+  // Captured ONCE per mount (not subscribed): the no-repeat guard is across
+  // DAYS — feeding back the greeting we just persisted would make the visible
+  // line oscillate whenever the model rebuilds mid-session (e.g. quick-done).
+  const lastGreetingRef = useRef<string | null | undefined>(undefined);
+  if (lastGreetingRef.current === undefined) {
+    lastGreetingRef.current = useRoutineFocusMoves.getState().lastGreeting;
+  }
+  const lastGreeting = lastGreetingRef.current;
 
   const isActive =
     !!routine &&
@@ -99,24 +125,49 @@ export function YourRoutineTabScreen() {
   }
 
   const now = new Date();
-  const timeOfDay = selectedTimeOfDay ?? defaultTimeOfDayForNow(now);
+  // The screen IS the time of day — derived from the clock on every open.
+  const timeOfDay = defaultTimeOfDayForNow(now);
   const doneIds = selectDailyDoneIds(dailyChecklist, timeOfDay, now);
   const streak = selectCompletionStreak(completionDates, now);
   const findings = useMemo(() => mapFindings(skin), [skin]);
 
+  // Welcome-back is about PRESENCE: stamp this open, read the previous one.
+  const prevOpenRef = useRef<string | null>(null);
+  const stamped = useRef(false);
+  if (!stamped.current) {
+    stamped.current = true;
+    prevOpenRef.current = useRoutineFocusMoves.getState().lastOpenDate;
+  }
+  useEffect(() => {
+    markOpened(todayDateKey(now));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const model = useMemo(() => {
     if (!routine) return null;
+    const comparison = getProgressComparison();
+    const calmerLately =
+      comparison.canCompare && (comparison.overallImprovementPercent ?? 0) >= 5;
+    const moves = movesForScan(byScanId, routine.scanId);
     return buildYourRoutineModel({
       routine,
       findings,
+      moves: moves ?? undefined,
       timeOfDay,
       now,
       streak,
       doneIds,
-      daysSinceLastUse: daysSince(completionDates, now),
+      daysSinceLastUse: daysBetween(prevOpenRef.current, now),
+      calmerLately,
+      lastGreeting: lastGreeting ?? undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routine, findings, timeOfDay, doneIds.join(','), streak.count, streak.includesToday]);
+  }, [routine, findings, timeOfDay, doneIds.join(','), streak.count, streak.includesToday, byScanId]);
+
+  // Persist the greeting we actually showed — tomorrow's no-repeat guard.
+  useEffect(() => {
+    if (model?.greeting) setLastGreeting(model.greeting);
+  }, [model?.greeting, setLastGreeting]);
 
   // Not yet an active routine — the existing screen owns scan/build/review.
   if (!isActive || !model) return <PuraRoutineScreen />;
@@ -133,9 +184,13 @@ export function YourRoutineTabScreen() {
         const id = model.focus.heroStep?.id;
         if (id) toggleStepComplete(timeOfDay, id);
       }}
-      onRitualComplete={() => {
+      onRitualComplete={(completedStepIds) => {
+        // Honest by construction: only the steps actually marked done in the
+        // ritual are claimed — skips and early-end leftovers stay open.
         for (const s of model.today.steps) {
-          if (!s.done) toggleStepComplete(timeOfDay, s.id);
+          if (!s.done && completedStepIds.includes(s.id)) {
+            toggleStepComplete(timeOfDay, s.id);
+          }
         }
       }}
     />

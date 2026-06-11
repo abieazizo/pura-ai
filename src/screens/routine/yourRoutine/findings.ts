@@ -10,7 +10,7 @@
 
 import type { ConcernType, SemanticFaceZone, VisibleFinding } from '@/types/scanResults';
 import type { RoutineStepType } from '@/types/routine';
-import { composeThroughline, VOICE } from './voice';
+import { assertVoice, composeThroughline, VOICE } from './voice';
 
 /** Zones → a plain location phrase, collapsing pairs ("cheeks", "under your eyes"). */
 export function zonesToPlain(zones: SemanticFaceZone[]): { text: string; prepositioned: boolean } {
@@ -54,21 +54,26 @@ export function findingNoun(concern: ConcernType): string {
     case 'under_eye_fatigue':
       return 'tiredness';
     case 'barrier_stress':
-      return 'the sensitivity';
+      // Bare noun — `concernThe`/templates add their own article.
+      return 'sensitivity';
     default:
-      return 'what I saw';
+      // Empty on purpose: templates detect this and fall back to their own
+      // whole-sentence path instead of templating a non-noun.
+      return '';
   }
 }
 
 /** "the redness", "the dryness" — for commerce + skip lines. */
 export function concernThe(concern: ConcernType): string {
   const noun = findingNoun(concern);
+  if (!noun) return 'what I saw';
   return noun.startsWith('the ') ? noun : `the ${noun}`;
 }
 
 /** Full finding phrase: "redness on your left cheek", "tiredness under your eyes". */
 export function findingPhrase(finding: VisibleFinding): string {
   const noun = findingNoun(finding.type);
+  if (!noun) return '';
   const where = zonesToPlain(finding.zones ?? []);
   if (!where.text || where.text === 'skin') return noun;
   return where.prepositioned ? `${noun} ${where.text}` : `${noun} on your ${where.text}`;
@@ -126,22 +131,22 @@ export function buildThroughline(args: {
 }): string {
   const { type, finding, fallbackConcern } = args;
   const lead = stepLead(type);
-  if (finding) {
-    return composeThroughline({
-      lead,
-      phrase: findingPhrase(finding),
-      clause: calmingClause(finding.type),
-    });
+  const phrase = finding ? findingPhrase(finding) : '';
+  if (finding && phrase) {
+    return assertVoice(
+      'throughline',
+      composeThroughline({ lead, phrase, clause: calmingClause(finding.type) }),
+    );
   }
-  if (fallbackConcern) {
-    return composeThroughline({
-      lead,
-      phrase: findingNoun(fallbackConcern),
-      clause: calmingClause(fallbackConcern),
-    });
+  const fallbackNoun = fallbackConcern ? findingNoun(fallbackConcern) : '';
+  if (fallbackConcern && fallbackNoun) {
+    return assertVoice(
+      'throughline',
+      composeThroughline({ lead, phrase: fallbackNoun, clause: calmingClause(fallbackConcern) }),
+    );
   }
   // Last resort — still honest: it's part of the calm-down plan.
-  return `${lead} It's part of keeping things calm and simple.`.trim();
+  return assertVoice('throughline', `${lead} It's part of keeping things calm and simple.`.trim());
 }
 
 /** The spoken ritual lead — canonical for the trio, in-voice for the rest. */

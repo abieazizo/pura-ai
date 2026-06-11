@@ -2271,6 +2271,21 @@ export const auroraOrb = {
   auraVioletCoolEdge:'rgba(150, 132, 232, 0)',
   auraBlueWarm0:     'rgba(86, 156, 244, 0.85)',  // warmer azure blue
   auraBlueWarmEdge:  'rgba(86, 156, 244, 0)',
+
+  // ----- Glow temperature (Your Routine's cool→warm channel) -----
+  // A warm-AMBER register layered over the cool body during the ritual's
+  // completion-as-care and done-landing beats. Deliberately deeper than the
+  // familiarity gold-rose above so the two read as different signals:
+  // familiarity = "knows you better", temperature = "warm light on you now".
+  // Exactly invisible at temperature 0 (every consumer outside the routine).
+  tempCore0:    'rgba(255, 188, 122, 0.85)', // amber center
+  tempCoreMid:  'rgba(255, 164, 106, 0.42)',
+  tempCoreEdge: 'rgba(255, 164, 106, 0)',
+  tempHalo0:    'rgba(255, 198, 132, 0.40)', // warm twin of halo0..halo100
+  tempHalo40:   'rgba(255, 172, 112, 0.22)',
+  tempHalo70:   'rgba(255, 152, 100, 0.13)',
+  tempHalo100:  'rgba(255, 152, 100, 0)',
+  rippleWarm:   'rgba(232, 168, 124, 0.26)', // ripple's warm twin (same alpha)
 } as const;
 
 export type AuroraOrbToken = keyof typeof auroraOrb;

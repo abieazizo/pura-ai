@@ -41,34 +41,39 @@ export const demoFindings: VisibleFinding[] = [
   finding('f-darkmarks', 'dark_marks', ['chin'], 'low', 0.5, 'A few dark marks'),
 ];
 
+// REAL shop-catalog products (RoutineProduct.id === ShopCatalogProduct.id), so
+// the components resolve actual bundled packshots — the harness shows the real
+// bottles, exactly like production. Ids/brands/names/prices mirror
+// src/screens/shop/shopCatalog.ts; the fixture itself stays Node-pure (no
+// image requires) so the headless verify keeps running.
 // One product used across AM + PM (the moisturiser), so the honest bundle can
 // prove it's counted once.
 const pMoist: PricedProduct = {
-  id: 'p-moist',
-  brand: 'Plain',
-  name: 'Everyday Moisturiser',
+  id: 'kiehls-ultra-facial-cream',
+  brand: "Kiehl's",
+  name: 'Ultra Facial Cream',
   productType: 'hydrate',
   whyMatched: 'Puts moisture back without any fuss.',
   availability: 'recommended',
-  price: 16,
+  price: 32,
 };
 const pSpf: PricedProduct = {
-  id: 'p-spf',
-  brand: 'Daylight',
-  name: 'Light SPF 50',
+  id: 'beauty-of-joseon-relief-sun',
+  brand: 'Beauty of Joseon',
+  name: 'Relief Sun: Rice + Probiotics SPF50+',
   productType: 'protect',
   whyMatched: 'The one that earns its place.',
   availability: 'recommended',
-  price: 19,
+  price: 18,
 };
 const pTreat: PricedProduct = {
-  id: 'p-treat',
-  brand: 'Slow',
-  name: 'Gentle Dark-Mark Serum',
+  id: 'the-ordinary-niacinamide',
+  brand: 'The Ordinary',
+  name: 'Niacinamide 10% + Zinc 1%',
   productType: 'treat',
   whyMatched: 'For the dark marks, eventually. No rush.',
   availability: 'recommended',
-  price: 22,
+  price: 8.8,
 };
 
 const step = (

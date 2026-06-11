@@ -14,7 +14,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { RoutinePeriod } from '@/theme/routineAtmosphere';
+import { ROUTINE_ATMOSPHERE, type RoutinePeriod } from '@/theme/routineAtmosphere';
 import type { RoutineTimeOfDay } from '@/types/routine';
 import { buildYourRoutineModel, type YourRoutineModel } from './model';
 import { YourRoutineExperience, type ExperienceMode } from './YourRoutineExperience';
@@ -111,7 +111,11 @@ export function YourRoutineDevHarness() {
     };
   }, [model, mode, period, tod, rm, rescan, voiceOn]);
 
-  const expKey = `${mode}-${period}-${tod}-${rm}-${rescan}-${voiceOn}`;
+  // Mode + voice changes drive the MOUNTED experience (devModeOverride), so
+  // the orb's never-remount continuity is real across mode chips. Only config
+  // that legitimately needs a fresh mount (period/atmosphere, reduce-motion,
+  // the rescan fixture swap) keys a remount.
+  const expKey = `${period}-${tod}-${rm}-${rescan}`;
   const haptic = getHapticLog();
 
   return (
@@ -121,6 +125,7 @@ export function YourRoutineDevHarness() {
         model={model}
         reduceMotion={rm}
         initialMode={mode}
+        devModeOverride={mode}
         now={now}
         completionDates={completionDates}
         streak={{ count: 5, includesToday: true }}
@@ -128,7 +133,10 @@ export function YourRoutineDevHarness() {
         voiceSpeak={voiceMock.current.speak}
         voiceStartEnabled={voiceOn}
         onQuickDone={() => force((n) => n + 1)}
-        onRitualComplete={() => force((n) => n + 1)}
+        onRitualComplete={(ids) => {
+          (window as unknown as { __puraYRDone?: string[] }).__puraYRDone = ids;
+          force((n) => n + 1);
+        }}
       />
 
       {/* Dev chrome — translucent, above the experience. */}
@@ -185,7 +193,12 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 
 function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, on && styles.chipOn]}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      style={[styles.chip, on && styles.chipOn]}
+    >
       <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
     </Pressable>
   );
@@ -209,7 +222,7 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)' },
   chipOn: { backgroundColor: 'rgba(255,255,255,0.92)' },
   chipText: { color: 'rgba(255,255,255,0.8)', fontSize: 11 },
-  chipTextOn: { color: '#0A0B12', fontWeight: '600' },
+  chipTextOn: { color: ROUTINE_ATMOSPHERE.night.sky[0], fontWeight: '600' },
   logRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingHorizontal: 14, marginTop: 10 },
   logText: { color: 'rgba(255,255,255,0.85)', fontSize: 11 },
   rules: { color: 'rgba(255,255,255,0.4)', fontSize: 9, paddingHorizontal: 14, marginTop: 8 },
