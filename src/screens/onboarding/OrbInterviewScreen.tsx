@@ -123,6 +123,9 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
   const [ageId, setAgeId] = useState<string | null>(null);
   const [skinId, setSkinId] = useState<string | null>(null);
   const [senseIds, setSenseIds] = useState<string[]>([]);
+  // Restored like every other step — the back chevron is reachable during
+  // the ~1.5s reaction window, and the store may already hold the answer.
+  const [safetyId, setSafetyId] = useState<string | null>(null);
   const doneRef = useRef(false);
 
   const goForward = useCallback((next: Step) => {
@@ -242,9 +245,10 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
           progressFrom={railStart('safety', backward)}
           progressTo={RAIL_END.safety}
           backward={backward}
-          initialSelected={null}
+          initialSelected={safetyId}
           onBack={() => goBack('sense')}
-          onSelect={(value) => {
+          onSelect={(value, id) => {
+            setSafetyId(id);
             setPregnancyCaution(value as AppState['pregnancyCaution']);
           }}
           onAdvance={() => goForward('synthesis')}

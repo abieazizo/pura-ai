@@ -278,7 +278,11 @@ export function QuestionScreen({
     clearTimers();
     orb.setPatient(false);
     if (p.kind === 'multi') {
-      onAdvanceMulti?.(p.ids);
+      // Commit the LIVE selection, not the snapshot from when the reaction
+      // started — toggling during the reaction is allowed, so the saved
+      // answer must always equal what the cards visibly show. (An emptied
+      // selection commits as [] — the parent treats that as "none".)
+      onAdvanceMulti?.(selectedRef.current);
     } else {
       onAdvance(p.value, p.id);
     }
@@ -393,19 +397,31 @@ export function QuestionScreen({
       const option = config.options.find((o) => o.id === id);
       if (!option) return;
       const now = Date.now();
-      // Debounce: ignore a rapid repeat tap on the SAME card (single-select
-      // only — in multi a second tap is a deliberate de-select).
-      if (!multi && lastTap.current.id === id && now - lastTap.current.t < DOUBLE_TAP_MS) return;
+      // Debounce a rapid repeat tap on the SAME card in BOTH modes — a
+      // deliberate multi de-select never lands within 250ms of the select,
+      // but an accidental double tap does (and would silently un-choose a
+      // sensitivity the user believes they declared).
+      if (lastTap.current.id === id && now - lastTap.current.t < DOUBLE_TAP_MS) return;
       lastTap.current = { id, t: now };
       // Once the exit has started/committed, ignore further card taps (no
       // re-react, no advance-to-wrong-screen). Changing your mind DURING the
       // reaction (before the exit starts) is still allowed.
       if (advanceLockRef.current || exitStartedRef.current) return;
 
-      if (multi) toggleMulti(option);
-      else chooseSingle(option);
+      if (multi) {
+        toggleMulti(option);
+        return;
+      }
+      // Impatient re-tap on the already-chosen card accelerates the advance
+      // instead of restarting the reaction — a second tap on your own answer
+      // should never EXTEND the wait.
+      if (reacting && selectedRef.current[0] === option.id) {
+        skipNow();
+        return;
+      }
+      chooseSingle(option);
     },
-    [config.options, multi, toggleMulti, chooseSingle],
+    [config.options, multi, toggleMulti, chooseSingle, reacting, skipNow],
   );
 
   const continueVisible =
