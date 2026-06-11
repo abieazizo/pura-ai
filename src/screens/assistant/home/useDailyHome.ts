@@ -1,0 +1,87 @@
+/**
+ * useDailyHome — assembles the canonical store inputs and projects them
+ * through `buildDailyHomeModel`. The single store-facing seam: the screen
+ * imports this hook and the model type, nothing else from state.
+ */
+
+import { useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { useAppStore } from '@/store/useAppStore';
+import { useSkinState } from '@/hooks/useCanonical';
+import {
+  useRoutineStore,
+  selectDailyDoneIds,
+  defaultTimeOfDayForNow,
+} from '@/state/routine/routineStore';
+import { computeSkinScore } from '@/utils/skinScore';
+import type { SemanticFaceZone } from '@/types/scanResults';
+import { buildDailyHomeModel, type DailyHomeModel } from './dailyHomeModel';
+import type { CalmZoneWord } from './homeVoice';
+
+/** Plain words only for zones the greeting can name without sounding odd. */
+function zoneWord(zones: SemanticFaceZone[] | undefined): CalmZoneWord | null {
+  for (const z of zones ?? []) {
+    if (z === 'left_cheek' || z === 'right_cheek') return 'cheeks';
+    if (z === 'forehead') return 'forehead';
+    if (z === 'chin') return 'chin';
+  }
+  return null;
+}
+
+export function useDailyHome(): DailyHomeModel {
+  const skin = useSkinState();
+  const scans = useAppStore((s) => s.scans);
+  const { lifecycle, routine, dailyChecklist, completionDates } =
+    useRoutineStore(
+      useShallow((s) => ({
+        lifecycle: s.lifecycle,
+        routine: s.routine,
+        dailyChecklist: s.dailyChecklist,
+        completionDates: s.completionDates,
+      })),
+    );
+
+  const routineActive =
+    !!routine &&
+    (lifecycle === 'active' ||
+      lifecycle === 'session_in_progress' ||
+      lifecycle === 'session_complete');
+
+  const now = new Date();
+  const timeOfDay = defaultTimeOfDayForNow(now);
+  const doneIds = selectDailyDoneIds(dailyChecklist, timeOfDay, now);
+  const score = computeSkinScore(Array.isArray(scans) ? scans : []);
+  const calmZone = zoneWord(
+    skin?.topConcerns?.find((c) => c.rank === 1)?.regions as
+      | SemanticFaceZone[]
+      | undefined,
+  );
+
+  return useMemo(
+    () =>
+      buildDailyHomeModel({
+        routine,
+        routineActive,
+        doneIds,
+        completionDates,
+        now,
+        timeOfDay,
+        scanCount: score.scanCount,
+        deltaSinceFirst: score.deltaSinceFirst,
+        calmZone,
+      }),
+    // doneIds/completionDates compare by content; `now` re-derives on render,
+    // which is fine — the model is pure and cheap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      routine,
+      routineActive,
+      doneIds.join(','),
+      completionDates.length,
+      timeOfDay,
+      score.scanCount,
+      score.deltaSinceFirst,
+      calmZone,
+    ],
+  );
+}
