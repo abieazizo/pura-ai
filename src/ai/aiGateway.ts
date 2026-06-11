@@ -824,6 +824,8 @@ export interface AIGateway {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — threads age into the matching prompt. */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };
@@ -886,6 +888,8 @@ export interface AIGateway {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — threads age into the matching prompt. */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };
@@ -912,6 +916,8 @@ export interface AIGateway {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — threads age into the matching prompt. */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };
@@ -956,6 +962,8 @@ export interface AIGateway {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — threads age into the matching prompt. */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };

@@ -212,6 +212,8 @@ Examples:
 - oily / acne-prone user: eliminate heavy rich occlusive creams unless barrier repair clearly dominates
 - dry / barrier-compromised user: eliminate ultra-light gel-only moisturizers if they are too weak for the need
 - sensitive / redness-prone user: eliminate fragranced or harsh-active products when gentler options exist
+- ageRange "under_18": eliminate strong-retinoid and aggressive-acid products; keep every pick gentle
+- ageRange "45-54" or "55+": weight barrier support and hydration higher when the need is otherwise tied
 - smoothing serum query: eliminate unrelated hydrating serums with no real texture/smoothing relevance
 - chemical exfoliant query: eliminate unrelated non-exfoliant products
 - breakout query: eliminate products likely to worsen clogging or conflict with breakout safety
@@ -287,7 +289,7 @@ If the query is chemical-exfoliant-family:
 "BEST FOR MY SKIN" RULE
 
 If the query is vague, such as "best for my skin":
-- infer the dominant need from skin type, sensitivities, goals, top concerns, and latest scan summary
+- infer the dominant need from skin type, age range, sensitivities, goals, top concerns, and latest scan summary
 - choose products that directly serve that dominant need
 - do not stay generic
 - do not behave like the user asked for a broad category recommendation
@@ -573,7 +575,7 @@ If the query is "best for my pimple":
 HOW TO THINK
 
 1. Infer the user's search intent from the query first.
-2. Use skin type, sensitivities, goals, top concerns, and latest scan summary to personalize WITHIN that search family.
+2. Use skin type, age range, sensitivities, goals, top concerns, and latest scan summary to personalize WITHIN that search family.
 3. Return one dominant product family only.
 4. Create a user-specific search plan for that family.
 
@@ -1788,6 +1790,9 @@ export class OpenAIClient {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — ages the read (e.g. barrier-first
+       *  for 45+, gentle-first for under_18). */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };
@@ -1915,6 +1920,9 @@ export class OpenAIClient {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — ages the read (e.g. barrier-first
+       *  for 45+, gentle-first for under_18). */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };
@@ -1972,6 +1980,9 @@ export class OpenAIClient {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — ages the read (e.g. barrier-first
+       *  for 45+, gentle-first for under_18). */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };
@@ -2038,6 +2049,9 @@ export class OpenAIClient {
     profile: {
       displayName: string | null;
       skinType: string;
+      /** Onboarding age band or null — ages the read (e.g. barrier-first
+       *  for 45+, gentle-first for under_18). */
+      ageRange?: string | null;
       sensitivities: string[];
       goals: string[];
     };

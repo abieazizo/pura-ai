@@ -540,7 +540,7 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
               </Text>
             </Pressable>
             <Text style={styles.trust} maxFontSizeMultiplier={1.15}>
-              Dermatologist-informed · Photos never stored or shared.
+              No account needed · Photos never stored or shared.
             </Text>
           </Animated.View>
         </Animated.View>

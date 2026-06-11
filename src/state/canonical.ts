@@ -487,6 +487,9 @@ export function selectUserProfileContext(
       state.skinType === 'sensitive'
         ? state.skinType
         : 'unknown',
+    // Null when unanswered OR explicitly prefer-not-to-say (onboarding
+    // writes ageRange null in that case) — never guessed.
+    ageRange: state.ageRange ?? null,
     sensitivities: sensitivityTags,
     goals,
     routinePreferences: state.effort ?? 'unknown',

@@ -667,6 +667,8 @@ export const HANDLERS: Record<string, Handler> = {
         typeof profileRaw.skinType === 'string'
           ? profileRaw.skinType
           : 'unknown',
+      ageRange:
+        typeof profileRaw.ageRange === 'string' ? profileRaw.ageRange : null,
       sensitivities: Array.isArray(profileRaw.sensitivities)
         ? (profileRaw.sensitivities as unknown[]).filter(
             (x): x is string => typeof x === 'string'
@@ -793,11 +795,13 @@ export const HANDLERS: Record<string, Handler> = {
     const profile: {
       displayName: string | null;
       skinType: string;
+      ageRange: string | null;
       sensitivities: string[];
       goals: string[];
     } = {
       displayName: null,
       skinType: 'unknown',
+      ageRange: null,
       sensitivities: [],
       goals: [],
     };
@@ -805,6 +809,7 @@ export const HANDLERS: Record<string, Handler> = {
       const r = profileRaw as Record<string, unknown>;
       if (typeof r.displayName === 'string') profile.displayName = r.displayName;
       if (typeof r.skinType === 'string') profile.skinType = r.skinType;
+      if (typeof r.ageRange === 'string') profile.ageRange = r.ageRange;
       if (Array.isArray(r.sensitivities)) {
         profile.sensitivities = (r.sensitivities as unknown[]).filter(
           (s): s is string => typeof s === 'string'
@@ -878,11 +883,13 @@ export const HANDLERS: Record<string, Handler> = {
     const profile: {
       displayName: string | null;
       skinType: string;
+      ageRange: string | null;
       sensitivities: string[];
       goals: string[];
     } = {
       displayName: null,
       skinType: 'unknown',
+      ageRange: null,
       sensitivities: [],
       goals: [],
     };
@@ -890,6 +897,7 @@ export const HANDLERS: Record<string, Handler> = {
       const r = profileRaw as Record<string, unknown>;
       if (typeof r.displayName === 'string') profile.displayName = r.displayName;
       if (typeof r.skinType === 'string') profile.skinType = r.skinType;
+      if (typeof r.ageRange === 'string') profile.ageRange = r.ageRange;
       if (Array.isArray(r.sensitivities)) {
         profile.sensitivities = (r.sensitivities as unknown[]).filter(
           (s): s is string => typeof s === 'string'
@@ -1029,11 +1037,13 @@ export const HANDLERS: Record<string, Handler> = {
     const profile: {
       displayName: string | null;
       skinType: string;
+      ageRange: string | null;
       sensitivities: string[];
       goals: string[];
     } = {
       displayName: null,
       skinType: 'unknown',
+      ageRange: null,
       sensitivities: [],
       goals: [],
     };
@@ -1041,6 +1051,7 @@ export const HANDLERS: Record<string, Handler> = {
       const r = profileRaw as Record<string, unknown>;
       if (typeof r.displayName === 'string') profile.displayName = r.displayName;
       if (typeof r.skinType === 'string') profile.skinType = r.skinType;
+      if (typeof r.ageRange === 'string') profile.ageRange = r.ageRange;
       if (Array.isArray(r.sensitivities)) {
         profile.sensitivities = (r.sensitivities as unknown[]).filter(
           (s): s is string => typeof s === 'string'

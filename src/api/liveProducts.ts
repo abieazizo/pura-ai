@@ -780,6 +780,7 @@ async function tryRerankProducts(args: {
     profile: {
       displayName: profile.displayName,
       skinType: profile.skinType,
+      ageRange: profile.ageRange,
       sensitivities: profile.sensitivities,
       goals: profile.goals,
     },
@@ -1030,6 +1031,7 @@ async function tryAiFirstRecommendation(args: {
       profile: {
         displayName: profile.displayName,
         skinType: profile.skinType,
+        ageRange: profile.ageRange,
         sensitivities: profile.sensitivities,
         goals: profile.goals,
       },
@@ -1161,6 +1163,7 @@ async function tryAiFirstRecommendation(args: {
         profile: {
           displayName: profile.displayName,
           skinType: profile.skinType,
+          ageRange: profile.ageRange,
           sensitivities: profile.sensitivities,
           goals: profile.goals,
         },
@@ -1668,6 +1671,7 @@ async function tryTypedSearch(args: {
       profile: {
         displayName: profile.displayName,
         skinType: profile.skinType,
+        ageRange: profile.ageRange,
         sensitivities: profile.sensitivities,
         goals: profile.goals,
       },

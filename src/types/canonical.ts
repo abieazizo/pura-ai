@@ -154,6 +154,11 @@ export interface UserProfileContext {
    *  invent a name when this is null. */
   displayName: string | null;
   skinType: AppSkinType;
+  /** Onboarding age band ('under_18' | '18-24' | '25-34' | '35-44' |
+   *  '45-54' | '55+'), or null when unanswered / prefer-not-to-say.
+   *  Threaded into the product-matching profile so the age question's
+   *  promise ("that shapes the read") is true. */
+  ageRange: string | null;
   /** Free-form tags the user opted into: "fragrance", "rosacea",
    *  "avoid_ingredient:retinol", "safety_bias:moderate", etc. */
   sensitivities: string[];

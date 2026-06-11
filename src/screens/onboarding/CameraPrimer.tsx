@@ -45,9 +45,9 @@ export interface CameraPrimerProps {
  *      ( ◍ )   ← companion orb sits in the face guide ring (continuity)
  *      ·····   ← dashed face oval (where YOUR portrait will be)
  *    [ scrim ]
- *    THE SCAN
  *    Now, the scan.         ← Instrument Serif, over the scrim
- *   └  Nothing leaves.      ┘
+ *   └  "Your photo is used to read your skin,
+ *       then it's never stored or shared."   ┘  ← the canonical privacy line
  *
  *   [ Continue ]            ← Ink CTA → CameraPermission (fires system prompt)
  *
