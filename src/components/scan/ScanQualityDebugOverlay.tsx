@@ -12,7 +12,9 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 import type { ScanQualitySignals } from '@/scanQuality/types';
 
 export function isScanDebugEnabled(): boolean {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) return true;
+  // Opt-in only (?scanDebug=1) — the readout must never sit on top of
+  // the designed screen by default. Automated verification reads
+  // window.__scanQualityDebug directly and doesn't need the overlay.
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
       return new URLSearchParams(window.location.search).get('scanDebug') === '1';

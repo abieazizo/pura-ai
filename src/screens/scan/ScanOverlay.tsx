@@ -38,6 +38,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Lightning, Image as ImageIcon, Question, X } from 'phosphor-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -53,6 +54,15 @@ import { QualityCheckRow } from '@/components/scan/QualityCheckRow';
 import type { ReticleMode } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
 import type { ScanInstruction } from '@/screens/scan/scanController';
+import type { ScanQualitySignals } from '@/scanQuality/types';
+import {
+  FillLight,
+  GazeFrame,
+  GuidanceLine,
+  ReadinessSegments,
+  frameGeometry,
+  type CapturePhase,
+} from '@/screens/scan/gaze';
 
 export interface ScanOverlayProps {
   mode: ReticleMode;
@@ -69,6 +79,19 @@ export interface ScanOverlayProps {
   countdown?: number | null;
   /** Resolved scan instruction from the controller. */
   instruction: ScanInstruction;
+  /**
+   * THE GAZE (face mode) — live engine signals. When the detector is
+   * running, the face composition is the living gaze frame + one
+   * guidance line + four readiness segments; the legacy oval/card/chips
+   * stay only as the no-detector fallback (and for product/barcode).
+   */
+  quality?: ScanQualitySignals;
+  /** Screen fill-light decision (engine lightLevel, hysteresis). */
+  fillLightActive?: boolean;
+  /** Entry choreography: the gaze frame settles in once true. */
+  entered?: boolean;
+  /** Capture choreography phase (drives the gaze inhale). */
+  capturePhase?: CapturePhase;
 }
 
 const TOP_BAR_HEIGHT = 64;
@@ -91,7 +114,9 @@ const MODE_TITLES: Record<
   ReticleMode,
   { title: string; subtitle: string }
 > = {
-  face: { title: 'Face Scan', subtitle: 'Skin score + routine check' },
+  // THE GAZE — one quiet title, no subtitle, no "score". The screen is a
+  // moment of being seen, not a metric capture.
+  face: { title: 'Skin check', subtitle: '' },
   product: {
     title: 'Product Scan',
     subtitle: 'Check ingredients and skin match',
@@ -120,9 +145,20 @@ export function ScanOverlay({
   analyzing,
   countdown = null,
   instruction,
+  quality,
+  fillLightActive = false,
+  entered = true,
+  capturePhase = 'idle',
 }: ScanOverlayProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+
+  // THE GAZE renders only where it can be honest: face mode with the
+  // detection engine actually running (or warming up under the entry
+  // choreography). Anywhere else — product, barcode, platforms with no
+  // detector — the legacy composition stays.
+  const gazeActive =
+    mode === 'face' && !!quality && quality.detectorStatus !== 'unavailable';
 
   const handleExit = () => {
     hapt.select();
@@ -191,7 +227,9 @@ export function ScanOverlay({
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Scrim placement="top" width={width} height={140} />
+      {/* In gaze mode the full-feed surround dim already settles the
+          top of the frame — stacking the legacy scrim reads as mud. */}
+      {!gazeActive ? <Scrim placement="top" width={width} height={140} /> : null}
 
       {/* CAMERA REGION — mode-specific guide */}
       <View
@@ -202,12 +240,24 @@ export function ScanOverlay({
         ]}
       >
         {mode === 'face' ? (
-          <FaceGuide
-            severity={instruction.severity}
-            ready={instruction.phase === 'ready'}
-            width={width}
-            height={cameraRegionHeight}
-          />
+          gazeActive ? (
+            <GazeFrame
+              width={width}
+              height={cameraRegionHeight}
+              signals={quality!}
+              capturing={capturePhase !== 'idle'}
+              entered={entered}
+              screenTop={topBarBottom}
+              screenHeight={height}
+            />
+          ) : (
+            <FaceGuide
+              severity={instruction.severity}
+              ready={instruction.phase === 'ready'}
+              width={width}
+              height={cameraRegionHeight}
+            />
+          )
         ) : mode === 'product' ? (
           <ProductGuide
             severity={instruction.severity}
@@ -223,25 +273,62 @@ export function ScanOverlay({
         )}
       </View>
 
-      {/* INSTRUCTION CARD + CHIP ROW — anchored below the guide */}
-      <View
-        pointerEvents="none"
-        style={[
-          styles.instructionAnchor,
-          {
-            top: topBarBottom + Math.round(cameraRegionHeight * 0.72),
-            width,
-          },
-        ]}
-      >
-        <InstructionCard instruction={instruction} />
-        <View style={{ height: 12 }} />
-        <QualityCheckRow
-          checks={instruction.checks}
-          collapsedLabel={instruction.collapsedLabel}
-          hidden={hideChecks}
-        />
-      </View>
+      {/* Screen fill-light — the warm softbox, beneath the chrome. */}
+      {gazeActive ? <FillLight active={fillLightActive} /> : null}
+
+      {gazeActive ? (
+        /* THE GAZE — one calm line + four honest segments, tucked just
+           beneath the locket, never over the face, never colliding with
+           the capture controls. */
+        <View
+          pointerEvents="none"
+          style={[
+            styles.instructionAnchor,
+            {
+              top:
+                topBarBottom +
+                Math.min(
+                  frameGeometry(width, cameraRegionHeight).frameBottom + 18,
+                  cameraRegionHeight - 92
+                ),
+              width,
+            },
+          ]}
+        >
+          <GuidanceLine
+            text={
+              capturePhase !== 'idle'
+                ? 'There you are.'
+                : instruction.phase === 'error'
+                ? instruction.subtitle
+                : quality!.primaryHint
+            }
+            fillLightActive={fillLightActive}
+          />
+          <View style={{ height: 14 }} />
+          <ReadinessSegments signals={quality!} />
+        </View>
+      ) : (
+        /* Legacy composition — product/barcode and no-detector face. */
+        <View
+          pointerEvents="none"
+          style={[
+            styles.instructionAnchor,
+            {
+              top: topBarBottom + Math.round(cameraRegionHeight * 0.72),
+              width,
+            },
+          ]}
+        >
+          <InstructionCard instruction={instruction} />
+          <View style={{ height: 12 }} />
+          <QualityCheckRow
+            checks={instruction.checks}
+            collapsedLabel={instruction.collapsedLabel}
+            hidden={hideChecks}
+          />
+        </View>
+      )}
 
       {/* TOP BAR */}
       <View
@@ -272,13 +359,15 @@ export function ScanOverlay({
           >
             {MODE_TITLES[mode].title}
           </Text>
-          <Text
-            style={styles.topBarSubtitle}
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.15}
-          >
-            {MODE_TITLES[mode].subtitle}
-          </Text>
+          {MODE_TITLES[mode].subtitle ? (
+            <Text
+              style={styles.topBarSubtitle}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.15}
+            >
+              {MODE_TITLES[mode].subtitle}
+            </Text>
+          ) : null}
         </View>
 
         <Pressable
@@ -323,7 +412,12 @@ export function ScanOverlay({
         <View style={[styles.modeSlot, { height: MODE_ROW_HEIGHT }]}>
           <Animated.View
             pointerEvents={isPreparing ? 'none' : 'box-none'}
-            style={dimSecondaryStyle}
+            style={[
+              dimSecondaryStyle,
+              // The mode switch stays, but under the gaze it whispers —
+              // Face is the hero; Product/Barcode are side doors.
+              gazeActive && styles.modeSecondary,
+            ]}
           >
             <ModeSelector mode={mode} onChange={onChangeMode} />
           </Animated.View>
@@ -504,22 +598,22 @@ function AutoScanIndicator() {
 }
 
 function PanelBackground() {
+  // expo-linear-gradient instead of RNSVG: an Svg with no explicit
+  // width rendered at the SVG default size on web, covering only the
+  // left ~300px of the panel (a visible dark/light seam behind the
+  // shutter). The View-based gradient genuinely fills.
   return (
-    <Svg
+    <ExpoLinearGradient
       pointerEvents="none"
+      colors={[
+        'rgba(11,18,32,0)',
+        'rgba(11,18,32,0.45)',
+        'rgba(11,18,32,0.78)',
+        'rgba(11,18,32,0.92)',
+      ]}
+      locations={[0, 0.18, 0.55, 1]}
       style={StyleSheet.absoluteFillObject}
-      preserveAspectRatio="none"
-    >
-      <Defs>
-        <LinearGradient id="panel-bg" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#0B1220" stopOpacity={0} />
-          <Stop offset="0.18" stopColor="#0B1220" stopOpacity={0.45} />
-          <Stop offset="0.55" stopColor="#0B1220" stopOpacity={0.78} />
-          <Stop offset="1" stopColor="#0B1220" stopOpacity={0.92} />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill="url(#panel-bg)" />
-    </Svg>
+    />
   );
 }
 
@@ -628,6 +722,10 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'stretch',
     justifyContent: 'center',
+  },
+  modeSecondary: {
+    opacity: 0.82,
+    transform: [{ scale: 0.95 }],
   },
   modeSlot: {
     width: '100%',

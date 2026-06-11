@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useIsFocused } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
@@ -13,7 +20,6 @@ import { X } from 'phosphor-react-native';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { hapt } from '@/utils/haptics';
 import { ScanOverlay } from '@/screens/scan/ScanOverlay';
-import { LightingAssist } from '@/components/scan/LightingAssist';
 import type { ReticleMode, FrameState } from '@/components/scan/Reticle';
 import type { FlashMode } from '@/components/scan/CaptureRow';
 import { palette, space, type as typography } from '@/theme';
@@ -41,6 +47,12 @@ import {
   ScanQualityDebugOverlay,
   isScanDebugEnabled,
 } from '@/components/scan/ScanQualityDebugOverlay';
+import {
+  ApertureEntry,
+  CaptureBloom,
+  MOTION,
+  type CapturePhase,
+} from '@/screens/scan/gaze';
 
 export interface ScanCaptureScreenProps {
   onClose: () => void;
@@ -112,6 +124,10 @@ export function ScanCaptureScreen({
 }: ScanCaptureScreenProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<ReticleMode>(toOverlayMode(initialMode));
+  // No-camera terminal state — surfaces through the controller's error
+  // phase (gaze guidance line / legacy instruction card) with the
+  // gallery import remaining as the clear path forward.
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
   const [capturing, setCapturing] = useState(false);
   // v11.7 — single source of truth for the reticle/caption visual
@@ -121,6 +137,24 @@ export function ScanCaptureScreen({
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
   const cameraRef = useRef<CameraView | null>(null);
   const requestedRef = useRef(false);
+  const { width: winW, height: winH } = useWindowDimensions();
+
+  // THE GAZE — entry + capture choreography state. `entered` flips when
+  // the aperture finishes blooming (the frame settles in just after);
+  // `capturePhase` walks idle → bloom (frozen photo + light gathering)
+  // → veil (ink rises; navigation happens beneath it).
+  const [entered, setEntered] = useState(false);
+  const handleApertureOpened = useCallback(() => setEntered(true), []);
+  const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
+  const [frozenUri, setFrozenUri] = useState<string | null>(null);
+  const handoffTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(
+    () => () => {
+      handoffTimers.current.forEach(clearTimeout);
+      handoffTimers.current = [];
+    },
+    []
+  );
   // v11.10 — track countdown timers so we can cancel them if the user
   // navigates away mid-countdown. Previously the setTimeout/setInterval
   // pair leaked: useCallback's "return () => clearTimeout(...)" was
@@ -261,10 +295,15 @@ export function ScanCaptureScreen({
   // The v24 elapsed-time inference is gone for good: on platforms
   // with no detector the engine reports 'unavailable' and we hold the
   // honest neutral baseline — a check is never claimed unmeasured.
+  // Focus gate — after capture this screen stays mounted beneath the
+  // analyzing route; without it the engine kept detecting back there
+  // and could AUTO-CAPTURE again behind the results (live-caught bug).
+  const isFocused = useIsFocused();
   const { signals: quality, getCaptureSnapshot } = useScanQuality({
-    enabled: mode === 'face' && !!permission?.granted,
+    enabled: mode === 'face' && !!permission?.granted && isFocused,
   });
-  const engineLive = mode === 'face' && quality.detectorStatus === 'running';
+  const engineLive =
+    isFocused && mode === 'face' && quality.detectorStatus === 'running';
   const qualityRef = useRef(quality);
   useEffect(() => {
     qualityRef.current = quality;
@@ -322,6 +361,7 @@ export function ScanCaptureScreen({
     preparing: frameState === 'preparing',
     capturing,
     analyzing: false,
+    errorReason: cameraError,
     face: mode === 'face' ? faceReadiness : undefined,
     product: mode === 'product' ? productReadiness : undefined,
     barcode: mode === 'barcode' ? barcodeReadiness : undefined,
@@ -344,7 +384,6 @@ export function ScanCaptureScreen({
     }
   }, [scanInstruction.phase]);
   void readiness; // legacy readiness retained for potential future fallback paths
-  void lightingAssistForceOn; // silenced; passed below as `forceOn`
 
   // §3.2 — Trigger 1 check-in sheet. Fires only when:
   //   • the user has scanned before (not their very first scan),
@@ -445,10 +484,6 @@ export function ScanCaptureScreen({
     if (!cameraRef.current || capturingRef.current) return;
     capturingRef.current = true;
     setCapturing(true);
-    // §2.3 — 30% opacity paper flash across the whole screen for 120ms.
-    flashOverlay.value = withTiming(0.3, { duration: 60 }, () => {
-      flashOverlay.value = withTiming(0, { duration: 60 });
-    });
     try {
       // v27 — freeze the live landmarks + quality signals at the
       // shutter moment, BEFORE the (async) photo lands. The results
@@ -469,7 +504,39 @@ export function ScanCaptureScreen({
             `[scanQuality] capture snapshot attached: ${captureQuality.landmarks?.length ?? 0} landmarks, allPass=${captureQuality.allPass}`
           );
         }
-        onCaptured(uri, toAnalysisMode(mode), captureQuality ?? undefined);
+        if (captureQuality) {
+          // THE GAZE capture — a held breath, not a flash-and-click.
+          // The frozen photo appears under a gathering bloom while the
+          // frame inhales; ink rises; navigation happens beneath it so
+          // scan → analyzing is one unbroken moment.
+          const photoUri = uri;
+          setFrozenUri(photoUri);
+          setCapturePhase('bloom');
+          handoffTimers.current.push(
+            setTimeout(
+              () => setCapturePhase('veil'),
+              MOTION.BLOOM_MS + MOTION.FREEZE_HOLD_MS
+            ),
+            setTimeout(() => {
+              onCaptured(photoUri, 'face', captureQuality);
+            }, MOTION.HANDOFF_TOTAL_MS),
+            // The screen stays mounted beneath the analyzing route —
+            // settle back to idle so a later return isn't veiled.
+            setTimeout(() => {
+              setCapturePhase('idle');
+              setFrozenUri(null);
+              capturingRef.current = false;
+              setCapturing(false);
+            }, MOTION.HANDOFF_TOTAL_MS + 1600)
+          );
+        } else {
+          // Legacy path (product capture, no-detector face): the brief
+          // paper flash + immediate handoff, exactly as before.
+          flashOverlay.value = withTiming(0.3, { duration: 60 }, () => {
+            flashOverlay.value = withTiming(0, { duration: 60 });
+          });
+          onCaptured(uri, toAnalysisMode(mode), undefined);
+        }
       } else {
         capturingRef.current = false;
         setCapturing(false);
@@ -481,6 +548,8 @@ export function ScanCaptureScreen({
       setCapturing(false);
       setFrameState('idle');
       setCountdownValue(null);
+      setCapturePhase('idle');
+      setFrozenUri(null);
     }
   }, [flashOverlay, getCaptureSnapshot, mode, onCaptured]);
 
@@ -657,8 +726,21 @@ export function ScanCaptureScreen({
       <StatusBar style="light" />
       <CameraView
         ref={cameraRef}
-        style={StyleSheet.absoluteFillObject}
+        // THE GAZE — in face mode the preview rides ~80px high so the
+        // user's face (vertical center of the cover-cropped feed) sits
+        // inside the locket rather than under the guidance stack. The
+        // captured photo is the full frame; only the preview shifts.
+        // The uncovered strip at the bottom hides behind the panel.
+        style={[
+          StyleSheet.absoluteFillObject,
+          mode === 'face' && { transform: [{ translateY: -80 }] },
+        ]}
         facing={mode === 'face' ? 'front' : 'back'}
+        onMountError={() =>
+          setCameraError(
+            "I can't reach your camera right now — you can import a photo instead."
+          )
+        }
         animateShutter={false}
         enableTorch={flashOn && mode !== 'face'}
         barcodeScannerSettings={
@@ -667,17 +749,10 @@ export function ScanCaptureScreen({
         onBarcodeScanned={mode === 'barcode' ? handleBarcodeScanned : undefined}
       />
 
-      {/* v19.14 — auto front-camera ring light. The component now
-          fades in only when the luminance probe says the room is
-          dark, OR when the user explicitly forces it on. Only
-          renders meaningfully in face mode (back-camera scans
-          don't benefit). Restrained perimeter halo only — the
-          camera preview's center 70% stays untouched. */}
-      <LightingAssist
-        autoDark={mode === 'face' && permission?.granted && autoDark}
-        forceOn={mode === 'face' && lightingAssistForceOn}
-      />
-
+      {/* THE GAZE — the old LightingAssist perimeter halo is replaced by
+          the FillLight softbox inside ScanOverlay, driven by the same
+          engine lightLevel decision (autoDark) with the persisted
+          force-on override still honored. */}
       <Animated.View
         style={[StyleSheet.absoluteFillObject, fadeStyle]}
         pointerEvents="box-none"
@@ -694,8 +769,36 @@ export function ScanCaptureScreen({
           analyzing={capturing}
           countdown={countdownValue}
           instruction={scanInstruction}
+          quality={quality}
+          fillLightActive={
+            mode === 'face' &&
+            !!permission?.granted &&
+            (autoDark || lightingAssistForceOn)
+          }
+          entered={entered}
+          capturePhase={capturePhase}
         />
       </Animated.View>
+
+      {/* Capture choreography — frozen photo + gathering bloom + exit
+          veil, above the chrome (the whole screen holds its breath). */}
+      <CaptureBloom
+        phase={capturePhase}
+        frozenUri={frozenUri}
+        mirrored={mode === 'face'}
+        width={winW}
+        height={winH}
+      />
+
+      {/* Cinematic entry — ink aperture blooming open over everything. */}
+      {mode === 'face' ? (
+        <ApertureEntry
+          width={winW}
+          height={winH}
+          open={!!permission?.granted}
+          onOpened={handleApertureOpened}
+        />
+      ) : null}
 
       {/* v19.14 — REMOVED the v19.11/v19.13 manual toggle pill.
           Two issues forced this:
