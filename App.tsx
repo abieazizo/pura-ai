@@ -41,6 +41,10 @@ import { ContextualProvider } from '@/components/contextual/ContextualProvider';
 import { probeProxyHealthz } from '@/ai/aiHealthProbe';
 import { YourSkinScreen } from '@/screens/scan/yourSkin/YourSkinScreen';
 import { FIXTURE_BY_KEY, YOUR_SKIN_FIXTURES } from '@/screens/scan/yourSkin/fixtures';
+// Web-only Skia GPU proof (Step 0). Statically importing @shopify/react-native-skia
+// here only affects the WEB bundle — App.native.tsx is the native entry and never
+// imports this. CanvasKit is loaded before the root mounts (see index.ts).
+import { SkiaProbe } from '@/screens/dev/SkiaProbe';
 
 // Dev-only navigation ref. Exposed on `window.__pura_nav__` in dev
 // builds so the preview harness can navigate to dev-only routes
@@ -155,7 +159,9 @@ export default function App() {
         <ThemeProvider>
           <View style={styles.fill}>
             <StatusBar style="dark" />
-            {showcase?.key === 'your-skin' ? (
+            {showcase?.key === 'skia-probe' ? (
+              <SkiaProbe />
+            ) : showcase?.key === 'your-skin' ? (
               <YourSkinWebShowcase settle={showcase.settle} />
             ) : (introDone || webBypassSplash) ? (
               <NavigationContainer ref={navigationRef} theme={navTheme}>

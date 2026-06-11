@@ -40,7 +40,8 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 
-import { AssistantAuroraOrb, type AssistantOrbState } from '@/screens/assistant/AssistantAuroraOrb';
+import { type AssistantOrbState } from '@/screens/assistant/AssistantAuroraOrb';
+import { ResultsOrb } from '@/components/ResultsOrb';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useReduceTransparency } from '@/hooks/useReduceTransparency';
 import {
@@ -256,7 +257,7 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
       {/* ── Persistent sticky header — the SINGLE orb instance + quiet options. ── */}
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <View style={styles.headerSide} />
-        <AssistantAuroraOrb state={orbState} size={56} scanTone={vm.scanTone} />
+        <ResultsOrb state={orbState} size={56} scanTone={vm.scanTone} />
         <View style={styles.headerSide}>
           <Pressable
             onPress={() => { setOptionsOpen((o) => !o); hapt.select(); }}
@@ -450,7 +451,7 @@ function EmptyState({
   return (
     <View style={[styles.root, styles.empty, { backgroundColor: tokens.bg, paddingTop: insets.top + 40 }]}>
       <StatusBar style={tokens.barStyle} />
-      <AssistantAuroraOrb state={orbState} size={72} scanTone={scanTone} />
+      <ResultsOrb state={orbState} size={72} scanTone={scanTone} />
       <Text style={[TYPE2.synthesis, { color: tokens.line, textAlign: 'center', marginTop: 24 }]}>
         I couldn’t quite read this one. Let’s try once more.
       </Text>

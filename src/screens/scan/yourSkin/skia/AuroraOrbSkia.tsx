@@ -1,5 +1,3 @@
-// @ts-nocheck
-/* eslint-disable */
 /**
  * AuroraOrbSkia — the FULL-FIDELITY, GPU orb for "Your Skin" (screen 2).
  *
@@ -88,9 +86,6 @@ export interface AuroraOrbSkiaProps {
   forceReduceMotion?: boolean;
 }
 
-// Compile the fragment shader once (orphan module → safe at import time).
-const ORB_EFFECT = Skia.RuntimeEffect.Make(ORB_SKSL);
-
 // Geometry, all fractions of `size` (matches the RN orb so it drops in 1:1).
 const CORE_R = 0.35;          // sphere radius
 const HALO_SCALE = 2.3;       // additive cast-light halo ≈ 2.3× the orb
@@ -124,6 +119,11 @@ export const AuroraOrbSkia = forwardRef<AuroraOrbSkiaHandle, AuroraOrbSkiaProps>
   ) {
     const sysReduce = useReduceMotion();
     const reduce = forceReduceMotion ?? sysReduce;
+
+    // Compile the fragment shader at RENDER time (never module scope): on web the
+    // SkiaGate only mounts this component once CanvasKit is ready, so deferring
+    // the compile here guarantees Skia.RuntimeEffect exists. Memoised → once/mount.
+    const ORB_EFFECT = useMemo(() => Skia.RuntimeEffect.Make(ORB_SKSL), []);
 
     const span = Math.round(size * CANVAS_SPAN);
     const cx = span / 2;
@@ -280,6 +280,18 @@ export const AuroraOrbSkia = forwardRef<AuroraOrbSkiaHandle, AuroraOrbSkiaProps>
       return p;
     }, [size, cx, cy]);
 
+    // Short nose LINE (no mouth) — mirrors AssistantAuroraOrb's minimalist face
+    // so the Skia orb reads as the same character, per the spec's face anatomy.
+    const nosePath = useMemo(() => {
+      const p = Skia.Path.Make();
+      const nx = cx;
+      const ny = cy - size / 2 + NOSE_Y * size;
+      const len = 0.06 * size;
+      p.moveTo(nx, ny);
+      p.lineTo(nx, ny + len);
+      return p;
+    }, [size, cx, cy]);
+
     const dotOpacity = useDerivedValue(() => 1 - happy.value);
     const arcOpacity = useDerivedValue(() => happy.value);
 
@@ -355,6 +367,7 @@ export const AuroraOrbSkia = forwardRef<AuroraOrbSkiaHandle, AuroraOrbSkiaProps>
               <Path path={eyePaths.rightArc} style="stroke" strokeWidth={Math.max(1.4, size * 0.02)} strokeCap="round" color="#FFFFFF" />
             </Group>
             <Path path={browPath} style="stroke" strokeWidth={Math.max(1.2, size * 0.018)} strokeCap="round" color="rgba(255,255,255,0.92)" />
+            <Path path={nosePath} style="stroke" strokeWidth={Math.max(1, size * 0.014)} strokeCap="round" color="rgba(255,255,255,0.82)" />
           </Group>
         </Canvas>
       </View>

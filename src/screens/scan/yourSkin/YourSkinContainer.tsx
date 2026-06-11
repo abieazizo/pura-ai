@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { readSkinFromPhoto } from '@/api/skinRead';
 import type { SkinReadOutcome } from '@/types/skinRead';
-import { AssistantAuroraOrb } from '@/screens/assistant/AssistantAuroraOrb';
+import { ResultsOrb } from '@/components/ResultsOrb';
 import { tokensFor, TYPE2 } from './yourSkinMotion';
 import { YourSkinScreen } from './YourSkinScreen';
 import type { ScreenTheme } from '../firstFinding/metricTint';
@@ -118,7 +118,7 @@ function ReadingBeat({ theme, label }: { theme: ScreenTheme; label: string }) {
   return (
     <View style={[styles.root, { backgroundColor: tokens.bg, paddingTop: insets.top + 80 }]}>
       <StatusBar style={tokens.barStyle} />
-      <AssistantAuroraOrb state="thinking" size={72} scanTone="balanced" />
+      <ResultsOrb state="thinking" size={72} scanTone="balanced" />
       <Text style={[TYPE2.horizon, { color: tokens.line, textAlign: 'center', marginTop: 28, maxWidth: 300 }]} maxFontSizeMultiplier={1.4}>
         {label}
       </Text>
