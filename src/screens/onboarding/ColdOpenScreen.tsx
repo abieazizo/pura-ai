@@ -56,6 +56,7 @@ import { AuroraOrb } from '@/components/AuroraOrb';
 import { auroraOrb as C, dsAmbient, dsGradient, ds, dsRadius } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { ORB_SIZES, targetFor } from './orb/orbLayout';
 
 const SEEN_KEY = '@pura/coldOpenSeen';
 
@@ -140,6 +141,27 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
   const pressN = useSharedValue(1); // button compress
   const exitContent = useSharedValue(0); // content lift+fade
   const exitOrb = useSharedValue(0); // orb persist/shrink/reposition
+
+  // ---- The seam: the orb's exit flight ends EXACTLY where the interview
+  // seats its persistent orb (the shared question target), so the cross-route
+  // cross-fade swaps two perfectly superimposed orbs — one continuous
+  // companion, no lateral jump. The masthead orb's resting center comes from
+  // flex layout, so it is MEASURED (not derived) and the deltas live in
+  // shared values the exit transform reads on the UI thread.
+  const seamTarget = targetFor('question', width, height, insets.top);
+  // Pre-measure fallback = the analytic masthead seat (cluster padding 28 −
+  // orbMast marginLeft 6 + half the orb). measureInWindow refines it.
+  const exitDx = useSharedValue(seamTarget.cx - (22 + orbSize / 2));
+  const exitDy = useSharedValue(-height * 0.16);
+  const orbMastRef = useRef<View>(null);
+  const measureOrb = useCallback(() => {
+    orbMastRef.current?.measureInWindow?.((x, y, w, h) => {
+      if (typeof x !== 'number' || Number.isNaN(x) || w <= 0) return;
+      exitDx.value = seamTarget.cx - (x + w / 2);
+      exitDy.value = seamTarget.cy - (y + h / 2);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seamTarget.cx, seamTarget.cy]);
 
   // ---- Text-plane parallax (3px). Orb owns its own 8px/5px planes. --------
   const sensor = useAnimatedSensor(SensorType.ROTATION, { interval: 'auto' });
@@ -275,6 +297,24 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
     hapt.tap();
     AccessibilityInfo.announceForAccessibility?.('Opening Pura');
 
+    // Reduce Motion: no flight, no lift — a brief complete fade, the orb
+    // snaps to its interview seat (the seeded orb takes over in place), and
+    // the advance fires at the fade's end instead of holding the user 720ms.
+    if (reduceMotion || variant === 'reduce') {
+      exitContent.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.quad) });
+      exitOrb.value = 1;
+      const tr = setTimeout(() => {
+        onContinue ? onContinue() : console.log('[ColdOpen] exit → Screen 2');
+        if (!onContinue) {
+          exiting.current = false;
+          exitContent.value = 0;
+          exitOrb.value = 0;
+        }
+      }, 260);
+      timers.current.push(tr);
+      return;
+    }
+
     pressN.value = withSequence(
       withTiming(0.96, { duration: 100, easing: Easing.out(Easing.quad) }),
       withSpring(1, { damping: 14, stiffness: 320, mass: 1 }),
@@ -294,7 +334,7 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
       }
     }, 720);
     timers.current.push(t1, t2);
-  }, [onContinue]);
+  }, [onContinue, reduceMotion, variant]);
 
   // ---- Animated styles -----------------------------------------------------
   const bgStyle = useAnimatedStyle(() => ({
@@ -315,12 +355,15 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
     transform: [{ translateY: -20 * exitContent.value }],
   }));
 
-  // Orb persists through the exit: shrinks toward ~90px and lifts toward where
-  // Screen 2 will place it. (Proves the shared-element approach.)
-  const orbTargetScale = 90 / orbSize;
+  // Orb persists through the exit: flies (x AND y) from its measured masthead
+  // seat to the interview's question target, shrinking to that beat's exact
+  // size — so the interview's seeded orb is perfectly superimposed when the
+  // 280ms cross-fade swaps the instances.
+  const orbTargetScale = ORB_SIZES.question / orbSize;
   const orbExitStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: -height * 0.16 * exitOrb.value },
+      { translateX: exitDx.value * exitOrb.value },
+      { translateY: exitDy.value * exitOrb.value },
       { scale: interpolate(exitOrb.value, [0, 1], [1, orbTargetScale]) },
     ],
   }));
@@ -381,7 +424,12 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
             {/* The orb persists through the exit (only orbExitStyle — shrinks +
                 lifts toward Screen 2), proving the shared-element handoff; the
                 copy below fades/lifts independently. */}
-            <Animated.View style={[styles.orbMast, orbExitStyle]} pointerEvents="none">
+            <Animated.View
+              ref={orbMastRef}
+              onLayout={measureOrb}
+              style={[styles.orbMast, orbExitStyle]}
+              pointerEvents="none"
+            >
               {/* Portrait-frame medallion behind the orb — the shared Cycle 12
                   imagery language (a rounded-portrait hairline frame, matching
                   the scan capture card), so even the first beat frames the

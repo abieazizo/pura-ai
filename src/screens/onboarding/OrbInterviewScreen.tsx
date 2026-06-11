@@ -17,11 +17,12 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAppStore } from '@/store/useAppStore';
 import type { AppState, SkinCondition } from '@/store/useAppStore';
 import { OrbProvider, useOrb } from './orb/OrbHost';
-import type { OrbTarget } from './orb/orbLayout';
+import { targetFor, type OrbTarget } from './orb/orbLayout';
 import { useOnboardingTheme } from './orb/onboardingTheme';
 import { QuestionScreen } from './QuestionScreen';
 import { SynthesisBeat } from './SynthesisBeat';
@@ -79,16 +80,13 @@ export function OrbInterviewScreen({ onDone }: OrbInterviewScreenProps) {
   const reduceMotion = useReduceMotion();
   const { dark, colors } = useOnboardingTheme();
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
-  // The orb enters EXACTLY where Screen 1's cold open leaves it (same formula),
-  // so the cross-route handoff reads as one continuous element.
-  const clusterTop = Math.round(height * 0.16);
-  const orbSize = Math.min(Math.round(width * 0.64), 264);
-  const arrival: OrbTarget = {
-    cx: width / 2,
-    cy: clusterTop + orbSize / 2 - height * 0.16,
-    size: 90,
-  };
+  // The orb enters EXACTLY where the cold open's exit flight parks it — the
+  // question beat's own target (ColdOpen flies the orb to this same spot via
+  // targetFor('question')), so the cross-route cross-fade swaps two perfectly
+  // superimposed orbs and the companion never jumps.
+  const arrival: OrbTarget = targetFor('question', width, height, insets.top);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.base }]}>
