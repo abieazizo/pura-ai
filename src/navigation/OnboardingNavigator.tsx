@@ -67,7 +67,16 @@ export function OnboardingNavigator() {
         )}
       </Stack.Screen>
 
-      <Stack.Screen name="CameraPrimer">
+      {/* gestureEnabled: false — swiping back would land on the interview's
+          spent synthesis step (one-shot beat, orb already hidden): a dead end.
+          The fade matches the ColdOpen→OrbInterview seam so the orb chain
+          exits with the same transition grammar it entered with, and the
+          interview orb's hide (260ms) dissolves INTO this fade instead of
+          before a sideways card slide. */}
+      <Stack.Screen
+        name="CameraPrimer"
+        options={{ animation: 'fade', animationDuration: 280, gestureEnabled: false }}
+      >
         {({ navigation }) => (
           <SlideEntry>
             <CameraPrimer
