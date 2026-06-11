@@ -175,6 +175,10 @@ export interface AuroraOrbHandle {
    *  then settle over ms (default 900). Reuses the reaction-glow channel; do
    *  not fire mid-reaction. No-op under reduce-motion. */
   brightenOnce(pct?: number, ms?: number): void;
+  /** Ritual skip: the muted beat — halo briefly DIMMER and SMALLER, then back.
+   *  The unbothered mirror of bloomOnce (never a warm pulse — a skip is
+   *  acknowledged, not celebrated). No-op under reduce-motion. */
+  muteOnce(ms?: number): void;
   /** Your Routine: scalar gaze (−1..1 each axis; +y = down). Lets the eyes
    *  visibly TRACK a list assembling downward, where setGaze is binary. */
   gazeTo(x: number, y: number): void;
@@ -635,6 +639,21 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
           glowBoost.value = withSequence(
             withTiming(Math.max(0, Math.min(0.3, pct)), { duration: up, easing: EASE_OUT }),
             withTiming(0, { duration: ms - up, easing: EASE_IN_QUAD }),
+          );
+        },
+        muteOnce(ms = 1100) {
+          if (animsOffRef.current) return; // transient, like bloomOnce
+          const down = Math.round(ms * 0.32);
+          // Halo shrinks a touch + the glow dips — quietly unbothered, then
+          // back to identity. (bloomGlow composes additively into the halo
+          // opacity; a small negative dip dims without ever inverting.)
+          bloomS.value = withSequence(
+            withTiming(0.94, { duration: down, easing: EASE_OUT }),
+            withTiming(1, { duration: ms - down, easing: EASE_IO }),
+          );
+          bloomGlow.value = withSequence(
+            withTiming(-0.16, { duration: down, easing: EASE_OUT }),
+            withTiming(0, { duration: ms - down, easing: EASE_IN_QUAD }),
           );
         },
         gazeTo(x, y) {

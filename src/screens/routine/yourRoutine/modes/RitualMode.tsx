@@ -190,7 +190,15 @@ export function RitualMode({
     if (phase !== 'active' || guard.current || !step) return;
     guard.current = true;
     doneIds.current.push(step.id);
-    ritualHaptics.stepComplete(step.type); // double-tick, first light
+    // THE GOLD BEAT — on the tap itself, every step: the orb floods warm gold
+    // (~240ms), the halo blooms, the eyes turn happy (joy arcs via the warm
+    // archetype), and ONE Medium haptic lands with it. ~1s later it's back to
+    // calm — enterStep re-cools to 0.3 on advance; a meaningful step's care
+    // beat HOLDS the warmth instead. Completion is care, never points.
+    ritualHaptics.goldBloom(step.type);
+    orb.setGlowTemperature(1, 240);
+    orb.reactArchetype('warm', { warmth: 'high', lineMs: 600 });
+    orb.bloomOnce({ peak: 1.12, ms: 900 });
     setPhase('completing');
     setDrawing(true);
     if (!reduceMotion) {
@@ -247,12 +255,17 @@ export function RitualMode({
     if (phase !== 'active' || guard.current || !step) return;
     guard.current = true;
     setPhase('skipping');
-    // The orb is unbothered — and says so, in its own voice.
+    // THE MUTED BEAT — a skip is acknowledged, never celebrated and never
+    // scolded: the orb goes quiet grey (temperature toward cool, halo dimmer
+    // and slightly smaller via muteOnce), then settles back. No haptic — the
+    // absence of the gold beat IS the feedback. enterStep re-cools on advance.
     const line = step.type === 'protect' ? VOICE.skipSpf : VOICE.skipGeneric;
     setSkipLine(line);
     if (voice.isEnabled()) voice.speakLine(line);
     AccessibilityInfo.announceForAccessibility(line);
-    orb.encourage();
+    orb.setExpression('neutral');
+    orb.setGlowTemperature(0.08, 300);
+    orb.muteOnce(1100);
     later(advance, reduceMotion ? 900 : 1400);
   }
 

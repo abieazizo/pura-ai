@@ -36,6 +36,7 @@ import {
   type RoutinePeriod,
 } from '@/theme/routineAtmosphere';
 import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
+import { useRoutineFocus } from '@/state/v26/routineFocus';
 import type { YourRoutineModel } from './model';
 import { Atmosphere } from './components/Atmosphere';
 import { HonestBundle } from './components/HonestBundle';
@@ -134,6 +135,16 @@ function ExperienceInner({
   const [mode, setMode] = useState<ExperienceMode>(initialMode ?? 'home');
   const [showBundle, setShowBundle] = useState(false);
   const prevMode = useRef<ExperienceMode>(initialMode ?? 'home');
+
+  // The ritual is a FULL-FOCUS surface: no tab bar (spec: dark immersive, the
+  // dock would puncture it). Drives the same flag the legacy routine surfaces
+  // use — the FloatingTabBar quietly collapses while it's true. Scene property:
+  // always cleared on unmount, never persisted.
+  const setRoutineFocused = useRoutineFocus((s) => s.setFocused);
+  useEffect(() => {
+    setRoutineFocused(mode === 'ritual');
+    return () => setRoutineFocused(false);
+  }, [mode, setRoutineFocused]);
 
   const fade = useSharedValue(1);
   const intensify = useSharedValue(0);

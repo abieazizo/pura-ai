@@ -23,6 +23,7 @@ export type HapticBeat =
   | 'ritual-enter'
   | 'step-start'
   | 'step-complete'
+  | 'gold-bloom'
   | 'done-landing'
   | 'silence';
 
@@ -99,7 +100,14 @@ export const ritualHaptics = {
   stepCompleteMidDraw(): void {
     hapt.tap();
   },
-  /** Mode C — the done-landing. The one medium warm beat in the whole ritual. */
+  /** The gold bloom — fires ON the Done tap, WITH the orb's warm beat.
+   *  Medium by spec: the moment of completed care is a felt acknowledgement,
+   *  not a tick. (The checkmark's light mid-draw tick still plays after it.) */
+  goldBloom(label?: string): void {
+    hapt.medium();
+    record('gold-bloom', 'medium', label);
+  },
+  /** Mode C — the done-landing. The closing medium warm beat of the ritual. */
   doneLanding(): void {
     hapt.medium();
     record('done-landing', 'medium');

@@ -96,6 +96,8 @@ export interface OrbController {
   bloomOnce(opts?: { peak?: number; ms?: number }): void;
   /** Your Routine: soft held "noticing you" brightening (+pct, default 0.1). */
   brightenOnce(pct?: number, ms?: number): void;
+  /** Ritual skip: the muted beat — halo dimmer + smaller for a moment, then back. */
+  muteOnce(ms?: number): void;
   /** Your Routine: scalar gaze (−1..1 each axis; +y = down) for list-tracking. */
   gazeTo(x: number, y: number): void;
 }
@@ -221,6 +223,7 @@ export function OrbProvider({
       setGlowTemperature: (t, ms) => orbRef.current?.setGlowTemperature(t, ms),
       bloomOnce: (opts) => orbRef.current?.bloomOnce(opts),
       brightenOnce: (pct, ms) => orbRef.current?.brightenOnce(pct, ms),
+      muteOnce: (ms) => orbRef.current?.muteOnce(ms),
       gazeTo: (x, y) => orbRef.current?.gazeTo(x, y),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
