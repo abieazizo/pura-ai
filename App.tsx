@@ -41,6 +41,8 @@ import { ContextualProvider } from '@/components/contextual/ContextualProvider';
 import { probeProxyHealthz } from '@/ai/aiHealthProbe';
 import { YourSkinScreen } from '@/screens/scan/yourSkin/YourSkinScreen';
 import { FIXTURE_BY_KEY, YOUR_SKIN_FIXTURES } from '@/screens/scan/yourSkin/fixtures';
+import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
+import { FirstFindingScreen } from '@/screens/scan/firstFinding';
 // Web-only Skia GPU proof (Step 0). ⚠️ MUST be a DEFERRED import: RNSkia's web
 // entry snapshots `global.CanvasKit` at module-evaluation time, so a static
 // import here (the boot graph) would evaluate it before LoadSkiaWeb resolves
@@ -86,6 +88,42 @@ function webShowcase(): { key: string; settle: boolean } | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * `?screen=analyzing` — the post-scan ANALYZING moment, held in its loop
+ * forever (outcome stays pending) so the experience is viewable on the deploy
+ * without a live camera scan: the persistent companion orb gaze-sweeping the
+ * photo + honest plain-language status lines. No donut, no skeleton, no
+ * numbers. `&photo=deep` swaps in the deep-skin test portrait.
+ */
+function AnalyzingWebShowcase() {
+  const photo =
+    (() => {
+      try {
+        const p = new URLSearchParams(
+          (globalThis as unknown as { location?: { search?: string } }).location?.search ?? '',
+        ).get('photo');
+        return p === 'deep'
+          ? 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=640&q=80'
+          : 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=640&q=80';
+      } catch {
+        return 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=640&q=80';
+      }
+    })();
+  return (
+    <OrbProvider reduceMotion={false} birth={false} dark>
+      <FirstFindingScreen
+        photoUri={photo}
+        outcome={{ status: 'pending' }}
+        theme="dark"
+        mirrored
+        onSeeEverything={() => {}}
+        onTryBetterLight={() => {}}
+        onTryAgain={() => {}}
+      />
+    </OrbProvider>
+  );
 }
 
 /**
@@ -188,6 +226,8 @@ export default function App() {
             <StatusBar style="dark" />
             {showcase?.key === 'skia-probe' ? (
               <SkiaProbeGate />
+            ) : showcase?.key === 'analyzing' ? (
+              <AnalyzingWebShowcase />
             ) : showcase?.key === 'your-skin' ? (
               <YourSkinWebShowcase settle={showcase.settle} />
             ) : (introDone || webBypassSplash) ? (

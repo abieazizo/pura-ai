@@ -43,6 +43,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 
 import { useOrb } from '@/screens/onboarding/orb/OrbHost';
+import { FilmGrain } from '@/components/FilmGrain';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useReduceTransparency } from '@/hooks/useReduceTransparency';
 import {
@@ -240,11 +241,15 @@ export function FirstFindingScreen({
         -1,
         true,
       );
-      statusTimer.current = setInterval(() => {
-        if (!mounted.current) return;
-        setStatusIdx((i) => Math.min(i + 1, STATUS_LINES.length - 1));
-      }, TIMELINE.statusLineMs);
     }
+    // The status lines LOOP for the whole real API duration (spec: analyzing
+    // loops until the read returns — never parks on one line). This is
+    // information, not motion: it rotates under Reduce Motion too (the swap
+    // animation itself is what reduce strips, via the keyed Fade transitions).
+    statusTimer.current = setInterval(() => {
+      if (!mounted.current) return;
+      setStatusIdx((i) => (i + 1) % STATUS_LINES.length);
+    }, TIMELINE.statusLineMs);
     after(TIMELINE.longCallMs, () => setLongCall(true));
     AccessibilityInfo.announceForAccessibility('Reading your skin.');
 
@@ -401,7 +406,11 @@ export function FirstFindingScreen({
   // ── A11y text equivalents. ──────────────────────────────────────────────────
   const glowA11y = useMemo(() => buildGlowA11y(finding), [finding]);
 
-  const statusText = longCall ? STATUS_LONG_CALL : STATUS_LINES[statusIdx];
+  // On a long call the closer-look line JOINS the rotation (honesty about the
+  // wait) — it never parks the screen on one static line; the loop keeps
+  // rotating for the whole real API duration.
+  const statusLines = longCall ? [...STATUS_LINES, STATUS_LONG_CALL] : STATUS_LINES;
+  const statusText = statusLines[statusIdx % statusLines.length];
   const maxLineWidth = W - LAYOUT.gutter * 2;
 
   return (
@@ -519,6 +528,10 @@ export function FirstFindingScreen({
           </View>
         </View>
       </SafeAreaView>
+
+      {/* ~4% photographic grain over the whole frame (spec: dark cinematic
+          design). Static texture — pointerEvents none, zero per-frame cost. */}
+      <FilmGrain />
     </View>
   );
 }

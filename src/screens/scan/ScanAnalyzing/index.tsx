@@ -40,8 +40,6 @@ import type { Scan } from '@/types';
 import { MAX_TOTAL_WAIT } from './constants';
 import { ErrorState, type ErrorStateReason } from './components/ErrorState';
 import { scanToScanResult } from './lib/scanToResult';
-import { type LoadingStage } from '@/components/scan-results/AnalysisLoadingSlide';
-import { RevealAnalyzingSlide } from '@/screens/scan/reveal/RevealAnalyzingSlide';
 import { RetakeRequiredScreen } from '@/components/scan-results/RetakeRequiredScreen';
 import { LimitedScanInterstitial } from '@/components/scan-results/LimitedScanInterstitial';
 import { ScanServiceErrorScreen } from '@/components/scan-results/ScanServiceErrorScreen';
@@ -410,15 +408,6 @@ export function ScanAnalyzingFaceScreen({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // Track when phase entered 'continue_to_results' so the loading slide
-  // can briefly hold at 100% before the route hands off.
-  const enteredContinueAtRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (phase === 'continue_to_results' && enteredContinueAtRef.current === null) {
-      enteredContinueAtRef.current = Date.now();
-    }
-  }, [phase]);
-
   // First-Finding now drives the forward hand-off: the user reads the first
   // finding and taps "See everything →" (see the render below), so we no longer
   // AUTO-advance the instant the canonical analyze finishes.
@@ -446,28 +435,11 @@ export function ScanAnalyzingFaceScreen({
     setPhase('continue_to_results');
   }, []);
 
-  // ---- Compute the loading stage. 100% (`normalized`) is only ever
-  //      reached when phase === 'continue_to_results'. ----
-  //
-  // Synthetic stage progression: when analyze is in flight, advance
-  // through the intermediate stages on a timer so the user reads
-  // every step instead of seeing the percent jump straight from 36%
-  // to 84%.
-  const [analyzingStage, setAnalyzingStage] = useState<LoadingStage>('quality_validated');
-  useEffect(() => {
-    if (preflight.kind === 'pending') return;
-    if (phase !== 'analyzing') return;
-    // Step from quality_validated → ai_result_returned after ~700ms.
-    const t = setTimeout(() => setAnalyzingStage('ai_result_returned'), 700);
-    return () => clearTimeout(t);
-  }, [preflight.kind, phase]);
-
-  const loadingStage = useMemo<LoadingStage>(() => {
-    if (phase === 'continue_to_results') return 'normalized'; // 100%
-    if (phase === 'classifying') return 'geometry_ready'; // 84%
-    if (preflight.kind === 'pending') return 'image_ready'; // 12%
-    return analyzingStage; // 36% → 64% over time
-  }, [phase, preflight.kind, analyzingStage]);
+  // NOTE: the percent-ring "loading stage" machinery that used to live here is
+  // gone for good. The analyzing experience is the First-Finding cinematic — a
+  // looping orb gaze-sweep over the photo with honest plain-language status
+  // lines. No donut, no skeleton, no progress bar, no numbers. (Spec: results
+  // experience step 2.)
 
   // ---- Terminal renders ----
   if (preflight.kind === 'fail') {
