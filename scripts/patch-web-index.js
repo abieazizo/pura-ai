@@ -58,29 +58,80 @@ if (!fs.existsSync(HTML_PATH)) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. import.meta fix — add type="module" to the Expo bundle script tag.
+// 1. import.meta fix — add type="module" to EVERY Expo bundle script tag.
+//
+// Metro can emit MULTIPLE eagerly-loaded bundles (e.g. __expo-metro-runtime,
+// __common shared chunk, index). `import.meta` can land in ANY of them (it
+// moves when the chunk graph changes), and a single classic-script tag among
+// them throws `Cannot use 'import.meta' outside a module` at page load. Module
+// scripts are deferred and execute in document order, so converting all of
+// them preserves the runtime → shared-chunk → entry execution order exactly
+// like the original `defer` attributes did. Idempotent: tags that already have
+// type="module" are left untouched.
 // ---------------------------------------------------------------------------
 
 let html = fs.readFileSync(HTML_PATH, 'utf8');
 
-const NEEDS_MODULE =
-  /<script(\s+[^>]*\bsrc=["']\/_expo\/static\/js\/web\/[^"']+["'][^>]*)>/i;
+const EXPO_SCRIPT_TAG =
+  /<script(\s+[^>]*\bsrc=["']\/_expo\/static\/js\/web\/[^"']+["'][^>]*)>/gi;
 
-const ALREADY_MODULE =
-  /<script[^>]+type=["']module["'][^>]*\bsrc=["']\/_expo\/static\/js\/web\//i;
+let patched = 0;
+let alreadyModule = 0;
+html = html.replace(EXPO_SCRIPT_TAG, (full, attrs) => {
+  if (/\btype=["']module["']/i.test(full)) {
+    alreadyModule += 1;
+    return full;
+  }
+  patched += 1;
+  return `<script type="module"${attrs}>`;
+});
 
-if (NEEDS_MODULE.test(html) && !ALREADY_MODULE.test(html)) {
-  html = html.replace(
-    NEEDS_MODULE,
-    (_m, attrs) => `<script type="module"${attrs}>`
+if (patched > 0 || alreadyModule > 0) {
+  console.log(
+    `[patch-web-index] Bundle script tags → type="module": ${patched} patched, ${alreadyModule} already module.`
   );
-  console.log('[patch-web-index] Added type="module" to bundle script tag.');
-} else if (ALREADY_MODULE.test(html)) {
-  console.log('[patch-web-index] Bundle script tag already has type="module".');
 } else {
   console.log(
     '[patch-web-index] No matching bundle <script> tag found — leaving as-is.'
   );
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Globals shim — classic inline <script> BEFORE the module bundles.
+//
+// Module scripts run in strict mode with module-scoped top levels, so the
+// sloppy-mode tricks Metro's web output uses to share globals across bundles
+// (bare `process = …` in the runtime, top-level `var` in classic chunks) stop
+// working once 1. converts the tags to type="module". This shim pre-creates
+// the expected globals on `window` so (a) reads like `process.env.NODE_ENV`
+// resolve everywhere and (b) the runtime's bare `process = g` assignment finds
+// an existing global binding instead of throwing under strict mode.
+// ---------------------------------------------------------------------------
+
+// The full set comes from Metro's prelude (the first line of the runtime
+// bundle): `var __BUNDLE_START_TIME__=…, __DEV__=false, process=…,
+// __METRO_GLOBAL_PREFIX__=''`. Each must exist as a real window global.
+const SHIM_MARK = 'window.__METRO_GLOBAL_PREFIX__';
+if (!html.includes(SHIM_MARK)) {
+  const shim =
+    '<script>' +
+    `window.process=window.process||{env:{NODE_ENV:'production'}};` +
+    `window.process.env=window.process.env||{NODE_ENV:'production'};` +
+    'window.global=window.global||window;' +
+    'window.__DEV__=window.__DEV__||false;' +
+    `window.__METRO_GLOBAL_PREFIX__=window.__METRO_GLOBAL_PREFIX__||'';` +
+    'window.__BUNDLE_START_TIME__=window.__BUNDLE_START_TIME__||Date.now();' +
+    '</script>';
+  const FIRST_BUNDLE_TAG = /<script[^>]*\bsrc=["']\/_expo\/static\/js\/web\//i;
+  const m = html.match(FIRST_BUNDLE_TAG);
+  if (m) {
+    html = html.replace(FIRST_BUNDLE_TAG, `${shim}${m[0]}`);
+    console.log('[patch-web-index] Injected process/global shim before bundles.');
+  } else {
+    console.log('[patch-web-index] No bundle tag found for shim — skipped.');
+  }
+} else {
+  console.log('[patch-web-index] process/global shim already present.');
 }
 
 // ---------------------------------------------------------------------------

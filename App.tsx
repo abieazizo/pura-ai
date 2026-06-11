@@ -41,10 +41,15 @@ import { ContextualProvider } from '@/components/contextual/ContextualProvider';
 import { probeProxyHealthz } from '@/ai/aiHealthProbe';
 import { YourSkinScreen } from '@/screens/scan/yourSkin/YourSkinScreen';
 import { FIXTURE_BY_KEY, YOUR_SKIN_FIXTURES } from '@/screens/scan/yourSkin/fixtures';
-// Web-only Skia GPU proof (Step 0). Statically importing @shopify/react-native-skia
-// here only affects the WEB bundle — App.native.tsx is the native entry and never
-// imports this. CanvasKit is loaded before the root mounts (see index.ts).
-import { SkiaProbe } from '@/screens/dev/SkiaProbe';
+// Web-only Skia GPU proof (Step 0). ⚠️ MUST be a DEFERRED import: RNSkia's web
+// entry snapshots `global.CanvasKit` at module-evaluation time, so a static
+// import here (the boot graph) would evaluate it before LoadSkiaWeb resolves
+// and permanently dead-wire every Skia call. SkiaProbeGate below only triggers
+// the import once useSkiaReady() reports CanvasKit is actually loaded.
+import { useSkiaReady } from '@/skia/useSkiaReady';
+const SkiaProbeLazy = React.lazy(() =>
+  import('@/screens/dev/SkiaProbe').then((m) => ({ default: m.SkiaProbe })),
+);
 
 // Dev-only navigation ref. Exposed on `window.__pura_nav__` in dev
 // builds so the preview harness can navigate to dev-only routes
@@ -81,6 +86,28 @@ function webShowcase(): { key: string; settle: boolean } | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Holds the probe behind CanvasKit readiness. In production web CanvasKit boots
+ * automatically; in the dev preview pass `?skia=1` (see index.ts boot policy).
+ */
+function SkiaProbeGate() {
+  const ready = useSkiaReady();
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0A0B12', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#9FB3CC', fontSize: 13 }}>
+          loading CanvasKit (WASM)… — in the dev preview, add &skia=1 to the URL
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <React.Suspense fallback={null}>
+      <SkiaProbeLazy />
+    </React.Suspense>
+  );
 }
 
 function YourSkinWebShowcase({ settle }: { settle: boolean }) {
@@ -160,7 +187,7 @@ export default function App() {
           <View style={styles.fill}>
             <StatusBar style="dark" />
             {showcase?.key === 'skia-probe' ? (
-              <SkiaProbe />
+              <SkiaProbeGate />
             ) : showcase?.key === 'your-skin' ? (
               <YourSkinWebShowcase settle={showcase.settle} />
             ) : (introDone || webBypassSplash) ? (
