@@ -492,7 +492,7 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
               </Text>
             </Pressable>
             <Text style={styles.trust} maxFontSizeMultiplier={1.15}>
-              Dermatologist-informed · Your face never leaves your device.
+              Dermatologist-informed · Photos never stored or shared.
             </Text>
           </Animated.View>
         </Animated.View>

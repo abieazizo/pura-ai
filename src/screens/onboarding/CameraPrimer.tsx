@@ -241,7 +241,8 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
               <Animated.View style={[styles.promiseRow, subStyle]}>
                 <ShieldCheck size={15} weight="fill" color={palette.bg} />
                 <Animated.Text style={styles.promise} maxFontSizeMultiplier={1.2}>
-                  On your device. Nothing leaves.
+                  Your photo is used to read your skin, then it’s never stored
+                  or shared.
                 </Animated.Text>
               </Animated.View>
             </View>
@@ -258,7 +259,7 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
       <Animated.View
         style={[styles.ctaWrap, ctaStyle, { paddingBottom: insets.bottom + 24 }]}
       >
-        <OnboardingPrimaryButton label="Continue" onPress={onContinue} />
+        <OnboardingPrimaryButton label="Let’s take a look" onPress={onContinue} />
       </Animated.View>
     </SafeAreaView>
   );
@@ -411,6 +412,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   promise: {
+    flex: 1, // the honest privacy line wraps to two lines over the scrim
     fontFamily: 'Inter-Medium',
     fontSize: 12.5,
     lineHeight: 16,

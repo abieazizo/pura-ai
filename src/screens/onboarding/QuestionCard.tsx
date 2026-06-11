@@ -41,6 +41,8 @@ export interface QuestionCardProps {
   recede: boolean;
   /** Another card is being touched-down → this one dims slightly. */
   dimmed: boolean;
+  /** Compact row — no icon well, tighter height (dense sets like age). */
+  compact?: boolean;
   enterMode: CardEnterMode;
   riseDelay: number;
   reduceMotion: boolean;
@@ -59,6 +61,7 @@ export function QuestionCard({
   selected,
   recede,
   dimmed,
+  compact = false,
   enterMode,
   riseDelay,
   reduceMotion,
@@ -150,7 +153,15 @@ export function QuestionCard({
     `${option.label}${option.sublabel ? `, ${option.sublabel}` : ''}, option ${index + 1} of ${total}`;
 
   return (
-    <Animated.View style={[styles.ambient, { shadowColor: colors.shadowAmbient }, ambientStyle, cardStyle]}>
+    <Animated.View
+      style={[
+        styles.ambient,
+        compact && styles.ambientCompact,
+        { shadowColor: colors.shadowAmbient },
+        ambientStyle,
+        cardStyle,
+      ]}
+    >
       {/* Selected glow (dark only) */}
       <Animated.View
         style={[styles.glow, { shadowColor: PURA_BLUE }, glowStyle]}
@@ -183,7 +194,7 @@ export function QuestionCard({
           />
 
           <Pressable
-            style={styles.press}
+            style={[styles.press, compact && styles.pressCompact]}
             onPressIn={handlePressIn}
             onPress={handlePress}
             onPressOut={handlePressOut}
@@ -191,15 +202,17 @@ export function QuestionCard({
             accessibilityState={{ selected }}
             accessibilityLabel={a11yLabel}
           >
-            <View style={styles.iconWell}>
-              <View style={[StyleSheet.absoluteFill, styles.iconWellBase, { backgroundColor: colors.iconWell }]} />
-              <Animated.View
-                style={[StyleSheet.absoluteFill, styles.iconWellBase, { backgroundColor: colors.iconWellSelected }, iconSelStyle]}
-              />
-              {/* 1px inner top-highlight */}
-              <View style={styles.iconWellHighlight} pointerEvents="none" />
-              <Icon size={20} color={PURA_BLUE} weight="duotone" />
-            </View>
+            {!compact && (
+              <View style={styles.iconWell}>
+                <View style={[StyleSheet.absoluteFill, styles.iconWellBase, { backgroundColor: colors.iconWell }]} />
+                <Animated.View
+                  style={[StyleSheet.absoluteFill, styles.iconWellBase, { backgroundColor: colors.iconWellSelected }, iconSelStyle]}
+                />
+                {/* 1px inner top-highlight */}
+                <View style={styles.iconWellHighlight} pointerEvents="none" />
+                <Icon size={20} color={PURA_BLUE} weight="duotone" />
+              </View>
+            )}
 
             <View style={styles.textCol}>
               <Text style={[styles.label, { color: colors.label }]} maxFontSizeMultiplier={1.6}>
@@ -257,6 +270,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 18,
     paddingVertical: 16,
+  },
+  // Compact row — for dense sets (age ranges, yes/no). No icon well; the
+  // height drops so 6–7 options still read as one calm column.
+  pressCompact: {
+    minHeight: 56,
+    paddingVertical: 11,
+  },
+  ambientCompact: {
+    marginBottom: 9,
   },
   iconWell: {
     width: 40,

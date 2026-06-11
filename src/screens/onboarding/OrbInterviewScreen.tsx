@@ -1,32 +1,36 @@
 /**
  * OrbInterviewScreen — hosts the whole orb interview as ONE route with ONE orb
- * instance: Screen 2 → name beat → Screen 3 (goal) → Screen 4 (guidance) →
- * Screen 5 (routine depth). Keeping them internal steps means the orb never
- * re-mounts between them; it glides + shifts aura while each step's content
- * cross-fades. Seeded at Screen 1's exit spot for a seamless handoff in.
+ * instance. Keeping the questions internal steps means the orb never re-mounts
+ * between them; it glides while each step's content cross-fades. Seeded at the
+ * cold open's exit spot for a seamless handoff in.
  *
- * Forks wired here:
- *   • goal → stored, and "guide me" SKIPS Screen 4 (default walk-me-through).
- *   • guidance → stored (forks explanation depth) + threads Screen 5's framing.
- *   • routine depth → stored as an EDITABLE preference (sizes the routine).
- *   • Screen 4 → 5 is a z-axis transition with the aura warming violet→blue.
+ * v22 — the momentum rebuild. Five questions, one per screen, each a single
+ * tap (sensitivities is a multi-select with an exclusive "none"), then a short
+ * synthesis beat and out to the camera primer:
+ *
+ *   goal → age → skin type → sensitivities → pregnancy → synthesis → onDone
+ *
+ * Everything collected is engine-consumed (see questionConfig.ts header).
+ * The name beat, guidance and routine-depth questions were cut — momentum,
+ * not data entry. Back navigation steps backward with selections restored.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAppStore } from '@/store/useAppStore';
-import type { AppState } from '@/store/useAppStore';
+import type { AppState, SkinCondition } from '@/store/useAppStore';
 import { OrbProvider, useOrb } from './orb/OrbHost';
 import type { OrbTarget } from './orb/orbLayout';
 import { useOnboardingTheme } from './orb/onboardingTheme';
-import { OrbSpeaksScreen } from './OrbSpeaksScreen';
-import { NameBeatScreen } from './NameBeatScreen';
 import { QuestionScreen } from './QuestionScreen';
+import { SynthesisBeat } from './SynthesisBeat';
 import {
+  AGE_QUESTION,
   GOAL_QUESTION,
-  GUIDANCE_QUESTION,
-  ROUTINE_DEPTH_QUESTION,
+  SAFETY_QUESTION,
+  SENSITIVITIES_QUESTION,
+  SKIN_TYPE_QUESTION,
 } from './questionConfig';
 
 export interface OrbInterviewScreenProps {
@@ -34,16 +38,39 @@ export interface OrbInterviewScreenProps {
   onDone: () => void;
 }
 
-type Step = 'speaks' | 'name' | 'goal' | 'guidance' | 'routine';
+const STEPS = ['goal', 'age', 'skin', 'sense', 'safety'] as const;
+type QuestionStep = (typeof STEPS)[number];
+type Step = QuestionStep | 'synthesis';
+
+/** Rail fill at the END of each question step (5 equal strides to 1). */
+const RAIL_END: Record<QuestionStep, number> = {
+  goal: 0.2,
+  age: 0.4,
+  skin: 0.6,
+  sense: 0.8,
+  safety: 1,
+};
+
+function railStart(step: QuestionStep, backward: boolean): number {
+  const i = STEPS.indexOf(step);
+  if (backward) {
+    const next = STEPS[i + 1];
+    return next ? RAIL_END[next] : RAIL_END[step];
+  }
+  const prev = STEPS[i - 1];
+  return prev ? RAIL_END[prev] : 0;
+}
 
 function devInitialStep(): Step | null {
   if (!__DEV__) return null;
   try {
     const s = (globalThis as any)?.localStorage?.getItem?.('__pura_interview_step__');
-    if (s === 'name') return 'name';
     if (s === 'goal' || s === 'question') return 'goal';
-    if (s === 'guidance') return 'guidance';
-    if (s === 'routine') return 'routine';
+    if (s === 'age') return 'age';
+    if (s === 'skin' || s === 'skinType') return 'skin';
+    if (s === 'sense' || s === 'sensitivities') return 'sense';
+    if (s === 'safety') return 'safety';
+    if (s === 'synthesis') return 'synthesis';
   } catch {}
   return null;
 }
@@ -81,19 +108,33 @@ export function OrbInterviewScreen({ onDone }: OrbInterviewScreenProps) {
 function InterviewSteps({ onDone }: { onDone: () => void }) {
   const reduceMotion = useReduceMotion();
   const orb = useOrb();
-  const name = useAppStore((s) => s.name);
   const setGoal = useAppStore((s) => s.setGoal);
-  const setGuidance = useAppStore((s) => s.setGuidance);
-  const setRoutineDepth = useAppStore((s) => s.setRoutineDepth);
+  const setAgeRange = useAppStore((s) => s.setAgeRange);
+  const setAgePreferNotToSay = useAppStore((s) => s.setAgePreferNotToSay);
+  const setSkinType = useAppStore((s) => s.setSkinType);
+  const setSensitivity = useAppStore((s) => s.setSensitivity);
+  const setFragranceSensitive = useAppStore((s) => s.setFragranceSensitive);
+  const setSkinConditions = useAppStore((s) => s.setSkinConditions);
+  const setAvoidIngredients = useAppStore((s) => s.setAvoidIngredients);
+  const setPregnancyCaution = useAppStore((s) => s.setPregnancyCaution);
 
-  const [step, setStep] = useState<Step>(() => devInitialStep() ?? 'speaks');
+  const [step, setStep] = useState<Step>(() => devInitialStep() ?? 'goal');
+  const [backward, setBackward] = useState(false);
+  // Per-step selections — kept so back navigation restores the prior answer.
   const [goalId, setGoalId] = useState<string | null>(null);
-  const [goalVal, setGoalVal] = useState<string | null>(null);
-  const [guidanceId, setGuidanceId] = useState<string | null>(null);
-  const [guidanceVal, setGuidanceVal] = useState<string | null>(null);
-  const [routineId, setRoutineId] = useState<string | null>(null);
-  const [skippedGuidance, setSkippedGuidance] = useState(false);
+  const [ageId, setAgeId] = useState<string | null>(null);
+  const [skinId, setSkinId] = useState<string | null>(null);
+  const [senseIds, setSenseIds] = useState<string[]>([]);
   const doneRef = useRef(false);
+
+  const goForward = useCallback((next: Step) => {
+    setBackward(false);
+    setStep(next);
+  }, []);
+  const goBack = useCallback((prev: QuestionStep) => {
+    setBackward(true);
+    setStep(prev);
+  }, []);
 
   const finish = useCallback(() => {
     if (doneRef.current) return;
@@ -102,82 +143,119 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
     setTimeout(onDone, reduceMotion ? 0 : 260);
   }, [orb, onDone, reduceMotion]);
 
+  /** Map the sensitivities multi-select onto the safety-profile fields the
+   *  engine reads (buildSafetyProfile). Recomputed in full on every advance so
+   *  back-and-change stays consistent — never an incremental patch. */
+  const applySensitivities = useCallback(
+    (ids: string[]) => {
+      const none = ids.length === 0 || ids.includes('none');
+      const conditions: SkinCondition[] = [];
+      if (ids.includes('eczema')) conditions.push('eczema');
+      if (ids.includes('rosacea')) conditions.push('rosacea');
+      setSkinConditions(conditions);
+      setAvoidIngredients(ids.includes('actives') ? ['retinol', 'exfoliating acids'] : []);
+      setFragranceSensitive(none ? 'no' : ids.includes('fragrance') ? 'yes' : 'no');
+      const count = ids.filter((id) => id !== 'none').length;
+      setSensitivity(none ? 'not' : count >= 2 ? 'very' : 'somewhat');
+    },
+    [setSkinConditions, setAvoidIngredients, setFragranceSensitive, setSensitivity],
+  );
+
   switch (step) {
-    case 'speaks':
-      return <OrbSpeaksScreen onAdvance={() => setStep('name')} />;
-
-    case 'name':
-      return <NameBeatScreen onAdvance={() => setStep('goal')} />;
-
     case 'goal':
       return (
         <QuestionScreen
           key="goal"
           config={GOAL_QUESTION}
-          name={name}
-          progressFrom={0}
-          progressTo={0.34}
+          progressFrom={railStart('goal', backward)}
+          progressTo={RAIL_END.goal}
+          backward={backward}
           initialSelected={goalId}
           onSelect={(value, id) => {
             setGoalId(id);
-            setGoalVal(value);
             setGoal(value === 'unsure' ? null : (value as AppState['goal']));
           }}
-          onAdvance={(value) => {
-            if (value === 'unsure') {
-              // Don't make a confused user declare confusion twice — skip
-              // Screen 4 and default guidance to walk-me-through.
-              setSkippedGuidance(true);
-              setGuidance('full-guidance');
-              setGuidanceVal('full-guidance');
-              setStep('routine');
-            } else {
-              setStep('guidance');
-            }
-          }}
+          onAdvance={() => goForward('age')}
         />
       );
 
-    case 'guidance':
+    case 'age':
       return (
         <QuestionScreen
-          key="guidance"
-          config={GUIDANCE_QUESTION}
-          goal={goalVal}
-          name={name}
-          progressFrom={0.34}
-          progressTo={0.67}
-          exitMode="z" // recede into depth toward Screen 5
-          initialSelected={guidanceId}
+          key="age"
+          config={AGE_QUESTION}
+          progressFrom={railStart('age', backward)}
+          progressTo={RAIL_END.age}
+          backward={backward}
+          initialSelected={ageId}
+          onBack={() => goBack('goal')}
           onSelect={(value, id) => {
-            setGuidanceId(id);
-            setGuidanceVal(value);
-            setGuidance(value as AppState['guidance']);
+            setAgeId(id);
+            const preferNot = value === 'prefer_not';
+            setAgePreferNotToSay(preferNot);
+            setAgeRange(preferNot ? null : (value as AppState['ageRange']));
           }}
-          onAdvance={() => setStep('routine')}
+          onAdvance={() => goForward('skin')}
         />
       );
 
-    case 'routine':
+    case 'skin':
+      return (
+        <QuestionScreen
+          key="skin"
+          config={SKIN_TYPE_QUESTION}
+          progressFrom={railStart('skin', backward)}
+          progressTo={RAIL_END.skin}
+          backward={backward}
+          initialSelected={skinId}
+          onBack={() => goBack('age')}
+          onSelect={(value, id) => {
+            setSkinId(id);
+            setSkinType(value as AppState['skinType']);
+          }}
+          onAdvance={() => goForward('sense')}
+        />
+      );
+
+    case 'sense':
+      return (
+        <QuestionScreen
+          key="sense"
+          config={SENSITIVITIES_QUESTION}
+          progressFrom={railStart('sense', backward)}
+          progressTo={RAIL_END.sense}
+          backward={backward}
+          initialSelectedIds={senseIds}
+          onBack={() => goBack('skin')}
+          onAdvance={() => goForward('safety')}
+          onAdvanceMulti={(ids) => {
+            setSenseIds(ids);
+            applySensitivities(ids);
+            goForward('safety');
+          }}
+        />
+      );
+
+    case 'safety':
+      return (
+        <QuestionScreen
+          key="safety"
+          config={SAFETY_QUESTION}
+          progressFrom={railStart('safety', backward)}
+          progressTo={RAIL_END.safety}
+          backward={backward}
+          initialSelected={null}
+          onBack={() => goBack('sense')}
+          onSelect={(value) => {
+            setPregnancyCaution(value as AppState['pregnancyCaution']);
+          }}
+          onAdvance={() => goForward('synthesis')}
+        />
+      );
+
+    case 'synthesis':
     default:
-      return (
-        <QuestionScreen
-          key="routine"
-          config={ROUTINE_DEPTH_QUESTION}
-          goal={goalVal}
-          name={name}
-          threadKey={guidanceVal}
-          progressFrom={skippedGuidance ? 0.34 : 0.67}
-          progressTo={1}
-          enterMode={skippedGuidance ? 'rise' : 'z'} // emerge from depth after S4
-          initialSelected={routineId}
-          onSelect={(value, id) => {
-            setRoutineId(id);
-            setRoutineDepth(value as AppState['routineDepth']);
-          }}
-          onAdvance={finish}
-        />
-      );
+      return <SynthesisBeat onDone={finish} />;
   }
 }
 

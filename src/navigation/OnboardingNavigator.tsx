@@ -7,10 +7,8 @@ import {
 import type { NavigationProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import { SlideEntry } from '@/components/onboarding/SlideEntry';
-import { Splash } from '@/screens/onboarding/Splash';
 import { ColdOpenScreen } from '@/screens/onboarding/ColdOpenScreen';
 import { OrbInterviewScreen } from '@/screens/onboarding/OrbInterviewScreen';
-import { AskName } from '@/screens/onboarding/AskName';
 import { CameraPrimer } from '@/screens/onboarding/CameraPrimer';
 import { CameraPermission } from '@/screens/onboarding/CameraPermission';
 import { CameraDenied } from '@/screens/onboarding/CameraDenied';
@@ -21,30 +19,27 @@ import type { OnboardingStackParamList } from './types';
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 
 /**
- * Scan-first onboarding navigator (rebuild).
+ * Scan-first onboarding navigator (v22 momentum rebuild).
  *
- * Exactly three screens stand between launch and the camera. The face scan
- * auto-detects skin type, concerns, dryness, redness and texture, so the
- * old 11-question quiz — which manually asked what the scan already reads —
- * was deleted. The deferred-but-useful context (age, gender, sun, effort,
- * goal) now lives as optional fields in Me → Skin profile, and account
- * creation moved to AFTER the first scan.
+ * The flow is the orb getting to know the user on the way to the scan —
+ * one question per screen, every answer engine-consumed:
  *
- *   Splash             (Screen 1 — Welcome; one promise, one action)
- *     → AskName        (Screen 2 — optional name, skippable)
- *     → CameraPrimer   (Screen 3 — "Now, the scan." privacy promise)
+ *   ColdOpen           (the orb's birth; "Meet Pura" + "Let's look.")
+ *     → OrbInterview   (ONE route, ONE orb: goal → age → skin type →
+ *                       sensitivities → pregnancy → synthesis beat)
+ *     → CameraPrimer   ("Now, the scan." — honest privacy promise)
  *     → CameraPermission   (fires the real system prompt; renders no UI)
- *         • granted → finishOnboarding + root reset to [Tabs, ScanModal]
+ *         • granted → finishOnboarding + ScanModal over Tabs
  *                     so the user lands directly in the camera
  *         • denied  → CameraDenied (calm fallback: Open Settings / Skip)
  *
- * Returning user: Splash → SignIn → Tabs.
+ * Returning user: ColdOpen → SignIn → Tabs.
  *
- * The questionnaire arc (AuthChoice / AskAge / AskGender / AskSkinType /
- * AskConcerns / AskSensitivity / AskSunExposure / AskEffort / AskGoal /
- * AskAttribution / Processing / ProfileSummary / Tutorial) was removed in
- * this rebuild. AuthChoice survives off-stack — it is repurposed as the
- * post-scan "Save your skin profile" screen.
+ * Cut in this rebuild: the Splash/AskName legacy arc, the orb intro tap-beat,
+ * the typed name question, and the guidance + routine-depth questions (no
+ * engine consumer at onboarding time; their store fields default gracefully).
+ * AuthChoice survives off-stack — it is repurposed as the post-scan
+ * "Save your skin profile" screen.
  */
 export function OnboardingNavigator() {
   return (
@@ -69,25 +64,6 @@ export function OnboardingNavigator() {
       >
         {({ navigation }) => (
           <OrbInterviewScreen onDone={() => navigation.navigate('CameraPrimer')} />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="Splash" options={{ gestureEnabled: false }}>
-        {({ navigation }) => (
-          <SlideEntry>
-            <Splash
-              onGetStarted={() => navigation.navigate('AskName')}
-              onSignIn={() => navigation.navigate('SignIn')}
-            />
-          </SlideEntry>
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="AskName">
-        {({ navigation }) => (
-          <SlideEntry>
-            <AskName onNext={() => navigation.navigate('CameraPrimer')} />
-          </SlideEntry>
         )}
       </Stack.Screen>
 
@@ -206,8 +182,8 @@ function CameraDeniedHost() {
  * email+password) skips the new-user flow because the backend already
  * carries the user's profile and scan history. For this build (no real
  * auth backend) every sign-in handler fires `finishOnboarding()` and resets
- * into Tabs. "Create account" drops the user into the new-user flow at
- * AskName (account creation now happens AFTER the first scan).
+ * into Tabs. "Create account" drops the user back to the new-user flow at
+ * ColdOpen (account creation now happens AFTER the first scan).
  */
 function SignInHost({
   nav,

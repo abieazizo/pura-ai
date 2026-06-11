@@ -2,26 +2,41 @@
  * questionConfig — the content/config layer for the orb interview.
  *
  * Every question screen is a DATA object the QuestionScreen renders; copy and
- * calibration are tunable here (and eventually remotely) without touching
- * component logic. This is also where the two opposite psychologies are tuned:
- * warmth and competence move INVERSELY across an option set, and verbosity is
- * threaded so a "be fast" picker gets a fast reaction.
+ * calibration are tunable here without touching component logic.
+ *
+ * v22 — the momentum rebuild. The interview collects ONLY what the scan, the
+ * recommendation engine, or safety actually consume:
+ *
+ *   goal          → store.goal           → selectUserProfileContext().goals
+ *   age range     → store.ageRange       → stored (engine read is a known gap
+ *                                          in src/state/canonical.ts — out of
+ *                                          this rebuild's scope)
+ *   skin type     → store.skinType       → selectUserProfileContext().skinType
+ *   sensitivities → store.sensitivity / fragranceSensitive / skinConditions /
+ *                   avoidIngredients     → buildSafetyProfile() → engine
+ *   pregnancy     → store.pregnancyCaution → buildSafetyProfile() → engine
+ *
+ * The guidance + routine-depth questions were cut (not core; their store
+ * fields remain and default gracefully downstream). The name beat was cut
+ * (typing, and no engine consumer).
  *
  * Voice rules: questionText + reactionLine are the orb's VOICE (Instrument
  * Serif). No exclamation marks, slang, or emoji; competence is matter-of-fact.
+ * Reactions are SHORT — the next question arriving quickly IS the warmth.
  */
 
 import {
-  Books,
   Compass,
-  Crosshair,
+  Drop,
   Hourglass,
   Leaf,
   Lightning,
   Plant,
+  Shield,
   Sparkle,
   Star,
   Sun,
+  Wind,
 } from 'phosphor-react-native';
 
 export type IconComponent = React.ComponentType<{
@@ -30,19 +45,19 @@ export type IconComponent = React.ComponentType<{
   weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
 }>;
 
-// Phosphor (duotone) glyphs referenced by name in the configs. 'Plant' stands
-// in for Seedling, 'Sparkle' for Sparkles (neither ships in this build).
+// Phosphor (duotone) glyphs referenced by name in the configs.
 export const ICONS: Record<string, IconComponent> = {
   Sparkle,
-  Crosshair,
   Hourglass,
   Sun,
   Compass,
   Plant,
   Leaf,
-  Books,
   Lightning,
   Star,
+  Drop,
+  Wind,
+  Shield,
 };
 
 export type Weight = 'high' | 'mid' | 'low';
@@ -53,10 +68,10 @@ export interface QuestionOption {
   id: string;
   label: string;
   sublabel?: string;
-  icon: string; // Phosphor duotone name (see ICONS)
+  icon: string; // Phosphor duotone name (see ICONS); ignored by compact cards
   value: string; // the canonical stored answer
   reactionExpression: ReactionArchetype;
-  reactionLine: string; // may contain {goal}
+  reactionLine: string;
   reactionLineVariants?: string[]; // alternates to defeat a scripted feel
   competenceWeight: Weight;
   warmthWeight: Weight;
@@ -65,32 +80,25 @@ export interface QuestionOption {
 
 export interface QuestionConfig {
   id: string;
-  questionText: string; // may contain {goal}
-  questionFallback: string; // used if interpolation would read awkwardly
+  questionText: string;
+  questionFallback: string;
+  /** Optional framing line above the rail (Inter caps). Used ONLY when it
+   *  carries real meaning (the safety benefit) — never as a step counter. */
   eyebrow?: string;
   options: QuestionOption[];
-  reactionStyle: 'full' | 'light'; // light = SHORTER spoken, never silent
   emotionalWeight: 'light' | 'moderate' | 'peak';
   orbAuraTheme: 'violet-cool' | 'blue-warm';
-  threadingFrom?: string; // id of a prior answer used to frame this question
-  /** Per-prior-answer question rewrites (e.g. terser when minimal-guidance). */
-  threadedVariants?: Record<string, string>;
   singleSelect: boolean;
+  /** Multi-select only: the exclusive "none" option — tapping it clears the
+   *  rest and auto-advances like a single-select answer. */
+  exclusiveOptionId?: string;
+  /** Multi-select only: label for the continue CTA once ≥1 is selected. */
+  continueLabel?: string;
+  /** Multi-select only: the orb's line when the user continues. */
+  multiReactionLine?: string;
+  /** Compact cards: no icon well, tighter rows — for dense sets (age). */
+  compact?: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// Goal interpolation — turn the stored goal into a natural {goal} phrase.
-// Only phrases that read naturally in "To get your {goal} sorted" are mapped;
-// everything else falls back so the orb NEVER says broken grammar.
-// ---------------------------------------------------------------------------
-const GOAL_PHRASE: Record<string, string | null> = {
-  clear: 'breakouts',
-  bright: 'dark spots',
-  smoother: 'signs of aging',
-  barrier: 'barrier',
-  calm: null, // "your skin calmer sorted" reads awkward → fallback
-  simpler: null,
-};
 
 export interface ResolvedQuestion {
   text: string;
@@ -98,44 +106,21 @@ export interface ResolvedQuestion {
   accentWords: string[];
 }
 
-/** Resolve a config's question for the current context (goal + threading). */
-export function resolveQuestion(
-  config: QuestionConfig,
-  ctx: { goal?: string | null; threadKey?: string | null },
-): ResolvedQuestion {
-  // Threading first (a prior answer reframes the whole question).
-  if (config.threadedVariants && ctx.threadKey) {
-    const threaded = config.threadedVariants[ctx.threadKey];
-    if (threaded) return { text: threaded, accentWords: [] };
-  }
-  if (!config.questionText.includes('{goal}')) {
-    return { text: config.questionText, accentWords: [] };
-  }
-  const phrase = ctx.goal ? GOAL_PHRASE[ctx.goal] : null;
-  if (!phrase) return { text: config.questionFallback, accentWords: [] };
-  return {
-    text: config.questionText.replace('{goal}', phrase),
-    accentWords: phrase.split(' '),
-  };
-}
-
-/** Interpolate {goal} inside a reaction line (graceful — never broken). */
-export function resolveLine(line: string, goal?: string | null): string {
-  if (!line.includes('{goal}')) return line;
-  const phrase = (goal ? GOAL_PHRASE[goal] : null) ?? 'skin';
-  return line.replace(/\{goal\}/g, phrase);
+/** Resolve a config's question (kept as a seam for future interpolation). */
+export function resolveQuestion(config: QuestionConfig): ResolvedQuestion {
+  return { text: config.questionText, accentWords: [] };
 }
 
 /** Pick a reaction line (base + variants) — varied, to defeat a scripted feel. */
-export function pickReactionLine(option: QuestionOption, goal?: string | null): string {
+export function pickReactionLine(option: QuestionOption): string {
   const pool = [option.reactionLine, ...(option.reactionLineVariants ?? [])];
   const idx = Math.floor(Math.random() * pool.length);
-  return resolveLine(pool[idx] ?? option.reactionLine, goal);
+  return pool[idx] ?? option.reactionLine;
 }
 
 // ---------------------------------------------------------------------------
-// Verbosity threading — reaction LENGTH/PACE matches the stated appetite. The
-// fast picker's line is delivered FAST (the orb proves it heard "be fast").
+// Verbosity — reaction LENGTH/PACE. Short lines delivered quickly keep the
+// flow's momentum; the orb proves it listens by NOT slowing the user down.
 // ---------------------------------------------------------------------------
 const VERBOSITY_TIMING: Record<Verbosity, { wordStagger: number; wordDuration: number }> = {
   terse: { wordStagger: 55, wordDuration: 240 },
@@ -154,234 +139,347 @@ export function estimateLineMs(line: string, v: Verbosity): number {
   return words * wordStagger + wordDuration;
 }
 
-// ---------------------------------------------------------------------------
-// Guidance fork — the live API other surfaces consume so explanation depth is
-// NOT a dead value. (Within scope it's consumed by Screen 5 threading + the orb
-// vocabulary; scan-reveal / routine descriptions adopt it via pickByGuidance —
-// a one-line call — without this build touching those out-of-scope files.)
-// ---------------------------------------------------------------------------
-export type ExplanationDepth = 'full' | 'some' | 'minimal';
-
-export function explanationDepth(
-  guidance: 'full-guidance' | 'some-guidance' | 'minimal-guidance' | null | undefined,
-): ExplanationDepth {
-  if (guidance === 'minimal-guidance') return 'minimal';
-  if (guidance === 'some-guidance') return 'some';
-  // null = Screen 4 skipped (goal was "guide me") → default to walk-me-through.
-  return 'full';
-}
-
-/** Fork any copy/behavior on the guidance preference in one call. */
-export function pickByGuidance<T>(
-  guidance: Parameters<typeof explanationDepth>[0],
-  options: { full: T; some: T; minimal: T },
-): T {
-  return options[explanationDepth(guidance)];
-}
-
 // ===========================================================================
-// SCREEN 3 — the goal (expressed as a config; no regression). FULL reaction.
+// 1 · GOAL — "What do you want to see change?" The emotional peak: the user
+// names the thing they came here for, and the orb takes it seriously.
 // ===========================================================================
 export const GOAL_QUESTION: QuestionConfig = {
   id: 'goal',
-  questionText: "What are you hoping we'll work on together?",
-  questionFallback: "What are you hoping we'll work on together?",
-  eyebrow: 'STEP 1',
-  reactionStyle: 'full',
+  questionText: 'What do you want to see change?',
+  questionFallback: 'What do you want to see change?',
   emotionalWeight: 'peak',
   orbAuraTheme: 'violet-cool',
   singleSelect: true,
   options: [
     {
-      id: 'calmClear',
-      label: 'Calmer, clearer skin overall',
-      icon: 'Sparkle',
+      id: 'calm',
+      label: 'Calmer, less redness',
+      icon: 'Leaf',
       value: 'calm',
       reactionExpression: 'warm',
       warmthWeight: 'high',
       competenceWeight: 'low',
       reactionVerbosity: 'normal',
-      reactionLine: "Calm and clear. That's a good place to aim.",
+      reactionLine: 'Calm we can do. I’ll look for what’s stirring it.',
     },
     {
-      id: 'breakouts',
-      label: 'Get my breakouts under control',
-      icon: 'Crosshair',
+      id: 'clear',
+      label: 'Fewer breakouts',
+      icon: 'Sparkle',
       value: 'clear',
       reactionExpression: 'validating',
       warmthWeight: 'mid',
       competenceWeight: 'mid',
-      reactionVerbosity: 'normal',
-      reactionLine: "Let's get ahead of them together, [Name].",
+      reactionVerbosity: 'terse',
+      reactionLine: 'Then let’s get ahead of them.',
     },
     {
-      id: 'aging',
-      label: 'Slow the signs of aging',
-      icon: 'Hourglass',
-      value: 'smoother',
+      id: 'barrier',
+      label: 'Less dryness',
+      icon: 'Drop',
+      value: 'barrier',
       reactionExpression: 'competent',
-      warmthWeight: 'low',
+      warmthWeight: 'mid',
       competenceWeight: 'high',
-      reactionVerbosity: 'normal',
-      reactionLine: "Smart. We'll work on this gently, starting tonight.",
+      reactionVerbosity: 'terse',
+      reactionLine: 'Noted. We’ll bring the moisture back.',
     },
     {
-      id: 'darkSpots',
-      label: 'Fade dark spots and even tone',
+      id: 'bright',
+      label: 'A brighter, more even tone',
       icon: 'Sun',
       value: 'bright',
       reactionExpression: 'validating',
       warmthWeight: 'mid',
       competenceWeight: 'mid',
       reactionVerbosity: 'normal',
-      reactionLine: "Got it. Even tone takes patience — I'll guide the pace.",
+      reactionLine: 'Even tone takes patience — I’ll set the pace.',
     },
     {
       id: 'unsure',
-      label: "Honestly? I'm not sure — guide me",
+      label: 'I’m not sure — you tell me',
       icon: 'Compass',
       value: 'unsure',
       reactionExpression: 'warm',
       warmthWeight: 'high',
       competenceWeight: 'low',
-      reactionVerbosity: 'full',
-      reactionLine: "That's completely okay. That's exactly what I'm here for.",
+      reactionVerbosity: 'normal',
+      reactionLine: 'That’s what the scan is for. We’ll see what your skin says.',
     },
   ],
 };
 
 // ===========================================================================
-// SCREEN 4 — guidance / explanation depth. LIGHT reaction; emotional valley.
-// Two opposite psychologies → warmth (unsure) vs competence-proof (skeptic),
-// inversely calibrated. Skipped entirely if the goal was "guide me".
+// 2 · AGE — one tap, compact rows. The why is in the question itself.
 // ===========================================================================
-export const GUIDANCE_QUESTION: QuestionConfig = {
-  id: 'guidance',
-  questionText: 'To get your {goal} sorted — how much do you want me to explain along the way?',
-  questionFallback: 'How much do you want me to explain along the way?',
-  eyebrow: 'STEP 2',
-  reactionStyle: 'light',
+export const AGE_QUESTION: QuestionConfig = {
+  id: 'age',
+  questionText: 'So I read your skin in context — your age?',
+  questionFallback: 'So I read your skin in context — your age?',
   emotionalWeight: 'light',
   orbAuraTheme: 'violet-cool',
-  threadingFrom: 'goal',
   singleSelect: true,
+  compact: true,
   options: [
     {
-      id: 'full-guidance',
-      label: 'Walk me through everything',
-      sublabel: "I'm starting from scratch",
-      icon: 'Plant',
-      value: 'full-guidance',
+      id: 'under_18',
+      label: 'Under 18',
+      icon: 'Star',
+      value: 'under_18',
       reactionExpression: 'warm',
       warmthWeight: 'high',
       competenceWeight: 'low',
-      reactionVerbosity: 'full',
-      reactionLine:
-        "Then I'll explain as we go — no question is too basic. Most skincare confusion comes from steps nobody bothered to explain.",
+      reactionVerbosity: 'terse',
+      reactionLine: 'Then we keep everything gentle.',
     },
     {
-      id: 'some-guidance',
-      label: 'Hit the highlights',
-      sublabel: 'I know a bit already',
-      icon: 'Leaf',
-      value: 'some-guidance',
+      id: '18-24',
+      label: '18–24',
+      icon: 'Star',
+      value: '18-24',
       reactionExpression: 'validating',
       warmthWeight: 'mid',
       competenceWeight: 'mid',
-      reactionVerbosity: 'normal',
-      reactionLine:
-        "Good instinct — that's how I'd want it too. Enough to understand each choice, none of the noise.",
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good years to get this right.',
     },
     {
-      id: 'minimal-guidance',
-      label: 'Just the essentials, fast',
-      sublabel: "I know what I'm doing",
-      icon: 'Books',
-      value: 'minimal-guidance',
+      id: '25-34',
+      label: '25–34',
+      icon: 'Star',
+      value: '25-34',
       reactionExpression: 'competent',
-      warmthWeight: 'low',
-      competenceWeight: 'high',
+      warmthWeight: 'mid',
+      competenceWeight: 'mid',
       reactionVerbosity: 'terse',
-      // CONTRACT: "never actually looked at your skin" is a promise the
-      // scan-first product keeps (the scan produces real findings). Delivered
-      // terse/fast — the orb proves it heard "be fast" by being fast.
-      reactionLine:
-        "Done — I'll skip the lectures and show you the why behind each pick for your {goal}. The part most apps can't, because they never actually looked at your skin.",
-      reactionLineVariants: [
-        'Done — straight to the why behind each pick for your {goal}. The part most apps skip, because they never actually read your skin.',
-        "Understood. The reasoning behind each choice, fast — the part that needs an app that looks at your skin, not just your age.",
-      ],
+      reactionLine: 'Noted — that shapes the read.',
+    },
+    {
+      id: '35-44',
+      label: '35–44',
+      icon: 'Star',
+      value: '35-44',
+      reactionExpression: 'validating',
+      warmthWeight: 'mid',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good to know.',
+    },
+    {
+      id: '45-54',
+      label: '45–54',
+      icon: 'Star',
+      value: '45-54',
+      reactionExpression: 'warm',
+      warmthWeight: 'mid',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Noted — thank you.',
+    },
+    {
+      id: '55+',
+      label: '55 and up',
+      icon: 'Star',
+      value: '55+',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good to know.',
+    },
+    {
+      id: 'prefer_not',
+      label: 'I’d rather not say',
+      icon: 'Compass',
+      value: 'prefer_not',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'low',
+      reactionVerbosity: 'terse',
+      reactionLine: 'No problem at all.',
     },
   ],
 };
 
 // ===========================================================================
-// SCREEN 5 — routine depth (current behavior + direction). LIGHT reaction.
-// ALWAYS asked. Aura warms violet-cool → blue-warm. Each reaction NAMES the
-// concrete consequence (a focused / a real / the full routine).
+// 3 · SKIN TYPE — concrete and answerable ("by midday"), with an honest out.
 // ===========================================================================
-export const ROUTINE_DEPTH_QUESTION: QuestionConfig = {
-  id: 'routineDepth',
-  questionText: 'Be honest — what does your routine actually look like most days?',
-  questionFallback: 'Be honest — what does your routine actually look like most days?',
-  eyebrow: 'STEP 3',
-  reactionStyle: 'light',
+export const SKIN_TYPE_QUESTION: QuestionConfig = {
+  id: 'skinType',
+  questionText: 'By midday, how does your skin usually feel?',
+  questionFallback: 'By midday, how does your skin usually feel?',
   emotionalWeight: 'light',
-  orbAuraTheme: 'blue-warm',
-  threadingFrom: 'guidance',
-  threadedVariants: {
-    // Terser framing for the user who asked to keep it fast on Screen 4.
-    'minimal-guidance': 'And your routine day to day — minimal, building, or full?',
-  },
+  orbAuraTheme: 'violet-cool',
   singleSelect: true,
   options: [
     {
-      id: 'minimal',
-      label: 'I keep it minimal',
-      sublabel: 'And I want to stay efficient',
-      icon: 'Lightning',
-      value: 'minimal',
-      reactionExpression: 'validating', // leaning warm
+      id: 'oily',
+      label: 'Shiny or oily',
+      icon: 'Sun',
+      value: 'oily',
+      reactionExpression: 'competent',
       warmthWeight: 'mid',
-      competenceWeight: 'mid',
-      reactionVerbosity: 'normal',
-      // Validates efficiency as SMART; names the consequence (focused routine).
-      reactionLine:
-        "Good — efficient is underrated. I'll find you the few things that genuinely move the needle, and build you a focused routine. Nothing else.",
+      competenceWeight: 'high',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Useful — that changes my picks.',
     },
     {
-      id: 'building',
-      label: "I'm building the habit",
-      sublabel: 'Ready for a real routine',
+      id: 'dry',
+      label: 'Tight or flaky',
+      icon: 'Wind',
+      value: 'dry',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Then comfort comes first.',
+    },
+    {
+      id: 'combination',
+      label: 'Oily in places, dry in others',
       icon: 'Sparkle',
-      value: 'building',
+      value: 'combination',
+      reactionExpression: 'validating',
+      warmthWeight: 'mid',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'The most common answer, honestly.',
+    },
+    {
+      id: 'not_sure',
+      label: 'Honestly, not sure',
+      icon: 'Compass',
+      value: 'not_sure',
       reactionExpression: 'warm',
       warmthWeight: 'high',
       competenceWeight: 'low',
-      reactionVerbosity: 'normal',
-      // Honors aspiration; not trapped in "nothing"; guards overwhelm; growth path.
-      reactionLine:
-        "Then let's build something you'll actually keep. I'll start you with a real routine that won't overwhelm — we can always add more later.",
+      reactionVerbosity: 'terse',
+      reactionLine: 'The scan will settle it. No guessing.',
+    },
+  ],
+};
+
+// ===========================================================================
+// 4 · SENSITIVITIES — multi-select + an exclusive "none". Framed as the
+// benefit (safe picks), never as a medical form.
+// ===========================================================================
+export const SENSITIVITIES_QUESTION: QuestionConfig = {
+  id: 'sensitivities',
+  questionText: 'Does your skin react to anything?',
+  questionFallback: 'Does your skin react to anything?',
+  eyebrow: 'SO EVERY PICK IS SAFE FOR YOU',
+  emotionalWeight: 'moderate',
+  orbAuraTheme: 'violet-cool',
+  singleSelect: false,
+  exclusiveOptionId: 'none',
+  continueLabel: 'That’s everything',
+  multiReactionLine: 'Good to know — I’ll steer around those.',
+  options: [
+    {
+      id: 'fragrance',
+      label: 'Fragrance',
+      icon: 'Leaf',
+      value: 'fragrance',
+      reactionExpression: 'validating',
+      warmthWeight: 'mid',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good to know — I’ll steer around it.',
     },
     {
-      id: 'full',
-      label: 'I already do a lot',
-      sublabel: 'I enjoy the full process',
-      icon: 'Star',
-      value: 'full',
-      reactionExpression: 'competent',
-      warmthWeight: 'low',
+      id: 'actives',
+      label: 'Strong actives',
+      sublabel: 'Retinol, acids',
+      icon: 'Lightning',
+      value: 'actives',
+      reactionExpression: 'validating',
+      warmthWeight: 'mid',
       competenceWeight: 'high',
-      reactionVerbosity: 'full',
-      // "I'll watch the interactions" is BACKED: ai-contracts conflict flags +
-      // the DecisionLens "products that conflict with tonight's routine". The
-      // guard is a QUALITY STANDARD ("I don't do filler"), not doubt.
-      reactionLine:
-        "Then I won't water it down — you'll get the full picture. But a longer routine has more ways for products to conflict, so I'll watch the interactions and cut any step that isn't earning its place. I don't do filler.",
-      reactionLineVariants: [
-        'Then you\'ll get the full picture — no watering down. More steps means more room to clash, so I\'ll watch the interactions and keep only what earns its place. No filler.',
-        'Understood — the full process, done properly. A longer routine has more ways to conflict, so I\'ll track the interactions and cut anything that isn\'t pulling its weight. I don\'t do filler.',
-      ],
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good to know — I’ll steer around them.',
+    },
+    {
+      id: 'eczema',
+      label: 'Eczema or dermatitis',
+      icon: 'Plant',
+      value: 'eczema',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good to know — I’ll be careful there.',
+    },
+    {
+      id: 'rosacea',
+      label: 'Rosacea or easy flushing',
+      icon: 'Sparkle',
+      value: 'rosacea',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good to know — I’ll be careful there.',
+    },
+    {
+      id: 'none',
+      label: 'Nothing I know of',
+      icon: 'Star',
+      value: 'none',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'low',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Good — I’ll still keep every pick gentle.',
+    },
+  ],
+};
+
+// ===========================================================================
+// 5 · SAFETY — pregnancy/breastfeeding. Gates the engine. Calm, never
+// alarmist; "Last one" signals the end is in sight.
+// ===========================================================================
+export const SAFETY_QUESTION: QuestionConfig = {
+  id: 'safety',
+  questionText: 'Last one — are you pregnant or breastfeeding?',
+  questionFallback: 'Last one — are you pregnant or breastfeeding?',
+  eyebrow: 'SO EVERY SUGGESTION IS SAFE FOR YOU',
+  emotionalWeight: 'moderate',
+  orbAuraTheme: 'blue-warm',
+  singleSelect: true,
+  compact: true,
+  options: [
+    {
+      id: 'yes',
+      label: 'Yes',
+      icon: 'Plant',
+      value: 'yes',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'normal',
+      reactionLine: 'Then I’ll only suggest what’s safe for both of you.',
+    },
+    {
+      id: 'no',
+      label: 'No',
+      icon: 'Star',
+      value: 'no',
+      reactionExpression: 'validating',
+      warmthWeight: 'mid',
+      competenceWeight: 'mid',
+      reactionVerbosity: 'terse',
+      reactionLine: 'Got it — that’s everything I need.',
+    },
+    {
+      id: 'prefer-not-to-say',
+      label: 'I’d rather not say',
+      icon: 'Compass',
+      value: 'prefer-not-to-say',
+      reactionExpression: 'warm',
+      warmthWeight: 'high',
+      competenceWeight: 'low',
+      reactionVerbosity: 'terse',
+      reactionLine: 'That’s fine. I’ll choose carefully all the same.',
     },
   ],
 };
