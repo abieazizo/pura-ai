@@ -18,7 +18,7 @@ import type {
 } from '@/types/routine';
 import { todayDateKey } from '@/state/routine/routineStore';
 import { doneLanding } from '@/screens/routine/yourRoutine/voice';
-import { pickHomeGreeting, type CalmZoneWord } from './homeVoice';
+import { pickHomeGreeting, RESCAN_NUDGE, type CalmZoneWord } from './homeVoice';
 
 // ---------------------------------------------------------------------------
 // Contract — exactly what the screen renders.
@@ -78,6 +78,14 @@ export interface DailyHomeModel {
   showRecord: boolean;
   /** Orb warmth 0→1 — it literally warms as it gets to know the user. */
   familiarity: number;
+  /**
+   * The ~4-week rescan nudge (habit step 3), or null. Present ONLY when a
+   * routine is active AND ≥ RESCAN_NUDGE_DAYS have passed since the last
+   * scan — never at one week (too early manufactures disappointment), never
+   * for a user who hasn't scanned, never as pressure: the line frames the
+   * rescan as the payoff of the work, and misses don't change it.
+   */
+  rescanLine: string | null;
 }
 
 export interface BuildDailyHomeInput {
@@ -95,6 +103,8 @@ export interface BuildDailyHomeInput {
   deltaSinceFirst: number | null;
   /** Plain-word zone of the top concern, when one resolves. */
   calmZone: CalmZoneWord | null;
+  /** Whole days since the most recent scan; null when there are no scans. */
+  daysSinceLastScan: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +113,10 @@ export interface BuildDailyHomeInput {
 
 /** Real improvement vs the first scan — the honest bar for the callback. */
 const CALMER_MIN_DELTA = 4;
+
+/** ~4 weeks before the rescan nudge — a horizon skin change can actually
+ *  clear. Nudging at one week manufactures disappointment (blueprint §4.13). */
+const RESCAN_NUDGE_DAYS = 25;
 
 /** Local day number — increments every local midnight, so greetings rotate. */
 function daySeed(now: Date): number {
@@ -147,6 +161,7 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
     scanCount,
     deltaSinceFirst,
     calmZone,
+    daysSinceLastScan,
   } = input;
 
   const seed = daySeed(now);
@@ -166,6 +181,19 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
 
   // The orb's warmth grows with how well it knows this user's skin.
   const familiarity = Math.min(1, scanCount / 3);
+
+  // The ~4-week rescan nudge. NOT at one week — skin doesn't change that
+  // fast, and an early rescan manufactures disappointment. The nudge needs a
+  // real history (≥1 scan) and an active routine ("keep this up" must refer
+  // to something true). Misses never accelerate or change it — it is an
+  // invitation to see the payoff, not a chore reminder.
+  const rescanLine =
+    routineActive &&
+    scanCount >= 1 &&
+    daysSinceLastScan !== null &&
+    daysSinceLastScan >= RESCAN_NUDGE_DAYS
+      ? RESCAN_NUDGE
+      : null;
 
   // Seven-day strip, oldest → today, from the persistent completion ledger.
   const done = new Set(completionDates);
@@ -200,6 +228,8 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
       strip,
       showRecord: false,
       familiarity,
+      // No routine yet → "keep this up" would reference nothing. Never shown.
+      rescanLine: null,
     };
   }
 
@@ -221,6 +251,7 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
       strip,
       showRecord: true,
       familiarity,
+      rescanLine,
     };
   }
 
@@ -244,5 +275,6 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
     strip,
     showRecord: true,
     familiarity,
+    rescanLine,
   };
 }

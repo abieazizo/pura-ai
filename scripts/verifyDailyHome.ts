@@ -62,6 +62,7 @@ const base = (now: Date, over: Partial<BuildDailyHomeInput> = {}): BuildDailyHom
   scanCount: 1,
   deltaSinceFirst: null,
   calmZone: null,
+  daysSinceLastScan: 3,
   ...over,
 });
 
@@ -116,6 +117,25 @@ check('no routine yet → record hidden (no strip/progress/Full-routine)', noRou
 check('familiarity warms with scans and caps at 1',
   buildDailyHomeModel(base(today, { scanCount: 9 })).familiarity === 1 &&
   buildDailyHomeModel(base(today, { scanCount: 0 })).familiarity === 0);
+
+console.log('\n— Rescan nudge: ~4 weeks, never pressure (habit step 3) —');
+const nudgeAt = (days: number | null, over: Partial<BuildDailyHomeInput> = {}) =>
+  buildDailyHomeModel(base(at(2026, 6, 10, 8), { daysSinceLastScan: days, ...over })).rescanLine;
+check('no nudge at 3 days', nudgeAt(3) === null);
+check('no nudge at 7 days (one week manufactures disappointment)', nudgeAt(7) === null);
+check('no nudge at 21 days (still under the honest horizon)', nudgeAt(21) === null);
+check('nudge appears at 25 days (~4 weeks)', nudgeAt(25) !== null);
+check('nudge persists at 60 days — an invitation, never an escalation',
+  nudgeAt(60) === nudgeAt(25));
+check('exact spec line',
+  nudgeAt(30) === 'Keep this up and we’ll look for the change when you scan again.');
+check('never for a user who has not scanned', nudgeAt(null, { scanCount: 0 }) === null);
+check("never without an active routine ('keep this up' must be true)",
+  nudgeAt(40, { routine: null, routineActive: false }) === null);
+check('nudge ignores misses — same line with an empty week',
+  nudgeAt(30, { completionDates: [] }) === nudgeAt(30, { completionDates: [key(at(2026, 6, 9, 8))] }));
+const nudgeText = nudgeAt(30) ?? '';
+check('no day-counting at the user (no digits in the line)', !/\d/.test(nudgeText));
 
 console.log('\n— Zero guilt language —');
 const GUILT = /\b(missed|streak|behind|broke|don.t break|failed|lazy|should have|catch up)\b/i;

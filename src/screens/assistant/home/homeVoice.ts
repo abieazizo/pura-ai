@@ -96,6 +96,16 @@ export function pickHomeGreeting(facts: GreetingFacts): string {
   return assertVoice('home.pool', rotate(pool, seed));
 }
 
+/**
+ * The ~4-week rescan nudge (habit step 3). One line, exactly this: it frames
+ * the rescan as the moment the WORK pays off ("keep this up"), never as an
+ * overdue chore. Surfaced by the model only when ≥ RESCAN_NUDGE_DAYS have
+ * passed since the last scan — nudging at one week manufactures
+ * disappointment (skin doesn't change that fast), so we never do.
+ */
+export const RESCAN_NUDGE =
+  'Keep this up and we’ll look for the change when you scan again.';
+
 /** Every static Home line, for the dev lint sweep. */
 export function allHomeVoiceLines(): { label: string; text: string }[] {
   return [
@@ -106,5 +116,6 @@ export function allHomeVoiceLines(): { label: string; text: string }[] {
     { label: 'home.calmer.forehead', text: calmerLine('forehead') },
     { label: 'home.calmer.chin', text: calmerLine('chin') },
     { label: 'home.calmer.generic', text: calmerLine(null) },
+    { label: 'home.rescanNudge', text: RESCAN_NUDGE },
   ];
 }

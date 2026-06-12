@@ -51,6 +51,18 @@ export function useDailyHome(): DailyHomeModel {
   const timeOfDay = defaultTimeOfDayForNow(now);
   const doneIds = selectDailyDoneIds(dailyChecklist, timeOfDay, now);
   const score = computeSkinScore(Array.isArray(scans) ? scans : []);
+
+  // Whole days since the newest scan (capturedAt is ISO). Defensive against
+  // malformed dates: an unparseable timestamp simply contributes nothing.
+  const daysSinceLastScan = (() => {
+    let newest = Number.NEGATIVE_INFINITY;
+    for (const s of Array.isArray(scans) ? scans : []) {
+      const t = Date.parse(s.capturedAt);
+      if (Number.isFinite(t) && t > newest) newest = t;
+    }
+    if (!Number.isFinite(newest)) return null;
+    return Math.max(0, Math.floor((now.getTime() - newest) / 86_400_000));
+  })();
   const calmZone = zoneWord(
     skin?.topConcerns?.find((c) => c.rank === 1)?.regions as
       | SemanticFaceZone[]
@@ -69,6 +81,7 @@ export function useDailyHome(): DailyHomeModel {
         scanCount: score.scanCount,
         deltaSinceFirst: score.deltaSinceFirst,
         calmZone,
+        daysSinceLastScan,
       }),
     // doneIds/completionDates compare by content; `now` re-derives on render,
     // which is fine — the model is pure and cheap.
@@ -82,6 +95,7 @@ export function useDailyHome(): DailyHomeModel {
       score.scanCount,
       score.deltaSinceFirst,
       calmZone,
+      daysSinceLastScan,
     ],
   );
 }

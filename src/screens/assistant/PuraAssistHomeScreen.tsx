@@ -193,6 +193,25 @@ export function PuraAssistHomeScreen() {
               <Text style={styles.linkText}>Full routine</Text>
               <ArrowRight size={14} color={puraAssist.muted} weight="bold" />
             </Pressable>
+
+            {/* The ~4-week rescan nudge — a murmur, not a banner. The model
+                surfaces it only when the horizon is honest (habit step 3);
+                misses never change it, and it never counts days at the user. */}
+            {model.rescanLine ? (
+              <View style={styles.rescan}>
+                <Text style={styles.rescanLine}>{model.rescanLine}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan again"
+                  onPress={goScan}
+                  hitSlop={10}
+                  style={({ pressed }) => [styles.link, pressed && styles.pressed]}
+                >
+                  <Text style={styles.linkText}>Scan again</Text>
+                  <ArrowRight size={14} color={puraAssist.muted} weight="bold" />
+                </Pressable>
+              </View>
+            ) : null}
           </Rise>
         ) : null}
       </ScrollView>
@@ -251,5 +270,15 @@ const styles = StyleSheet.create({
   linkText: {
     ...dsType.bodySmMed,
     color: puraAssist.muted,
+  },
+  // The rescan murmur sits a beat below the record, quieter than the focus
+  // card — sentence-case caption + the same quiet link treatment.
+  rescan: {
+    marginTop: dsSpace.xl,
+  },
+  rescanLine: {
+    ...dsType.caption,
+    color: puraAssist.muted,
+    maxWidth: 300,
   },
 });
