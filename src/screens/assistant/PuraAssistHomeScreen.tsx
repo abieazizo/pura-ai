@@ -122,6 +122,11 @@ export function PuraAssistHomeScreen() {
     rootNav.navigate('ScanModal');
   }, [rootNav]);
 
+  const goSinceDayOne = useCallback(() => {
+    hapt.tap();
+    homeNav.navigate('RescanCompare');
+  }, [homeNav]);
+
   const onStart = useCallback(() => {
     if (model.focus?.kind === 'first_scan') goScan();
     else goRoutine();
@@ -193,6 +198,20 @@ export function PuraAssistHomeScreen() {
               <Text style={styles.linkText}>Full routine</Text>
               <ArrowRight size={14} color={puraAssist.muted} weight="bold" />
             </Pressable>
+
+            {/* Two real scans → the before/after is one quiet tap away. */}
+            {model.showSinceDayOne ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Since Day 1"
+                onPress={goSinceDayOne}
+                hitSlop={10}
+                style={({ pressed }) => [styles.link, pressed && styles.pressed]}
+              >
+                <Text style={styles.linkText}>Since Day 1</Text>
+                <ArrowRight size={14} color={puraAssist.muted} weight="bold" />
+              </Pressable>
+            ) : null}
 
             {/* The ~4-week rescan nudge — a murmur, not a banner. The model
                 surfaces it only when the horizon is honest (habit step 3);

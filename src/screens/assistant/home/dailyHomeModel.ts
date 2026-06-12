@@ -86,6 +86,8 @@ export interface DailyHomeModel {
    * rescan as the payoff of the work, and misses don't change it.
    */
   rescanLine: string | null;
+  /** Two real scans exist → the before/after ("Since Day 1") is reachable. */
+  showSinceDayOne: boolean;
 }
 
 export interface BuildDailyHomeInput {
@@ -230,6 +232,7 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
       familiarity,
       // No routine yet → "keep this up" would reference nothing. Never shown.
       rescanLine: null,
+      showSinceDayOne: scanCount >= 2,
     };
   }
 
@@ -252,6 +255,7 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
       showRecord: true,
       familiarity,
       rescanLine,
+      showSinceDayOne: scanCount >= 2,
     };
   }
 
@@ -276,5 +280,6 @@ export function buildDailyHomeModel(input: BuildDailyHomeInput): DailyHomeModel 
     showRecord: true,
     familiarity,
     rescanLine,
+    showSinceDayOne: scanCount >= 2,
   };
 }

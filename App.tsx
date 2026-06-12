@@ -43,6 +43,8 @@ import { YourSkinScreen } from '@/screens/scan/yourSkin/YourSkinScreen';
 import { FIXTURE_BY_KEY, YOUR_SKIN_FIXTURES } from '@/screens/scan/yourSkin/fixtures';
 import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
 import { FirstFindingScreen } from '@/screens/scan/firstFinding';
+import { buildRescanCompare } from '@/screens/scan/rescanCompare/model';
+import { RescanCompareScreen } from '@/screens/scan/rescanCompare/RescanCompareScreen';
 // Web-only Skia GPU proof (Step 0). ⚠️ MUST be a DEFERRED import: RNSkia's web
 // entry snapshots `global.CanvasKit` at module-evaluation time, so a static
 // import here (the boot graph) would evaluate it before LoadSkiaWeb resolves
@@ -123,6 +125,51 @@ function AnalyzingWebShowcase() {
         onTryAgain={() => {}}
       />
     </OrbProvider>
+  );
+}
+
+/**
+ * `?screen=rescan` — the real before/after (habit step 4) on a fixture pair:
+ * the SAME portrait as Day 1 and Today (never a different face), factor deltas
+ * that clear the honest ±3 bar. `&steady=1` shows the no-visible-change path —
+ * true and motivating, never blank. Viewable on the deploy without two real
+ * scans 30 days apart.
+ */
+function RescanWebShowcase() {
+  const steady = (() => {
+    try {
+      return new URLSearchParams(
+        (globalThis as unknown as { location?: { search?: string } }).location?.search ?? '',
+      ).get('steady') === '1';
+    } catch {
+      return false;
+    }
+  })();
+  const FACE = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=640&q=80';
+  const model = buildRescanCompare({
+    first: {
+      capturedAt: '2026-05-13T09:00:00.000Z',
+      photoUri: FACE,
+      overallScore: 64,
+      factors: steady
+        ? { redness: 60, hydration: 62, texture: 70 }
+        : { redness: 58, hydration: 60, texture: 70, breakouts: 62 },
+    },
+    latest: {
+      capturedAt: '2026-06-12T09:00:00.000Z',
+      photoUri: FACE,
+      overallScore: steady ? 65 : 70,
+      factors: steady
+        ? { redness: 61, hydration: 63, texture: 71 }
+        : { redness: 66, hydration: 64, texture: 71, breakouts: 58 },
+    },
+  });
+  return (
+    <RescanCompareScreen
+      model={model}
+      onKeepGoing={() => {}}
+      onRestock={() => {}}
+    />
   );
 }
 
@@ -228,6 +275,8 @@ export default function App() {
               <SkiaProbeGate />
             ) : showcase?.key === 'analyzing' ? (
               <AnalyzingWebShowcase />
+            ) : showcase?.key === 'rescan' ? (
+              <RescanWebShowcase />
             ) : showcase?.key === 'your-skin' ? (
               <YourSkinWebShowcase settle={showcase.settle} />
             ) : (introDone || webBypassSplash) ? (

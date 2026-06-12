@@ -85,6 +85,9 @@ export type HomeStackParamList = {
    *  shop's single quiet browse line. A neutral catalog table of
    *  contents (no personalization, no filter state). */
   ConcernIndex: undefined;
+  /** Habit step 4 — the real before/after: Day-1 photo beside today's,
+   *  wins first, honest steady. Reached from Home once two scans exist. */
+  RescanCompare: undefined;
 };
 
 /**

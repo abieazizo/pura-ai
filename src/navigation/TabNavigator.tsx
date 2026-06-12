@@ -53,6 +53,7 @@ import {
 // SkinState + routine store and DELEGATES to PuraRoutineScreen for the no-scan /
 // building / review lifecycle, so it's a superset, not a rip-out.
 import { YourRoutineTabScreen } from '@/screens/routine/yourRoutine/YourRoutineTabScreen';
+import { RescanCompareContainer } from '@/screens/scan/rescanCompare/RescanCompareContainer';
 import type {
   HomeStackParamList,
   MeStackParamList,
@@ -84,6 +85,7 @@ function HomeStackScreen() {
       <HomeStack.Screen name="ProductDetail" component={ProductDetailV25Screen} />
       <HomeStack.Screen name="CategoryView" component={CategoryView} />
       <HomeStack.Screen name="ConcernIndex" component={ConcernIndexScreen} />
+      <HomeStack.Screen name="RescanCompare" component={RescanCompareContainer} />
     </HomeStack.Navigator>
   );
 }
