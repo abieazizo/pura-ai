@@ -53,8 +53,11 @@ export interface OrbTarget {
   size: number;
 }
 
-/** The S2 arrival spring from the spec — also the default for every glide. */
-export const ORB_SPRING = { mass: 1, stiffness: 110, damping: 20 } as const;
+/** The default glide spring — the spec target (damping 18, stiffness 140):
+ *  damping ratio ≈ 0.76, one soft overshoot. The previous {110, 20} was
+ *  near-critically damped (≈ 0.95) and read as inert UI sliding into place;
+ *  the slight underdamp is what makes the companion feel like it ARRIVED. */
+export const ORB_SPRING = { mass: 1, stiffness: 140, damping: 18 } as const;
 
 /**
  * Build the orb target for a beat given the screen box. `topInset` lets a

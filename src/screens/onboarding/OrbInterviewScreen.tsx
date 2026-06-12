@@ -227,6 +227,7 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
           progressTo={RAIL_END.sense}
           backward={backward}
           initialSelectedIds={senseIds}
+          exitMode="z" // recede into depth toward the final question
           onBack={() => goBack('skin')}
           onAdvance={() => goForward('safety')}
           onAdvanceMulti={(ids) => {
@@ -245,6 +246,7 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
           progressFrom={railStart('safety', backward)}
           progressTo={RAIL_END.safety}
           backward={backward}
+          enterMode="z" // the "Last one" gravity beat emerges from depth
           initialSelected={safetyId}
           onBack={() => goBack('sense')}
           onSelect={(value, id) => {

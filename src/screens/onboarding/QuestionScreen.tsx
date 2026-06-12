@@ -162,7 +162,6 @@ export function QuestionScreen({
   // True from the moment the orb starts reacting until the step commits —
   // drives the recede choreography + the tap-to-skip overlay.
   const [reacting, setReacting] = useState(false);
-  const [cardsIn, setCardsIn] = useState(reduceMotion || backward);
   const [anticipatingId, setAnticipatingId] = useState<string | null>(null);
   const [speech, setSpeech] = useState<SpeechState>({
     text: resolved.text,
@@ -236,9 +235,12 @@ export function QuestionScreen({
     orb.setGaze('down');
     AccessibilityInfo.announceForAccessibility?.(resolved.text);
     push(() => orb.setGaze('forward'), 700);
+    // Cards rise on their own stagger FROM MOUNT, overlapping the question's
+    // final words (momentum — no dead air between ask and options). Only the
+    // orb's attend gaze + the hesitation timers wait for the full reveal, so
+    // its gaze still drops after its last word.
     const askMs = 150 + resolved.text.split(' ').length * Q_STAGGER + 280;
     push(() => {
-      setCardsIn(true);
       orb.attend(); // the cards are up — look down at them WITH the user
       armHesitation();
     }, askMs);
@@ -594,7 +596,7 @@ export function QuestionScreen({
               }
               compact={config.compact}
               enterMode={cardEnter}
-              riseDelay={i * 60}
+              riseDelay={i * 80} // ~80ms: each card's arrival registers (offered, not dumped)
               reduceMotion={reduceMotion}
               reduceTransparency={reduceTransparency}
               dark={dark}
