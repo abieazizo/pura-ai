@@ -124,9 +124,9 @@ export interface ShopViewModel {
 const FILTER_CHIPS: readonly ShopFilterChip[] = [
   { key: 'all',       label: 'All',        iconKey: 'sparkle' },
   { key: 'breakouts', label: 'Breakouts',  iconKey: 'flame' },
-  { key: 'hydration', label: 'Hydration',  iconKey: 'drop' },
-  { key: 'marks',     label: 'Marks',      iconKey: 'star' },
-  { key: 'barrier',   label: 'Barrier',    iconKey: 'shield' },
+  { key: 'hydration', label: 'Dryness',    iconKey: 'drop' },
+  { key: 'marks',     label: 'Dark marks', iconKey: 'star' },
+  { key: 'barrier',   label: 'Redness',    iconKey: 'shield' },
 ] as const;
 
 const COMPLETE_ROUTINE_IDS: readonly string[] = [

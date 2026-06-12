@@ -549,7 +549,7 @@ function missingReason(pillar: ShopPillar): string {
     case 'protect':
       return "Nothing in your routine is shielding tonight's progress from tomorrow's sun.";
     case 'moisturize':
-      return 'Your routine skips a moisturizer — the barrier step everything else leans on.';
+      return 'Your routine skips a moisturizer — the steady step everything else leans on.';
     case 'cleanse':
       return 'No cleanser in your routine yet — the step that lets the rest absorb.';
     case 'treat':

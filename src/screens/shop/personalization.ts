@@ -302,7 +302,7 @@ function prettyGoal(g: string): string {
     case 'calm': return 'calmer skin';
     case 'bright': return 'brighter skin';
     case 'smoother': return 'smoother texture';
-    case 'barrier': return 'stronger barrier';
+    case 'barrier': return 'calmer, steadier skin';
     case 'simpler': return 'a simpler routine';
     default: return 'your goal';
   }
