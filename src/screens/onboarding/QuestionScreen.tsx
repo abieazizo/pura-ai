@@ -165,6 +165,10 @@ export function QuestionScreen({
   // True from the moment the orb starts reacting until the step commits —
   // drives the recede choreography + the tap-to-skip overlay.
   const [reacting, setReacting] = useState(false);
+  // True once this question's answer is committed — the rail (and the orb's
+  // warmth) only claim credit the user has EARNED, so the bar never reads
+  // full on an unanswered final question.
+  const [earned, setEarned] = useState(false);
   const [anticipatingId, setAnticipatingId] = useState<string | null>(null);
   const [speech, setSpeech] = useState<SpeechState>({
     text: resolved.text,
@@ -220,7 +224,7 @@ export function QuestionScreen({
   useEffect(() => {
     orb.show();
     orb.setAura(config.orbAuraTheme); // shifts the tint at a question seam
-    orb.setFamiliarity(progressTo); // orb-as-progress warms across questions
+    orb.setFamiliarity(progressFrom); // warmth credited only for ANSWERED questions
     orb.moveTo(target);
 
     if (reduceMotion) {
@@ -318,6 +322,8 @@ export function QuestionScreen({
     (line: string, option: QuestionOption | null, changed: boolean) => {
       clearTimers();
       setReacting(true);
+      setEarned(true); // the answer is in — the rail + orb warmth take credit
+      orb.setFamiliarity(progressTo);
       orb.setPatient(false);
       // Under Reduce Motion the host's glide snaps instantly, so the lift +
       // settle would read as two size jump-cuts, not stillness — skip both.
@@ -532,7 +538,7 @@ export function QuestionScreen({
         <View style={[styles.railWrap, { top: insets.top + 12 }]}>
           <ProgressRail
             from={progressFrom}
-            to={progressTo}
+            to={earned ? progressTo : progressFrom}
             accent={accent}
             trackColor={colors.railTrack}
             trackWidth={trackWidth}

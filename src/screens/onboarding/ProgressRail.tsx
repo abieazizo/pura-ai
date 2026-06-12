@@ -18,9 +18,11 @@ import Animated, {
 } from 'react-native-reanimated';
 
 export interface ProgressRailProps {
-  /** Fill at entry (the prior question's position). */
+  /** Fill at entry — credit for the questions ANSWERED so far. */
   from: number; // 0..1
-  /** Fill to ease to (this question's position). */
+  /** Fill target — eases here when this question's answer is committed
+   *  (the host flips it from `from` on selection), so the bar only ever
+   *  claims credit the user has earned. */
   to: number; // 0..1
   accent: string;
   trackColor: string;
@@ -50,8 +52,16 @@ export function ProgressRail({ from, to, accent, trackColor, trackWidth, reduceM
   return (
     <View
       style={[styles.track, { width: trackWidth, backgroundColor: trackColor }]}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      // The visual stays count-free, but assistive tech gets real progress —
+      // momentum depends on feeling the end approaching. aria-value* are the
+      // cross-platform spellings (RN-web does not serialize accessibilityValue).
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel="Interview progress"
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(to * 100) }}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(to * 100)}
     >
       <Animated.View
         style={[styles.fill, { width: trackWidth, backgroundColor: accent }, fillStyle]}

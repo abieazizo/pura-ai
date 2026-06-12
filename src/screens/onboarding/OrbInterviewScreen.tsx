@@ -43,23 +43,14 @@ const STEPS = ['goal', 'age', 'skin', 'sense', 'safety'] as const;
 type QuestionStep = (typeof STEPS)[number];
 type Step = QuestionStep | 'synthesis';
 
-/** Rail fill at the END of each question step (5 equal strides to 1). */
-const RAIL_END: Record<QuestionStep, number> = {
-  goal: 0.2,
-  age: 0.4,
-  skin: 0.6,
-  sense: 0.8,
-  safety: 1,
-};
-
-function railStart(step: QuestionStep, backward: boolean): number {
+/** Honest rail model: fill = ANSWERED questions / 5. A step arrives showing
+ *  credit for the questions before it and eases to its own credit only when
+ *  its answer commits — the bar never reads full on an unanswered question.
+ *  Same formula in both directions (going back to re-answer a question shows
+ *  the credit of everything before it). */
+function railCredit(step: QuestionStep): { from: number; to: number } {
   const i = STEPS.indexOf(step);
-  if (backward) {
-    const next = STEPS[i + 1];
-    return next ? RAIL_END[next] : RAIL_END[step];
-  }
-  const prev = STEPS[i - 1];
-  return prev ? RAIL_END[prev] : 0;
+  return { from: i / STEPS.length, to: (i + 1) / STEPS.length };
 }
 
 function devInitialStep(): Step | null {
@@ -168,8 +159,8 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
         <QuestionScreen
           key="goal"
           config={GOAL_QUESTION}
-          progressFrom={railStart('goal', backward)}
-          progressTo={RAIL_END.goal}
+          progressFrom={railCredit('goal').from}
+          progressTo={railCredit('goal').to}
           backward={backward}
           initialSelected={goalId}
           onSelect={(value, id) => {
@@ -185,8 +176,8 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
         <QuestionScreen
           key="age"
           config={AGE_QUESTION}
-          progressFrom={railStart('age', backward)}
-          progressTo={RAIL_END.age}
+          progressFrom={railCredit('age').from}
+          progressTo={railCredit('age').to}
           backward={backward}
           initialSelected={ageId}
           onBack={() => goBack('goal')}
@@ -205,8 +196,8 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
         <QuestionScreen
           key="skin"
           config={SKIN_TYPE_QUESTION}
-          progressFrom={railStart('skin', backward)}
-          progressTo={RAIL_END.skin}
+          progressFrom={railCredit('skin').from}
+          progressTo={railCredit('skin').to}
           backward={backward}
           initialSelected={skinId}
           onBack={() => goBack('age')}
@@ -223,8 +214,8 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
         <QuestionScreen
           key="sense"
           config={SENSITIVITIES_QUESTION}
-          progressFrom={railStart('sense', backward)}
-          progressTo={RAIL_END.sense}
+          progressFrom={railCredit('sense').from}
+          progressTo={railCredit('sense').to}
           backward={backward}
           initialSelectedIds={senseIds}
           exitMode="z" // recede into depth toward the final question
@@ -243,8 +234,8 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
         <QuestionScreen
           key="safety"
           config={SAFETY_QUESTION}
-          progressFrom={railStart('safety', backward)}
-          progressTo={RAIL_END.safety}
+          progressFrom={railCredit('safety').from}
+          progressTo={railCredit('safety').to}
           backward={backward}
           enterMode="z" // the "Last one" gravity beat emerges from depth
           initialSelected={safetyId}

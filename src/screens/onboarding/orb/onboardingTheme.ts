@@ -69,7 +69,9 @@ const LIGHT: OnboardingColors = {
   serif: '#080A0F',
   serifAccent: '#1F6FE0', // a whisper toward Pura Blue
   eyebrow: '#6E6E73',
-  railTrack: 'rgba(8,10,15,0.07)',
+  // Visible against porcelain for low vision — the unfilled track is how the
+  // user FEELS the interview's length without a count.
+  railTrack: 'rgba(8,10,15,0.13)',
 };
 
 const DARK: OnboardingColors = {
