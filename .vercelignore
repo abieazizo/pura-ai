@@ -43,3 +43,10 @@ _routine_*
 verification/
 pura-loop/
 design-reference/
+screenshots/
+screenshots-onboarding/
+
+# Scan-quality verification rig portrait — local testing only, must
+# never reach production (gitignored too; vercel uploads need this
+# explicit exclude).
+public/__scanrig_portrait.jpg
