@@ -148,9 +148,17 @@ export function QuestionScreen({
 
   // Portrait-frame medallion geometry — a rounded-portrait hairline frame
   // centered on the orb's settle, layered over the existing pool/bloom so the
-  // companion reads as a framed portrait subject. Purely atmospheric.
+  // companion reads as a framed portrait subject. Purely atmospheric. Its
+  // height is CLAMPED to the real content gaps (≥8px below the header row,
+  // ≥12px above the question) so the hairline never runs through the serif
+  // or crowds the rail — previously a fixed medW·1.16 did both.
   const medW = Math.round(target.size * 1.95);
-  const medH = Math.round(medW * 1.16);
+  const medHalfMax = Math.min(
+    target.cy - (insets.top + 44 + 8), // top edge clears the rail/chevron row
+    lineTop - 12 - target.cy, // bottom edge clears the question
+    Math.round((medW * 1.16) / 2),
+  );
+  const medH = Math.max(0, Math.round(medHalfMax * 2));
 
   const resolved = resolveQuestion(config);
 
@@ -495,13 +503,15 @@ export function QuestionScreen({
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg width={width} height={height}>
             <Defs>
-              <RadialGradient id="orbBloomLight" cx="50%" cy={`${(target.cy / height) * 100}%`} r="60%">
+              {/* r=100% + an early mid-stop: the wash dies out asymptotically
+                  instead of snapping to flat porcelain in a traceable arc. */}
+              <RadialGradient id="orbBloomLight" cx="50%" cy={`${(target.cy / height) * 100}%`} r="100%">
                 <Stop offset="0%" stopColor={dsAmbient.day.glow} />
-                <Stop offset="48%" stopColor={dsAmbient.day.sky[1]} />
+                <Stop offset="34%" stopColor={dsAmbient.day.sky[1]} />
                 <Stop offset="100%" stopColor={colors.base} />
               </RadialGradient>
             </Defs>
-            <Circle cx={width / 2} cy={target.cy} r={width * 0.78} fill="url(#orbBloomLight)" />
+            <Circle cx={width / 2} cy={target.cy} r={width * 1.2} fill="url(#orbBloomLight)" />
           </Svg>
         </View>
       )}
@@ -564,9 +574,15 @@ export function QuestionScreen({
         )}
 
         {/* Framing eyebrow (Inter SemiBold caps) — only when it carries real
-            meaning (the safety benefit), never a step counter. */}
+            meaning (the safety benefit), never a step counter. Optically
+            centered on the back chevron's 44px row (one quiet header line,
+            not two misaligned strata) and inset past its hit target. */}
         {!!config.eyebrow && (
-          <Text style={[styles.eyebrow, { top: insets.top + 28, color: colors.eyebrow }]}>
+          <Text
+            style={[styles.eyebrow, { top: insets.top + 39, color: colors.eyebrow }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.4}
+          >
             {config.eyebrow}
           </Text>
         )}
@@ -622,6 +638,7 @@ export function QuestionScreen({
                 selectedIds.length === 0
               }
               compact={config.compact}
+              multi={multi}
               enterMode={cardEnter}
               riseDelay={i * 80} // ~80ms: each card's arrival registers (offered, not dumped)
               reduceMotion={reduceMotion}
@@ -682,8 +699,8 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     position: 'absolute',
-    left: 24,
-    right: 24,
+    left: 64, // clear of the 44px back hit target
+    right: 64,
     textAlign: 'center',
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,

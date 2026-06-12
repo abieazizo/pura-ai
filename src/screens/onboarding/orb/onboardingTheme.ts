@@ -62,8 +62,11 @@ const LIGHT: OnboardingColors = {
   cardTint: 'rgba(20,124,255,0.04)',
   iconWell: 'rgba(20,124,255,0.10)',
   iconWellSelected: 'rgba(20,124,255,0.18)',
-  shadowContact: 'rgba(8,10,15,0.04)',
-  shadowAmbient: 'rgba(8,10,15,0.05)',
+  // FULL-alpha shadow inks — the card's shadowOpacity carries the intended
+  // alpha exactly once. (Alpha here AND in shadowOpacity multiplied to ~2%
+  // effective: the "two-shadow card" rule was shipping invisible.)
+  shadowContact: '#080A0F',
+  shadowAmbient: '#080A0F',
   label: '#0A0B12',
   sublabel: '#6E6E73',
   serif: '#080A0F',
@@ -87,8 +90,9 @@ const DARK: OnboardingColors = {
   cardTint: 'rgba(20,124,255,0.12)',
   iconWell: 'rgba(20,124,255,0.16)',
   iconWellSelected: 'rgba(20,124,255,0.28)',
-  shadowContact: 'rgba(0,0,0,0.4)',
-  shadowAmbient: 'rgba(0,0,0,0.4)',
+  // Full-alpha (see LIGHT) — the card's shadowOpacity carries the alpha.
+  shadowContact: '#000000',
+  shadowAmbient: '#000000',
   label: 'rgba(255,255,255,0.92)',
   sublabel: 'rgba(255,255,255,0.55)',
   serif: 'rgba(255,250,245,0.96)', // slightly brighter warm-white than UI text

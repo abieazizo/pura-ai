@@ -12,7 +12,7 @@
 import React, { useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CaretRight } from 'phosphor-react-native';
+import { CaretRight, CheckCircle } from 'phosphor-react-native';
 import Animated, {
   Easing,
   interpolateColor,
@@ -43,6 +43,10 @@ export interface QuestionCardProps {
   dimmed: boolean;
   /** Compact row — no icon well, tighter height (dense sets like age). */
   compact?: boolean;
+  /** Multi-select question: the trailing affordance is a check that draws in
+   *  on selection — a forward caret would promise navigation a tap doesn't
+   *  perform. Single-select keeps the caret. */
+  multi?: boolean;
   enterMode: CardEnterMode;
   riseDelay: number;
   reduceMotion: boolean;
@@ -62,6 +66,7 @@ export function QuestionCard({
   recede,
   dimmed,
   compact = false,
+  multi = false,
   enterMode,
   riseDelay,
   reduceMotion,
@@ -110,9 +115,10 @@ export function QuestionCard({
       ],
     };
   });
-  // Ambient shadow softens/spreads on lift, flattens on recede.
+  // Ambient shadow softens/spreads on lift, flattens on recede. (The theme's
+  // shadow inks are full-alpha; the alpha lives HERE, exactly once.)
   const ambientStyle = useAnimatedStyle(() => ({
-    shadowOpacity: dark ? 0.4 * (1 - rec.value * 0.6) : (0.05 + (press.value - 1) * 0.6) * (1 - rec.value * 0.7),
+    shadowOpacity: dark ? 0.4 * (1 - rec.value * 0.6) : (0.07 + (press.value - 1) * 0.6) * (1 - rec.value * 0.7),
     shadowRadius: 24 + (press.value - 1) * 200, // spreads as it lifts
   }));
   const borderStyle = useAnimatedStyle(() => ({
@@ -167,7 +173,12 @@ export function QuestionCard({
         style={[styles.glow, { shadowColor: PURA_BLUE }, glowStyle]}
         pointerEvents="none"
       />
-      <View style={[styles.contact, { shadowColor: colors.shadowContact }]}>
+      <View
+        style={[
+          styles.contact,
+          { shadowColor: colors.shadowContact, shadowOpacity: dark ? 0.3 : 0.08 },
+        ]}
+      >
         <Animated.View style={[styles.body, borderStyle]}>
           {/* Surface */}
           {useSolid ? (
@@ -225,7 +236,14 @@ export function QuestionCard({
               )}
             </View>
 
-            <CaretRight size={16} color={colors.sublabel} weight="bold" style={styles.chevron} />
+            {multi ? (
+              // Check draws in with the selection (iconSelStyle = sel opacity).
+              <Animated.View style={[styles.chevron, styles.checkVisible, iconSelStyle]}>
+                <CheckCircle size={20} color={PURA_BLUE} weight="fill" />
+              </Animated.View>
+            ) : (
+              <CaretRight size={16} color={colors.sublabel} weight="bold" style={styles.chevron} />
+            )}
           </Pressable>
         </Animated.View>
       </View>
@@ -252,10 +270,12 @@ const styles = StyleSheet.create({
   },
   contact: {
     borderRadius: 20,
-    // contact shadow (y1, blur2)
+    // contact shadow (y1, blur2) — enabled on web too (RN-web maps shadow*
+    // to box-shadow); previously hard-zeroed everywhere but iOS, so the
+    // production web cards stood on hairlines alone. Opacity set inline
+    // (theme-conditional).
     shadowOffset: { width: 0, height: 1 },
     shadowRadius: 2,
-    shadowOpacity: Platform.OS === 'ios' ? 0.5 : 0,
     elevation: 2,
   },
   body: {
@@ -313,4 +333,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chevron: { marginLeft: 8, opacity: 0.15 },
+  // The multi check's container opacity is animated (sel) — full when shown.
+  checkVisible: { opacity: 1 },
 });
