@@ -288,7 +288,7 @@ export function ScanOverlay({
               top:
                 topBarBottom +
                 Math.min(
-                  frameGeometry(width, cameraRegionHeight).frameBottom + 18,
+                  frameGeometry(width, cameraRegionHeight).frameBottomLoose + 14,
                   cameraRegionHeight - 92
                 ),
               width,

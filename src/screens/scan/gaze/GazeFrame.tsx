@@ -33,7 +33,6 @@ import Svg, {
   LinearGradient,
   Path,
   RadialGradient,
-  Rect,
   Stop,
 } from 'react-native-svg';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
@@ -375,17 +374,10 @@ export function GazeFrame({
         ) : null}
       </Animated.View>
 
-      {/* Static fallback rect kept out — Rect import used by Defs typing */}
-      <View style={styles.hidden}>
-        <Svg width={1} height={1}>
-          <Rect width={0} height={0} />
-        </Svg>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  hidden: { position: 'absolute', width: 0, height: 0, opacity: 0 },
   surround: { position: 'absolute', left: 0, right: 0 },
 });

@@ -26,7 +26,23 @@ import { gaze } from './gazeTokens';
 const SEG_W = 44;
 const SEG_H = 3;
 
-function Segment({ label, passed }: { label: string; passed: boolean }) {
+/** The four segments carry the aurora left→right: violet → cyan. */
+const SEG_RAMP = [
+  'rgba(186, 170, 240, 1)',
+  'rgba(158, 176, 238, 1)',
+  'rgba(150, 198, 234, 1)',
+  'rgba(150, 214, 232, 1)',
+] as const;
+
+function Segment({
+  label,
+  passed,
+  rampColor,
+}: {
+  label: string;
+  passed: boolean;
+  rampColor: string;
+}) {
   const fill = useSharedValue(passed ? 1 : 0);
   useEffect(() => {
     fill.value = withTiming(passed ? 1 : 0, { duration: 340 });
@@ -36,9 +52,14 @@ function Segment({ label, passed }: { label: string; passed: boolean }) {
     opacity: 0.55 + 0.45 * fill.value,
   }));
   return (
-    <View style={styles.seg}>
+    <View
+      style={styles.seg}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${label} check ${passed ? 'passed' : 'not yet'}`}
+    >
       <View style={styles.track}>
-        <Animated.View style={[styles.fill, fillStyle]} />
+        <Animated.View style={[styles.fill, { backgroundColor: rampColor }, fillStyle]} />
       </View>
       <Text
         style={[styles.label, passed && styles.labelPassed]}
@@ -75,10 +96,10 @@ export function ReadinessSegments({ signals }: { signals: ScanQualitySignals }) 
 
   return (
     <View style={styles.row} pointerEvents="none">
-      <Segment label="Face" passed={passes.face} />
-      <Segment label="Framing" passed={passes.framing} />
-      <Segment label="Light" passed={passes.light} />
-      <Segment label="Sharp" passed={passes.sharp} />
+      <Segment label="Face" passed={passes.face} rampColor={SEG_RAMP[0]} />
+      <Segment label="Framing" passed={passes.framing} rampColor={SEG_RAMP[1]} />
+      <Segment label="Light" passed={passes.light} rampColor={SEG_RAMP[2]} />
+      <Segment label="Sharp" passed={passes.sharp} rampColor={SEG_RAMP[3]} />
     </View>
   );
 }
@@ -100,7 +121,6 @@ const styles = StyleSheet.create({
   fill: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: SEG_H / 2,
-    backgroundColor: gaze.segmentFillB,
     transformOrigin: 'left',
   },
   label: {

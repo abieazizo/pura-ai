@@ -30,6 +30,8 @@ export const gaze = {
   // ---- scrims & veils ----------------------------------------------------
   /** Outside-the-frame dim — focuses the portrait without a hard mask. */
   surroundDim: 'rgba(5, 8, 14, 0.30)',
+  /** Extra dim layered on while allPass holds — the world pauses. */
+  surroundHold: 'rgba(5, 8, 14, 0.20)',
   /** Aperture-entry veil + capture-exit veil (matches inkCta depths). */
   veilInk: '#05070B',
 
@@ -40,9 +42,13 @@ export const gaze = {
   /** Whole-screen brightening layer while fill light is active. */
   fillLift: 'rgba(255, 248, 240, 0.16)',
 
-  // ---- capture ring (anticipation) ----------------------------------------
-  ringTrack: 'rgba(244, 246, 250, 0.14)',
-  /** Ring sweep inherits the aurora stroke gradient. */
+  // ---- anticipation sweep (the held breath) ---------------------------------
+  /** Full-strength aurora for the sweep — the brightest line on screen. */
+  sweepViolet: 'rgba(206, 190, 255, 1)',
+  sweepWhite: 'rgba(240, 248, 255, 1)',
+  sweepCyan: 'rgba(168, 232, 248, 1)',
+  /** Wide soft underlay so the moving light reads as glow, not wire. */
+  sweepHalo: 'rgba(190, 200, 245, 0.30)',
 
   // ---- capture bloom --------------------------------------------------------
   bloomCore: 'rgba(244, 240, 255, 0.92)',
@@ -56,8 +62,6 @@ export const gaze = {
   segmentLabel: 'rgba(238, 242, 248, 0.52)',
   segmentLabelPassed: 'rgba(238, 242, 248, 0.78)',
   segmentTrack: 'rgba(244, 246, 250, 0.16)',
-  segmentFillA: 'rgba(170, 156, 232, 1)',
-  segmentFillB: 'rgba(150, 206, 230, 1)',
 
   // ---- chrome -------------------------------------------------------------------
   chromeIcon: '#F4F6FA',
@@ -72,7 +76,7 @@ export const FRAME = {
   WIDTH_SNUG: 0.64,
   WIDTH_LOOSE: 0.76,
   /** Portrait aspect (height = width × aspect). */
-  ASPECT: 1.30,
+  ASPECT: 1.33,
   /** Height ceiling as a fraction of the camera region height. */
   HEIGHT_MAX_FRAC: 0.72,
   /** Absolute width ceiling (desktop browsers). */
@@ -85,8 +89,6 @@ export const FRAME = {
   CENTER_Y_FRAC: 0.52,
   /** Searching-drift amplitude in px at framingScore 0 (→ 0 when framed). */
   DRIFT_AMPLITUDE: 7,
-  /** Capture ring inset outside the frame stroke. */
-  RING_GAP: 9,
 } as const;
 
 /**
@@ -106,5 +108,15 @@ export function frameGeometry(width: number, height: number) {
   // Slightly high (eyeline), but never cropped at the top under the
   // loose/breathing scale.
   const cy = Math.max(height * FRAME.CENTER_Y_FRAC, frameH / 2 + 14);
-  return { frameW, frameH, cx, cy, frameBottom: cy + frameH / 2 };
+  // The searching state scales the locket up to the LOOSE ratio — the
+  // guidance line must clear that extent, not just the snug one.
+  const looseRatio = FRAME.WIDTH_LOOSE / FRAME.WIDTH_SNUG;
+  return {
+    frameW,
+    frameH,
+    cx,
+    cy,
+    frameBottom: cy + frameH / 2,
+    frameBottomLoose: cy + (frameH / 2) * looseRatio,
+  };
 }

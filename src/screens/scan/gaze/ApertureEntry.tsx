@@ -14,7 +14,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { gaze } from './gazeTokens';
 import { MOTION } from './gazeMotion';
@@ -109,10 +109,29 @@ export function ApertureEntry({ width, height, open, onOpened }: ApertureEntryPr
     `a ${r} ${r} 0 1 0 ${r * 2} 0 ` +
     `a ${r} ${r} 0 1 0 ${-r * 2} 0 Z`;
 
+  // The iris edge carries a whisper of aurora that fades as the bloom
+  // completes — the companion's light opening the scene, not a wipe.
+  const rimOpacity = 0.85 * (1 - progress * progress);
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Svg width={width} height={height}>
+        <Defs>
+          <LinearGradient id="apertureRim" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor={gaze.sweepViolet} />
+            <Stop offset="100%" stopColor={gaze.sweepCyan} />
+          </LinearGradient>
+        </Defs>
         <Path d={d} fill={gaze.veilInk} fillRule="evenodd" />
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          stroke="url(#apertureRim)"
+          strokeWidth={2}
+          strokeOpacity={rimOpacity}
+          fill="none"
+        />
       </Svg>
     </View>
   );

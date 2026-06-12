@@ -92,14 +92,14 @@ const styles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: 6 },
   line: {
     fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 23,
-    lineHeight: 28,
+    fontSize: 24,
+    lineHeight: 29,
     letterSpacing: -0.2,
     color: gaze.guidance,
     textAlign: 'center',
     textShadowColor: gaze.guidanceShadow,
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 10,
+    textShadowRadius: 14,
   },
   note: {
     fontFamily: 'InstrumentSerif-Italic',

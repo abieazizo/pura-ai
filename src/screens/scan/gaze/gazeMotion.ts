@@ -35,8 +35,8 @@ export const MOTION = {
 
   // ---- capture ----
   INHALE_MS: 190,
-  INHALE_SCALE: 0.985,
-  BLOOM_MS: 300,
+  INHALE_SCALE: 0.982,
+  BLOOM_MS: 360,
   FREEZE_HOLD_MS: 320,
   EXIT_VEIL_MS: 280,
   /** Total shutter → navigate. Keep ≤ 950ms — a held breath, not a pause. */
