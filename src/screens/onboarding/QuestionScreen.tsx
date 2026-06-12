@@ -313,7 +313,9 @@ export function QuestionScreen({
       clearTimers();
       setReacting(true);
       orb.setPatient(false);
-      orb.setSize(ORB_SIZES.reactionLift); // "take the floor"
+      // Under Reduce Motion the host's glide snaps instantly, so the lift +
+      // settle would read as two size jump-cuts, not stillness — skip both.
+      if (!reduceMotion) orb.setSize(ORB_SIZES.reactionLift); // "take the floor"
 
       const verbosity = option?.reactionVerbosity ?? 'normal';
       const vt = verbosityTiming(verbosity);
@@ -329,8 +331,17 @@ export function QuestionScreen({
         push(() => hapt.assistantReply(), 130); // soft pulse synced to the glow
         speak(line, v);
         AccessibilityInfo.announceForAccessibility?.(line);
-        push(() => orb.setSize(ORB_SIZES.question), lineMs + 220); // settle back
-        const hold = reduceMotion ? 1200 : lineMs + 380; // ~380ms after last word
+        if (!reduceMotion) {
+          push(() => orb.setSize(ORB_SIZES.question), lineMs + 220); // settle back
+        }
+        // Reduce Motion renders the line instantly (no word reveal), so the
+        // hold is read-time, not animation-time: line-aware instead of a flat
+        // 1200ms that made every RM answer SLOWER than native — the opposite
+        // of the contract. Production mobile web defaults to RM, so this IS
+        // the shipping pace.
+        const hold = reduceMotion
+          ? Math.max(650, Math.min(lineMs + 300, 1100))
+          : lineMs + 380; // ~380ms after the last word lands
         push(() => beginAdvance(), hold);
       };
 

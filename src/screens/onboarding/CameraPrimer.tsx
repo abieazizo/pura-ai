@@ -91,8 +91,10 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
     headOp.value = withDelay(200, withTiming(1, { duration: 420, easing: easeOut }));
     headY.value = withDelay(200, withTiming(0, { duration: 420, easing: easeOut }));
     subOp.value = withDelay(320, withTiming(1, { duration: 420, easing: easeOut }));
-    ctaOp.value = withDelay(480, withTiming(1, { duration: 420, easing: easeOut }));
-    ctaY.value = withDelay(480, withTiming(0, { duration: 420, easing: easeOut }));
+    // CTA at 300ms (was 480) — the final tap should be available the moment
+    // the eye reaches it, not after a fourth stagger beat.
+    ctaOp.value = withDelay(300, withTiming(1, { duration: 420, easing: easeOut }));
+    ctaY.value = withDelay(300, withTiming(0, { duration: 420, easing: easeOut }));
     // A slow viewfinder sweep — "the camera is ready, looking for you."
     sweep.value = withDelay(
       640,

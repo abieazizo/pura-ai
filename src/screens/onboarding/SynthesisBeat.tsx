@@ -21,8 +21,12 @@ import { useOnboardingTheme } from './orb/onboardingTheme';
 // Not loading-screen language about the orb's process — proof the five
 // answers were heard, aimed straight at the scan ("Now, the scan." follows).
 const LINE = 'I know what to look for.';
-const HOLD_MS = 2050; // line ≈ 6 words · 95ms + settle — then advance
-const HOLD_REDUCED_MS = 1300;
+// The line fully renders by ~800ms; ~800ms of settle is breath enough. The
+// beat sits in a stack of serial waits (reaction → beat → primer fade) at the
+// exact moment momentum should be peaking into the scan — keep it a breath,
+// not a loading screen.
+const HOLD_MS = 1600;
+const HOLD_REDUCED_MS = 1000;
 
 export interface SynthesisBeatProps {
   onDone: () => void;
