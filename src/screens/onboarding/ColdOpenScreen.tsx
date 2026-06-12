@@ -460,11 +460,26 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
                 MEET PURA
               </Animated.Text>
 
-              <View style={styles.heroBlock}>
+              {/* One header, one sentence for VoiceOver — the word fragments
+                  (and the absolute-positioned glow duplicate of "knows.")
+                  are presentation only. */}
+              <View
+                style={styles.heroBlock}
+                accessible
+                accessibilityRole="header"
+                accessibilityLabel="Your face already knows."
+                accessibilityElementsHidden={false}
+                importantForAccessibility="yes"
+              >
                 {(() => {
                   let idx = -1;
                   return HERO_LINES.map((line, li) => (
-                    <View key={`line-${li}`} style={styles.heroLine}>
+                    <View
+                      key={`line-${li}`}
+                      style={styles.heroLine}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    >
                       {line.map((word) => {
                         idx += 1;
                         const i = idx;
@@ -691,7 +706,8 @@ const styles = StyleSheet.create({
   },
   shimmerWrap: { position: 'absolute', top: 0, bottom: 0, width: 120 },
   shimmerFill: { flex: 1 },
-  signInHit: { alignItems: 'center', marginTop: 20 },
+  // 44pt floor — the returning user's only path in must be a real target.
+  signInHit: { alignItems: 'center', justifyContent: 'center', marginTop: 12, minHeight: 44 },
   signIn: {
     fontFamily: 'Inter-Regular',
     fontSize: 13.5,
@@ -705,9 +721,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     letterSpacing: 0.2,
-    color: C.trust,
+    // AA on porcelain (4.99:1) — the privacy promise is the flow's trust
+    // anchor; the token gray (#9A9AA6, 2.7:1) was illegible to exactly the
+    // low-vision users who most need it. Quietest element on the screen still.
+    color: '#6E6E73',
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
 });
 

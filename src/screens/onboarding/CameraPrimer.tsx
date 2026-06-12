@@ -218,9 +218,11 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
             {/* Bottom scrim — the shared imagery rule: a soft ds.scrim →
                 transparent gradient so the overlaid headline + promise stay
                 AA+ legible over any future portrait. */}
+            {/* Strengthened where the headline sits — the white serif needs a
+                true dark ground (was ~2:1 over the near-transparent zone). */}
             <LinearGradient
-              colors={['transparent', 'rgba(8,10,15,0.0)', 'rgba(8,10,15,0.62)']}
-              locations={[0, 0.42, 1]}
+              colors={['transparent', 'rgba(8,10,15,0.32)', 'rgba(8,10,15,0.74)']}
+              locations={[0, 0.45, 1]}
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
               style={styles.scrim}
@@ -238,7 +240,7 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
               </Animated.Text>
               <Animated.View style={[styles.promiseRow, subStyle]}>
                 <ShieldCheck size={15} weight="fill" color={palette.bg} />
-                <Animated.Text style={styles.promise} maxFontSizeMultiplier={1.2}>
+                <Animated.Text style={styles.promise} maxFontSizeMultiplier={1.6}>
                   Your photo is used to read your skin, then it’s never stored
                   or shared.
                 </Animated.Text>

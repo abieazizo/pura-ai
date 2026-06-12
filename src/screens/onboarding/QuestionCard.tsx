@@ -209,8 +209,12 @@ export function QuestionCard({
             onPressIn={handlePressIn}
             onPress={handlePress}
             onPressOut={handlePressOut}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
+            // Four screens teach assistive tech that a tap advances; the
+            // multi screen must announce its changed contract (checkbox +
+            // hint), not just a selected flag.
+            accessibilityRole={multi ? 'checkbox' : 'button'}
+            accessibilityState={multi ? { checked: selected } : { selected }}
+            accessibilityHint={multi ? 'Choose all that apply' : undefined}
             accessibilityLabel={a11yLabel}
           >
             {!compact && (

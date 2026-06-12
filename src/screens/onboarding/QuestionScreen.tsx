@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   AppState,
+  PixelRatio,
   Platform,
   Pressable,
   ScrollView,
@@ -135,6 +136,11 @@ export function QuestionScreen({
   const { style: exitStyle, runExit, cancelExit } = useStepTransition(reduceMotion, { enter: false });
 
   const multi = !config.singleSelect;
+  // Large Dynamic Type routes the question through OrbSpeech's static path —
+  // the only one that can fit-shrink (numberOfLines + adjustsFontSizeToFit).
+  // The per-word animated path wraps unshrinkably and runs under the cards
+  // at big text sizes.
+  const bigType = PixelRatio.getFontScale() >= 1.3;
 
   const target = targetFor('question', width, height, insets.top);
   const lineTop = orbBottom(target) + 18;
@@ -212,6 +218,24 @@ export function QuestionScreen({
     timers.current.push(t);
   }, []);
 
+  // Queue the question behind the prior step's still-speaking reaction line
+  // instead of preempting it (the "it listened" moment must land for
+  // VoiceOver users too). iOS queues natively; elsewhere a short delay
+  // approximates it on forward mounts.
+  const announceQuestion = useCallback((text: string, forward: boolean) => {
+    const api: any = AccessibilityInfo as any;
+    if (typeof api.announceForAccessibilityWithOptions === 'function') {
+      api.announceForAccessibilityWithOptions(text, { queue: true });
+      return;
+    }
+    if (forward) {
+      const t = setTimeout(() => AccessibilityInfo.announceForAccessibility?.(text), 900);
+      timers.current.push(t);
+    } else {
+      AccessibilityInfo.announceForAccessibility?.(text);
+    }
+  }, []);
+
   const armHesitation = useCallback(() => {
     push(() => {
       if (selectedRef.current.length === 0) {
@@ -238,18 +262,18 @@ export function QuestionScreen({
     if (reduceMotion) {
       orb.setGaze('forward');
       containerFade.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
-      AccessibilityInfo.announceForAccessibility?.(resolved.text);
+      announceQuestion(resolved.text, !backward);
       return clearTimers;
     }
     if (backward) {
       // Return: everything already in place, prior selection shown.
       orb.setGaze('forward');
-      AccessibilityInfo.announceForAccessibility?.(resolved.text);
+      announceQuestion(resolved.text, false);
       return clearTimers;
     }
 
     orb.setGaze('down');
-    AccessibilityInfo.announceForAccessibility?.(resolved.text);
+    announceQuestion(resolved.text, true);
     push(() => orb.setGaze('forward'), 700);
     // Cards rise on their own stagger FROM MOUNT, overlapping the question's
     // final words (momentum — no dead air between ask and options). Only the
@@ -461,15 +485,20 @@ export function QuestionScreen({
     selectedIds[0] !== config.exclusiveOptionId &&
     !reacting;
 
-  // When the continue pill first rises it may cover the last card's edge —
-  // settle the list to its end so nothing sits half-hidden beneath the CTA.
+  // When the continue pill first rises: settle the list to its end so nothing
+  // sits half-hidden beneath it, and TELL assistive tech it exists — a silent
+  // bottom CTA is invisible to a VoiceOver user who was just taught that taps
+  // advance on their own.
   const continueWasVisible = useRef(false);
   useEffect(() => {
     if (continueVisible && !continueWasVisible.current) {
       scrollRef.current?.scrollToEnd?.({ animated: !reduceMotion });
+      AccessibilityInfo.announceForAccessibility?.(
+        `${config.continueLabel ?? 'Continue'} button available below`,
+      );
     }
     continueWasVisible.current = continueVisible;
-  }, [continueVisible, reduceMotion]);
+  }, [continueVisible, reduceMotion, config.continueLabel]);
 
   const containerStyle = useAnimatedStyle(() => ({ opacity: containerFade.value }));
 
@@ -594,7 +623,7 @@ export function QuestionScreen({
           <OrbSpeech
             key={`speak-${speech.key}`}
             text={speech.text}
-            reduceMotion={reduceMotion || backward}
+            reduceMotion={reduceMotion || backward || bigType}
             textStyle={[speech.kind === 'reaction' ? styles.reaction : styles.question, { color: colors.serif }]}
             accentWords={speech.accent}
             accentStyle={{ color: colors.serifAccent }}
