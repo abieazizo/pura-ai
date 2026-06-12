@@ -59,12 +59,17 @@ export interface GazeFrameProps {
   screenHeight?: number;
 }
 
-/** Rounded-portrait squircle path centered at (cx, cy). */
+/**
+ * Rounded-portrait squircle path centered at (cx, cy). Starts at
+ * TOP-CENTER so the anticipation sweep (stroke-dashoffset) flows
+ * from the crown of the locket, clockwise — like light tracing the
+ * gaze closed.
+ */
 function locketPath(cx: number, cy: number, w: number, h: number, r: number): string {
   const x = cx - w / 2;
   const y = cy - h / 2;
   return [
-    `M ${x + r} ${y}`,
+    `M ${cx} ${y}`,
     `H ${x + w - r}`,
     `A ${r} ${r} 0 0 1 ${x + w} ${y + r}`,
     `V ${y + h - r}`,
@@ -73,8 +78,14 @@ function locketPath(cx: number, cy: number, w: number, h: number, r: number): st
     `A ${r} ${r} 0 0 1 ${x} ${y + h - r}`,
     `V ${y + r}`,
     `A ${r} ${r} 0 0 1 ${x + r} ${y}`,
+    `H ${cx}`,
     'Z',
   ].join(' ');
+}
+
+/** Perimeter of the locket path (for the sweep's dasharray). */
+function locketPerimeter(w: number, h: number, r: number): number {
+  return 2 * (w - 2 * r) + 2 * (h - 2 * r) + 2 * Math.PI * r;
 }
 
 export function GazeFrame({
@@ -93,17 +104,7 @@ export function GazeFrame({
   const { frameW, frameH, cx, cy } = frameGeometry(width, height);
   const radius = frameW * FRAME.RADIUS_FRAC;
   const path = locketPath(cx, cy, frameW, frameH, radius);
-  const ringPath = locketPath(
-    cx,
-    cy,
-    frameW + FRAME.RING_GAP * 2,
-    frameH + FRAME.RING_GAP * 2,
-    radius + FRAME.RING_GAP
-  );
-  const ringPerimeter =
-    2 * (frameW + FRAME.RING_GAP * 2 - 2 * (radius + FRAME.RING_GAP)) +
-    2 * (frameH + FRAME.RING_GAP * 2 - 2 * (radius + FRAME.RING_GAP)) +
-    2 * Math.PI * (radius + FRAME.RING_GAP);
+  const perimeter = locketPerimeter(frameW, frameH, radius);
 
   // ---- signal-driven shared values ----------------------------------------
   const framing = useSharedValue(0);
@@ -169,6 +170,20 @@ export function GazeFrame({
     });
   }, [capturing, inhale]);
 
+  // ---- the held breath -----------------------------------------------------------
+  // While allPass holds, the world pauses with the user: the breath
+  // stills, the surround deepens, the static stroke dims to a track —
+  // and the sweep below redraws the locket in light. One element, no
+  // added chrome; the peak moment is the frame itself.
+  const armed = signals.allPass && !capturing;
+  const hold = useSharedValue(0);
+  useEffect(() => {
+    hold.value = withTiming(armed || capturing ? 1 : 0, {
+      duration: 380,
+      easing: MOTION.easeInOut,
+    });
+  }, [armed, capturing, hold]);
+
   // ---- entry settle ---------------------------------------------------------------
   const present = useSharedValue(0);
   useEffect(() => {
@@ -192,46 +207,54 @@ export function GazeFrame({
         { translateY: driftY.value * amp * 0.7 },
         {
           scale:
-            loose * settleIn * inhale.value * (1 + MOTION.BREATH_SCALE * breath.value),
+            loose *
+            settleIn *
+            inhale.value *
+            // The breath stills during the held moment.
+            (1 + MOTION.BREATH_SCALE * breath.value * (1 - hold.value)),
         },
       ],
     };
   });
   const softStyle = useAnimatedStyle(() => ({ opacity: softGlow.value }));
   const warmStyle = useAnimatedStyle(() => ({ opacity: warm.value }));
-  const crispStyle = useAnimatedStyle(() => ({ opacity: crisp.value }));
+  // During the hold the static stroke recedes to a faint track so the
+  // sweep visibly redraws the locket in light.
+  const crispStyle = useAnimatedStyle(() => ({
+    opacity: crisp.value * (1 - 0.78 * hold.value),
+  }));
   const surroundStyle = useAnimatedStyle(() => ({ opacity: present.value }));
+  const surroundHoldStyle = useAnimatedStyle(() => ({ opacity: hold.value }));
 
-  // ---- anticipation ring (rAF burst synced to the auto-capture hold) -------------
-  const [ringProgress, setRingProgress] = useState(0);
-  const ringRaf = useRef<number | null>(null);
-  const armed = signals.allPass && !capturing;
+  // ---- anticipation sweep (rAF burst synced to the auto-capture hold) ------------
+  const [sweepProgress, setSweepProgress] = useState(0);
+  const sweepRaf = useRef<number | null>(null);
   useEffect(() => {
     if (typeof requestAnimationFrame !== 'function') return;
     if (!armed) {
-      if (ringRaf.current !== null) cancelAnimationFrame(ringRaf.current);
-      ringRaf.current = null;
-      setRingProgress(0);
+      if (sweepRaf.current !== null) cancelAnimationFrame(sweepRaf.current);
+      sweepRaf.current = null;
+      setSweepProgress(0);
       return;
     }
     const start = Date.now();
     const step = () => {
       const p = Math.min(1, (Date.now() - start) / THRESHOLDS.AUTO_CAPTURE_HOLD_MS);
-      setRingProgress(p);
-      if (p < 1) ringRaf.current = requestAnimationFrame(step);
+      setSweepProgress(p);
+      if (p < 1) sweepRaf.current = requestAnimationFrame(step);
     };
-    ringRaf.current = requestAnimationFrame(step);
+    sweepRaf.current = requestAnimationFrame(step);
     return () => {
-      if (ringRaf.current !== null) cancelAnimationFrame(ringRaf.current);
-      ringRaf.current = null;
+      if (sweepRaf.current !== null) cancelAnimationFrame(sweepRaf.current);
+      sweepRaf.current = null;
     };
   }, [armed]);
-  // Reduce Motion: the timer still auto-captures; the ring presents as a
-  // steady held state instead of a sweep.
-  const ringShown = armed || capturing;
-  const ringOffset = reduceMotion
+  // Reduce Motion: the timer still auto-captures; the sweep presents as
+  // the fully-lit locket instead of a moving trace.
+  const sweepShown = armed || capturing;
+  const sweepOffset = reduceMotion
     ? 0
-    : ringPerimeter * (1 - (capturing ? 1 : ringProgress));
+    : perimeter * (1 - (capturing ? 1 : sweepProgress));
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -244,6 +267,21 @@ export function GazeFrame({
           <Path
             d={`M 0 0 H ${width} V ${dimH} H 0 Z ${locketPath(cx, cy + screenTop, frameW, frameH, radius)}`}
             fill={gaze.surroundDim}
+            fillRule="evenodd"
+          />
+        </Svg>
+      </Animated.View>
+
+      {/* The world holds its breath — the surround deepens while the
+          sweep completes, so the face becomes the brightest thing on
+          screen at the exact moment it's seen. */}
+      <Animated.View
+        style={[styles.surround, { top: -screenTop, height: dimH }, surroundHoldStyle]}
+      >
+        <Svg width={width} height={dimH}>
+          <Path
+            d={`M 0 0 H ${width} V ${dimH} H 0 Z ${locketPath(cx, cy + screenTop, frameW, frameH, radius)}`}
+            fill={gaze.surroundHold}
             fillRule="evenodd"
           />
         </Svg>
@@ -303,24 +341,35 @@ export function GazeFrame({
           </Svg>
         </Animated.View>
 
-        {/* Anticipation ring — completes over the allPass hold. */}
-        {ringShown ? (
+        {/* Anticipation sweep — light retraces the locket itself over
+            the allPass hold, from the crown, clockwise. A wide soft
+            underlay makes the moving light read as glow, not a wire. */}
+        {sweepShown ? (
           <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
             <Defs>
-              <LinearGradient id="gazeRing" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={gaze.strokeViolet} />
-                <Stop offset="100%" stopColor={gaze.strokeCyan} />
+              <LinearGradient id="gazeSweep" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor={gaze.sweepViolet} />
+                <Stop offset="50%" stopColor={gaze.sweepWhite} />
+                <Stop offset="100%" stopColor={gaze.sweepCyan} />
               </LinearGradient>
             </Defs>
-            <Path d={ringPath} stroke={gaze.ringTrack} strokeWidth={3} fill="none" />
             <Path
-              d={ringPath}
-              stroke="url(#gazeRing)"
-              strokeWidth={3}
+              d={path}
+              stroke={gaze.sweepHalo}
+              strokeWidth={11}
               fill="none"
               strokeLinecap="round"
-              strokeDasharray={`${ringPerimeter}`}
-              strokeDashoffset={ringOffset}
+              strokeDasharray={`${perimeter}`}
+              strokeDashoffset={sweepOffset}
+            />
+            <Path
+              d={path}
+              stroke="url(#gazeSweep)"
+              strokeWidth={3.4}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={`${perimeter}`}
+              strokeDashoffset={sweepOffset}
             />
           </Svg>
         ) : null}

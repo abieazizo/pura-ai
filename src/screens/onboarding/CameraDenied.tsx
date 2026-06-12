@@ -29,8 +29,8 @@ export interface CameraDeniedProps {
  *   (P)
  *
  *   Camera access is off.
- *   Pura needs camera access to read your skin. Open settings to enable,
- *   or skip the scan and explore the app.
+ *   Pura uses the camera to read your skin. Turn it on in Settings,
+ *   or skip the scan for now.
  *
  *   [ Open Settings ]      ← Ink
  *   [ Skip for now ]       ← tonal (porcelain + hairline)
