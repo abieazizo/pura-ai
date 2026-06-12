@@ -28,6 +28,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { CaretLeft } from 'phosphor-react-native';
 import Animated, {
@@ -137,9 +138,11 @@ export function QuestionScreen({
 
   const target = targetFor('question', width, height, insets.top);
   const lineTop = orbBottom(target) + 18;
-  // Cards drop a touch lower so the larger display-scale question (up to three
-  // lines) has confident breathing room above the decision.
-  const cardsTop = Math.round(height * 0.37);
+  // Cards begin below the question with guaranteed clearance: 0.37h on roomy
+  // screens, but never closer than two serif lines + a breath under lineTop —
+  // on 667pt devices the fixed fraction ran the question's descenders into
+  // the first card.
+  const cardsTop = Math.max(Math.round(height * 0.37), lineTop + 96);
   const trackWidth = width - 48;
   const accent = dark ? RAIL_ACCENT_DARK : RAIL_ACCENT_LIGHT;
 
@@ -172,6 +175,7 @@ export function QuestionScreen({
     kind: 'question',
   });
 
+  const scrollRef = useRef<ScrollView>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // advanceLockRef — THE single commit lock: the screen advances EXACTLY ONCE
   // per transition no matter how it's triggered (completion callback, web
@@ -443,6 +447,16 @@ export function QuestionScreen({
     selectedIds[0] !== config.exclusiveOptionId &&
     !reacting;
 
+  // When the continue pill first rises it may cover the last card's edge —
+  // settle the list to its end so nothing sits half-hidden beneath the CTA.
+  const continueWasVisible = useRef(false);
+  useEffect(() => {
+    if (continueVisible && !continueWasVisible.current) {
+      scrollRef.current?.scrollToEnd?.({ animated: !reduceMotion });
+    }
+    continueWasVisible.current = continueVisible;
+  }, [continueVisible, reduceMotion]);
+
   const containerStyle = useAnimatedStyle(() => ({ opacity: containerFade.value }));
 
   const cardEnter: CardEnterMode = backward ? 'instant' : enterMode === 'z' ? 'z' : 'rise';
@@ -572,11 +586,18 @@ export function QuestionScreen({
           />
         </View>
 
-        {/* The cards — the user's decision. */}
+        {/* The cards — the user's decision. Short sets (3-4 options) center
+            in the field below the question instead of pinning to the top and
+            leaving the bottom 40% dead porcelain; dense sets overflow and are
+            unaffected by the centering. */}
         <ScrollView
+          ref={scrollRef}
           style={[styles.cards, { top: cardsTop }]}
           contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'center',
             paddingHorizontal: 24,
+            paddingTop: 4,
             paddingBottom: insets.bottom + (continueVisible ? 96 : 24),
           }}
           showsVerticalScrollIndicator={false}
@@ -607,6 +628,18 @@ export function QuestionScreen({
             />
           ))}
         </ScrollView>
+
+        {/* Porcelain edge veil — dissolves overflowing card content at the
+            screen's bottom edge (the only scroll affordance the indicator-less
+            list gets) and gives the floating continue pill a ground instead of
+            a raw card collision. Invisible over empty porcelain. */}
+        <LinearGradient
+          colors={[`${colors.base}00`, colors.base]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={[styles.edgeVeil, { height: insets.bottom + 84 }]}
+          pointerEvents="none"
+        />
 
         {/* Multi-select continue — rises once a non-exclusive toggle exists. */}
         {continueVisible && (
@@ -672,6 +705,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   cards: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  edgeVeil: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   continueWrap: {
     position: 'absolute',
     left: 0,
