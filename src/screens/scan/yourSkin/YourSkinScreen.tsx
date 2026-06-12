@@ -47,6 +47,7 @@ import { useReduceTransparency } from '@/hooks/useReduceTransparency';
 import {
   DEFAULT_FACE_BOX,
   type FaceBox,
+  type FaceLandmarks,
 } from '../firstFinding/faceRegions';
 import { metricTint, type MetricTint, type ScreenTheme } from '../firstFinding/metricTint';
 import type { SkinRead } from '@/types/skinRead';
@@ -74,6 +75,9 @@ export interface YourSkinScreenProps {
   toneBackdrop?: ToneBackdrop;
   /** Face landmarks computed ONCE on the captured frame (screen 1). */
   faceBox?: FaceBox;
+  /** REAL capture-moment anchors (landmarksFromCaptureQuality). When present
+   *  the skin-map glow affine-warps to the actual face; absent → faceBox. */
+  landmarks?: FaceLandmarks;
   mirrored?: boolean;
   /** DARK is the hero, unbroken from screens 1–2. */
   theme?: ScreenTheme;
@@ -98,6 +102,7 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
     photoUri,
     toneBackdrop = 'medium',
     faceBox = DEFAULT_FACE_BOX,
+    landmarks,
     mirrored = true,
     theme = 'dark',
     dateLabel = 'Today',
@@ -328,6 +333,7 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
             photoUri={photoUri}
             toneBackdrop={toneBackdrop}
             faceBox={faceBox}
+            landmarks={landmarks}
             mirrored={mirrored}
             findings={gRead.findings}
             activeFindingId={activeGlowId}

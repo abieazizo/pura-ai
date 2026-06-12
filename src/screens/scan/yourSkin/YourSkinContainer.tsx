@@ -14,22 +14,29 @@
  * fabricated.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { readSkinFromPhoto } from '@/api/skinRead';
+import { useRoutineFocusMoves } from '@/state/routineFocusMoves';
 import type { SkinReadOutcome } from '@/types/skinRead';
+import type { CaptureQualitySnapshot } from '@/scanQuality/types';
 import { ResultsOrb } from '@/components/ResultsOrb';
 import { tokensFor, TYPE2 } from './yourSkinMotion';
 import { YourSkinScreen } from './YourSkinScreen';
+import { landmarksFromCaptureQuality } from '../firstFinding/landmarksFromCapture';
 import type { ScreenTheme } from '../firstFinding/metricTint';
 
 export interface YourSkinContainerProps {
   photoUri: string;
   /** The just-saved scan id — carried into the routine builder. */
   scanId: string;
+  /** The shutter-moment quality snapshot (478 MediaPipe landmarks). When
+   *  present, the skin-map glow tracks the REAL face; absent (gallery picks,
+   *  native) → the existing proportional synthesis. */
+  captureQuality?: CaptureQualitySnapshot;
   theme?: ScreenTheme;
   mirrored?: boolean;
   /** Onboarding goal — share-card / a11y fallback (the summary line already
@@ -50,6 +57,7 @@ export interface YourSkinContainerProps {
 export function YourSkinContainer({
   photoUri,
   scanId,
+  captureQuality,
   theme = 'dark',
   mirrored = true,
   goal,
@@ -61,6 +69,15 @@ export function YourSkinContainer({
 }: YourSkinContainerProps) {
   const [outcome, setOutcome] = useState<SkinReadOutcome>({ status: 'pending' });
   const reqId = useRef(0);
+
+  // Real face anchors from the shutter snapshot → the skin map affine-warps to
+  // the actual face. The snapshot also certifies the photo is the RAW
+  // un-mirrored frame (scanQuality README), so person-left/right placement
+  // flips accordingly; without it, behavior is unchanged (proportional box).
+  const capturedLandmarks = useMemo(
+    () => landmarksFromCaptureQuality(captureQuality) ?? undefined,
+    [captureQuality],
+  );
 
   const run = useCallback(() => {
     const id = ++reqId.current;
@@ -86,13 +103,30 @@ export function YourSkinContainer({
     if (outcome.status === 'service_error') onFallbackToReveal();
   }, [outcome.status, onFallbackToReveal]);
 
+  // Screen-2 → routine continuity: the moment the read lands, persist its
+  // routine_focus moves keyed by scanId so the Your Routine reveal morphs from
+  // the EXACT cards this screen shows (survives the scan modal teardown).
+  // `addresses` carries the finding IDS (addressesIds), not the name strings.
+  useEffect(() => {
+    if (outcome.status !== 'ready') return;
+    useRoutineFocusMoves.getState().setMoves(
+      scanId,
+      (outcome.read.routineFocus ?? []).map((m) => ({
+        title: m.title,
+        why: m.why,
+        addresses: m.addressesIds,
+      })),
+    );
+  }, [outcome, scanId]);
+
   if (outcome.status === 'ready' || outcome.status === 'bad_photo') {
     if (outcome.read) {
       return (
         <YourSkinScreen
           read={outcome.read}
           photoUri={photoUri}
-          mirrored={mirrored}
+          landmarks={capturedLandmarks}
+          mirrored={capturedLandmarks ? false : mirrored}
           theme={theme}
           goal={goal}
           onBuildRoutine={onBuildRoutine}

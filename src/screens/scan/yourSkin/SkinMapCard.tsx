@@ -46,11 +46,18 @@ import Animated, {
 import { GlowField, type GlowFieldHandle, type GlowSpotInput } from '../firstFinding/GlowField';
 import {
   regionGeometry,
+  regionGeometryFromLandmarks,
   type FaceBox,
+  type FaceLandmarks,
   type RegionGeometry,
 } from '../firstFinding/faceRegions';
 import { metricTint, type MetricTint, type ScreenTheme } from '../firstFinding/metricTint';
-import { REGION_LABEL, type MetricKind, type SkinReadFinding } from '@/types/skinRead';
+import {
+  REGION_LABEL,
+  type FaceRegionKey,
+  type MetricKind,
+  type SkinReadFinding,
+} from '@/types/skinRead';
 import { hapt } from '@/utils/haptics';
 import {
   COLLAPSE,
@@ -72,6 +79,10 @@ export interface SkinMapCardProps {
   toneBackdrop?: ToneBackdrop;
   /** The face box — computed ONCE on the captured frame (screen 1), never here. */
   faceBox: FaceBox;
+  /** REAL face anchors from the capture-moment snapshot (screen 1's source).
+   *  When present, glows + markers AFFINE-warp to the actual face — off-center,
+   *  tilted, any proportions. Absent → the proportional `faceBox` fallback. */
+  landmarks?: FaceLandmarks;
   /** Front-selfie mirroring (person-left == viewer-left). */
   mirrored: boolean;
 
@@ -103,7 +114,7 @@ function metricWord(metric: MetricKind): string {
 
 export function SkinMapCard(props: SkinMapCardProps) {
   const {
-    photoUri, toneBackdrop = 'medium', faceBox, mirrored,
+    photoUri, toneBackdrop = 'medium', faceBox, landmarks, mirrored,
     findings, activeFindingId, onSelectFinding,
     theme, tokens, reduceMotion, reduceTransparency,
     collapsed, onToggleCollapse,
@@ -113,18 +124,25 @@ export function SkinMapCard(props: SkinMapCardProps) {
   const frameW = Math.round(Math.max(168, Math.min(232, width * 0.52)));
   const frameH = Math.round(frameW / LAYOUT.photoAspect); // 3:4 portrait
 
-  // ── Geometry — resolved ONCE per layout from the shared faceBox (never
-  //    per frame, never recomputed upstream). One entry per finding that has a
-  //    located strongest spot. ──────────────────────────────────────────────
+  // ── Geometry — resolved ONCE per layout (never per frame, never recomputed
+  //    upstream). Real capture landmarks → the affine warp tracks the actual
+  //    face; absent → the shared proportional faceBox (screen 1's fallback). ──
+  const geomFor = useCallback(
+    (region: FaceRegionKey): RegionGeometry =>
+      landmarks
+        ? regionGeometryFromLandmarks(region, landmarks, frameW, frameH, mirrored)
+        : regionGeometry(region, faceBox, frameW, frameH, mirrored),
+    [landmarks, faceBox, frameW, frameH, mirrored],
+  );
+
+  // One entry per finding that has a located strongest spot.
   const geomByFinding = useMemo(() => {
     const map: Record<string, RegionGeometry | null> = {};
     for (const f of findings) {
-      map[f.id] = f.strongestRegion
-        ? regionGeometry(f.strongestRegion, faceBox, frameW, frameH, mirrored)
-        : null;
+      map[f.id] = f.strongestRegion ? geomFor(f.strongestRegion) : null;
     }
     return map;
-  }, [findings, faceBox, frameW, frameH, mirrored]);
+  }, [findings, geomFor]);
 
   const tintByFinding = useMemo(() => {
     const map: Record<string, MetricTint> = {};
@@ -142,12 +160,9 @@ export function SkinMapCard(props: SkinMapCardProps) {
   const activeRenderedSpots: GlowSpotInput[] = useMemo(() => {
     if (!activeRendered) return [];
     return activeRendered.spots
-      .map((s) => {
-        const g = regionGeometry(s.region, faceBox, frameW, frameH, mirrored);
-        return { geometry: g, strength: s.strength, chipLabel: s.place };
-      })
+      .map((s) => ({ geometry: geomFor(s.region), strength: s.strength, chipLabel: s.place }))
       .slice(0, 4);
-  }, [activeRendered, faceBox, frameW, frameH, mirrored]);
+  }, [activeRendered, geomFor]);
 
   // Bloom the hero glow on arrival.
   useEffect(() => {

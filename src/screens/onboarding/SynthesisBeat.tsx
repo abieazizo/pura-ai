@@ -18,8 +18,10 @@ import { OrbSpeech } from './orb/OrbSpeech';
 import { orbBottom, targetFor } from './orb/orbLayout';
 import { useOnboardingTheme } from './orb/onboardingTheme';
 
-const LINE = 'Putting this together for you.';
-const HOLD_MS = 2050; // line ≈ 5 words · 110ms + settle — then advance
+// Not loading-screen language about the orb's process — proof the five
+// answers were heard, aimed straight at the scan ("Now, the scan." follows).
+const LINE = 'I know what to look for.';
+const HOLD_MS = 2050; // line ≈ 6 words · 95ms + settle — then advance
 const HOLD_REDUCED_MS = 1300;
 
 export interface SynthesisBeatProps {

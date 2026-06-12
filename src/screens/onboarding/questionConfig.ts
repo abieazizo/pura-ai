@@ -214,8 +214,8 @@ export const GOAL_QUESTION: QuestionConfig = {
 // ===========================================================================
 export const AGE_QUESTION: QuestionConfig = {
   id: 'age',
-  questionText: 'So I read your skin in context — your age?',
-  questionFallback: 'So I read your skin in context — your age?',
+  questionText: 'So I can read your skin in context — your age?',
+  questionFallback: 'So I can read your skin in context — your age?',
   emotionalWeight: 'light',
   orbAuraTheme: 'violet-cool',
   singleSelect: true,
@@ -261,20 +261,20 @@ export const AGE_QUESTION: QuestionConfig = {
       value: '35-44',
       reactionExpression: 'validating',
       warmthWeight: 'mid',
-      competenceWeight: 'mid',
+      competenceWeight: 'high',
       reactionVerbosity: 'terse',
-      reactionLine: 'Good to know.',
+      reactionLine: 'That focuses the read.',
     },
     {
       id: '45-54',
       label: '45–54',
       icon: 'Star',
       value: '45-54',
-      reactionExpression: 'warm',
+      reactionExpression: 'competent',
       warmthWeight: 'mid',
-      competenceWeight: 'mid',
+      competenceWeight: 'high',
       reactionVerbosity: 'terse',
-      reactionLine: 'Noted — thank you.',
+      reactionLine: 'Noted — that sets my baseline.',
     },
     {
       id: '55+',
@@ -285,7 +285,7 @@ export const AGE_QUESTION: QuestionConfig = {
       warmthWeight: 'high',
       competenceWeight: 'mid',
       reactionVerbosity: 'terse',
-      reactionLine: 'Good to know.',
+      reactionLine: 'Then I’ll read with that in mind.',
     },
     {
       id: 'prefer_not',
@@ -343,7 +343,7 @@ export const SKIN_TYPE_QUESTION: QuestionConfig = {
       warmthWeight: 'mid',
       competenceWeight: 'mid',
       reactionVerbosity: 'terse',
-      reactionLine: 'The most common answer, honestly.',
+      reactionLine: 'Most skin is — I’ll read each zone on its own.',
     },
     {
       id: 'not_sure',
@@ -373,7 +373,9 @@ export const SENSITIVITIES_QUESTION: QuestionConfig = {
   singleSelect: false,
   exclusiveOptionId: 'none',
   continueLabel: 'That’s everything',
-  multiReactionLine: 'Good to know — I’ll steer around those.',
+  // Number-safe for one OR many selections, and the steering IS the
+  // acknowledgment — no repeated "Good to know" opener.
+  multiReactionLine: 'I’ll steer around all of it.',
   options: [
     {
       id: 'fragrance',
@@ -436,13 +438,14 @@ export const SENSITIVITIES_QUESTION: QuestionConfig = {
 
 // ===========================================================================
 // 5 · SAFETY — pregnancy/breastfeeding. Gates the engine. Calm, never
-// alarmist; "Last one" signals the end is in sight.
+// alarmist; "Last one" signals the end is in sight. No eyebrow: the safety
+// refrain lives ONCE on the section opener (sensitivities) — a near-identical
+// caps line on consecutive screens read as a template, not a companion.
 // ===========================================================================
 export const SAFETY_QUESTION: QuestionConfig = {
   id: 'safety',
   questionText: 'Last one — are you pregnant or breastfeeding?',
   questionFallback: 'Last one — are you pregnant or breastfeeding?',
-  eyebrow: 'SO EVERY SUGGESTION IS SAFE FOR YOU',
   emotionalWeight: 'moderate',
   orbAuraTheme: 'blue-warm',
   singleSelect: true,

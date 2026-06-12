@@ -26,8 +26,10 @@ import { normalizeSkinRead, type RawSkinRead } from '@/screens/scan/firstFinding
 import { metricTint } from '@/screens/scan/firstFinding/metricTint';
 import { computeBloomSchedule, anchorWordIndex } from '@/screens/scan/firstFinding/bloomSchedule';
 import { landmarksFromFaceGeometry } from '@/screens/scan/firstFinding/landmarksFromGeometry';
+import { landmarksFromCaptureQuality } from '@/screens/scan/firstFinding/landmarksFromCapture';
 import type { FaceRegionKey } from '@/types/skinRead';
 import type { FaceLandmarkResult } from '@/types/scanResults';
+import type { CaptureQualitySnapshot } from '@/scanQuality/types';
 
 let pass = 0;
 let fail = 0;
@@ -224,6 +226,90 @@ const offGeom: FaceLandmarkResult = {
 const gC = regionGeometryFromLandmarks('left_cheek', landmarksFromFaceGeometry(goodGeom)!, FW, FH, true);
 const gO = regionGeometryFromLandmarks('left_cheek', landmarksFromFaceGeometry(offGeom)!, FW, FH, true);
 ok('adapted off-center face → glow tracks via the screen’s own affine warp', gO.centroid.x - gC.centroid.x > 0.08 * FW, `Δx=${(gO.centroid.x - gC.centroid.x).toFixed(0)}px`);
+
+console.log('\n── 9 · Capture-quality adapter (shutter MediaPipe mesh → FaceLandmarks) ──');
+// A landscape 640×480 raw frame cover-cropped into the 3:4 photo stage:
+// visible width fraction = 0.75 / (4/3) = 0.5625, offX = 0.21875.
+const VIS_W = 0.5625;
+const OFF_X = 0.21875;
+const expectX = (x: number) => (x - OFF_X) / VIS_W;
+
+// MediaPipe FaceMesh anchor indices; "subject-right" appears viewer-LEFT in a
+// raw un-mirrored frame. All other mesh points sit at an inert (0.5, 0.5).
+const CENTER_MESH: Record<number, { x: number; y: number }> = {
+  468: { x: 0.42, y: 0.4 }, // subject-right iris (viewer-left)
+  473: { x: 0.58, y: 0.4 }, // subject-left iris
+  33: { x: 0.4, y: 0.4 }, 133: { x: 0.44, y: 0.4 }, // subject-right eye corners
+  362: { x: 0.56, y: 0.4 }, 263: { x: 0.6, y: 0.4 }, // subject-left eye corners
+  1: { x: 0.5, y: 0.52 }, // nose tip
+  13: { x: 0.5, y: 0.62 }, 14: { x: 0.5, y: 0.64 }, // lips → mouthCenter 0.63
+  152: { x: 0.5, y: 0.78 }, // chin
+  10: { x: 0.5, y: 0.12 }, // forehead
+};
+function meshWith(n: number, at: Record<number, { x: number; y: number }>) {
+  const arr = Array.from({ length: n }, () => ({ x: 0.5, y: 0.5, z: 0 }));
+  for (const k of Object.keys(at)) {
+    const i = Number(k);
+    if (i < n) arr[i] = { ...at[i], z: 0 };
+  }
+  return arr;
+}
+function snap(over?: Partial<CaptureQualitySnapshot>): CaptureQualitySnapshot {
+  return {
+    capturedAtMs: 1765400000000,
+    videoWidth: 640,
+    videoHeight: 480,
+    landmarks: meshWith(478, CENTER_MESH),
+    faceBox: { x: 0.3, y: 0.08, width: 0.4, height: 0.8 },
+    pose: { yawDeg: 0, pitchDeg: 0, rollDeg: 0 },
+    mirroredPreview: true,
+    allPass: true,
+    signals: { framingScore: 1, lightScore: 1, sharpnessScore: 1, poseScore: 1, stillnessScore: 1, lightLevel: 0.5 },
+    ...over,
+  };
+}
+
+const cap = landmarksFromCaptureQuality(snap());
+ok('capture snapshot → FaceLandmarks', !!cap);
+ok('cover-crop remap: x re-normalized to the 3:4 stage', !!cap && Math.abs(cap.leftEye.x - expectX(0.42)) < 1e-9, `x=${cap?.leftEye.x.toFixed(4)} expect=${expectX(0.42).toFixed(4)}`);
+ok('cover-crop remap: y passes through for a landscape frame', !!cap && cap.leftEye.y === 0.4 && cap.chin.y === 0.78);
+ok('eyes are VIEWER-ordered (leftEye.x < rightEye.x — affine never flips)', !!cap && cap.leftEye.x < cap.rightEye.x);
+ok('mouthCenter = lips midpoint', !!cap && Math.abs(cap.mouthCenter.y - 0.63) < 1e-9);
+ok('faceBox remapped + widened by the crop (w / 0.5625)', !!cap && Math.abs(cap.faceBounds.w - 0.4 / VIS_W) < 1e-9, `w=${cap?.faceBounds.w.toFixed(4)}`);
+
+// Taller-than-stage frame (portrait 480×853) → vertical crop instead.
+const iaTall = 480 / 853;
+const visH = iaTall / 0.75;
+const offY = (1 - visH) / 2;
+const tall = landmarksFromCaptureQuality(snap({ videoWidth: 480, videoHeight: 853 }));
+ok('taller-than-stage frame → y re-normalized, x passes through', !!tall && Math.abs(tall.leftEye.y - (0.4 - offY) / visH) < 1e-9 && tall.leftEye.x === 0.42, `y=${tall?.leftEye.y.toFixed(4)}`);
+
+// Base 468-point mesh (no iris refinement) → eye-corner midpoints, same anchors.
+const noIris = landmarksFromCaptureQuality(snap({ landmarks: meshWith(468, CENTER_MESH) }));
+ok('468-point mesh (no iris) → corner-midpoint eyes', !!noIris && Math.abs(noIris.leftEye.x - expectX(0.42)) < 1e-9);
+
+// Honest gates — untrustworthy snapshot → null → the proportional fallback.
+ok('no landmarks near the shutter → null', landmarksFromCaptureQuality(snap({ landmarks: null })) === null);
+ok('no face box → null', landmarksFromCaptureQuality(snap({ faceBox: null })) === null);
+ok('tiny (too-far) face → null', landmarksFromCaptureQuality(snap({ faceBox: { x: 0.45, y: 0.45, width: 0.05, height: 0.1 } })) === null);
+ok('degenerate video dims → null', landmarksFromCaptureQuality(snap({ videoWidth: 0 })) === null);
+ok('absent snapshot → null', landmarksFromCaptureQuality(null) === null && landmarksFromCaptureQuality(undefined) === null);
+
+// Integration: an off-center capture tracks via the screens' own affine warp.
+// Raw +0.05 x shift → +0.0889 frame-norm (the crop magnifies x) → ~22px at 248w.
+// mirrored=false — the captured photo is the RAW un-mirrored frame.
+const OFF_MESH: Record<number, { x: number; y: number }> = {};
+for (const k of Object.keys(CENTER_MESH)) {
+  const i = Number(k);
+  OFF_MESH[i] = { x: CENTER_MESH[i].x + 0.05, y: CENTER_MESH[i].y };
+}
+const capOff = landmarksFromCaptureQuality(snap({
+  landmarks: meshWith(478, OFF_MESH),
+  faceBox: { x: 0.35, y: 0.08, width: 0.4, height: 0.8 },
+}));
+const capCen = regionGeometryFromLandmarks('left_cheek', cap!, FW, FH, false);
+const capOffG = regionGeometryFromLandmarks('left_cheek', capOff!, FW, FH, false);
+ok('off-center capture → glow tracks the real face (through the crop remap)', capOffG.centroid.x - capCen.centroid.x > 0.07 * FW, `Δx=${(capOffG.centroid.x - capCen.centroid.x).toFixed(0)}px`);
 
 console.log(`\n──────────────\nPASS ${pass} · FAIL ${fail}`);
 if (fail > 0) {

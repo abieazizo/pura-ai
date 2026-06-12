@@ -147,12 +147,8 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
       />
 
       <View style={styles.body}>
-        <Animated.View style={[styles.eyebrowRow, headStyle]}>
-          <View style={styles.eyebrowTick} />
-          <Animated.Text style={styles.eyebrow} maxFontSizeMultiplier={1.2}>
-            THE SCAN
-          </Animated.Text>
-        </Animated.View>
+        {/* No eyebrow — "Now, the scan." owns the screen; a caps label saying
+            THE SCAN directly above it was the headline twice. */}
 
         {/* HERO — the editorial face-capture guide frame (the shared portrait
             imagery language applied to an honest empty/locked state). */}
@@ -249,17 +245,20 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
           </View>
         </Animated.View>
 
-        {/* Supporting line beneath the hero — the detail, in calm ink. */}
+        {/* Supporting line beneath the hero — the detail, in calm ink. Half
+            its former length: the hero + headline + promise carry the moment;
+            this names only the real read dimensions. */}
         <Animated.Text style={[styles.sub, subStyle]} maxFontSizeMultiplier={1.25}>
-          Pura reads your skin in detail — texture, tone, hydration, barrier
-          health — from a single portrait.
+          Texture, tone, hydration, barrier — from one portrait.
         </Animated.Text>
       </View>
 
       <Animated.View
         style={[styles.ctaWrap, ctaStyle, { paddingBottom: insets.bottom + 24 }]}
       >
-        <OnboardingPrimaryButton label="Let’s take a look" onPress={onContinue} />
+        {/* The exact two words the orb was born under ("Let's look.") — the
+            final tap reads as a kept promise, not a new ask. */}
+        <OnboardingPrimaryButton label="Let’s look." onPress={onContinue} />
       </Animated.View>
     </SafeAreaView>
   );
@@ -278,28 +277,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: dsSpace.xl,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // Eyebrow row — a short brand tick + tracked caps label, the editorial
-  // section marker.
-  eyebrowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: dsSpace.lg,
-  },
-  eyebrowTick: {
-    width: 22,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: ds.accent,
-    marginRight: 10,
-  },
-  eyebrow: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11.5,
-    lineHeight: 14,
-    letterSpacing: 2.4,
-    color: ds.textTertiary,
-    textAlign: 'left',
   },
   // The hero portrait frame wrapper (carries the elevation lift + bloom).
   frameWrap: {

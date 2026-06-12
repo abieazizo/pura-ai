@@ -79,8 +79,8 @@ export function CameraDenied({ onSkip }: CameraDeniedProps) {
         </Animated.Text>
 
         <Animated.Text style={styles.sub} maxFontSizeMultiplier={1.25}>
-          Pura needs camera access to read your skin. Open settings to enable,
-          or skip the scan and explore the app.
+          Pura uses the camera to read your skin. Turn it on in Settings, or
+          skip the scan for now.
         </Animated.Text>
       </Animated.View>
 

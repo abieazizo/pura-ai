@@ -39,6 +39,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const VERIFY_SUITES: Suite[] = [
   { name: 'Products tab',  script: resolve(HERE, 'verifyProductsTab.ts') },
   { name: 'Home night',    script: resolve(HERE, 'verifyHomeNight.ts')   },
+  { name: 'Reduce motion', script: resolve(HERE, 'verifyReduceMotion.ts') },
 ];
 
 const bail = process.argv.includes('--bail');

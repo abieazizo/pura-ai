@@ -220,7 +220,7 @@ function AnalyzingScreenHost() {
   const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<ScanStackParamList, 'ScanAnalyzing'>>();
-  const { photoUri, mode } = route.params;
+  const { photoUri, mode, captureQuality } = route.params;
 
   // v12.4 — STABILITY: snapshot the previousScan + dayNumber at MOUNT
   // time, not on every render.
@@ -268,9 +268,11 @@ function AnalyzingScreenHost() {
       // captured frame and renders YourSkinScreen; if that service genuinely
       // fails it falls back to the proven reveal arc, which itself falls back to
       // ScanResultsFace — so a saved scan is never stranded on a blank.
-      scanNav.replace('YourSkin', { scanId, photoUri });
+      // `captureQuality` rides along so the skin map keeps tracking the REAL
+      // face landmarks frozen at the shutter (absent for gallery/native).
+      scanNav.replace('YourSkin', { scanId, photoUri, captureQuality });
     },
-    [scanNav, photoUri]
+    [scanNav, photoUri, captureQuality]
   );
   const handleRetry = useCallback(() => {
     scanNav.replace('ScanCapture');
@@ -281,6 +283,7 @@ function AnalyzingScreenHost() {
     return (
       <ScanAnalyzingFaceScreen
         photoUri={photoUri}
+        captureQuality={captureQuality}
         previousScan={previous}
         dayNumber={dayNumber}
         onComplete={handleComplete}
@@ -338,7 +341,7 @@ function YourSkinResultsHost() {
   const scanNav = useNavigation<NativeStackNavigationProp<ScanStackParamList>>();
   const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<ScanStackParamList, 'YourSkin'>>();
-  const { scanId, photoUri } = route.params;
+  const { scanId, photoUri, captureQuality } = route.params;
 
   const closeToHome = useCallback(() => {
     rootNav.getParent()?.goBack();
@@ -347,6 +350,7 @@ function YourSkinResultsHost() {
   return (
     <YourSkinContainer
       photoUri={photoUri}
+      captureQuality={captureQuality}
       scanId={scanId}
       onBuildRoutine={() => scanNav.navigate('BuildRoutinePicker', { scanId })}
       onClose={closeToHome}

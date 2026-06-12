@@ -151,8 +151,14 @@ export type ScanStackParamList = {
    *  plain-language read (readSkinFromPhoto → the /readSkin proxy route) and
    *  renders YourSkinScreen. Carries the captured photo (the lit-print map) +
    *  scanId ("Build my routine" → the routine builder). Falls back to ScanReveal
-   *  only if the read service genuinely fails — a scan is never stranded blank. */
-  YourSkin: { scanId: string; photoUri: string };
+   *  only if the read service genuinely fails — a scan is never stranded blank.
+   *  `captureQuality` is the same shutter-moment snapshot ScanAnalyzing got —
+   *  real landmarks for the skin-map glow (absent → proportional synthesis). */
+  YourSkin: {
+    scanId: string;
+    photoUri: string;
+    captureQuality?: CaptureQualitySnapshot;
+  };
   /** Reveal-arc surface 6.5 — the pre-build pillar picker. The user
    *  chooses which of the four pillars to include before the ceremony.
    *  "Build my routine" on the Ready screen routes here; this screen's

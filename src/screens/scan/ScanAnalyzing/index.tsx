@@ -53,7 +53,9 @@ import type {
 } from '@/types/scanResults';
 import { readSkinFromPhoto } from '@/api/skinRead';
 import type { SkinReadOutcome } from '@/types/skinRead';
+import type { CaptureQualitySnapshot } from '@/scanQuality/types';
 import { FirstFindingScreen } from '@/screens/scan/firstFinding';
+import { landmarksFromCaptureQuality } from '@/screens/scan/firstFinding/landmarksFromCapture';
 import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
 
 declare const __DEV__: boolean | undefined;
@@ -117,6 +119,11 @@ function friendlyServiceError(msg: string): string | null {
 
 export interface ScanAnalyzingFaceScreenProps {
   photoUri: string;
+  /** The shutter-moment quality snapshot (478 MediaPipe landmarks + faceBox,
+   *  raw video coords — see scanQuality/types). When present, the First-Finding
+   *  on-skin glow AFFINE-warps to the REAL face; absent (gallery picks, native,
+   *  detector unavailable) → the existing proportional synthesis. */
+  captureQuality?: CaptureQualitySnapshot;
   previousScan?: Scan;
   dayNumber: number;
   onComplete: (scanId: string) => void;
@@ -147,6 +154,7 @@ type Phase =
 
 export function ScanAnalyzingFaceScreen({
   photoUri,
+  captureQuality,
   previousScan,
   dayNumber,
   onComplete,
@@ -157,6 +165,16 @@ export function ScanAnalyzingFaceScreen({
   // orb + gaze sweep honor the OS / user setting.
   const reduceMotion = useReduceMotion();
   useScanCount();
+
+  // Real face anchors frozen at the shutter → the First-Finding glow tracks
+  // the ACTUAL face instead of the proportional synthesis. The snapshot also
+  // certifies the captured photo is the RAW un-mirrored frame (scanQuality
+  // README), so person-left/right placement flips with it; when the adapter
+  // declines (no/untrustworthy landmarks) everything behaves exactly as before.
+  const capturedLandmarks = useMemo(
+    () => landmarksFromCaptureQuality(captureQuality) ?? undefined,
+    [captureQuality],
+  );
 
   const completedScanRef = useRef<Scan | null>(null);
   const apiErroredRef = useRef(false);
@@ -524,7 +542,11 @@ export function ScanAnalyzingFaceScreen({
         photoUri={photoUri}
         outcome={ffOutcome}
         theme="dark"
-        mirrored
+        // Real shutter-moment landmarks → the glow warps to the ACTUAL face.
+        // The snapshot certifies the photo is the RAW un-mirrored frame, so
+        // person-left/right flips with it; no landmarks → legacy behavior.
+        landmarks={capturedLandmarks}
+        mirrored={!capturedLandmarks}
         onSeeEverything={() => {
           if (!ffScanId) return;
           useAppStore.getState().clearInFlightScan();

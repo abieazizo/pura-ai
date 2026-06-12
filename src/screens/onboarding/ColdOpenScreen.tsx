@@ -507,13 +507,13 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
           <Animated.View style={[styles.buttonRise, buttonRiseStyle]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Let's look"
+              accessibilityLabel="Let’s look"
               disabled={!buttonReady}
               onPress={handleLetsLook}
               style={styles.button}
             >
               <Text style={styles.buttonLabel} maxFontSizeMultiplier={1.2}>
-                Let's look.
+                Let’s look.
               </Text>
               {/* Shimmer sweep. */}
               <Animated.View style={[styles.shimmerWrap, shimmerStyle]} pointerEvents="none">
