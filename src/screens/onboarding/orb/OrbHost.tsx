@@ -18,6 +18,7 @@
 import React, {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -169,6 +170,16 @@ export function OrbProvider({
   const setStoreFamiliarity = useAppStore((s) => s.setFamiliarity);
   const setStoreFamiliarityRef = useRef(setStoreFamiliarity);
   setStoreFamiliarityRef.current = setStoreFamiliarity;
+  // Defers the familiarity store-write (which re-renders the heavy SVG orb)
+  // off the glide-start tick. Cleared on unmount so a teardown mid-defer
+  // never writes into a gone store subscriber.
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+    },
+    [],
+  );
 
   // Controller — stable. Reads reduce-motion from a ref so springs/instant is
   // always current. Shared values + orbRef are stable across renders.
@@ -209,11 +220,17 @@ export function OrbProvider({
       blinkNow: () => orbRef.current?.blinkNow(),
       setFamiliarity: (v) => {
         const t = Math.max(0, Math.min(1, v));
-        // Persist (downstream + reduce-motion static correctness). The store
-        // change re-renders the host, flowing the new `familiarity` prop into
-        // the orb, whose own effect animates the warmth on the UI thread.
-        setStoreFamiliarityRef.current(t);
+        // The warmth animates NOW on the UI thread (imperative). The store
+        // persist (downstream + reduce-motion static correctness) re-renders
+        // the host → the heavy SVG orb, so it's deferred ~620ms past the
+        // glide start: the orb's own contract is "never re-rendered to move",
+        // and a re-render landing on moveTo()'s spring start is a JS-thread
+        // hitch risk at the most motion-critical instant of every advance.
         orbRef.current?.setFamiliarity(t);
+        if (persistTimer.current) clearTimeout(persistTimer.current);
+        persistTimer.current = setTimeout(() => {
+          setStoreFamiliarityRef.current(t);
+        }, 620);
       },
       setAura: (theme) => orbRef.current?.setAura(theme),
       reactArchetype: (kind, opts) => orbRef.current?.reactArchetype(kind, opts),
