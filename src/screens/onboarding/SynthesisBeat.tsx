@@ -64,6 +64,12 @@ export function SynthesisBeat({ onDone, goalId }: SynthesisBeatProps) {
   const target = targetFor('speaks', width, height, insets.top);
   const lineTop = orbBottom(target) + 20;
 
+  // The handoff target — where the camera primer seats its face-guide orb
+  // (roughly screen-center, viewfinder-sized). On exit the companion glides
+  // DOWN toward it as it fades, so it reads as moving INTO the scan rather
+  // than vanishing here while a new orb pops in on the next screen.
+  const exitTarget = { cx: width / 2, cy: Math.round(height * 0.47), size: 132 };
+
   useEffect(() => {
     orb.show();
     orb.moveTo(target);
@@ -80,6 +86,13 @@ export function SynthesisBeat({ onDone, goalId }: SynthesisBeatProps) {
       () => {
         if (doneRef.current) return;
         doneRef.current = true;
+        // Drift toward the viewfinder as the orb hands off — the move runs
+        // WITH the hide (in the parent's finish()) and the route's fade, so
+        // the companion appears to carry into the scan. (Not a pixel-perfect
+        // superimposition with the primer's own orb — that needs on-device
+        // tuning to avoid double-vision — but it kills the "vanish here, pop
+        // there" hard cut.)
+        if (!reduceMotion) orb.moveTo(exitTarget, { duration: 300 });
         onDone();
       },
       reduceMotion ? HOLD_REDUCED_MS : HOLD_MS,
