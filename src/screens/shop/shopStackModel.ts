@@ -651,12 +651,15 @@ function buildConcernChips(skinState: SkinState | null): ConcernChip[] {
   });
 }
 
+// The "what I saw today" chips speak the SCAN's plain words, never product-
+// benefit framing: the scan reads DRYNESS, not "Hydration" (the fix that
+// closes the last shop-language seam). Keys are unchanged — only the labels.
 function humanConcern(c: ConcernType): string {
   switch (c) {
     case 'breakouts':
       return 'Breakouts';
     case 'hydration':
-      return 'Hydration';
+      return 'Dryness';
     case 'texture':
       return 'Texture';
     case 'dark_marks':
@@ -664,7 +667,7 @@ function humanConcern(c: ConcernType): string {
     case 'redness':
       return 'Redness';
     case 'oiliness':
-      return 'Oiliness';
+      return 'Shine';
     case 'sensitivity':
       return 'Sensitivity';
     case 'pores':
