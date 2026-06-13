@@ -277,7 +277,11 @@ export function ScanAnalyzingFaceScreen({
   //      quality gate). ----
   useEffect(() => {
     const ctrl = new AbortController();
-    readSkinFromPhoto({ photoUri, signal: ctrl.signal })
+    // Pass the onboarding goal so findings[0] + the summary can lead toward it
+    // honestly. This is the FIRST read for the frame, so it seeds the memo the
+    // "Your Skin" screen reuses (cache is keyed on photoUri).
+    const goal = useAppStore.getState().goal ?? undefined;
+    readSkinFromPhoto({ photoUri, signal: ctrl.signal, goal })
       .then(setSkinRead)
       .catch(() =>
         setSkinRead({

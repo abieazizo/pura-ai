@@ -7,6 +7,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readSkinFromPhoto } from '@/api/skinRead';
+import { useAppStore } from '@/store/useAppStore';
 import type { SkinReadOutcome } from '@/types/skinRead';
 import type { FaceLandmarkResult } from '@/types/scanResults';
 import { FirstFindingScreen } from './FirstFindingScreen';
@@ -54,7 +55,8 @@ export function FirstFindingContainer({
     const id = ++reqId.current;
     const ctrl = new AbortController();
     setOutcome({ status: 'pending' });
-    readSkinFromPhoto({ photoUri, signal: ctrl.signal })
+    const goal = useAppStore.getState().goal ?? undefined;
+    readSkinFromPhoto({ photoUri, signal: ctrl.signal, goal })
       .then((o) => {
         if (reqId.current === id) setOutcome(o);
       })

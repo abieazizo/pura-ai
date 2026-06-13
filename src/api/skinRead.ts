@@ -24,7 +24,7 @@
 import type { RawSkinRead } from '@/screens/scan/firstFinding/normalizeSkinRead';
 import { normalizeSkinRead } from '@/screens/scan/firstFinding/normalizeSkinRead';
 import { guardRead } from '@/screens/scan/yourSkin/coverageGuard';
-import { withPlan, type RawPlanFields } from '@/screens/scan/yourSkin/normalizePlan';
+import { withPlan, planHasBanned, type RawPlanFields } from '@/screens/scan/yourSkin/normalizePlan';
 import type { SkinRead, SkinReadOutcome } from '@/types/skinRead';
 import { aiGateway } from '@/ai/aiGateway';
 import { aiLog } from '@/ai/aiLog';
@@ -69,6 +69,7 @@ type RawSkinReadResponse = RawSkinRead & RawPlanFields;
 async function postReadSkin(
   imageBase64: string,
   signal?: AbortSignal,
+  goal?: string,
 ): Promise<RawSkinReadResponse> {
   const base = aiGateway.proxyUrl();
   if (!base) throw new Error('AI proxy not configured');
@@ -78,7 +79,9 @@ async function postReadSkin(
   const res = await fetch(`${base}/readSkin`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ imageBase64, mediaType: 'image/jpeg' }),
+    // `goal` (optional) lets the model lead findings[0] + the summary toward the
+    // person's stated goal where the skin honestly supports it (never invented).
+    body: JSON.stringify({ imageBase64, mediaType: 'image/jpeg', goal: goal || undefined }),
     signal,
   });
   if (!res.ok) throw new Error(`readSkin proxy error ${res.status}`);
@@ -118,8 +121,12 @@ export function invalidateSkinRead(photoUri: string): void {
 export async function readSkinFromPhoto(args: {
   photoUri: string;
   signal?: AbortSignal;
+  /** The person's onboarding goal — lets the read lead toward it honestly.
+   *  The cache is keyed on photoUri alone, so the FIRST call for a frame (the
+   *  analyzing screen, which always passes the goal) wins; later calls reuse it. */
+  goal?: string;
 }): Promise<SkinReadOutcome> {
-  const { photoUri, signal } = args;
+  const { photoUri, signal, goal } = args;
 
   // Computed-once: a prior usable read for this exact frame is reused verbatim.
   const cached = _readCache.get(photoUri);
@@ -142,7 +149,7 @@ export async function readSkinFromPhoto(args: {
   // First pass.
   let raw: RawSkinRead;
   try {
-    raw = await postReadSkin(imageBase64, signal);
+    raw = await postReadSkin(imageBase64, signal, goal);
   } catch (e) {
     aiLog.warn('readSkinFromPhoto', 'first pass failed', {
       error: e instanceof Error ? e.message : String(e),
@@ -165,7 +172,7 @@ export async function readSkinFromPhoto(args: {
       console.log('[Pura SkinRead] regenerating once:', reasons.join('; '));
     }
     try {
-      const raw2 = await postReadSkin(imageBase64, signal);
+      const raw2 = await postReadSkin(imageBase64, signal, goal);
       const second = finalizeRead(raw2);
       if (second.read) read = second.read;
     } catch {
@@ -210,12 +217,20 @@ function finalizeRead(raw: RawSkinReadResponse): {
   };
 
   const read = withPlan(guardedRead, raw);
-  const reasons = guarded.report.regenerateAdvised
-    ? [...base.reasons, `coverage wash → regenerate (${guarded.report.rejectedIds.join(', ')})`]
-    : base.reasons;
+
+  // A banned word in the screen-2 plan copy (summary / horizon / routine) also
+  // rejects the read for a clean second pass — not just a silently dropped field.
+  const planBanned = planHasBanned(raw);
+
+  const reasons = [...base.reasons];
+  if (guarded.report.regenerateAdvised) {
+    reasons.push(`coverage wash → regenerate (${guarded.report.rejectedIds.join(', ')})`);
+  }
+  if (planBanned) reasons.push('banned word in plan copy');
+
   return {
     read,
-    needsRegen: base.needsRegen || guarded.report.regenerateAdvised,
+    needsRegen: base.needsRegen || guarded.report.regenerateAdvised || planBanned,
     reasons,
   };
 }

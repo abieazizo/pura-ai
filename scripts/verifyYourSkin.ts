@@ -145,16 +145,30 @@ section('3 · SkSL fragment shaders');
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-section('4 · Orphan discipline (Metro-safe)');
+section('4 · Skia wiring discipline (post-install, 2026-06-11)');
 {
-  const skiaFiles = ['AuroraOrbSkia.tsx', 'GlowFieldSkia.tsx', 'FilmGrainSkia.tsx', 'OrbLightBackdropSkia.tsx'];
-  for (const f of skiaFiles) {
+  // @shopify/react-native-skia IS installed now. AuroraOrbSkia was de-orphaned
+  // and wired as the live GPU orb — but ONLY through ResultsOrb's lazy +
+  // useSkiaReady boundary (a static import in the boot graph would snapshot an
+  // undefined CanvasKit on web; see src/components/ResultsOrb.tsx). The OTHER
+  // three Skia files are still orphans (not yet wired), so they keep @ts-nocheck.
+  const wired = 'AuroraOrbSkia.tsx';
+  const stillOrphan = ['GlowFieldSkia.tsx', 'FilmGrainSkia.tsx', 'OrbLightBackdropSkia.tsx'];
+
+  const wiredTxt = read(join(YS, 'skia', wired));
+  check(`${wired} is de-orphaned (no // @ts-nocheck)`, !wiredTxt.trimStart().startsWith('// @ts-nocheck'));
+  check(`${wired} imports @shopify/react-native-skia`, wiredTxt.includes('@shopify/react-native-skia'));
+  check(`${wired} compiles its SkSL at RENDER time, not module scope (web-safe)`,
+    !/^const\s+ORB_EFFECT\s*=\s*Skia\.RuntimeEffect/m.test(wiredTxt));
+
+  for (const f of stillOrphan) {
     const txt = read(join(YS, 'skia', f));
-    check(`${f} starts with // @ts-nocheck`, txt.trimStart().startsWith('// @ts-nocheck'));
-    check(`${f} imports @shopify/react-native-skia`, txt.includes("@shopify/react-native-skia"));
+    check(`${f} still starts with // @ts-nocheck (orphan)`, txt.trimStart().startsWith('// @ts-nocheck'));
+    check(`${f} imports @shopify/react-native-skia`, txt.includes('@shopify/react-native-skia'));
   }
-  // Walk every LIVE file (excluding the skia/ orphan dir) — none may wire the
-  // orphans or the native dep.
+
+  // AuroraOrbSkia may ONLY be reached via the gated ResultsOrb boundary — never
+  // a static import from a live yourSkin file (that would dead-wire web Skia).
   const liveOffenders: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
@@ -166,7 +180,8 @@ section('4 · Orphan discipline (Metro-safe)');
     }
   };
   walk(YS);
-  check('no LIVE yourSkin file imports skia or the native dep', liveOffenders.length === 0, liveOffenders.join(', '));
+  check('no LIVE yourSkin file statically imports skia (the orb goes through ResultsOrb)',
+    liveOffenders.length === 0, liveOffenders.join(', '));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

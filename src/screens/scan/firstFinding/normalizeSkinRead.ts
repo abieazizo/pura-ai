@@ -212,22 +212,35 @@ export function normalizeSkinRead(raw: RawSkinRead): NormalizeResult {
     };
   });
 
-  // ── The "stranger test" + specificity gates on findings[0] (the hero). ──
+  // ── Per-finding quality gates (brief §10), applied to EVERY concern finding,
+  //    not just the hero:
+  //      • a SEEN, located concern (redness / dark marks / breakouts) with no
+  //        spots can't render and reads as guessed → regenerate;
+  //      • any concern observation under ~5 words is too thin to be true →
+  //        regenerate.
+  //    GUESSED metrics (oil / dryness) are exempt from the spots gate — they're
+  //    legitimately diffuse and may carry no precise spot; positives are exempt
+  //    from both (they're good-news, not located concerns). ──
+  const LOCATED_METRICS: MetricKind[] = ['redness', 'dark_marks', 'breakouts'];
+  findings.forEach((f, i) => {
+    if (!isConcern(f.metric)) return;
+    if (wordCount(f.whatISee) < 5) {
+      needsRegen = true;
+      reasons.push(`finding ${i} (${f.metric}) what_i_see too short`);
+    }
+    if (LOCATED_METRICS.includes(f.metric) && f.spots.length === 0) {
+      needsRegen = true;
+      reasons.push(`finding ${i} (${f.metric}) has no located spots`);
+    }
+  });
+
+  // ── The "stranger test" on findings[0] (the hero shown ALONE first): it must
+  //    be specific + located, never a line generic enough to fit a random
+  //    person ("your skin looks fine", "some unevenness"). ──
   const f0 = findings[0];
-  const concern0 = f0 && isConcern(f0.metric);
-  if (concern0) {
-    if (f0.spots.length === 0) {
-      needsRegen = true;
-      reasons.push('findings[0] has no located spots');
-    }
-    if (wordCount(f0.whatISee) < 5) {
-      needsRegen = true;
-      reasons.push('findings[0].what_i_see too short');
-    }
-    if (!isSpecific(f0.whatISee)) {
-      needsRegen = true;
-      reasons.push('findings[0] fails the stranger test');
-    }
+  if (f0 && isConcern(f0.metric) && !isSpecific(f0.whatISee)) {
+    needsRegen = true;
+    reasons.push('findings[0] fails the stranger test');
   }
 
   const photoRaw = raw.photo_check ?? {};

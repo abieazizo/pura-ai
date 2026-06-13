@@ -811,11 +811,22 @@ export class OpenAIClient {
   async readSkin(params: {
     imageBase64: string;
     mediaType: SupportedImageMediaType;
+    /** The person's onboarding goal, when known. Injected into the per-request
+     *  user message (NOT the shared system prompt) so the read can lead toward
+     *  it honestly. Never a license to invent — the prompt forbids that. */
+    goal?: string;
   }): Promise<unknown> {
+    const goal = typeof params.goal === 'string' ? params.goal.trim().slice(0, 120) : '';
+    const instruction = goal
+      ? `Read this skin photo and return the structured skin read as JSON only. ` +
+        `The person's main goal is: "${goal}". Where the skin HONESTLY supports it, ` +
+        `make findings[0] and skin_summary_line speak to that goal — but never invent ` +
+        `or inflate a finding to match it; if the skin doesn't support it, say what's truly there.`
+      : 'Read this skin photo and return the structured skin read as JSON only.';
     const userContent = this.buildImageUserContent(
       params.imageBase64,
       params.mediaType,
-      'Read this skin photo and return the structured skin read as JSON only.',
+      instruction,
       'high'
     );
     return this.runStrictStructured<unknown>({

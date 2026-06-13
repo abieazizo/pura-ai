@@ -83,7 +83,9 @@ export function YourSkinContainer({
     const id = ++reqId.current;
     const ctrl = new AbortController();
     setOutcome({ status: 'pending' });
-    readSkinFromPhoto({ photoUri, signal: ctrl.signal })
+    // Pass the goal too — usually a cache hit on the analyzing screen's read,
+    // but correct (goal-led) if this is ever the first read for the frame.
+    readSkinFromPhoto({ photoUri, signal: ctrl.signal, goal })
       .then((o) => {
         if (reqId.current === id) setOutcome(o);
       })
@@ -93,7 +95,7 @@ export function YourSkinContainer({
         }
       });
     return () => ctrl.abort();
-  }, [photoUri]);
+  }, [photoUri, goal]);
 
   useEffect(() => run(), [run]);
 

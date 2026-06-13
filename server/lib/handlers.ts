@@ -261,6 +261,8 @@ export const HANDLERS: Record<string, Handler> = {
     const params = {
       imageBase64: reqString(body, 'imageBase64'),
       mediaType: reqMediaType(body, 'mediaType'),
+      // Optional onboarding goal — lets the read lead toward it honestly.
+      goal: optString(body, 'goal'),
     };
     const result = await withAIErrorTranslation('readSkin', () =>
       client.readSkin(params)

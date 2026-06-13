@@ -49,6 +49,21 @@ function isPlain(s: string): boolean {
   return !BANNED.some((w) => l.includes(w));
 }
 
+/**
+ * Does any RAW plan field carry a banned (jargon) word? `normalizeRoutineFocus`
+ * silently DROPS an offending field (graceful degradation); the read pipeline
+ * uses this to also REGENERATE once (brief §10: "any banned word" rejects the
+ * whole read), so the plan copy gets a clean second pass instead of a hole.
+ */
+export function planHasBanned(raw: RawPlanFields): boolean {
+  const strings = [
+    raw.skin_summary_line,
+    raw.horizon_line,
+    ...(Array.isArray(raw.routine_focus) ? raw.routine_focus : []).flatMap((m) => [m?.title, m?.why]),
+  ];
+  return strings.some((s) => typeof s === 'string' && !isPlain(s));
+}
+
 /** Normalize a finding name / address for fuzzy matching. */
 function key(s: string): string {
   return s.toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
