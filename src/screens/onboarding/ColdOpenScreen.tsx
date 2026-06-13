@@ -502,7 +502,7 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
               <Animated.View style={[styles.mastRule, sublineStyle]} pointerEvents="none" />
 
               <Animated.Text style={[styles.subline, sublineStyle]} maxFontSizeMultiplier={1.2}>
-                Pura reads what your skin needs — and builds the routine that fits.
+                It’s already there in your skin. Pura just reads it.
               </Animated.Text>
             </Animated.View>
           </Animated.View>
@@ -609,7 +609,10 @@ const styles = StyleSheet.create({
   masthead: { alignItems: 'flex-start' },
   // The orb crowns the headline as a luminous signature, nudged left so it
   // reads as a mark on the masthead rather than a centered centerpiece.
-  orbMast: { alignItems: 'flex-start', marginLeft: -6, marginBottom: 18 },
+  // marginBottom gives the portrait-frame's lower edge a clean band of
+  // porcelain before the kicker — the crown reads as a deliberate signature
+  // with air beneath it, not a stacked element crowding "MEET PURA".
+  orbMast: { alignItems: 'flex-start', marginLeft: -6, marginBottom: 28 },
   // Portrait-frame medallion behind the orb mark (Cycle 12 shared imagery
   // language) — a soft rounded-portrait hairline frame + faint bloom.
   orbFrame: {
