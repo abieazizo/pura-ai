@@ -52,12 +52,15 @@ type Nav = NavigationProp<HomeStackParamList>;
 
 // The editorial index. Order is curated (most-requested first), NOT
 // personalized — personalization is the feed's job, not browse's.
+// Titles speak the SCAN's plain words (Dryness/Redness/Dark marks), never
+// product taxonomy or jargon ('Barrier' is a banned word). Keys are unchanged
+// — the personalization mapper still routes on them; only the display copy.
 const CONCERN_INDEX: readonly { key: ConcernKey; title: string; blurb: string }[] = [
   { key: 'breakouts', title: 'Breakouts', blurb: 'Clear active breakouts and keep congested pores calm.' },
-  { key: 'hydration', title: 'Hydration', blurb: 'Replenish water and soften tight, thirsty skin.' },
-  { key: 'barrier',   title: 'Barrier',   blurb: 'Repair and shield a compromised moisture barrier.' },
-  { key: 'marks',     title: 'Marks',     blurb: 'Fade post-blemish marks and even out tone.' },
-  { key: 'bright',    title: 'Brightness', blurb: 'Lift dullness for a luminous, even glow.' },
+  { key: 'hydration', title: 'Dryness',   blurb: 'Replenish water and soften tight, thirsty skin.' },
+  { key: 'barrier',   title: 'Redness',   blurb: 'Calm redness and steady skin that flushes or stings easily.' },
+  { key: 'marks',     title: 'Dark marks', blurb: 'Fade post-blemish marks and even out your tone.' },
+  { key: 'bright',    title: 'Brightness', blurb: 'Lift dullness and even out your tone.' },
 ] as const;
 
 export function ConcernIndexScreen() {

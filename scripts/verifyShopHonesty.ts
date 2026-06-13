@@ -73,6 +73,42 @@ for (const f of ['personalization.ts', 'shopStackModel.ts']) {
   check(`${f}: user copy jargon-free (${strings.length} strings)`, hits.length === 0, hits.slice(0, 3).join(' | '));
 }
 
+// ── 2b · Concern LABELS everywhere speak scan language ─────────────────────
+// The seam that slipped the first pass: the "what I saw" chips (shopStackModel
+// humanConcern) and the browse index (ConcernIndexScreen) had their OWN label
+// maps saying 'Hydration'/'Barrier' — product taxonomy, not the scan's words.
+console.log('\n— Concern labels (every shop surface) in scan language —');
+const BENEFIT_LABELS = /'(Hydration|Oiliness|Barrier|Brightness)'/g;
+
+// shopStackModel.humanConcern — the chip labels.
+const stackSrc = readFileSync(join(SHOP, 'shopStackModel.ts'), 'utf8');
+const humanBlock = stackSrc.slice(stackSrc.indexOf('function humanConcern'));
+const humanBody = humanBlock.slice(0, humanBlock.indexOf('\n}'));
+const humanReturns = [...humanBody.matchAll(/return '([^']+)'/g)].map((m) => m[1]);
+check(`humanConcern returns swept (${humanReturns.join(', ')})`, humanReturns.length >= 6);
+check("humanConcern maps hydration→'Dryness' (the flagged fix)", humanReturns.includes('Dryness'));
+check("humanConcern never says 'Hydration' or 'Oiliness'",
+  !humanReturns.includes('Hydration') && !humanReturns.includes('Oiliness'),
+  humanReturns.filter((l) => l === 'Hydration' || l === 'Oiliness').join(','));
+
+// ConcernIndexScreen — the browse-by-concern index titles + blurbs.
+const idxSrc = readFileSync(join(SHOP, 'ConcernIndexScreen.tsx'), 'utf8');
+const idxBlock = idxSrc.slice(idxSrc.indexOf('CONCERN_INDEX'), idxSrc.indexOf('] as const'));
+const idxStrings = [...idxBlock.matchAll(/(?:title|blurb):\s*'([^']+)'/g)].map((m) => m[1]);
+check(`concern index strings swept (${idxStrings.length})`, idxStrings.length >= 8);
+check('concern index has zero jargon (catches the old "Barrier" title + "moisture barrier")',
+  idxStrings.every((s) => !JARGON.test(s)), idxStrings.filter((s) => JARGON.test(s)).join(' | '));
+const idxTitles = [...idxBlock.matchAll(/title:\s*'([^']+)'/g)].map((m) => m[1]);
+check('concern index titles are scan language (Dryness/Redness/Dark marks present)',
+  idxTitles.includes('Dryness') && idxTitles.includes('Redness') && idxTitles.includes('Dark marks'),
+  idxTitles.join(', '));
+
+// personalization.concernLabel — the reason-sentence nouns.
+const persSrc2 = readFileSync(join(SHOP, 'personalization.ts'), 'utf8');
+const concernLabelBlock = persSrc2.slice(persSrc2.indexOf('function concernLabel'));
+check("personalization concernLabel says 'dryness', not 'hydration'",
+  /case 'hydration': return 'dryness'/.test(concernLabelBlock));
+
 // ── 3 · Real images required · no swipe deck ───────────────────────────────
 console.log('\n— Structure —');
 check('packshot is REQUIRED by the type (no fallback path)',

@@ -279,7 +279,7 @@ function concernLabel(k: ConcernKey): string {
   switch (k) {
     case 'breakouts': return 'active breakouts';
     case 'marks': return 'post-acne marks';
-    case 'hydration': return 'hydration';
+    case 'hydration': return 'dryness';
     case 'barrier': return 'sensitive skin';
     case 'bright': return 'dullness';
   }
