@@ -2,18 +2,15 @@
  * THE GAZE — motion grammar.
  *
  * One place for every duration/easing so the screen breathes as one
- * organism. The quality signals arrive pre-smoothed (engine lerp,
- * τ=180ms); the short bridge timings here only silk over the 66ms
- * steps between engine ticks — they must stay SHORT or the guide
- * feels laggy rather than alive.
+ * organism. The quality signals arrive pre-smoothed by the engine
+ * (lerp, τ=180ms), so the living frame consumes them DIRECTLY — no
+ * per-tick re-tween. The only scripted timings here are the discrete
+ * beats (entry, the held breath, capture).
  */
 
 import { Easing } from 'react-native-reanimated';
 
 export const MOTION = {
-  /** Bridge between 15Hz signal steps → continuous motion. */
-  SIGNAL_BRIDGE_MS: 150,
-
   // ---- entry (the aperture) ----
   APERTURE_MS: 720,
   APERTURE_DELAY_MS: 90,
@@ -33,17 +30,34 @@ export const MOTION = {
   // ---- fill light ----
   FILL_MS: 650,
 
-  // ---- capture ----
+  // ---- capture: the held breath -------------------------------------------
+  // A genuine three-beat so light GATHERS INWARD and CLEARS to reveal
+  // the lit, crisp captured face — never a wash that buries it.
+  //   1) the frame inhales (a small dip)
+  //   2) the captured face lands FAST underneath (FREEZE_IN)
+  //   3) the bloom PULSES: floods up (BLOOM_UP), then recedes
+  //      (BLOOM_DOWN) while its light condenses inward — clearing to
+  //      leave the crisp face ("There you are")
+  //   4) a beat of crisp face (CRISP_HOLD), then the veil rises.
   INHALE_MS: 190,
   INHALE_SCALE: 0.982,
-  BLOOM_MS: 360,
-  FREEZE_HOLD_MS: 320,
-  EXIT_VEIL_MS: 280,
-  /** Total shutter → navigate. Keep ≤ 950ms — a held breath, not a pause. */
-  HANDOFF_TOTAL_MS: 900,
+  FREEZE_IN_MS: 180,
+  BLOOM_UP_MS: 280,
+  BLOOM_DOWN_MS: 300,
+  CRISP_HOLD_MS: 160,
+  VEIL_MS: 220,
 
   // ---- easings ----
   easeOut: Easing.out(Easing.cubic),
   easeInOut: Easing.inOut(Easing.cubic),
   easeBreath: Easing.inOut(Easing.sin),
+} as const;
+
+/** Capture timeline derived from the beats above (single source of truth). */
+export const CAPTURE = {
+  /** Bloom fully cleared → veil begins. */
+  VEIL_START_MS: MOTION.BLOOM_UP_MS + MOTION.BLOOM_DOWN_MS + MOTION.CRISP_HOLD_MS, // 740
+  /** Veil fully opaque → navigate beneath it (one unbroken moment). */
+  HANDOFF_MS:
+    MOTION.BLOOM_UP_MS + MOTION.BLOOM_DOWN_MS + MOTION.CRISP_HOLD_MS + MOTION.VEIL_MS, // 960
 } as const;

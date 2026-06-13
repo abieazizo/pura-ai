@@ -18,11 +18,15 @@ export const gaze = {
   strokeViolet: 'rgba(186, 170, 240, 0.95)',
   strokeBlue: 'rgba(132, 178, 238, 0.95)',
   strokeCyan: 'rgba(150, 214, 232, 0.95)',
-  /** Soft halo layers (no blur primitive — layered low-alpha strokes). */
-  haloInner: 'rgba(160, 146, 226, 0.30)',
-  haloOuter: 'rgba(140, 202, 224, 0.16)',
-  /** Warm tint that rises with lightScore — the glow "warming up". */
-  warmGlow: 'rgba(255, 214, 170, 0.55)',
+  /** Soft halo — two concentric strokes of DECREASING alpha (wide+faint
+   *  outer, narrower+stronger inner) so the edge ramps to transparent
+   *  instead of stepping. No blur primitive in this RNSVG build. */
+  haloOuter: 'rgba(150, 174, 230, 0.10)',
+  haloInner: 'rgba(160, 150, 228, 0.26)',
+  /** The glow "warms" by brightening toward warm-WHITE, not amber —
+   *  amber over the cyan edge mudded the aurora (and fought the warm
+   *  fill-light). A low-opacity warm-white that lifts the stroke. */
+  warmGlow: 'rgba(255, 240, 224, 0.34)',
   /** Inner wash so the frame reads as holding light, not a cutout. */
   innerGlow0: 'rgba(196, 186, 240, 0.10)',
   innerGlowEdge: 'rgba(196, 186, 240, 0)',

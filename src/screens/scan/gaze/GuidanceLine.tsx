@@ -5,10 +5,19 @@
  * the engine's primaryHint. Always encouraging, never error-red,
  * never a blob over the face. Swaps with a gentle rise-and-fade so
  * changing guidance reads as the companion adjusting its voice, not
- * an alert firing. Announced politely to screen readers.
+ * an alert firing.
+ *
+ * Accessibility: the SPOKEN path lives in ScanCaptureScreen, which
+ * calls AccessibilityInfo.announceForAccessibility on each real hint
+ * change (works on iOS, unlike a polite live region) and on the
+ * capture beat. So this visual line is marked decorative — hidden
+ * from the AT tree to avoid double-speaking.
  *
  * While fill light is active a small warm note sits above it —
  * "Adding a little light for you." — the only second line allowed.
+ *
+ * React.memo'd: it consumes the debounced hint string + a boolean,
+ * NOT the 15Hz score stream, so it must not reconcile every tick.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -27,7 +36,7 @@ export interface GuidanceLineProps {
   fillLightActive: boolean;
 }
 
-export function GuidanceLine({ text, fillLightActive }: GuidanceLineProps) {
+function GuidanceLineImpl({ text, fillLightActive }: GuidanceLineProps) {
   const reduceMotion = useReduceMotion();
 
   // Double-buffered text so the old line fades down as the new rises.
@@ -67,26 +76,31 @@ export function GuidanceLine({ text, fillLightActive }: GuidanceLineProps) {
   }));
 
   return (
-    <View style={styles.wrap} pointerEvents="none">
+    <View
+      style={styles.wrap}
+      pointerEvents="none"
+      // Decorative — the spoken path is announceForAccessibility in
+      // ScanCaptureScreen (iOS-correct); hide here to avoid double-speak.
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+    >
       <Animated.View style={noteStyle}>
-        <Text style={styles.note} maxFontSizeMultiplier={1.2}>
+        <Text style={styles.note} maxFontSizeMultiplier={1.3}>
           Adding a little light for you.
         </Text>
       </Animated.View>
       <Animated.View style={lineStyle}>
-        <Text
-          style={styles.line}
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.2}
-          accessibilityRole="text"
-          accessibilityLiveRegion="polite"
-        >
+        <Text style={styles.line} numberOfLines={2} maxFontSizeMultiplier={1.3}>
           {shown}
         </Text>
       </Animated.View>
     </View>
   );
 }
+
+/** Only re-render on the debounced hint text or the fill-light flag —
+ *  never on the 15Hz score stream the parent reconciles against. */
+export const GuidanceLine = React.memo(GuidanceLineImpl);
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: 6 },

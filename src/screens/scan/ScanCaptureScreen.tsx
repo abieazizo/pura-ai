@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Pressable,
   StyleSheet,
   Text,
@@ -50,7 +51,7 @@ import {
 import {
   ApertureEntry,
   CaptureBloom,
-  MOTION,
+  CAPTURE,
   type CapturePhase,
 } from '@/screens/scan/gaze';
 
@@ -325,6 +326,19 @@ export function ScanCaptureScreen({
     });
   }, [engineLive, quality.lightLevel]);
 
+  // v28 — SPOKEN guidance. The visual line is announced via
+  // AccessibilityInfo on each REAL hint change (hintId is stable —
+  // changes only when the dominant gate changes, not at 15Hz), which
+  // works on iOS where a polite live region is a no-op. The capture
+  // beat speaks separately in runCapture. Silent while capturing.
+  useEffect(() => {
+    if (!engineLive || capturePhase !== 'idle') return;
+    if (quality.hintId === 'initializing') return;
+    AccessibilityInfo.announceForAccessibility(quality.primaryHint);
+    // hintId is the dep: re-announces only when the gate actually shifts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineLive, quality.hintId]);
+
   // Honest baselines for product / barcode modes — we don't pretend
   // we have label OCR or barcode detection until the runtime signals.
   // expo-camera's `onBarcodeScanned` flips barcode.detected via the
@@ -510,16 +524,18 @@ export function ScanCaptureScreen({
           // frame inhales; ink rises; navigation happens beneath it so
           // scan → analyzing is one unbroken moment.
           const photoUri = uri;
+          AccessibilityInfo.announceForAccessibility(
+            'Got it — capturing your photo now.'
+          );
           setFrozenUri(photoUri);
           setCapturePhase('bloom');
           handoffTimers.current.push(
-            setTimeout(
-              () => setCapturePhase('veil'),
-              MOTION.BLOOM_MS + MOTION.FREEZE_HOLD_MS
-            ),
+            // Light has gathered and cleared to the crisp face → veil.
+            setTimeout(() => setCapturePhase('veil'), CAPTURE.VEIL_START_MS),
+            // Veil fully opaque → navigate beneath it (no flash-through).
             setTimeout(() => {
               onCaptured(photoUri, 'face', captureQuality);
-            }, MOTION.HANDOFF_TOTAL_MS),
+            }, CAPTURE.HANDOFF_MS),
             // The screen stays mounted beneath the analyzing route —
             // settle back to idle so a later return isn't veiled.
             setTimeout(() => {
@@ -527,7 +543,7 @@ export function ScanCaptureScreen({
               setFrozenUri(null);
               capturingRef.current = false;
               setCapturing(false);
-            }, MOTION.HANDOFF_TOTAL_MS + 1600)
+            }, CAPTURE.HANDOFF_MS + 1600)
           );
         } else {
           // Legacy path (product capture, no-detector face): the brief

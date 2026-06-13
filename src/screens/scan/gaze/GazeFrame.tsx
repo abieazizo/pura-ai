@@ -13,12 +13,16 @@
  *                   over the auto-capture hold (~1.3s) — a held breath
  *
  * No broken arcs, no brackets, no grid. The signals arrive
- * pre-smoothed from the engine; short 150ms bridges keep the 15Hz
- * steps continuous. All layer mixing is plain View opacity/transform
- * (reliable on web); only the ring uses a brief rAF burst.
+ * pre-smoothed from the engine; a short bridge tween keeps the 15Hz
+ * steps gliding at 60fps. Geometry + path strings are memoized so the
+ * per-tick render is cheap (the heavy SVG masks are not re-parsed);
+ * the pure-presentational siblings (GuidanceLine/segments/FillLight)
+ * are React.memo'd so only THIS frame reconciles on score churn.
+ * All layer mixing is plain View opacity/transform (reliable on web);
+ * only the sweep uses a throttled rAF.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   cancelAnimation,
@@ -99,19 +103,36 @@ export function GazeFrame({
   const reduceMotion = useReduceMotion();
   const dimH = screenHeight ?? height;
 
-  // ---- geometry (snug frame; looseness is a transform scale) -------------
-  const { frameW, frameH, cx, cy } = frameGeometry(width, height);
-  const radius = frameW * FRAME.RADIUS_FRAC;
-  const path = locketPath(cx, cy, frameW, frameH, radius);
-  const perimeter = locketPerimeter(frameW, frameH, radius);
+  // ---- geometry — memoized so the per-tick render never re-parses the
+  // locket path or the two full-screen surround masks. -----------------------
+  const geo = useMemo(() => {
+    const g = frameGeometry(width, height);
+    const radius = g.frameW * FRAME.RADIUS_FRAC;
+    return {
+      ...g,
+      radius,
+      path: locketPath(g.cx, g.cy, g.frameW, g.frameH, radius),
+      perimeter: locketPerimeter(g.frameW, g.frameH, radius),
+    };
+  }, [width, height]);
+  const { frameW, frameH, cx, cy, radius, path, perimeter } = geo;
+  const surroundD = useMemo(
+    () =>
+      `M 0 0 H ${width} V ${dimH} H 0 Z ${locketPath(cx, cy + screenTop, frameW, frameH, radius)}`,
+    [width, dimH, cx, cy, frameW, frameH, radius, screenTop]
+  );
 
-  // ---- signal-driven shared values ----------------------------------------
+  // ---- signal-driven shared values -----------------------------------------
+  // The engine already lerps (τ=180ms); a short bridge tween only silks
+  // its 15Hz steps up to 60fps. Deps are the discrete scores, so this
+  // re-runs only when a score actually moves.
+  const BRIDGE_MS = 140;
   const framing = useSharedValue(0);
   const softGlow = useSharedValue(0.6);
   const warm = useSharedValue(0);
   const crisp = useSharedValue(0.45);
   useEffect(() => {
-    const t = { duration: MOTION.SIGNAL_BRIDGE_MS };
+    const t = { duration: reduceMotion ? 0 : BRIDGE_MS };
     framing.value = withTiming(signals.framingScore, t);
     softGlow.value = withTiming(
       Math.min(1, 0.2 + 0.55 * (1 - signals.sharpnessScore) + 0.25 * signals.lightScore),
@@ -119,7 +140,16 @@ export function GazeFrame({
     );
     warm.value = withTiming(0.5 * signals.lightScore, t);
     crisp.value = withTiming(0.45 + 0.55 * signals.sharpnessScore, t);
-  }, [signals, framing, softGlow, warm, crisp]);
+  }, [
+    signals.framingScore,
+    signals.sharpnessScore,
+    signals.lightScore,
+    reduceMotion,
+    framing,
+    softGlow,
+    warm,
+    crisp,
+  ]);
 
   // ---- breath + searching drift (stilled under Reduce Motion) ---------------
   const breath = useSharedValue(0);
@@ -225,7 +255,11 @@ export function GazeFrame({
   const surroundStyle = useAnimatedStyle(() => ({ opacity: present.value }));
   const surroundHoldStyle = useAnimatedStyle(() => ({ opacity: hold.value }));
 
-  // ---- anticipation sweep (rAF burst synced to the auto-capture hold) ------------
+  // ---- anticipation sweep (throttled rAF synced to the auto-capture hold) --------
+  // setState only when progress advances ≥1.2% (≈ 80 updates over the
+  // 1.3s hold, not 60-120/s). On capture we LATCH the last value — never
+  // the old `capturing ? 1` ternary that snapped the final ~3% shut; the
+  // bloom floods over the remainder, so the gesture lands, never jumps.
   const [sweepProgress, setSweepProgress] = useState(0);
   const sweepRaf = useRef<number | null>(null);
   useEffect(() => {
@@ -233,13 +267,18 @@ export function GazeFrame({
     if (!armed) {
       if (sweepRaf.current !== null) cancelAnimationFrame(sweepRaf.current);
       sweepRaf.current = null;
-      setSweepProgress(0);
+      // Reset only when framing was lost — NOT at capture (latch instead).
+      if (!capturing) setSweepProgress(0);
       return;
     }
     const start = Date.now();
+    let last = 0;
     const step = () => {
       const p = Math.min(1, (Date.now() - start) / THRESHOLDS.AUTO_CAPTURE_HOLD_MS);
-      setSweepProgress(p);
+      if (p - last >= 0.012 || p >= 1) {
+        setSweepProgress(p);
+        last = p;
+      }
       if (p < 1) sweepRaf.current = requestAnimationFrame(step);
     };
     sweepRaf.current = requestAnimationFrame(step);
@@ -247,13 +286,11 @@ export function GazeFrame({
       if (sweepRaf.current !== null) cancelAnimationFrame(sweepRaf.current);
       sweepRaf.current = null;
     };
-  }, [armed]);
+  }, [armed, capturing]);
   // Reduce Motion: the timer still auto-captures; the sweep presents as
   // the fully-lit locket instead of a moving trace.
   const sweepShown = armed || capturing;
-  const sweepOffset = reduceMotion
-    ? 0
-    : perimeter * (1 - (capturing ? 1 : sweepProgress));
+  const sweepOffset = reduceMotion ? 0 : perimeter * (1 - sweepProgress);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -263,11 +300,7 @@ export function GazeFrame({
         style={[styles.surround, { top: -screenTop, height: dimH }, surroundStyle]}
       >
         <Svg width={width} height={dimH}>
-          <Path
-            d={`M 0 0 H ${width} V ${dimH} H 0 Z ${locketPath(cx, cy + screenTop, frameW, frameH, radius)}`}
-            fill={gaze.surroundDim}
-            fillRule="evenodd"
-          />
+          <Path d={surroundD} fill={gaze.surroundDim} fillRule="evenodd" />
         </Svg>
       </Animated.View>
 
@@ -278,11 +311,7 @@ export function GazeFrame({
         style={[styles.surround, { top: -screenTop, height: dimH }, surroundHoldStyle]}
       >
         <Svg width={width} height={dimH}>
-          <Path
-            d={`M 0 0 H ${width} V ${dimH} H 0 Z ${locketPath(cx, cy + screenTop, frameW, frameH, radius)}`}
-            fill={gaze.surroundHold}
-            fillRule="evenodd"
-          />
+          <Path d={surroundD} fill={gaze.surroundHold} fillRule="evenodd" />
         </Svg>
       </Animated.View>
 
@@ -299,30 +328,21 @@ export function GazeFrame({
           <Path d={path} fill="url(#gazeInner)" />
         </Svg>
 
-        {/* Soft aurora halo — recedes as the image crisps. */}
+        {/* Soft aurora halo — two concentric strokes of decreasing alpha
+            (wide+faint, then narrower+stronger) so the edge feathers to
+            transparent instead of stepping. Recedes as the image crisps. */}
         <Animated.View style={[StyleSheet.absoluteFill, softStyle]}>
           <Svg width={width} height={height}>
-            <Defs>
-              <LinearGradient id="gazeHalo" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={gaze.haloInner} />
-                <Stop offset="100%" stopColor={gaze.haloOuter} />
-              </LinearGradient>
-            </Defs>
-            <Path d={path} stroke="url(#gazeHalo)" strokeWidth={16} fill="none" />
-            <Path d={path} stroke="url(#gazeHalo)" strokeWidth={8} fill="none" />
+            <Path d={path} stroke={gaze.haloOuter} strokeWidth={22} fill="none" />
+            <Path d={path} stroke={gaze.haloInner} strokeWidth={11} fill="none" />
           </Svg>
         </Animated.View>
 
-        {/* Warm bloom — rises with good light. */}
+        {/* Warm lift — the glow warms by BRIGHTENING toward warm-white as
+            light improves (no amber on the cool aurora edge). */}
         <Animated.View style={[StyleSheet.absoluteFill, warmStyle]}>
           <Svg width={width} height={height}>
-            <Path
-              d={path}
-              stroke={gaze.warmGlow}
-              strokeWidth={7}
-              fill="none"
-              strokeOpacity={0.5}
-            />
+            <Path d={path} stroke={gaze.warmGlow} strokeWidth={6} fill="none" />
           </Svg>
         </Animated.View>
 

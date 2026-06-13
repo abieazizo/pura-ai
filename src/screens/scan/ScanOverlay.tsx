@@ -213,11 +213,16 @@ export function ScanOverlay({
     instruction.phase === 'error' ||
     instruction.checks.length === 0;
 
-  // Mode-aware A11y for the shutter.
+  // Mode-aware A11y for the shutter. In gaze mode, fold the live
+  // primaryHint into the not-ready label so a screen-reader user who
+  // lands on the shutter still hears the actionable fix even if the
+  // spoken hint announcement was missed.
   const shutterA11y =
     mode === 'face'
       ? instruction.canCapture
         ? 'Start skin scan'
+        : gazeActive && quality
+        ? `Scan not ready. ${quality.primaryHint}`
         : 'Scan not ready'
       : mode === 'product'
       ? instruction.canCapture

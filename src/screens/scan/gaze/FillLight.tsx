@@ -23,7 +23,7 @@ import { MOTION } from './gazeMotion';
 
 const EDGE = 110;
 
-export function FillLight({ active }: { active: boolean }) {
+function FillLightImpl({ active }: { active: boolean }) {
   const on = useSharedValue(0);
   useEffect(() => {
     on.value = withTiming(active ? 1 : 0, {
@@ -61,6 +61,9 @@ export function FillLight({ active }: { active: boolean }) {
     </Animated.View>
   );
 }
+
+/** Re-renders only when `active` flips — not on the 15Hz score churn. */
+export const FillLight = React.memo(FillLightImpl);
 
 const styles = StyleSheet.create({
   edge: { position: 'absolute' },

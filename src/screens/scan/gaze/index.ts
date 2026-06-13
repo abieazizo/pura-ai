@@ -14,4 +14,4 @@ export { ApertureEntry } from './ApertureEntry';
 export { FillLight } from './FillLight';
 export { CaptureBloom, type CapturePhase } from './CaptureBloom';
 export { gaze, FRAME, frameGeometry } from './gazeTokens';
-export { MOTION } from './gazeMotion';
+export { MOTION, CAPTURE } from './gazeMotion';
