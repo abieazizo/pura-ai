@@ -250,7 +250,8 @@ function InterviewSteps({ onDone }: { onDone: () => void }) {
 
     case 'synthesis':
     default:
-      return <SynthesisBeat onDone={finish} />;
+      // goalId names the closing line — the orb proves it heard them.
+      return <SynthesisBeat onDone={finish} goalId={goalId} />;
   }
 }
 

@@ -249,11 +249,12 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
           </View>
         </Animated.View>
 
-        {/* Supporting line beneath the hero — the detail, in calm ink. Half
-            its former length: the hero + headline + promise carry the moment;
-            this names only the real read dimensions. */}
+        {/* The forward handoff — the orb's voice continuing from the synthesis
+            beat ("Redness first. I know what to look for.") into the scan. A
+            rising couplet, not a spec sheet: it keeps the temperature climbing
+            into the magic moment instead of resetting it to a feature list. */}
         <Animated.Text style={[styles.sub, subStyle]} maxFontSizeMultiplier={1.25}>
-          Texture, tone, hydration, barrier — from one portrait.
+          Everything you told me — now I read it on your skin.
         </Animated.Text>
       </View>
 

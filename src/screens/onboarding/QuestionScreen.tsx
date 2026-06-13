@@ -236,6 +236,13 @@ export function QuestionScreen({
     }
   }, []);
 
+  // Orb warmth is held below full through the questions (caps at ~0.85 at the
+  // last answer) so the SynthesisBeat's setFamiliarity(1) is a visible final
+  // bloom — the orb fully lights the instant it names your goal — instead of
+  // confirming a bar already maxed. The HONEST progress rail stays literal
+  // (answered/5); only the orb's glow is held back.
+  const orbWarmth = (p: number) => p * 0.85;
+
   const armHesitation = useCallback(() => {
     push(() => {
       if (selectedRef.current.length === 0) {
@@ -256,7 +263,7 @@ export function QuestionScreen({
   useEffect(() => {
     orb.show();
     orb.setAura(config.orbAuraTheme); // shifts the tint at a question seam
-    orb.setFamiliarity(progressFrom); // warmth credited only for ANSWERED questions
+    orb.setFamiliarity(orbWarmth(progressFrom)); // capped — full bloom waits for synthesis
     orb.moveTo(target);
 
     if (reduceMotion) {
@@ -355,11 +362,17 @@ export function QuestionScreen({
       clearTimers();
       setReacting(true);
       setEarned(true); // the answer is in — the rail + orb warmth take credit
-      orb.setFamiliarity(progressTo);
+      orb.setFamiliarity(orbWarmth(progressTo)); // capped — synthesis owns the full bloom
       orb.setPatient(false);
-      // Under Reduce Motion the host's glide snaps instantly, so the lift +
-      // settle would read as two size jump-cuts, not stillness — skip both.
+
+      // ANTICIPATION GATHER — a creature draws breath before it answers. The
+      // orb lifts (non-RM) AND raises its eyes from the cards to meet YOU; the
+      // spoken response lands ~110ms later, so the line doesn't fire on the
+      // same frame as the gather (which read as one mechanical trigger). Eye
+      // contact works under RM too (setGaze snaps), so the orb addresses the
+      // user even on the static web path — where the size lift is skipped.
       if (!reduceMotion) orb.setSize(ORB_SIZES.reactionLift); // "take the floor"
+      orb.setGaze('forward'); // look UP from the cards to the user, and speak
 
       const verbosity = option?.reactionVerbosity ?? 'normal';
       const vt = verbosityTiming(verbosity);
@@ -372,7 +385,7 @@ export function QuestionScreen({
           competence: option?.competenceWeight ?? 'mid',
           warmth: option?.warmthWeight ?? 'high',
         });
-        push(() => hapt.assistantReply(), 130); // soft pulse synced to the glow
+        push(() => hapt.assistantReply(), 30); // soft pulse synced to the glow
         speak(line, v);
         AccessibilityInfo.announceForAccessibility?.(line);
         if (!reduceMotion) {
@@ -395,8 +408,10 @@ export function QuestionScreen({
         orb.blinkNow();
         speak('Ah — this one instead.', { stagger: 55, duration: 220 });
         push(fireReaction, 620);
+      } else if (!reduceMotion) {
+        push(fireReaction, 110); // the breath between gather and response
       } else {
-        fireReaction();
+        fireReaction(); // RM: no anticipation beat (it'd read as a stall)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -471,7 +471,10 @@ export const SAFETY_QUESTION: QuestionConfig = {
       warmthWeight: 'mid',
       competenceWeight: 'mid',
       reactionVerbosity: 'terse',
-      reactionLine: 'Got it — that’s everything I need.',
+      // NOT a closing line: the SynthesisBeat that immediately follows is the
+      // close (it names the goal back). "That's everything I need" here made
+      // the dominant path say "I'm done" twice in two seconds.
+      reactionLine: 'Good to know.',
     },
     {
       id: 'prefer-not-to-say',
