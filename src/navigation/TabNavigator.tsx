@@ -97,7 +97,7 @@ function HomeStackScreen() {
  * own deep-link path into the same product detail surface for
  * recommendations flowing out of Home.
  */
-function ProductsStackScreen() {
+export function ProductsStackScreen() {
   return (
     <ProductsStack.Navigator screenOptions={{ headerShown: false }}>
       <ProductsStack.Screen name="Products" component={PuraShopScreen} />

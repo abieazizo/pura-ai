@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LogBox, StyleSheet, View, Platform, Text } from 'react-native';
 
 // v11.11 — silence known-safe non-critical noise from optional AI
@@ -45,6 +45,17 @@ import { OrbProvider } from '@/screens/onboarding/orb/OrbHost';
 import { FirstFindingScreen } from '@/screens/scan/firstFinding';
 import { buildRescanCompare } from '@/screens/scan/rescanCompare/model';
 import { RescanCompareScreen } from '@/screens/scan/rescanCompare/RescanCompareScreen';
+import { Pressable, ScrollView } from 'react-native';
+import { YourRoutineExperience } from '@/screens/routine/yourRoutine/YourRoutineExperience';
+import { buildYourRoutineModel } from '@/screens/routine/yourRoutine/model';
+import {
+  demoRoutine,
+  demoFindings,
+  demoMoves,
+  recentCompletionDates,
+} from '@/screens/routine/yourRoutine/fixtures';
+import type { RoutinePeriod } from '@/theme/routineAtmosphere';
+import { ProductsStackScreen } from '@/navigation/TabNavigator';
 // Web-only Skia GPU proof (Step 0). ⚠️ MUST be a DEFERRED import: RNSkia's web
 // entry snapshots `global.CanvasKit` at module-evaluation time, so a static
 // import here (the boot graph) would evaluate it before LoadSkiaWeb resolves
@@ -174,6 +185,156 @@ function RescanWebShowcase() {
 }
 
 /**
+ * `?screen=ritual` — the GUIDED RITUAL (habit step 2), fixture-driven, no dev
+ * chrome. Drops straight into the dark immersive ritual: breathing orb, STEP n
+ * OF m, the product in hand, the orb flooding GOLD on Done. `&period=` picks
+ * the atmosphere (dawn/midday/dusk/night, default night). Self-contained — the
+ * experience brings its own OrbProvider and reads no store.
+ */
+function RitualWebShowcase() {
+  const now = useMemo(() => new Date(), []);
+  const period = (() => {
+    try {
+      const p = new URLSearchParams(
+        (globalThis as unknown as { location?: { search?: string } }).location?.search ?? '',
+      ).get('period');
+      return (['dawn', 'midday', 'dusk', 'night'].includes(p ?? '') ? p : 'night') as RoutinePeriod;
+    } catch {
+      return 'night';
+    }
+  })();
+  const model = useMemo(() => {
+    const built = buildYourRoutineModel({
+      routine: demoRoutine,
+      findings: demoFindings,
+      moves: demoMoves,
+      timeOfDay: 'evening',
+      now,
+      streak: { count: 5, includesToday: true },
+      doneIds: [],
+      daysSinceLastUse: 0,
+      calmerLately: false,
+    });
+    return { ...built, period };
+  }, [now, period]);
+  return (
+    <YourRoutineExperience
+      model={model}
+      reduceMotion={false}
+      initialMode="ritual"
+      devModeOverride="ritual"
+      now={now}
+      completionDates={recentCompletionDates(now)}
+      streak={{ count: 5, includesToday: true }}
+      adaptive={null}
+      onRitualComplete={() => {}}
+      onQuickDone={() => {}}
+    />
+  );
+}
+
+/**
+ * `?screen=shop` — the SHOP feed (habit step 5), the real ProductsStack mounted
+ * in its own NavigationContainer so the storefront, concern filters, and
+ * product-detail sheets all work. Cross-tab links (Re-scan etc.) no-op here.
+ */
+function ShopWebShowcase() {
+  return (
+    <NavigationContainer theme={navTheme}>
+      <BottomSheetModalProvider>
+        <ProductsStackScreen />
+      </BottomSheetModalProvider>
+    </NavigationContainer>
+  );
+}
+
+/**
+ * `?screen=index` — the discoverability hub. Every built surface, one tap away,
+ * because a fresh visitor lands on onboarding and would never reach the tabs.
+ */
+const SHOWCASE_LINKS: { label: string; note: string; q: string }[] = [
+  { label: 'Your Skin — full findings', note: 'dark · plain-word pills · on-skin glow', q: 'your-skin' },
+  { label: 'Analyzing — orb gaze-sweep', note: 'dark · no donut/skeleton/numbers', q: 'analyzing' },
+  { label: 'Analyzing — deep-skin face', note: 'glow sits on spots, not a whole-face wash', q: 'analyzing&photo=deep' },
+  { label: 'Rescan — look what changed', note: 'before/after · wins first', q: 'rescan' },
+  { label: 'Rescan — holding steady', note: 'honest no-change path, never blank', q: 'rescan&steady=1' },
+  { label: 'Guided ritual', note: 'dark · gold-on-Done · no tab bar', q: 'ritual' },
+  { label: 'Shop — concern feed', note: 'light · scan-language filters', q: 'shop' },
+  { label: 'Skia GPU probe', note: 'additive blend + SkSL proof', q: 'skia-probe' },
+];
+
+function ShowcaseIndex() {
+  const go = (q: string) => {
+    try {
+      (globalThis as unknown as { location: { search: string } }).location.search = `?screen=${q}`;
+    } catch {
+      /* noop */
+    }
+  };
+  const openFullApp = () => {
+    try {
+      const g = globalThis as unknown as { localStorage?: Storage; location: { href: string } };
+      g.localStorage?.setItem(
+        'pura-app-state-v1',
+        JSON.stringify({ state: { user: { id: 'demo', name: 'You', goal: 'calmer skin' }, onboardingComplete: true }, version: 0 }),
+      );
+      g.location.href = '/';
+    } catch {
+      /* noop */
+    }
+  };
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: '#0A0B12' }}
+      contentContainerStyle={{ padding: 24, paddingTop: 72, paddingBottom: 60 }}
+    >
+      <Text style={{ fontFamily: 'InstrumentSerif-Regular', fontSize: 40, lineHeight: 46, color: '#EAF0FA' }}>
+        Pura — every surface
+      </Text>
+      <Text style={{ fontFamily: 'Inter-Regular', fontSize: 14, lineHeight: 20, color: 'rgba(214,224,240,0.6)', marginTop: 8, marginBottom: 28 }}>
+        Each screen below is the real build. The normal app starts at onboarding, so these are the direct doors.
+      </Text>
+      {SHOWCASE_LINKS.map((l) => (
+        <Pressable
+          key={l.q}
+          onPress={() => go(l.q)}
+          accessibilityRole="button"
+          accessibilityLabel={l.label}
+          style={({ pressed }) => ({
+            backgroundColor: pressed ? 'rgba(20,124,255,0.16)' : 'rgba(214,224,240,0.06)',
+            borderRadius: 16,
+            paddingVertical: 16,
+            paddingHorizontal: 18,
+            marginBottom: 12,
+          })}
+        >
+          <Text style={{ fontFamily: 'Inter-SemiBold', fontSize: 16, color: '#EAF0FA' }}>{l.label}</Text>
+          <Text style={{ fontFamily: 'Inter-Regular', fontSize: 13, color: 'rgba(156,197,255,0.85)', marginTop: 3 }}>{l.note}</Text>
+        </Pressable>
+      ))}
+      <Pressable
+        onPress={openFullApp}
+        accessibilityRole="button"
+        accessibilityLabel="Open the full app"
+        style={({ pressed }) => ({
+          backgroundColor: pressed ? '#0E63CC' : '#147CFF',
+          borderRadius: 999,
+          paddingVertical: 16,
+          alignItems: 'center',
+          marginTop: 16,
+        })}
+      >
+        <Text style={{ fontFamily: 'Inter-SemiBold', fontSize: 15, color: '#FFFFFF' }}>Open the full app (skip onboarding)</Text>
+      </Pressable>
+      <Text style={{ fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 17, color: 'rgba(214,224,240,0.4)', marginTop: 14 }}>
+        The full app drops you on Home with the tabs unlocked — wander Home · Shop · Routine · Me. The ritual needs an
+        active routine, so use its direct door above.
+      </Text>
+    </ScrollView>
+  );
+}
+
+/**
  * Holds the probe behind CanvasKit readiness. In production web CanvasKit boots
  * automatically; in the dev preview pass `?skia=1` (see index.ts boot policy).
  */
@@ -271,7 +432,13 @@ export default function App() {
         <ThemeProvider>
           <View style={styles.fill}>
             <StatusBar style="dark" />
-            {showcase?.key === 'skia-probe' ? (
+            {showcase?.key === 'index' ? (
+              <ShowcaseIndex />
+            ) : showcase?.key === 'ritual' ? (
+              <RitualWebShowcase />
+            ) : showcase?.key === 'shop' ? (
+              <ShopWebShowcase />
+            ) : showcase?.key === 'skia-probe' ? (
               <SkiaProbeGate />
             ) : showcase?.key === 'analyzing' ? (
               <AnalyzingWebShowcase />
