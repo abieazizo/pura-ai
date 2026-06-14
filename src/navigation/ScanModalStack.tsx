@@ -12,6 +12,7 @@ import { ScanResultsFaceScreen } from '@/screens/scan/ScanResultsFaceScreen';
 import { ScanRevealScreen } from '@/screens/scan/reveal/ScanRevealScreen';
 import { YourSkinContainer } from '@/screens/scan/yourSkin/YourSkinContainer';
 import { BuildRoutinePicker } from '@/screens/scan/reveal/BuildRoutinePicker';
+import { MoneyFlowContainer } from '@/screens/money/MoneyFlowContainer';
 import { ScanBuildCeremony } from '@/screens/scan/reveal/ScanBuildCeremony';
 import { ScanResultDetailScreen } from '@/screens/scan/ScanResultDetailScreen';
 import { ScanResultsProductScreen } from '@/screens/scan/ScanResultsProductScreen';
@@ -66,6 +67,9 @@ export function ScanModalStack({ route }: any) {
       </Stack.Screen>
       <Stack.Screen name="BuildRoutinePicker">
         {() => <BuildRoutinePickerHost />}
+      </Stack.Screen>
+      <Stack.Screen name="MoneyFlow">
+        {() => <MoneyFlowHost />}
       </Stack.Screen>
       <Stack.Screen name="ScanCeremony">
         {() => <CeremonyScreenHost />}
@@ -352,7 +356,7 @@ function YourSkinResultsHost() {
       photoUri={photoUri}
       captureQuality={captureQuality}
       scanId={scanId}
-      onBuildRoutine={() => scanNav.navigate('BuildRoutinePicker', { scanId })}
+      onBuildRoutine={() => scanNav.navigate('MoneyFlow', { scanId, photoUri })}
       onClose={closeToHome}
       onRescan={() => scanNav.replace('ScanCapture')}
       onFallbackToReveal={() => scanNav.replace('ScanReveal', { scanId })}
@@ -443,6 +447,25 @@ function BuildRoutinePickerHost() {
       onBuild={(selection) => scanNav.navigate('ScanCeremony', { scanId, selection })}
     />
   );
+}
+
+/**
+ * MoneyFlow host (the post-scan "Build my routine" destination). Runs the
+ * tailoring → routine → confirm → buy → account flow; on Confirm-lock the
+ * chosen products are committed AS the canonical routine (inside the
+ * container), so finishing lands on the Routine tab with a populated routine —
+ * one atomic dispatch that dismisses this modal and focuses Routine.
+ */
+function MoneyFlowHost() {
+  const rootNav = useNavigation<NavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<ScanStackParamList, 'MoneyFlow'>>();
+  const { scanId, photoUri } = route.params;
+
+  const goToRoutineTab = useCallback(() => {
+    rootNav.getParent()?.navigate('Tabs', { screen: 'RoutineTab' });
+  }, [rootNav]);
+
+  return <MoneyFlowContainer scanId={scanId} photoUri={photoUri} onDone={goToRoutineTab} />;
 }
 
 /**

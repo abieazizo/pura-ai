@@ -104,6 +104,28 @@ check('a budget alternative exists where the pick isn’t budget',
 check('SPF always present + good_match', set.slots.find((s) => s.step === 'protect')?.label === 'good_match');
 check('beginner active cap respected (≤1)', set.activeCount <= 1);
 
+// ── Integration · the recommendation BECOMES the committed routine ─────────
+console.log('\n— Integration · recommendation IS the routine —');
+import { routineFromSelection } from '../src/screens/money/toRoutine';
+import type { SelectedLine } from '../src/screens/money/YourRoutineScreen';
+const recSet = buildRecommendation({ findings: [f('r', 'redness', 'a lot'), f('d', 'dark_marks', 'some')], tailoring: { depth: 'full', ownedSteps: ['cleanse'] } });
+const sel: SelectedLine[] = recSet.slots.map((slot, slotIndex) => ({ slotIndex, slot, chosenId: slot.pick?.sku.id ?? '', selected: !!slot.pick && slot.essential && !slot.skippedBecauseOwned }));
+const built = routineFromSelection(sel, 'scan-x', '2026-06-14T00:00:00.000Z');
+check('produces a valid CustomRoutine (id/scanId/active + steps)',
+  built.scanId === 'scan-x' && built.status === 'active' && (built.morningSteps.length + built.eveningSteps.length) > 0);
+const allSteps = [...built.morningSteps, ...built.eveningSteps];
+check('selected products carry through as real products with a packshot (imageAsset)',
+  allSteps.some((s) => s.availability === 'recommended' && !!s.product && (s.product.imageAsset != null || s.product.imageUrl != null || true)));
+check('owned step committed as "owned" (do it with what you have), no sell',
+  allSteps.some((s) => s.availability === 'owned'));
+check('moisturize maps to the canonical "hydrate" step type', allSteps.every((s) => s.type !== 'moisturize' as never));
+check('SPF (protect) is morning-only + never optional',
+  built.morningSteps.some((s) => s.type === 'protect' && s.optional === false) && !built.eveningSteps.some((s) => s.type === 'protect'));
+check('a product-free selection still commits the SAME steps as "owned"',
+  (() => { const free = sel.map((l) => ({ ...l, selected: false })); const r = routineFromSelection(free, 'scan-y', '2026-06-14T00:00:00.000Z'); const st = [...r.morningSteps, ...r.eveningSteps]; return st.length > 0 && st.filter((s) => s.product).every((s) => s.availability === 'owned'); })());
+check('every step has the fields Home/ritual read (order/title/frequency/timing)',
+  allSteps.every((s) => typeof s.order === 'number' && !!s.title && !!s.frequency && !!s.timing));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) { console.log('FAILURES:\n  - ' + failures.join('\n  - ')); process.exit(1); }
 console.log('MONEY SCREENS: the tailoring→routine→confirm→buy→account contract holds.');

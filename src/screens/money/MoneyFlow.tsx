@@ -25,11 +25,17 @@ export interface MoneyFlowProps {
   goal?: string;
   /** Beginner cap (≤1 active) — defaults true for a first routine. */
   beginner?: boolean;
+  /**
+   * Fired at Confirm with the final selection — THIS is the lock. The host
+   * commits the chosen products AS the routine here (the recommendation IS the
+   * routine). Omitted in the offline showcase, so it touches no store.
+   */
+  onLock?: (lines: SelectedLine[]) => void;
   /** Flow finished (account created or skipped). */
   onDone?: () => void;
 }
 
-export function MoneyFlow({ read, goal, beginner = true, onDone }: MoneyFlowProps) {
+export function MoneyFlow({ read, goal, beginner = true, onLock, onDone }: MoneyFlowProps) {
   const [stage, setStage] = useState<Stage>('tailoring');
   const [tailoring, setTailoring] = useState<TailoringInput | null>(null);
   const [lines, setLines] = useState<SelectedLine[]>([]);
@@ -65,7 +71,7 @@ export function MoneyFlow({ read, goal, beginner = true, onDone }: MoneyFlowProp
     return (
       <ConfirmScreen
         lines={lines}
-        onLock={() => { /* the routine is locked the moment they commit */ }}
+        onLock={() => onLock?.(lines)}
         onBought={(res) => { setBought(res); setStage('account'); }}
         onProductFree={() => { setBought({ opened: 0 }); setStage('account'); }}
       />

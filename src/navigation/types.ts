@@ -167,6 +167,11 @@ export type ScanStackParamList = {
    *  "Build my routine" on the Ready screen routes here; this screen's
    *  CTA carries the selection into ScanCeremony. */
   BuildRoutinePicker: { scanId: string };
+  /** The money flow (tailoring → routine → confirm → buy → account). The
+   *  recommendation IS the routine: the chosen products are committed AS the
+   *  routine at Confirm. Replaces the BuildRoutinePicker → ScanCeremony path
+   *  for the post-scan "Build my routine" CTA. */
+  MoneyFlow: { scanId: string; photoUri: string };
   /** Reveal-arc surface 7 — the deterministic ~13s Build Ceremony. Commits
    *  the routine + flips routine lifecycle to 'active' internally, then
    *  hands off to the Routine tab (surface 8). `selection` filters which
