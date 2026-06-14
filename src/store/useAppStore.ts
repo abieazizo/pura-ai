@@ -68,6 +68,12 @@ export interface AppState {
    *  `_matchPercentByProductId` → `matchScoreFor(...)`; the store-level
    *  shadow of it was the dead part. */
   wishlist: string[];
+  /** v33 — id → ISO date the user CONFIRMED getting a product ("did you get
+   *  this?"). The ONLY honest basis for a restock estimate: Pura can't see
+   *  Amazon purchases, so the Shop engine never infers a restock signal from
+   *  add-to-routine alone. Empty until the confirmation affordance ships;
+   *  written exclusively by `confirmProductObtained`. Read by `useSkinShop`. */
+  productGotConfirmedAt: Record<string, string>;
   messages: AssistantMessage[];
   appearance: AppearanceMode;
   hasSeenScanTutorial: boolean;
@@ -407,6 +413,11 @@ export interface AppState {
   addUserRoutineProduct: (slot: 'morning' | 'evening', productId: string) => void;
   removeUserRoutineProduct: (slot: 'morning' | 'evening', productId: string) => void;
   moveUserRoutineProduct: (productId: string, to: 'morning' | 'evening') => void;
+  /** v33 — record/clear a CONFIRMED "I got this" date for a product. The honest
+   *  backend for restock: only this turns a Shop reorder into a real restock
+   *  estimate. `atIso` defaults to now. Adding to a routine never calls this. */
+  confirmProductObtained: (productId: string, atIso?: string) => void;
+  clearProductObtained: (productId: string) => void;
 
   setName: (name: string) => void;
   setAge: (age: number | null) => void;
@@ -560,6 +571,7 @@ const blankState = {
   userRoutineMorning: [] as string[],
   userRoutineEvening: [] as string[],
   wishlist: [] as string[],
+  productGotConfirmedAt: {} as Record<string, string>,
   messages: [] as AssistantMessage[],
   appearance: 'light' as AppearanceMode,
   hasSeenScanTutorial: false,
@@ -858,6 +870,23 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
+      confirmProductObtained: (productId, atIso) =>
+        set((state) => ({
+          ...state,
+          productGotConfirmedAt: {
+            ...state.productGotConfirmedAt,
+            [productId]: atIso ?? new Date().toISOString(),
+          },
+        })),
+
+      clearProductObtained: (productId) =>
+        set((state) => {
+          if (!state.productGotConfirmedAt[productId]) return state;
+          const next = { ...state.productGotConfirmedAt };
+          delete next[productId];
+          return { ...state, productGotConfirmedAt: next };
+        }),
+
       setName: (name) => set({ name }),
       setAge: (age) => set({ age }),
       setAgeRange: (ageRange) => set({ ageRange }),
@@ -1084,6 +1113,7 @@ export const useAppStore = create<AppState>()(
         userRoutineMorning: state.userRoutineMorning,
         userRoutineEvening: state.userRoutineEvening,
         wishlist: state.wishlist,
+        productGotConfirmedAt: state.productGotConfirmedAt,
         messages: state.messages,
         appearance: state.appearance,
         hasSeenScanTutorial: state.hasSeenScanTutorial,

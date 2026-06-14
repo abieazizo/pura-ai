@@ -56,6 +56,9 @@ import {
 } from '@/screens/routine/yourRoutine/fixtures';
 import type { RoutinePeriod } from '@/theme/routineAtmosphere';
 import { ProductsStackScreen } from '@/navigation/TabNavigator';
+// TEMP — `?screen=shop-debug` renders the raw useSkinShop model readout (proof
+// the Shop engine is real). Remove with the Shop redesign.
+import { SkinShopDebugScreen } from '@/screens/shop/skinShop/SkinShopDebugScreen';
 // Web-only Skia GPU proof (Step 0). ⚠️ MUST be a DEFERRED import: RNSkia's web
 // entry snapshots `global.CanvasKit` at module-evaluation time, so a static
 // import here (the boot graph) would evaluate it before LoadSkiaWeb resolves
@@ -260,6 +263,7 @@ const SHOWCASE_LINKS: { label: string; note: string; q: string }[] = [
   { label: 'Rescan — holding steady', note: 'honest no-change path, never blank', q: 'rescan&steady=1' },
   { label: 'Guided ritual', note: 'dark · gold-on-Done · no tab bar', q: 'ritual' },
   { label: 'Shop — concern feed', note: 'light · scan-language filters', q: 'shop' },
+  { label: 'Shop — useSkinShop debug', note: 'raw engine readout · picks/restock/honesty', q: 'shop-debug' },
   { label: 'Skia GPU probe', note: 'additive blend + SkSL proof', q: 'skia-probe' },
 ];
 
@@ -438,6 +442,8 @@ export default function App() {
               <RitualWebShowcase />
             ) : showcase?.key === 'shop' ? (
               <ShopWebShowcase />
+            ) : showcase?.key === 'shop-debug' ? (
+              <SkinShopDebugScreen />
             ) : showcase?.key === 'skia-probe' ? (
               <SkiaProbeGate />
             ) : showcase?.key === 'analyzing' ? (

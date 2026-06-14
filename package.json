@@ -17,6 +17,7 @@
     "verify:products": "tsx scripts/verifyProductsTab.ts",
     "verify:home": "tsx scripts/verifyHomeNight.ts",
     "verify:firstfinding": "tsx scripts/verifyFirstFinding.ts",
+    "verify:skinshop": "tsx scripts/verifySkinShop.ts",
     "verify:scanquality": "tsx scripts/verifyScanQuality.ts",
     "verify:reducemotion": "tsx scripts/verifyReduceMotion.ts",
     "verify:ai": "tsx --env-file=.env scripts/verifyAi.ts",
