@@ -56,6 +56,7 @@ import {
 } from '@/screens/routine/yourRoutine/fixtures';
 import type { RoutinePeriod } from '@/theme/routineAtmosphere';
 import { ProductsStackScreen } from '@/navigation/TabNavigator';
+import { MoneyFlow } from '@/screens/money/MoneyFlow';
 // TEMP — `?screen=shop-debug` renders the raw useSkinShop model readout (proof
 // the Shop engine is real). Remove with the Shop redesign.
 import { SkinShopDebugScreen } from '@/screens/shop/skinShop/SkinShopDebugScreen';
@@ -252,6 +253,19 @@ function ShopWebShowcase() {
 }
 
 /**
+ * `?screen=money` — the full purchase flow (tailoring → routine → confirm →
+ * buy → account) on a representative offline scan fixture, so the whole flow is
+ * tappable on the deploy without a live scan. The PRODUCTION path
+ * (MoneyFlowContainer, reached from "Build my routine") additionally commits
+ * the chosen products as the routine; this demo omits onLock, so it touches no
+ * store.
+ */
+function MoneyWebShowcase() {
+  const fx = FIXTURE_BY_KEY['redness'] ?? YOUR_SKIN_FIXTURES[0];
+  return <MoneyFlow read={fx.read} goal="calmer, clearer skin" onDone={() => {}} />;
+}
+
+/**
  * `?screen=index` — the discoverability hub. Every built surface, one tap away,
  * because a fresh visitor lands on onboarding and would never reach the tabs.
  */
@@ -261,6 +275,7 @@ const SHOWCASE_LINKS: { label: string; note: string; q: string }[] = [
   { label: 'Analyzing — deep-skin face', note: 'glow sits on spots, not a whole-face wash', q: 'analyzing&photo=deep' },
   { label: 'Rescan — look what changed', note: 'before/after · wins first', q: 'rescan' },
   { label: 'Rescan — holding steady', note: 'honest no-change path, never blank', q: 'rescan&steady=1' },
+  { label: 'Money flow — tailoring → buy', note: 'light · the recommendation IS the routine', q: 'money' },
   { label: 'Guided ritual', note: 'dark · gold-on-Done · no tab bar', q: 'ritual' },
   { label: 'Shop — concern feed', note: 'light · scan-language filters', q: 'shop' },
   { label: 'Shop — useSkinShop debug', note: 'raw engine readout · picks/restock/honesty', q: 'shop-debug' },
@@ -438,6 +453,8 @@ export default function App() {
             <StatusBar style="dark" />
             {showcase?.key === 'index' ? (
               <ShowcaseIndex />
+            ) : showcase?.key === 'money' ? (
+              <MoneyWebShowcase />
             ) : showcase?.key === 'ritual' ? (
               <RitualWebShowcase />
             ) : showcase?.key === 'shop' ? (
