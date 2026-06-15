@@ -4,6 +4,11 @@
  * thread from the words to the face: the same tint the scan glow used sits
  * behind the pick that answers that finding. `boost` brightens it briefly on
  * the add interaction. Worklet-driven; a calm still under reduce-motion.
+ *
+ * `strength` (0..1, the finding's severity) scales the breath's viscerality
+ * from the ONE `motion.echo` curve — opacity floor/ceiling and scale amplitude
+ * both lean on it, so a mild finding whispers and a severe one presses. Size is
+ * owned by ConcernPickCard's layout; strength expresses only as opacity/scale.
  */
 
 import React, { useEffect } from 'react';
@@ -24,14 +29,20 @@ export function EchoGlow({
   tint,
   reduceMotion,
   boost,
+  strength,
   id,
 }: {
   tint: string;
   reduceMotion: boolean;
   /** Optional external 0..~0.12 brighten pulse (the add interaction). */
   boost?: SharedValue<number>;
+  /** Finding severity 0..1 — scales breath viscerality. Defaults to 1. */
+  strength?: number;
   id: string;
 }) {
+  // Clamp to the contract range; absent → full presence.
+  const s = strength == null ? 1 : Math.max(0, Math.min(1, strength));
+
   const breath = useSharedValue(reduceMotion ? 0.5 : 0);
 
   useEffect(() => {
@@ -50,11 +61,16 @@ export function EchoGlow({
   }, [reduceMotion, breath]);
 
   const style = useAnimatedStyle(() => {
-    const o = motion.echo.min + breath.value * (motion.echo.max - motion.echo.min);
-    const s = motion.echo.scaleMin + breath.value * (motion.echo.scaleMax - motion.echo.scaleMin);
+    // ONE curve, strength-scaled: mild findings whisper, severe ones press.
+    const sFloor = motion.echo.min * (0.7 + 0.3 * s);
+    const sMax = motion.echo.max * (0.6 + 0.4 * s);
+    const o = sFloor + breath.value * (sMax - sFloor);
+    const scaleMax =
+      motion.echo.scaleMin + (motion.echo.scaleMax - motion.echo.scaleMin) * (0.6 + 0.4 * s);
+    const scale = motion.echo.scaleMin + breath.value * (scaleMax - motion.echo.scaleMin);
     return {
       opacity: o + (boost ? boost.value : 0),
-      transform: [{ scale: s }],
+      transform: [{ scale }],
     };
   });
 

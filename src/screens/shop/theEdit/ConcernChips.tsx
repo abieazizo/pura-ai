@@ -69,7 +69,14 @@ function Chip({
       accessibilityLabel={item.label}
       style={[styles.chip, active ? styles.chipActive : styles.chipIdle, press.style]}
     >
-      <Text style={[type.chip, { color: active ? edit.white : edit.ink }]} numberOfLines={1}>
+      <Text
+        style={[
+          type.chip,
+          { color: active ? edit.white : edit.ink },
+          active && styles.chipTextActive,
+        ]}
+        numberOfLines={1}
+      >
         {item.label}
       </Text>
     </AnimatedPressable>
@@ -82,7 +89,7 @@ const styles = StyleSheet.create({
   chip: {
     height: 44,
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     borderRadius: radius.chip,
   },
   chipIdle: {
@@ -91,4 +98,6 @@ const styles = StyleSheet.create({
     borderColor: edit.hairlineStrong,
   },
   chipActive: { backgroundColor: edit.blue },
+  // A subtle selection breath: the active chip's label opens up by a hair.
+  chipTextActive: { letterSpacing: 0.28 },
 });

@@ -74,8 +74,8 @@ export function AtmosphericLight({
         <Svg width="100%" height="100%">
           <Defs>
             <RadialGradient id="edit-light" cx="50%" cy="38%" r="60%">
-              <Stop offset="0%" stopColor={edit.blue} stopOpacity={0.05} />
-              <Stop offset="55%" stopColor={edit.blue} stopOpacity={0.018} />
+              <Stop offset="0%" stopColor={edit.blue} stopOpacity={0.08} />
+              <Stop offset="55%" stopColor={edit.blue} stopOpacity={0.022} />
               <Stop offset="100%" stopColor={edit.blue} stopOpacity={0} />
             </RadialGradient>
           </Defs>
@@ -88,8 +88,8 @@ export function AtmosphericLight({
         <Svg width="100%" height="100%">
           <Defs>
             <RadialGradient id="edit-vignette" cx="50%" cy="120%" r="90%">
-              <Stop offset="0%" stopColor={edit.ink} stopOpacity={0.03} />
-              <Stop offset="70%" stopColor={edit.ink} stopOpacity={0.012} />
+              <Stop offset="0%" stopColor={edit.ink} stopOpacity={0.04} />
+              <Stop offset="70%" stopColor={edit.ink} stopOpacity={0.015} />
               <Stop offset="100%" stopColor={edit.ink} stopOpacity={0} />
             </RadialGradient>
           </Defs>

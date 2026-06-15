@@ -7,8 +7,16 @@
  * blocks below the fold reveal when they cross into view on scroll (the page
  * unfolds as you explore). Worklet-driven; stills under reduce-motion.
  *
- * `onReveal` fires once when the block reveals — sections use it to bloom their
- * finding-echo glow up as they enter.
+ * `onReveal` fires EXACTLY ONCE per block when it reveals (guarded by `fired`),
+ * and is also called on the reduce-motion path so the echo can settle to its
+ * strength-scaled rest value rather than staying dark.
+ *
+ * RevealOnScroll only SIGNALS. The reveal bloom itself is owned by
+ * ConcernPickCard: TheEditScreen wires this block's `onReveal` to a shared value
+ * it passes down to the section's first pick, and ConcernPickCard blooms its
+ * finding-echo glow off that handoff. No timing or visual behavior lives here —
+ * this component sets the block down (the one set-down language) and fires the
+ * trigger; the section bloom is downstream.
  */
 
 import React, { useEffect } from 'react';
