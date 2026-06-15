@@ -53,7 +53,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuroraOrb } from '@/components/AuroraOrb';
-import { auroraOrb as C, dsAmbient, dsGradient, ds, dsRadius } from '@/theme';
+import { auroraOrb as C, dsAmbient, dsGradient } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { ORB_SIZES, targetFor } from './orb/orbLayout';
@@ -430,28 +430,16 @@ export function ColdOpenScreen({ onContinue, onSignIn, forceVariant }: ColdOpenS
               style={[styles.orbMast, orbExitStyle]}
               pointerEvents="none"
             >
-              {/* Portrait-frame medallion behind the orb — the shared Cycle 12
-                  imagery language (a rounded-portrait hairline frame, matching
-                  the scan capture card), so even the first beat frames the
-                  companion as a portrait subject. Travels with the orb through
-                  the shared-element exit (it's inside orbExitStyle). */}
-              <View
-                style={[
-                  styles.orbFrame,
-                  {
-                    width: Math.round(orbSize * 1.34),
-                    height: Math.round(orbSize * 1.34 * 1.16),
-                    left: Math.round((orbSize - orbSize * 1.34) / 2),
-                    top: Math.round((orbSize - orbSize * 1.34 * 1.16) / 2),
-                  },
-                ]}
-                pointerEvents="none"
-              />
+              {/* (Removed) the hairline portrait-frame rectangle behind the orb
+                  — every audit lens read it as a stray loading-placeholder box.
+                  The orb's own halo + ground glow are its frame. */}
               <AuroraOrb
                 size={orbSize}
                 state={variant === 'first' ? 'awakening' : 'idle'}
                 reduceMotion={reduceMotion || variant === 'reduce'}
                 enableParallax={!(reduceMotion || variant === 'reduce')}
+                aliveInReduceMotion
+                restExpression="warm"
               />
             </Animated.View>
 
@@ -609,19 +597,8 @@ const styles = StyleSheet.create({
   masthead: { alignItems: 'flex-start' },
   // The orb crowns the headline as a luminous signature, nudged left so it
   // reads as a mark on the masthead rather than a centered centerpiece.
-  // marginBottom gives the portrait-frame's lower edge a clean band of
-  // porcelain before the kicker — the crown reads as a deliberate signature
-  // with air beneath it, not a stacked element crowding "MEET PURA".
-  orbMast: { alignItems: 'flex-start', marginLeft: -6, marginBottom: 28 },
-  // Portrait-frame medallion behind the orb mark (Cycle 12 shared imagery
-  // language) — a soft rounded-portrait hairline frame + faint bloom.
-  orbFrame: {
-    position: 'absolute',
-    borderRadius: dsRadius.xxl,
-    borderWidth: 1,
-    borderColor: ds.hairline,
-    backgroundColor: dsAmbient.day.glow,
-  },
+  // The orb is its own mark now (no frame) — a touch of air before the kicker.
+  orbMast: { alignItems: 'flex-start', marginLeft: -6, marginBottom: 22 },
   kicker: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
@@ -635,16 +612,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'flex-end',
+    marginBottom: -7, // tight stack via negative gap, not starved leading
   },
   wordWrap: { marginRight: 12 },
   // Dramatic display-scale serif — the cinematic hero. Tight leading stacks the
   // lines into a single confident block. Sized so "Your face" holds one line on
   // a standard width; on the narrowest devices flex-wrap stacks it gracefully.
   heroWord: {
-    fontFamily: 'InstrumentSerif-Regular',
+    // SemiBold — the inked, confident display cut the app's other mastheads
+    // use; Regular at 70px read as a default browser serif (the "thin/weak"
+    // tell). lineHeight was 67 < 70 and clipped descenders + the period on
+    // "knows."; 74 + a negative line gap keeps the tight stack without the clip.
+    fontFamily: 'InstrumentSerif-SemiBold',
     fontSize: 70,
-    lineHeight: 67,
-    letterSpacing: -2.4,
+    lineHeight: 74,
+    letterSpacing: -1.8,
     color: C.heroInk,
     textAlign: 'left',
   },

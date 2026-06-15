@@ -228,6 +228,21 @@ export interface AuroraOrbProps {
   /** Fires once the face has opened its eyes + brows + first blink (~T=2480ms
    *  in awakening; immediately in idle/static). Lets a host chain off "alive". */
   onAwake?: () => void;
+  /**
+   * Reduced-motion is the SHIPPING path on mobile web, where the orb would
+   * otherwise freeze as a lifeless husk. When true, the static render runs a
+   * single slow, non-vestibular breath + halo shimmer + autonomous gaze drift
+   * (continuous, prefers-reduced-motion-permitted) so the companion still
+   * reads as alive. Default false → every existing consumer stays
+   * byte-identical. Onboarding's hero beats opt in.
+   */
+  aliveInReduceMotion?: boolean;
+  /**
+   * Resting expression applied immediately in the static/idle render (e.g.
+   * 'warm' so the orb looks softly AT the user instead of dead-level dots).
+   * Default undefined → neutral, unchanged for existing consumers.
+   */
+  restExpression?: OrbExpression;
 }
 
 // Awakening timeline (ms from mount). Mirrors the cold-open spec exactly.
@@ -300,6 +315,8 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
       blinkCadence,
       breathProfile,
       onAwake,
+      aliveInReduceMotion = false,
+      restExpression,
     },
     ref,
   ) {
@@ -360,9 +377,9 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
     // Face stroke + eye size carry a higher FLOOR so the features stay legible
     // at the small companion sizes (a 1.6px stroke / tiny dot nearly vanished at
     // ~72–88px); the floor barely changes the large cold-open orb.
-    const stroke = Math.max(2.0, S * 0.011);
-    const eyeR = Math.max(2.2, S * 0.027); // dot radius (kept readable when small)
-    const eyeSep = S * 0.086; // half-separation (centers ~17% apart — see note)
+    const stroke = Math.max(2.4, S * 0.013);
+    const eyeR = Math.max(3.0, S * 0.032); // dot radius — a higher floor so the eyes read at companion sizes
+    const eyeSep = S * 0.10; // half-separation (centers ~20% apart — wider reads more present/awake)
     const eyeY = S * 0.42;
     const browY = S * 0.322;
     const noseX = half;
@@ -873,8 +890,63 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
         // Formed + frozen, but still expressive: settle to the warmth we were
         // handed so reduce-motion users still see orb-as-progress as state.
         warmth.value = familiarity;
+
+        // Lift the resting LIGHT so the static orb reads as luminous, not a
+        // dim blob tuned for the end of a fade it never plays. (Brighter,
+        // tighter halo + a base glow; universal — every static consumer reads
+        // better.) The drift smear + frozen wisps are gated off in static in
+        // the render below, so this clean, brighter body is what shows.
+        haloO.value = 0.95;
+        haloS.value = 0.92;
+        glowBoost.value = 0.05;
+        // The wisps only read as "internal flow" while ROTATING; frozen, the
+        // three off-center ellipses are a lopsided smear. Soften them in static
+        // so the body reads as one clean luminous jewel.
+        wispO.value = 0.1;
+
+        // A present, resting expression (onboarding opts in with 'warm') so the
+        // face looks softly at the user rather than as dead-level dots.
+        if (restExpression) {
+          const p = EXPRESSIONS[restExpression];
+          browRaise.value = p.raise;
+          browTilt.value = p.tilt;
+          eyeOpen.value = p.eyeOpen;
+          joy.value = 0.34; // a gentle eye-curve — quietly smiling, not neutral
+        }
+
+        // Reduced-motion is the shipping mobile-web path. A single slow breath
+        // + halo shimmer + autonomous gaze drift keeps the companion ALIVE
+        // without vestibular motion (prefers-reduced-motion permits continuous,
+        // non-translating animation). Opt-in so other static consumers are
+        // unchanged.
+        if (aliveInReduceMotion) {
+          breath.value = withRepeat(
+            withSequence(
+              withTiming(1.02, { duration: 2600, easing: EASE_IO }),
+              withTiming(0.99, { duration: 2600, easing: EASE_IO }),
+            ),
+            -1,
+            true,
+          );
+          haloO.value = withRepeat(
+            withSequence(
+              withTiming(0.98, { duration: 2600, easing: EASE_IO }),
+              withTiming(0.84, { duration: 2600, easing: EASE_IO }),
+            ),
+            -1,
+            true,
+          );
+          ambientX.value = withRepeat(
+            withSequence(
+              withTiming(0.12, { duration: 3200, easing: EASE_IO }),
+              withTiming(-0.12, { duration: 3200, easing: EASE_IO }),
+            ),
+            -1,
+            true,
+          );
+        }
         onAwakeRef.current?.();
-        return; // nothing animates
+        return; // nothing else animates
       }
 
       // Continuous wisp rotation runs the moment the orb exists, at desynced
@@ -1386,9 +1458,11 @@ export const AuroraOrb = forwardRef<AuroraOrbHandle, AuroraOrbProps>(
             )}
           </Animated.View>
 
-          {!tierLow && (
+          {!tierLow && mode !== 'static' && (
             <>
-              {/* Idle hue-drift overlay — violet ⇄ cyan balance */}
+              {/* Idle hue-drift overlay — violet ⇄ cyan balance. Gated OFF in
+                  static: with drift frozen at phase 0 it renders as a single
+                  off-center violet stain (the "lopsided muddy smudge"). */}
               <Animated.View style={[centered(S * 0.9), driftVStyle]} pointerEvents="none">
                 <Svg width={S * 0.9} height={S * 0.9}>
                   <Defs>

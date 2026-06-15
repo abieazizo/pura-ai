@@ -118,8 +118,11 @@ export function QuestionCard({
   // Ambient shadow softens/spreads on lift, flattens on recede. (The theme's
   // shadow inks are full-alpha; the alpha lives HERE, exactly once.)
   const ambientStyle = useAnimatedStyle(() => ({
-    shadowOpacity: dark ? 0.4 * (1 - rec.value * 0.6) : (0.07 + (press.value - 1) * 0.6) * (1 - rec.value * 0.7),
-    shadowRadius: 24 + (press.value - 1) * 200, // spreads as it lifts
+    // Resting base lifted 0.07→0.13: a white card on near-white porcelain has
+    // only its shadow to separate it, and the old value was sub-threshold —
+    // the cards read as flat iOS rows. This gives a real, soft float.
+    shadowOpacity: dark ? 0.4 * (1 - rec.value * 0.6) : (0.13 + (press.value - 1) * 0.6) * (1 - rec.value * 0.7),
+    shadowRadius: 28 + (press.value - 1) * 200, // spreads as it lifts
   }));
   const borderStyle = useAnimatedStyle(() => ({
     borderColor: interpolateColor(sel.value, [0, 1], [colors.cardBorder, colors.cardBorderSelected]),
@@ -260,9 +263,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch', // fill the ScrollView column (never shrink to content)
     marginBottom: 12,
     borderRadius: 20,
-    // ambient shadow (y8, blur24) — opacity/radius animated
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 24,
+    // ambient shadow (y10, blur28) — opacity/radius animated
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 28,
     shadowOpacity: 0.05,
   },
   glow: {

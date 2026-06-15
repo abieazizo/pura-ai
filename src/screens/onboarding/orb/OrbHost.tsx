@@ -275,6 +275,11 @@ export function OrbProvider({
                 blinkCadence={blinkCadence}
                 breathProfile={breathProfile}
                 onAwake={() => setAwoken(true)}
+                // Mobile web ships reduced-motion; keep the companion alive
+                // (slow breath + halo shimmer + gaze drift) and warmly present
+                // across every question instead of a frozen blob.
+                aliveInReduceMotion
+                restExpression="warm"
               />
             </Animated.View>
           </View>

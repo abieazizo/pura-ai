@@ -38,7 +38,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { dsAmbient, ds, dsRadius } from '@/theme';
+import { dsAmbient } from '@/theme';
 import { hapt } from '@/utils/haptics';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useOrb } from './orb/OrbHost';
@@ -144,27 +144,13 @@ export function QuestionScreen({
 
   const target = targetFor('question', width, height, insets.top);
   const lineTop = orbBottom(target) + 18;
-  // Cards begin below the question with guaranteed clearance: 0.37h on roomy
-  // screens, but never closer than two serif lines + a breath under lineTop —
-  // on 667pt devices the fixed fraction ran the question's descenders into
-  // the first card.
-  const cardsTop = Math.max(Math.round(height * 0.37), lineTop + 96);
+  // Cards top-anchor just below the question (a confident gap, then options),
+  // with calm space BELOW — never centered in the lower band, which on
+  // few-option screens (safety) stranded the cards low and opened a dead void
+  // ABOVE them. Floored so the serif question never collides with card one.
+  const cardsTop = Math.max(Math.round(height * 0.33), lineTop + 88);
   const trackWidth = width - 48;
   const accent = dark ? RAIL_ACCENT_DARK : RAIL_ACCENT_LIGHT;
-
-  // Portrait-frame medallion geometry — a rounded-portrait hairline frame
-  // centered on the orb's settle, layered over the existing pool/bloom so the
-  // companion reads as a framed portrait subject. Purely atmospheric. Its
-  // height is CLAMPED to the real content gaps (≥8px below the header row,
-  // ≥12px above the question) so the hairline never runs through the serif
-  // or crowds the rail — previously a fixed medW·1.16 did both.
-  const medW = Math.round(target.size * 1.95);
-  const medHalfMax = Math.min(
-    target.cy - (insets.top + 44 + 8), // top edge clears the rail/chevron row
-    lineTop - 12 - target.cy, // bottom edge clears the question
-    Math.round((medW * 1.16) / 2),
-  );
-  const medH = Math.max(0, Math.round(medHalfMax * 2));
 
   const resolved = resolveQuestion(config);
 
@@ -560,22 +546,10 @@ export function QuestionScreen({
         </View>
       )}
 
-      {/* Portrait-frame medallion — a rounded-portrait hairline frame centered
-          on the orb, the shared imagery language (matches the scan capture
-          card). Layered over the pool/bloom, beneath all content. */}
-      <View
-        style={[
-          styles.medallion,
-          {
-            width: medW,
-            height: medH,
-            left: width / 2 - medW / 2,
-            top: target.cy - medH / 2,
-            borderColor: dark ? 'rgba(255,255,255,0.10)' : ds.hairline,
-          },
-        ]}
-        pointerEvents="none"
-      />
+      {/* (Removed) The hairline "portrait medallion" rectangle behind the orb
+          read as a stray loading-placeholder box on every question screen — a
+          unanimous audit finding. The orb's own halo + ground glow are its
+          frame; nothing hard-cornered sits behind it now. */}
 
       {/* Tap anywhere (off a card) to skip the reaction faster. */}
       {reacting && (
@@ -652,16 +626,13 @@ export function QuestionScreen({
           />
         </View>
 
-        {/* The cards — the user's decision. Short sets (3-4 options) center
-            in the field below the question instead of pinning to the top and
-            leaving the bottom 40% dead porcelain; dense sets overflow and are
-            unaffected by the centering. */}
+        {/* The cards — the user's decision. Top-anchored just below the
+            question; calm space breathes BELOW (premium content sits high,
+            never stranded in the lower band). */}
         <ScrollView
           ref={scrollRef}
           style={[styles.cards, { top: cardsTop }]}
           contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: 'center',
             paddingHorizontal: 24,
             paddingTop: 4,
             paddingBottom: insets.bottom + (continueVisible ? 96 : 24),
@@ -725,12 +696,6 @@ export function QuestionScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  // Portrait-frame medallion (shared imagery language).
-  medallion: {
-    position: 'absolute',
-    borderRadius: dsRadius.xxl,
-    borderWidth: 1,
-  },
   railWrap: { position: 'absolute', left: 24, right: 24, alignItems: 'center' },
   back: {
     position: 'absolute',

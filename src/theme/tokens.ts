@@ -2161,21 +2161,26 @@ export const auroraOrb = {
   groundGlowEdge: 'rgba(139, 124, 216, 0)',
 
   // ----- LAYER B — halo (atmospheric diffusion) -----
-  halo0:   'rgba(160, 146, 226, 0.40)',  // center violet
-  halo40:  'rgba(120, 168, 230, 0.22)',  // blue
-  halo70:  'rgba(140, 202, 224, 0.13)',  // cyan
-  halo100: 'rgba(140, 202, 224, 0)',     // transparent
+  // v23 — cooler (periwinkle, not grey-violet) + denser near-orb so the orb
+  // casts a crisp luminous rim instead of a broad grey fog on porcelain.
+  halo0:   'rgba(150, 128, 246, 0.50)',  // center — saturated periwinkle
+  halo40:  'rgba(96, 150, 248, 0.28)',   // cool blue
+  halo70:  'rgba(150, 210, 232, 0.14)',  // cyan
+  halo100: 'rgba(150, 210, 232, 0)',     // transparent
 
   // ----- LAYER C — core orb, FULL saturation (off-center origin) -----
   // The final stop drops to transparent so the vector edge is feathered.
-  // Tuned for a luminous aurora read: lavender-bright core → violet → cool
-  // blue → cyan-tinted feather (not a uniform grape).
-  coreFull0:   'rgba(234, 246, 255, 0.98)',  // sheen core (pale cyan-white)
-  coreFull25:  'rgba(184, 174, 238, 0.90)',  // luminous lavender center
-  coreFull55:  'rgba(130, 112, 210, 0.78)',  // deep violet
-  coreFull80:  'rgba(98, 142, 208, 0.64)',   // cool blue
-  coreFull94:  'rgba(118, 172, 208, 0.46)',  // cyan-blue edge
-  coreFull100: 'rgba(118, 172, 208, 0)',     // feather → transparent (cyan-tinted)
+  // v23 — RE-SATURATED so chroma survives composited over porcelain in the
+  // static/reduced-motion render (the shipping mobile-web path). The old
+  // values were ~20% desaturated and read as uniform grey-grape on white;
+  // now a bright glossy heart → saturated luminous violet → deep violet →
+  // cool blue → cyan rim reads as living light.
+  coreFull0:   'rgba(244, 250, 255, 1.0)',   // sheen core (near-white)
+  coreFull25:  'rgba(150, 128, 246, 0.96)',  // luminous saturated violet center
+  coreFull55:  'rgba(108, 86, 214, 0.90)',   // deep violet
+  coreFull80:  'rgba(72, 118, 224, 0.74)',   // cool blue
+  coreFull94:  'rgba(120, 182, 224, 0.48)',  // cyan-blue edge
+  coreFull100: 'rgba(120, 182, 224, 0)',     // feather → transparent (cyan-tinted)
 
   // ----- LAYER C — core orb, PALE (pre-bloom, washed-out white) -----
   // Same shape, desaturated toward warm-white; the bloom crossfades pale→full

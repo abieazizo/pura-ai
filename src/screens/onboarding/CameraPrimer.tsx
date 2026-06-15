@@ -157,43 +157,36 @@ export function CameraPrimer({ onContinue }: CameraPrimerProps) {
         <Animated.View
           style={[styles.frameWrap, { width: frameW, height: frameH }, frameStyle]}
         >
-          {/* Soft brand bloom behind the card so it floats in its own light. */}
-          <View
-            style={[
-              styles.frameBloom,
-              { width: frameW + 64, height: frameH + 64, borderRadius: dsRadius.xxl + 20 },
-            ]}
-            pointerEvents="none"
-          />
+          {/* (Removed) frameBloom — a hard-edged translucent rectangle behind
+              the card read as a second stray box. The card's real two-shadow
+              stack is its light now. */}
 
           <View style={[styles.frame, { borderRadius: dsRadius.xl }]}>
-            {/* Capture-surface ground — a faint cool wash, like a live but
-                un-pointed viewfinder (never a flat gray box). */}
+            {/* Deep cool viewfinder POOL. The orb is a light source — it only
+                reads as a luminous companion against dark; on the old near-white
+                wash it could only ever be a grey-violet blob. */}
             <LinearGradient
-              colors={[ds.surface, ds.surfaceSunken, ds.pageDeep]}
-              locations={[0, 0.5, 1]}
+              colors={['#10141C', '#0A0F1C', '#070B16']}
+              locations={[0, 0.55, 1]}
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
               style={StyleSheet.absoluteFill}
               pointerEvents="none"
             />
 
-            {/* Face guide ring — a dashed portrait oval marking where the user's
-                face (the future hero portrait) will land. Honest placeholder. */}
+            {/* The companion orb, luminous in the pool where the user's face
+                will land. (The dashed "face oval" was deleted — a high-contrast
+                dashed shape reads as an upload drop-zone; the orb's halo is the
+                face-position cue.) */}
             <View style={styles.guideCenter} pointerEvents="none">
-              <View
-                style={[
-                  styles.faceOval,
-                  { width: frameW * 0.56, height: frameW * 0.56 * 1.28 },
-                ]}
-              />
-              {/* The companion orb glows inside the guide — the continuous
-                  presence, now sitting where the portrait will be. */}
               <View style={styles.orbInGuide}>
                 <AuroraOrb
                   size={orbSize}
                   state="idle"
                   reduceMotion={reduceMotion}
+                  dark
+                  aliveInReduceMotion
+                  restExpression="warm"
                   auraTheme="blue-warm"
                 />
               </View>
@@ -289,31 +282,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...dsElevation.e3,
   },
-  frameBloom: {
-    position: 'absolute',
-    backgroundColor: dsAmbient.day.glow,
-  },
-  // The capture card — generous radius, hairline frame, clipped contents.
+  // The capture card — generous radius, clipped contents, a lit dark rim.
   frame: {
     width: '100%',
     height: '100%',
     overflow: 'hidden',
-    backgroundColor: ds.surface,
+    backgroundColor: '#0A0F1C',
     borderWidth: 1,
-    borderColor: ds.hairline,
+    borderColor: 'rgba(8,22,56,0.12)',
   },
   guideCenter: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // Dashed face oval — where the user's portrait (the recurring hero) will sit.
-  faceOval: {
-    position: 'absolute',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: 'rgba(20,124,255,0.45)',
-    borderStyle: 'dashed',
   },
   orbInGuide: {
     alignItems: 'center',
@@ -380,10 +361,12 @@ const styles = StyleSheet.create({
     bottom: dsSpace.lg,
   },
   headline: {
-    fontFamily: 'InstrumentSerif-Regular',
-    fontSize: 40,
-    lineHeight: 42,
-    letterSpacing: -1.4,
+    // SemiBold — the inked display cut; Regular white serif over the scrim
+    // read thin. 46px stays one line within the 360-cap frame.
+    fontFamily: 'InstrumentSerif-SemiBold',
+    fontSize: 46,
+    lineHeight: 48,
+    letterSpacing: -1.6,
     color: palette.bg,
     textAlign: 'left',
   },
