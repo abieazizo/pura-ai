@@ -6,9 +6,13 @@
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { AuroraOrb } from '@/components/AuroraOrb';
 import { hapt } from '@/utils/haptics';
 import { edit, radius, space, type } from './tokens';
+import { usePressScale } from './pressFeedback';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function EmptyState({
   onScan,
@@ -19,6 +23,7 @@ export function EmptyState({
   reduceMotion: boolean;
   topInset: number;
 }) {
+  const press = usePressScale(0.96);
   return (
     <View style={[styles.root, { paddingTop: topInset }]}>
       <View style={styles.orb}>
@@ -27,17 +32,19 @@ export function EmptyState({
       <Text style={[type.empty, styles.line]}>
         Scan your skin and I'll set out what fits.
       </Text>
-      <Pressable
+      <AnimatedPressable
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
         onPress={() => {
           hapt.select();
           onScan();
         }}
         accessibilityRole="button"
         accessibilityLabel="Scan your skin"
-        style={({ pressed }) => [styles.cta, pressed && { opacity: 0.9 }]}
+        style={[styles.cta, press.style]}
       >
         <Text style={styles.ctaText}>Scan my skin</Text>
-      </Pressable>
+      </AnimatedPressable>
     </View>
   );
 }

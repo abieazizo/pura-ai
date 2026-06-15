@@ -22,7 +22,10 @@ import Animated, {
 import { hapt } from '@/utils/haptics';
 import type { ConcernPick, PickLabel } from '@/screens/shop/skinShop/types';
 import { EchoGlow } from './EchoGlow';
+import { usePressScale } from './pressFeedback';
 import { cardElevation, edit, productShadow, radius, space, type, motion } from './tokens';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const TILE = 96;
 
@@ -46,6 +49,7 @@ export function ConcernPickCard({
   const { product, echo } = pick;
   const addScale = useSharedValue(1);
   const echoBoost = useSharedValue(0);
+  const press = usePressScale(0.985);
 
   const handleAdd = useCallback(() => {
     hapt.tap();
@@ -65,7 +69,14 @@ export function ConcernPickCard({
   const addStyle = useAnimatedStyle(() => ({ transform: [{ scale: addScale.value }] }));
 
   return (
-    <View style={[styles.card, cardElevation]}>
+    <AnimatedPressable
+      onPress={handleAdd}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      accessibilityRole="button"
+      accessibilityLabel={inRoutine ? `${product.name} in your routine` : `Add ${product.name} for ${echo.label}`}
+      style={[styles.card, cardElevation, press.style]}
+    >
       <View pointerEvents="none" style={styles.innerTop} />
 
       {/* LEFT — tile + echo + bled bottle */}
@@ -119,19 +130,13 @@ export function ConcernPickCard({
         ) : null}
       </View>
 
-      {/* add(+) */}
-      <Animated.View style={[styles.addWrap, addStyle]}>
-        <Pressable
-          onPress={handleAdd}
-          accessibilityRole="button"
-          accessibilityLabel={inRoutine ? `${product.name} in your routine` : `Add ${product.name}`}
-          style={[styles.add, inRoutine && styles.addDone]}
-          hitSlop={8}
-        >
+      {/* add(+) — visual affordance; the whole card is the tap target */}
+      <Animated.View style={[styles.addWrap, addStyle]} pointerEvents="none">
+        <View style={[styles.add, inRoutine && styles.addDone]}>
           <Text style={styles.addGlyph}>{inRoutine ? '✓' : '+'}</Text>
-        </Pressable>
+        </View>
       </Animated.View>
-    </View>
+    </AnimatedPressable>
   );
 }
 

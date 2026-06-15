@@ -720,3 +720,38 @@ elevation) without breaking the many legacy aliases (`clay*`/`coral*`/`terracott
   require that session to stop.
 - **Next run picks up at:** Cycle 13 — Motion & micro-interactions (springs, gesture physics, press
   feedback, well-placed haptics; nothing abrupt/static). Broad workflow ONLY when the repo is quiet.
+
+### Cycle 13 — Motion & micro-interactions ✅ (SHOP-ONLY, per user override "RUN THIS FOR JUST THE SHOP PAGE")
+- **Scope:** deliberately narrow — the user pinned this run to the **Shop page only**, so the
+  standing ≥0.3-EVERY-page rule is consciously suspended this cycle (Home/Scan/Routine/Me/Onboarding
+  untouched). Done DIRECTLY (single coherent surface I authored), not a fan-out workflow — and the
+  foreign session was dormant (repo quiet ~23h, HEAD stable at 7fb0981), so no entanglement.
+- **⚠️ Shop was REBUILT outside the loop.** The old Shop (StackCard/ShopFeed swipe-deck, scored in
+  Cycles 1–12) was REPLACED by **"THE EDIT"** (`src/screens/shop/theEdit/`, commit `0fe1093`) — an
+  editorial curation page over the real `useSkinShop` engine (`src/screens/shop/skinShop/`). THE EDIT
+  already shipped with rich motion (curation set-down spring stagger, 3-plane parallax, breathing
+  finding-echo glows, chip cross-fade re-thread, add scale+haptic+echo-brighten, scan→shop continuity
+  wisp). The architecture map above is now STALE for Shop — update in a cleanup pass.
+- **The Cycle-13 move (the gap to a 10): a cohesive TACTILE layer.** New `theEdit/pressFeedback.ts`
+  `usePressScale` — a firm, quick press-spring (in: damping18/stiffness340; out: damping15/stiffness240;
+  mass0.6), UI-thread worklet, **no-op under reduce-motion** (press still fires). Applied to every
+  tappable Shop surface that was previously static-to-touch: concern chips (scale 0.93), collection
+  cards (whole card → reorder, 0.98), concern-pick cards (whole card → add, 0.985; the (+) is now a
+  visual indicator), and the not-scanned CTA (0.96). Cards became generous full-surface tap targets.
+- **Per-page composite before→after (Shop only this cycle):**
+
+  | Page | Composite | Motion sub-score |
+  |---|---|---|
+  | Shop (THE EDIT) | ~8.3 → **~8.6** (+0.3) | 8.0 → **8.5** |
+  | Home · Scan · Routine · Me · Onboarding | unchanged (out of scope this run) | — |
+
+- **Verification:** `npx tsc --noEmit` → **0 errors**. Committed MY files by explicit pathspec
+  (`src/screens/shop/theEdit/*` + this log) — never foreign. Preview rebuilt (`npm run build:web`).
+  ⚠️ Scores are code-reasoned estimates: `preview_screenshot` HANGS on orb-bearing screens and the
+  sandboxed dev port is unreachable by agent-browser, so motion FEEL is unverified locally — confirm
+  on the Vercel deploy (`pura-ai-ebon.vercel.app/?screen=shop`, seed via `?screen=shop-debug`).
+- **Restraint:** added ONE primitive (`usePressScale`) reused everywhere; converted existing button
+  Pressables to whole-card targets rather than adding chrome. Nothing new on screen.
+- **Next run picks up at:** Cycle 14 — but first, when the repo is quiet, reconcile the architecture
+  map + scorecard to THE EDIT (the old StackCard Shop is gone). Broad ≥0.3-all-pages resumes unless
+  the user again scopes a single page.

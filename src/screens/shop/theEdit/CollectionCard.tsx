@@ -18,6 +18,9 @@ import { hapt } from '@/utils/haptics';
 import type { CollectionItem } from '@/screens/shop/skinShop/types';
 import type { RoutineStepKind } from '@/commerce/types';
 import { cardElevation, edit, productShadow, radius, space, type, motion } from './tokens';
+import { usePressScale } from './pressFeedback';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const STEP_LABEL: Record<RoutineStepKind, string> = {
   cleanse: 'Cleanse step',
@@ -42,6 +45,7 @@ export function CollectionCard({
   const { product, restock } = item;
   const W = featured ? Math.round(BASE_W * 1.4) : BASE_W;
   const stageH = featured ? 196 : 150;
+  const press = usePressScale(0.98);
 
   // FRONT PLANE — the photo drifts a touch faster than its card (bounded).
   const photoStyle = useAnimatedStyle(() => ({
@@ -51,7 +55,17 @@ export function CollectionCard({
   }));
 
   return (
-    <View style={[styles.card, { width: W }, cardElevation]}>
+    <AnimatedPressable
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      onPress={() => {
+        hapt.select();
+        onReorder(item.reorderUrl);
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`Reorder ${product.brand} ${product.name}`}
+      style={[styles.card, { width: W }, cardElevation, press.style]}
+    >
       {/* faint inner-top highlight */}
       <View pointerEvents="none" style={styles.innerTop} />
 
@@ -91,40 +105,16 @@ export function CollectionCard({
               <View style={styles.restockPill}>
                 <Text style={[type.label, { color: edit.blueTintText }]}>Restock soon</Text>
               </View>
-              <ReorderButton onPress={() => onReorder(item.reorderUrl)} />
+              <View style={styles.reorderBtn}>
+                <Text style={[type.label, { color: edit.white }]}>Reorder</Text>
+              </View>
             </>
           ) : (
-            <Pressable
-              onPress={() => {
-                hapt.select();
-                onReorder(item.reorderUrl);
-              }}
-              accessibilityRole="link"
-              accessibilityLabel={`Reorder ${product.name}`}
-              hitSlop={8}
-            >
-              <Text style={[type.label, { color: edit.blue }]}>Reorder</Text>
-            </Pressable>
+            <Text style={[type.label, { color: edit.blue }]}>Reorder</Text>
           )}
         </View>
       </View>
-    </View>
-  );
-}
-
-function ReorderButton({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={() => {
-        hapt.tap();
-        onPress();
-      }}
-      accessibilityRole="button"
-      accessibilityLabel="Reorder"
-      style={({ pressed }) => [styles.reorderBtn, pressed && { opacity: 0.85 }]}
-    >
-      <Text style={[type.label, { color: edit.white }]}>Reorder</Text>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
