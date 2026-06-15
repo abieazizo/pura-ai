@@ -40,6 +40,7 @@ import { PuraRoutineScreen } from '../pura/PuraRoutineScreen';
 import { buildYourRoutineModel } from './model';
 import { YourRoutineExperience, type ExperienceMode } from './YourRoutineExperience';
 import { YourRoutineDevHarness } from './YourRoutineDevHarness';
+import { RoutineFlowDevHarness } from './flow/RoutineFlowDevHarness';
 
 /** Routine ids whose reveal morph has already played this session. */
 const revealSeen = new Set<string>();
@@ -83,8 +84,22 @@ function daysBetween(prevKey: string | null, now: Date): number {
   return Math.max(0, Math.floor((a - b) / 86_400_000));
 }
 
+/** Dev-only: the two-act RoutineFlow redesign harness (localStorage flag). */
+function routineFlowHarnessOn(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.localStorage?.getItem('__pura_routineflow__') === '1' ||
+      (window as unknown as { __puraRoutineFlowHarness__?: boolean }).__puraRoutineFlowHarness__ === true
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Hook-free shell: the dev harness branch must never change hook order. */
 export function YourRoutineTabScreen() {
+  if (routineFlowHarnessOn()) return <RoutineFlowDevHarness />;
   if (harnessOn()) return <YourRoutineDevHarness />;
   return <YourRoutineTabScreenLive />;
 }

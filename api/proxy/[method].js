@@ -9971,10 +9971,10 @@ HOW TO TALK (most important rule):
 WHAT TO DO:
 - Only say what you can actually SEE in this photo. Don't guess or pad. If you can't tell, say so in plain words.
 - Be specific by naming the exact spot, and if something is worse on one side, say which side ("a little more on your left cheek"). That asymmetry is what makes it feel real.
-- Compare everything to THIS person's own skin, never an outside standard. Redness = areas redder than the rest of THEIR skin. Dark spots = spots darker than THEIR even tone. The person may have ANY skin tone \u2014 never treat a natural skin tone or a natural warm flush as a problem, and DO still spot dark marks on deep skin.
+- Compare everything to THIS person's own skin, never an outside standard. Redness = areas redder than the rest of THEIR skin. Dark spots = spots darker than THEIR even tone. The person may have ANY skin tone \u2014 never treat a natural skin tone or a natural warm flush as a problem, and DO still spot dark marks on deep skin. NEVER compare to a lighter, fairer, or "ideal" face \u2014 only to the rest of THIS person's own skin. (On deep skin especially: a warm, even, naturally rich tone is NOT redness \u2014 only call out a patch that is genuinely redder or darker than the SAME person's surrounding skin.)
 - Some things you can SEE (redness, rough or bumpy spots, breakouts, dark marks/uneven tone, big pores, fine lines, under-eye darkness). Some things you can only GUESS from clues (oiliness, dryness, sensitive/stressed skin) \u2014 for those, sound less sure and make clear it's a guess.
-- First, check the photo: is the light good, is it in focus, is the whole face showing, is there makeup? If the photo's rough, sound less sure and say a clearer photo in good light would help. Do NOT make up exact findings on a bad photo.
-- Give 3 to 4 findings, most important first. The app shows findings[0] ALONE first, so findings[0] MUST be the single most important, specific, located, high-confidence thing. If the skin looks great, say so warmly, name what's good, and still give at least 3 helpful notes (good things + small tips).
+- First, check the photo: is the light good, is it in focus, is the whole face showing, is there makeup? SAY LESS WHEN UNSURE: if the photo's rough, set "better_photo_would_help" true, sound less sure, say something like "the lighting's making this hard \u2014 try again near a window," and give FEWER findings (just the one or two you can honestly see). Do NOT make up exact findings on a bad photo, and NEVER pad to a full list of things you can't actually see.
+- On a clear photo, give 3 to 6 findings, most important first; on a rough one, give fewer (one or two) \u2014 never invent extras to hit a number. The app shows findings[0] ALONE first, so findings[0] MUST be the single most important, specific, located, high-confidence thing. When the person's GOAL (given in the message) honestly fits one of the things you actually see, make findings[0] that thing \u2014 but NEVER invent or inflate a finding to match the goal; if the skin doesn't support it, say what's truly there. If the skin looks great, say so warmly, name what's good, and still give at least 3 helpful notes (good things + small tips). NEVER invent a problem on good skin.
 - "opening_line" MUST lead with one warm, TRUE, plain thing that looks good, then name the ONE main thing to look at, plainly and located. Shape: "Your skin tone's really even \u2014 that's the first thing I noticed. The main thing to look at: a bit of redness on your cheeks, a little more on the left."
 - For each finding: a short plain "what_i_see", a "level" ("a little"/"some"/"a lot"), "spots" (each a place from the fixed list + strength 0.0-1.0), a plain "what_it_means", an easy "do_this" for tonight needing no product knowledge, and "how_sure".
 - Lead with something kind and true. Never leave a worry hanging \u2014 always pair it with what to do.
@@ -10669,10 +10669,12 @@ var OpenAIClient = class {
   // stays a thin, honest pass-through (it never derives a finding).
   // --------------------------------------------------------------------------
   async readSkin(params) {
+    const goal = typeof params.goal === "string" ? params.goal.trim().slice(0, 120) : "";
+    const instruction = goal ? `Read this skin photo and return the structured skin read as JSON only. The person's main goal is: "${goal}". Where the skin HONESTLY supports it, make findings[0] and skin_summary_line speak to that goal \u2014 but never invent or inflate a finding to match it; if the skin doesn't support it, say what's truly there.` : "Read this skin photo and return the structured skin read as JSON only.";
     const userContent = this.buildImageUserContent(
       params.imageBase64,
       params.mediaType,
-      "Read this skin photo and return the structured skin read as JSON only.",
+      instruction,
       "high"
     );
     return this.runStrictStructured({
@@ -13583,7 +13585,9 @@ var HANDLERS = {
   async readSkin(client, body) {
     const params = {
       imageBase64: reqString(body, "imageBase64"),
-      mediaType: reqMediaType(body, "mediaType")
+      mediaType: reqMediaType(body, "mediaType"),
+      // Optional onboarding goal — lets the read lead toward it honestly.
+      goal: optString(body, "goal")
     };
     const result = await withAIErrorTranslation(
       "readSkin",
