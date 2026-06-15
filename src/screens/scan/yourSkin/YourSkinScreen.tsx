@@ -244,6 +244,10 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
       hapt.select();
       // Clear its map emphasis — fall back to the hero (if distinct) or nothing.
       setSelectedId((cur) => (cur === id ? (vm.hero && vm.hero.id !== id ? vm.hero.id : null) : cur));
+      // If the rejected finding WAS the co-shaped priority, drop the priority —
+      // otherwise "Good to know — I put that first." lingers (and its move stays
+      // pinned, chip-less) for a finding the user just rejected.
+      setCoShapePriorityId((cur) => (cur === id ? null : cur));
     } else {
       hapt.tap();
     }

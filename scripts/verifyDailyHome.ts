@@ -82,18 +82,22 @@ console.log('\n— Callbacks: earned, occasional, never invented —');
 // pickHomeGreeting directly: full control of the seed.
 const calmFacts = { timeOfDay: 'morning' as const, hour: 8, calmerSinceFirstScan: true, calmZone: 'cheeks' as const, scanCount: 2 };
 check('calmer callback fires when true (seed%3==0)',
-  pickHomeGreeting({ seed: 9, ...calmFacts }) === 'Your cheeks are calmer than your first scan.');
+  pickHomeGreeting({ seed: 9, ...calmFacts }) === 'Your cheeks are looking calmer.');
+check('named-zone calmer line does NOT claim "than your FIRST scan" (zone signal is vs-previous, not vs-first)',
+  !/first scan/.test(pickHomeGreeting({ seed: 9, ...calmFacts })));
+check('whole-skin fallback (no named zone) MAY claim vs-first (backed by aggregate deltaSinceFirst)',
+  pickHomeGreeting({ seed: 9, ...calmFacts, calmZone: null }) === 'Your skin reads calmer than your first scan.');
 check('calmer callback NEVER fires when the data is false',
   ![0, 1, 2, 3, 4, 5, 6, 7, 8].some((seed) =>
-    /calmer than your first scan/.test(pickHomeGreeting({ seed, ...calmFacts, calmerSinceFirstScan: false }))));
+    /calmer/.test(pickHomeGreeting({ seed, ...calmFacts, calmerSinceFirstScan: false }))));
 const nineDays = [9, 10, 11, 12, 13, 14, 15, 16, 17].map((seed) => pickHomeGreeting({ seed, ...calmFacts }));
-const callbackDays = nineDays.filter((g) => /calmer than your first scan/.test(g)).length;
+const callbackDays = nineDays.filter((g) => /calmer/.test(g)).length;
 check(`callback is occasional over 9 days (${callbackDays} of 9, expect ~3)`, callbackDays >= 2 && callbackDays <= 4);
 check('scan-count callback grounded in a real count',
   /3 scans in/.test(pickHomeGreeting({ seed: 10, ...calmFacts, calmerSinceFirstScan: false, scanCount: 3 })));
 // Model-level gate: a delta below the honest bar never claims improvement.
 check('model: tiny delta (+2) does NOT earn the calmer claim',
-  !/calmer than your first scan/.test(
+  !/calmer/.test(
     buildDailyHomeModel(base(at(2026, 6, 9, 8), { scanCount: 2, deltaSinceFirst: 2, calmZone: 'cheeks' })).greeting));
 
 console.log('\n— Consistency strip records honestly —');

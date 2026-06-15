@@ -245,6 +245,11 @@ export function RitualMode({
 
   function doneLanding() {
     if (ended.current) return;
+    // Terminal path: clear any lingering pause so the orb's infinite patient
+    // sweep can NEVER leak into Home (the orb is the shared persistent instance
+    // that never remounts). Belt-and-suspenders with the togglePause guard.
+    if (paused) setPaused(false);
+    orb.setPatient(false);
     setPhase('done');
     // Gradient softens; the orb gives its slowest true glow bloom, fully warm.
     if (!reduceMotion) intensify.value = withTiming(0, { duration: routineTiming.doneBloomMs });
@@ -279,6 +284,11 @@ export function RitualMode({
   }
 
   function togglePause() {
+    // Pause/Resume is meaningful ONLY during an active step. The control renders
+    // through the transient phases (completing/care/skipping); without this
+    // guard, tapping Pause there could start the orb's infinite patient sweep
+    // mid-transition and leave it stuck (e.g. into doneLanding → Home).
+    if (phase !== 'active' && !paused) return;
     const next = !paused;
     setPaused(next);
     if (next) {
@@ -410,7 +420,11 @@ export function RitualMode({
         </View>
       </View>
 
-      <Animated.View style={[styles.body, blockOutStyle]}>
+      <Animated.ScrollView
+        style={[styles.body, blockOutStyle]}
+        contentContainerStyle={[styles.bodyContent, { paddingBottom: insets.bottom + 140 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[rType.label, { color: atmo.faint }]} maxFontSizeMultiplier={1.2}>
           STEP {index + 1} OF {steps.length}
         </Text>
@@ -507,7 +521,7 @@ export function RitualMode({
             )}
           </View>
         )}
-      </Animated.View>
+      </Animated.ScrollView>
 
       {/* Done / Skip — large, calm. */}
       {phase === 'active' && (
@@ -635,7 +649,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   controlsRight: { flexDirection: 'row', alignItems: 'center' },
-  body: { paddingHorizontal: 28, flex: 1 },
+  body: { flex: 1 },
+  // Scrolls when a long action + word-reveal + product row + ring exceed the
+  // viewport (small devices / large Dynamic Type); paddingBottom reserves room
+  // for the absolute footer so core content is never clipped under the buttons.
+  bodyContent: { paddingHorizontal: 28, flexGrow: 1 },
   productRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 12 },
   productText: { flex: 1 },
   ringWrap: { marginTop: 40, alignSelf: 'flex-start' },

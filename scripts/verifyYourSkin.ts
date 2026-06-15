@@ -215,6 +215,10 @@ section('5 · Voice / honesty');
   const screenTxt = read(join(YS, 'YourSkinScreen.tsx'));
   check('co-shape chips are gated on a finding being addressed by a move (addressedIds)',
     /addressedIds/.test(screenTxt) && /addressedIds\.has\(f\.id\)/.test(screenTxt));
+  // Rejecting ("Not me") the co-shaped finding must clear the priority — else
+  // "I put that first." lingers for a finding the user just rejected.
+  check('rejecting the co-shaped finding clears coShapePriorityId (no stale confirmation)',
+    /setCoShapePriorityId\(\(cur\) => \(cur === id \? null : cur\)\)/.test(screenTxt));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

@@ -57,9 +57,14 @@ export interface GreetingFacts {
 }
 
 function calmerLine(zone: CalmZoneWord | null): string {
-  if (zone === 'cheeks') return 'Your cheeks are calmer than your first scan.';
-  if (zone === 'forehead') return 'Your forehead is calmer than your first scan.';
-  if (zone === 'chin') return 'Your chin is calmer than your first scan.';
+  // A NAMED zone is selected by direction_vs_previous ('better' vs the LAST
+  // scan), so it may only claim "looking calmer" — never "than your first scan",
+  // which is an aggregate vs-first fact (deltaSinceFirst) true ONLY for the
+  // whole-skin fallback. Naming a zone "calmer than your first scan" off a
+  // vs-previous signal is a false specific claim at 3+ scans.
+  if (zone === 'cheeks') return 'Your cheeks are looking calmer.';
+  if (zone === 'forehead') return 'Your forehead is looking calmer.';
+  if (zone === 'chin') return 'Your chin is looking calmer.';
   return 'Your skin reads calmer than your first scan.';
 }
 

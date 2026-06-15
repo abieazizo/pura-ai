@@ -82,6 +82,14 @@ check('owned-checkout backend exists with the SAME interface (swap point)',
   typeof ownedCheckoutBackend.checkout === 'function' && ownedCheckoutBackend.disclosure === null);
 check('one swap point (activeBuyBackend) — the button never changes', activeBuyBackend.id === affiliateBuyBackend.id);
 check('Confirm renders the disclosure under the button', confirm.includes('activeBuyBackend.disclosure'));
+// The web handoff must DETECT a blocked popup (window.open returns null without
+// throwing) — else blocked tabs count as "opened" and the honest partial/fail
+// states can never fire on web. Regression guard for the round-3 audit fix.
+const handoff = src('buyHandoff.ts');
+check('open() checks the window.open RETURN VALUE (blocked popup ≠ opened)',
+  /const win = w\(url/.test(handoff) && /return win != null/.test(handoff) && !/w\(url, '_blank'\); return true/.test(handoff));
+check('Confirm reserves dock height dynamically (Total never hidden behind the dock)',
+  /onLayout=\{\(e\) => setDockH/.test(confirm) && /dockH > 0 \? dockH/.test(confirm));
 
 // ── Step 6 · Account + notifications deferred ─────────────────────────────
 console.log('\n— Step 6 · Account + notifications —');

@@ -41,9 +41,14 @@ export interface BuyBackend {
 async function open(url: string): Promise<boolean> {
   try {
     if (typeof document !== 'undefined') {
-      const w = (globalThis as { open?: (u: string, t?: string) => unknown }).open;
-      if (w) { w(url, '_blank'); return true; }
-      return false;
+      const w = (globalThis as { open?: (u: string, t?: string) => Window | null }).open;
+      if (!w) return false;
+      // window.open returns null when the popup is BLOCKED (it does NOT throw),
+      // so we must check the returned handle. Returning true unconditionally
+      // counted blocked tabs as "opened" — defeating the honest partial/fail
+      // handoff states on web (the user shipping channel).
+      const win = w(url, '_blank');
+      return win != null;
     }
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { Linking } = require('react-native') as typeof import('react-native');

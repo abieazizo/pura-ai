@@ -197,5 +197,16 @@ check('greeting never claims "Two steps" for a 3-step morning', !model.greeting.
 check('SPF skip line locked', allSteps.length > 0 && lintVoice("Skipping's fine. I'd not skip the SPF - but I'm not your mother. Tomorrow's there.").length === 0);
 check('midday period reachable from the clock', buildYourRoutineModel({ routine: demoRoutine, findings: demoFindings, timeOfDay: 'evening', now: new Date(2026, 5, 8, 13), streak: { count: 0, includesToday: false }, doneIds: [] }).period === 'midday');
 
+// 8f. RitualMode layout + orb-state-leak guards (round-2/3 audit fixes).
+import { readFileSync as _readRM } from 'node:fs';
+import { join as _joinRM } from 'node:path';
+const rmSrc = _readRM(_joinRM(__dirname, '../src/screens/routine/yourRoutine/modes/RitualMode.tsx'), 'utf8');
+check('ritual body scrolls (long step + large Dynamic Type never clips under the footer)',
+  /<Animated\.ScrollView[\s\S]*?style=\{\[styles\.body/.test(rmSrc) && /bodyContent/.test(rmSrc));
+check('Pause cannot start the patient sweep outside an active step (no orb leak into Home)',
+  /phase !== 'active' && !paused\) return;/.test(rmSrc));
+check('every terminal/advance path clears the patient sweep (>=5 setPatient(false) sites incl. doneLanding)',
+  (rmSrc.match(/setPatient\(false\)/g) || []).length >= 5);
+
 console.log(`\n${failures === 0 ? '✅ ALL CHECKS PASSED' : `❌ ${failures} CHECK(S) FAILED`}\n`);
 process.exit(failures === 0 ? 0 : 1);
