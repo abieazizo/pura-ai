@@ -39,10 +39,12 @@ const OWNED: { key: RoutineStepKind; label: string }[] = [
 export interface TailoringScreenProps {
   /** For the orb's first line — kept warm, never clinical. */
   goal?: string;
+  /** The flow container hoists ONE persistent orb; we reserve its space. */
+  hideOrb?: boolean;
   onComplete: (tailoring: TailoringInput) => void;
 }
 
-export function TailoringScreen({ onComplete }: TailoringScreenProps) {
+export function TailoringScreen({ hideOrb = false, onComplete }: TailoringScreenProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const [depth, setDepth] = useState<Depth | null>(null);
@@ -67,9 +69,13 @@ export function TailoringScreen({ onComplete }: TailoringScreenProps) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 20, paddingHorizontal: 24, paddingBottom: insets.bottom + 120 }}
       >
-        <Animated.View entering={enter(0)} style={styles.orbRow}>
-          <AssistantAuroraOrb state="idle" size={60} scanTone="balanced" />
-        </Animated.View>
+        {hideOrb ? (
+          <View style={styles.orbSpacer} />
+        ) : (
+          <Animated.View entering={enter(0)} style={styles.orbRow}>
+            <AssistantAuroraOrb state="idle" size={60} scanTone="balanced" />
+          </Animated.View>
+        )}
 
         {/* Q1 — the orb's voice, serif. */}
         <Animated.Text entering={enter(1)} style={styles.q} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
@@ -159,6 +165,7 @@ export function TailoringScreen({ onComplete }: TailoringScreenProps) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: money.bg },
   orbRow: { alignItems: 'flex-start', marginBottom: 18 },
+  orbSpacer: { height: 60, marginBottom: 18 },
   q: { fontFamily: SERIF, fontSize: 38, lineHeight: 42, color: money.ink, letterSpacing: -0.5 },
   q2: { fontFamily: SERIF, fontSize: 30, lineHeight: 34, color: money.ink, letterSpacing: -0.4 },
   sub: { fontFamily: 'Inter-Regular', fontSize: 15, lineHeight: 21, color: money.muted, marginTop: 8 },

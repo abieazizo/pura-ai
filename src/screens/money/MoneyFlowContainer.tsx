@@ -60,6 +60,7 @@ export function MoneyFlowContainer({ scanId, photoUri, onDone }: MoneyFlowContai
     <MoneyFlow
       read={read}
       goal={goal}
+      hasAccount={!!useAppStore.getState().user}
       onLock={(lines) => {
         // THE LOCK — the chosen products become the routine, committed exactly
         // like the legacy ceremony (completeBuild → active), so Home + ritual

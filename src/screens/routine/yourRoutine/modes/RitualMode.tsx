@@ -331,7 +331,28 @@ export function RitualMode({
     );
   }
 
-  if (!step) return <View style={styles.fill} />;
+  // Empty step list (a routine with nothing for this time of day) must NEVER be
+  // an inescapable black void — render an honest, exitable end state instead.
+  if (!step) {
+    return (
+      <View style={[styles.fill, { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }]}>
+        <Text style={[rType.hero, { color: atmo.ink, textAlign: 'center' }]} maxFontSizeMultiplier={1.3}>
+          Nothing to run right now.
+        </Text>
+        <Text style={[rType.bodySm, { color: atmo.muted, textAlign: 'center', marginTop: 10 }]} maxFontSizeMultiplier={1.4}>
+          Your routine has no steps for this part of the day.
+        </Text>
+        <Pressable
+          onPress={() => onFinish([])}
+          accessibilityRole="button"
+          accessibilityLabel="Done"
+          style={{ marginTop: 28, minHeight: 48, paddingHorizontal: 32, borderRadius: 999, borderWidth: 1, borderColor: atmo.faint, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={[rType.bodySm, { color: atmo.ink }]} maxFontSizeMultiplier={1.3}>Done</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   const absorbing = step.absorbSeconds > 0 && phase === 'active';
 

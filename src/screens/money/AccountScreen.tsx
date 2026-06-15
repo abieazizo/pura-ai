@@ -19,11 +19,17 @@ export interface AccountScreenProps {
   /** True if the buy handoff opened the retailer; false on the product-free path. */
   bought: boolean;
   openedCount?: number;
+  /** Does the user already have an account? (In the real post-scan flow they
+   *  onboarded first, so this is usually true → we never show a dead, redundant
+   *  "create account" button.) */
+  hasAccount?: boolean;
+  /** The flow container hoists ONE persistent orb; we reserve its space. */
+  hideOrb?: boolean;
   onCreateAccount: () => void;
   onMaybeLater: () => void;
 }
 
-export function AccountScreen({ bought, openedCount = 0, onCreateAccount, onMaybeLater }: AccountScreenProps) {
+export function AccountScreen({ bought, openedCount = 0, hasAccount = true, hideOrb = false, onCreateAccount, onMaybeLater }: AccountScreenProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const enter = (i: number) =>
@@ -34,9 +40,13 @@ export function AccountScreen({ bought, openedCount = 0, onCreateAccount, onMayb
       <StatusBar style="dark" />
       <ScrollView showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 40, paddingHorizontal: 24, paddingBottom: insets.bottom + 28, flexGrow: 1 }}>
-        <Animated.View entering={enter(0)} style={styles.orbRow}>
-          <AssistantAuroraOrb state="responding" size={72} scanTone="balanced" />
-        </Animated.View>
+        {hideOrb ? (
+          <View style={styles.orbSpacer} />
+        ) : (
+          <Animated.View entering={enter(0)} style={styles.orbRow}>
+            <AssistantAuroraOrb state="responding" size={72} scanTone="balanced" />
+          </Animated.View>
+        )}
         <Animated.Text entering={enter(1)} style={styles.h1} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
           You’re all set.
         </Animated.Text>
@@ -47,18 +57,33 @@ export function AccountScreen({ bought, openedCount = 0, onCreateAccount, onMayb
         </Animated.Text>
 
         <Animated.View entering={enter(3)} style={[styles.card, cardShadow]}>
-          <Text style={styles.cardTitle} maxFontSizeMultiplier={1.4}>Save your routine</Text>
-          <Text style={styles.cardBody} maxFontSizeMultiplier={1.6}>
-            Make a free account so it’s here when you come back — and so we can track how your skin changes.
-          </Text>
-          <Pressable onPress={onCreateAccount} accessibilityRole="button" accessibilityLabel="Create a free account"
-            style={({ pressed }) => [styles.cta, { opacity: pressed ? 0.9 : 1 }]}>
-            <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>Create a free account</Text>
-          </Pressable>
-          <Pressable onPress={onMaybeLater} accessibilityRole="button" accessibilityLabel="Maybe later"
-            style={styles.later}>
-            <Text style={styles.laterText} maxFontSizeMultiplier={1.4}>Maybe later</Text>
-          </Pressable>
+          {hasAccount ? (
+            <>
+              <Text style={styles.cardTitle} maxFontSizeMultiplier={1.4}>Saved to your account</Text>
+              <Text style={styles.cardBody} maxFontSizeMultiplier={1.6}>
+                Your routine’s here whenever you come back, and we’ll track how your skin changes from here.
+              </Text>
+              <Pressable onPress={onMaybeLater} accessibilityRole="button" accessibilityLabel="Go to my routine"
+                style={({ pressed }) => [styles.cta, { opacity: pressed ? 0.9 : 1 }]}>
+                <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>Go to my routine</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.cardTitle} maxFontSizeMultiplier={1.4}>Save your routine</Text>
+              <Text style={styles.cardBody} maxFontSizeMultiplier={1.6}>
+                Make a free account so it’s here when you come back — and so we can track how your skin changes.
+              </Text>
+              <Pressable onPress={onCreateAccount} accessibilityRole="button" accessibilityLabel="Create a free account"
+                style={({ pressed }) => [styles.cta, { opacity: pressed ? 0.9 : 1 }]}>
+                <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>Create a free account</Text>
+              </Pressable>
+              <Pressable onPress={onMaybeLater} accessibilityRole="button" accessibilityLabel="Maybe later"
+                style={styles.later}>
+                <Text style={styles.laterText} maxFontSizeMultiplier={1.4}>Maybe later</Text>
+              </Pressable>
+            </>
+          )}
         </Animated.View>
 
         <View style={{ flex: 1 }} />
@@ -74,6 +99,7 @@ export function AccountScreen({ bought, openedCount = 0, onCreateAccount, onMayb
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: money.bg },
   orbRow: { alignItems: 'flex-start', marginBottom: 18 },
+  orbSpacer: { height: 72, marginBottom: 18 },
   h1: { fontFamily: SERIF, fontSize: 46, lineHeight: 50, color: money.ink, letterSpacing: -0.7 },
   sub: { fontFamily: 'Inter-Regular', fontSize: 16, lineHeight: 23, color: money.muted, marginTop: 12, maxWidth: 320 },
   card: { backgroundColor: money.surface, borderRadius: 24, padding: 22, marginTop: 32, borderWidth: 1, borderColor: money.hairline },

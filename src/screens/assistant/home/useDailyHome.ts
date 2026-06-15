@@ -63,10 +63,14 @@ export function useDailyHome(): DailyHomeModel {
     if (!Number.isFinite(newest)) return null;
     return Math.max(0, Math.floor((now.getTime() - newest) / 86_400_000));
   })();
+  // The "your cheeks are calmer than your first scan" callback names a SPECIFIC
+  // zone — so it may ONLY name a zone whose concern actually IMPROVED
+  // (direction 'better'), never just the current top concern (which could have
+  // worsened while the overall score rose elsewhere). No improved zone → null,
+  // and the greeting falls back to the honest generic "your skin reads calmer".
+  const improvedConcern = skin?.topConcerns?.find((c) => c.direction === 'better');
   const calmZone = zoneWord(
-    skin?.topConcerns?.find((c) => c.rank === 1)?.regions as
-      | SemanticFaceZone[]
-      | undefined,
+    improvedConcern?.regions as SemanticFaceZone[] | undefined,
   );
 
   return useMemo(

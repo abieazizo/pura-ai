@@ -283,9 +283,17 @@ export function FirstFindingScreen({
       orb.setGaze('forward');
       return;
     }
-    const read = outcome.status === 'ready' ? outcome.read : outcome.read;
+    const read =
+      outcome.status === 'ready' || outcome.status === 'bad_photo' ? outcome.read : null;
     if (!read) {
       stopAnalyzing();
+      // A bad photo with NO hedged read to show must not dead-end on the generic
+      // error screen — "Show me anyway" has nothing to reveal, so send the user
+      // to retake in better light (the only honest next step).
+      if (outcome.status === 'bad_photo') {
+        onTryBetterLight();
+        return;
+      }
       setPhase('error');
       return;
     }
@@ -513,6 +521,9 @@ export function FirstFindingScreen({
                 tokens={tokens}
                 onTryBetterLight={onTryBetterLight}
                 onShowAnyway={onShowAnyway}
+                /* Only offer "Show me anyway" when there's a hedged read to
+                   reveal — otherwise it has nothing to show and dead-ends. */
+                canShowAnyway={outcome.status === 'bad_photo' && outcome.read != null}
               />
             )}
 
@@ -622,11 +633,14 @@ function BadPhotoChoice({
   tokens,
   onTryBetterLight,
   onShowAnyway,
+  canShowAnyway,
 }: {
   reason: string;
   tokens: ReturnType<typeof tokensFor>;
   onTryBetterLight: () => void;
   onShowAnyway: () => void;
+  /** "Show me anyway" only appears when there's a hedged read to reveal. */
+  canShowAnyway: boolean;
 }) {
   return (
     <View style={styles.center}>
@@ -637,17 +651,19 @@ function BadPhotoChoice({
         A clearer photo in good light would help me read your skin.
       </Text>
       <OutlineButton label={COPY.tryBetterLight} tokens={tokens} onPress={onTryBetterLight} />
-      <Pressable
-        onPress={onShowAnyway}
-        accessibilityRole="button"
-        accessibilityLabel={COPY.showAnyway}
-        hitSlop={12}
-        style={({ pressed }) => [styles.quietBtn, { opacity: pressed ? 0.6 : 1 }]}
-      >
-        <Text style={[TYPE.cta, { color: tokens.status }]} maxFontSizeMultiplier={1.4}>
-          {COPY.showAnyway}
-        </Text>
-      </Pressable>
+      {canShowAnyway ? (
+        <Pressable
+          onPress={onShowAnyway}
+          accessibilityRole="button"
+          accessibilityLabel={COPY.showAnyway}
+          hitSlop={12}
+          style={({ pressed }) => [styles.quietBtn, { opacity: pressed ? 0.6 : 1 }]}
+        >
+          <Text style={[TYPE.cta, { color: tokens.status }]} maxFontSizeMultiplier={1.4}>
+            {COPY.showAnyway}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

@@ -15,6 +15,9 @@ import type { PickLabel, RoutineSlot } from '@/commerce/types';
 import { money, cardShadow, SERIF } from './theme';
 
 const STEP_WORD: Record<string, string> = { cleanse: 'Cleanse', treat: 'Treat', moisturize: 'Moisturize', protect: 'Protect' };
+/** Real consumer nouns for the owned-skip line — never the raw engine enum
+ *  ("you've got a moisturize" is not English). */
+const OWNED_NOUN: Record<string, string> = { cleanse: 'cleanser', treat: 'treatment', moisturize: 'moisturizer', protect: 'sunscreen' };
 
 const LABEL_PILL: Record<PickLabel, { text: string; bg: string; ink: string }> = {
   good_match: { text: 'Good match', bg: money.blue10, ink: money.blueDeep },
@@ -37,10 +40,11 @@ export interface RoutineCardProps {
 export function RoutineCard({ slot, chosenId, selected, onToggleSelected, onUseBudget, onUsePick }: RoutineCardProps) {
   // Owned → never re-sold; the routine simply tells the user it skipped it.
   if (slot.skippedBecauseOwned) {
+    const noun = OWNED_NOUN[slot.step] ?? 'one';
     return (
-      <View style={[styles.owned]} accessibilityLabel={`You've got a ${slot.step}, so we skipped it.`}>
+      <View style={[styles.owned]} accessibilityLabel={`You've already got a ${noun} — we left it out.`}>
         <Text style={styles.ownedText} maxFontSizeMultiplier={1.5}>
-          You’ve got a {slot.step === 'protect' ? 'sunscreen' : slot.step}, so we skipped it.
+          You’ve already got a {noun} — we left it out.
         </Text>
       </View>
     );
@@ -64,8 +68,13 @@ export function RoutineCard({ slot, chosenId, selected, onToggleSelected, onUseB
         {sku.image != null ? (
           <Image source={sku.image} style={styles.packshot} contentFit="contain" />
         ) : (
-          <View style={styles.brandTile}>
-            <Text style={styles.brandTileText}>{sku.brand}</Text>
+          // No packshot yet → a deliberate editorial tile (tinted wash + serif
+          // initial), never a gray "broken" rectangle. (Real packshots are still
+          // being sourced for the full catalog; the engine prefers SKUs that have
+          // one, so this is the exception, not the rule.)
+          <View style={styles.brandTile} accessibilityElementsHidden>
+            <Text style={styles.brandInitial}>{sku.brand.trim().charAt(0)}</Text>
+            <Text style={styles.brandTileText} numberOfLines={1}>{sku.brand}</Text>
           </View>
         )}
       </View>
@@ -125,8 +134,9 @@ const styles = StyleSheet.create({
   // The bottle floats up out of the card; the soft ellipse is its contact shadow.
   packshot: { position: 'absolute', top: -34, width: 120, height: 150 },
   contact: { position: 'absolute', bottom: 8, width: 92, height: 14, borderRadius: 999, backgroundColor: 'rgba(8,22,56,0.10)', transform: [{ scaleX: 1.1 }] },
-  brandTile: { position: 'absolute', top: -18, width: 92, height: 116, borderRadius: 14, backgroundColor: '#F2F5FA', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  brandTileText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: money.muted, textAlign: 'center' },
+  brandTile: { position: 'absolute', top: -18, width: 92, height: 116, borderRadius: 16, backgroundColor: money.blue06, borderWidth: 1, borderColor: money.blue10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, gap: 4 },
+  brandInitial: { fontFamily: SERIF, fontSize: 44, lineHeight: 46, color: money.blueDeep },
+  brandTileText: { fontFamily: 'Inter-SemiBold', fontSize: 11, color: money.muted, textAlign: 'center' },
   body: { paddingHorizontal: 18, paddingBottom: 16, paddingTop: 2 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   step: { fontFamily: 'Inter-SemiBold', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: money.faint },

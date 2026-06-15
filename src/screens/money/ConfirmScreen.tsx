@@ -27,16 +27,19 @@ interface Resolved { step: string; time: string; sku: CommerceSku; }
 
 export interface ConfirmScreenProps {
   lines: SelectedLine[];
+  /** The flow container hoists ONE persistent orb; we reserve its space. */
+  hideOrb?: boolean;
   /** Fires the instant the user commits — the routine is LOCKED here. */
   onLock: (plan: Resolved[]) => void;
   onBought: (result: { opened: number }) => void;
   onProductFree: () => void;
 }
 
-export function ConfirmScreen({ lines, onLock, onBought, onProductFree }: ConfirmScreenProps) {
+export function ConfirmScreen({ lines, hideOrb = false, onLock, onBought, onProductFree }: ConfirmScreenProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const resolved: Resolved[] = useMemo(() => {
     return lines
@@ -58,10 +61,17 @@ export function ConfirmScreen({ lines, onLock, onBought, onProductFree }: Confir
   const buy = async () => {
     if (busy) return;
     setBusy(true);
+    setErr(null);
     onLock(resolved); // lock FIRST — the plan is theirs whether or not the handoff opens
     const items: BuyItem[] = resolved.map((r) => ({ sku: r.sku }));
     const res = await activeBuyBackend.checkout(items);
     setBusy(false);
+    // If NOTHING opened (popup blocked / handoff failed), don't pretend it
+    // worked — keep them here with an honest retry. The routine is still saved.
+    if (!res.ok || res.opened === 0) {
+      setErr('We couldn’t open the shop — your browser may have blocked it. Tap again, or continue with your routine saved.');
+      return;
+    }
     onBought({ opened: res.opened });
   };
 
@@ -85,9 +95,13 @@ export function ConfirmScreen({ lines, onLock, onBought, onProductFree }: Confir
       <StatusBar style="dark" />
       <ScrollView showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 18, paddingHorizontal: 24, paddingBottom: insets.bottom + 188 }}>
-        <Animated.View entering={enter(0)} style={styles.orbRow}>
-          <AssistantAuroraOrb state="responding" size={56} scanTone="balanced" />
-        </Animated.View>
+        {hideOrb ? (
+          <View style={styles.orbSpacer} />
+        ) : (
+          <Animated.View entering={enter(0)} style={styles.orbRow}>
+            <AssistantAuroraOrb state="responding" size={56} scanTone="balanced" />
+          </Animated.View>
+        )}
         <Animated.Text entering={enter(1)} style={styles.h1} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
           Here’s your routine, and here’s what you’re getting.
         </Animated.Text>
@@ -128,8 +142,11 @@ export function ConfirmScreen({ lines, onLock, onBought, onProductFree }: Confir
               style={({ pressed }) => [styles.cta, { opacity: pressed || busy ? 0.9 : 1 }]}>
               <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>{activeBuyBackend.cta} · {fmt(total)}</Text>
             </Pressable>
+            {err ? (
+              <Text style={styles.err} maxFontSizeMultiplier={1.6}>{err}</Text>
+            ) : null}
             {activeBuyBackend.disclosure ? (
-              <Text style={styles.disclosure} maxFontSizeMultiplier={1.5}>{activeBuyBackend.disclosure}</Text>
+              <Text style={styles.disclosure} maxFontSizeMultiplier={1.6}>{activeBuyBackend.disclosure}</Text>
             ) : null}
           </>
         ) : null}
@@ -145,6 +162,7 @@ export function ConfirmScreen({ lines, onLock, onBought, onProductFree }: Confir
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: money.bg },
   orbRow: { alignItems: 'flex-start', marginBottom: 14 },
+  orbSpacer: { height: 56, marginBottom: 14 },
   h1: { fontFamily: SERIF, fontSize: 36, lineHeight: 40, color: money.ink, letterSpacing: -0.5 },
   plan: { backgroundColor: money.surface, borderRadius: 24, padding: 20, marginTop: 24, borderWidth: 1, borderColor: money.hairline },
   planCol: { gap: 10 },
@@ -165,7 +183,8 @@ const styles = StyleSheet.create({
   dock: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 24, paddingTop: 12, backgroundColor: 'rgba(252,253,255,0.96)', borderTopWidth: 1, borderTopColor: money.hairline },
   cta: { minHeight: 54, borderRadius: 999, backgroundColor: money.blue, alignItems: 'center', justifyContent: 'center' },
   ctaText: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: '#FFFFFF' },
-  disclosure: { fontFamily: 'Inter-Regular', fontSize: 11.5, lineHeight: 16, color: money.faint, marginTop: 10, textAlign: 'center' },
+  disclosure: { fontFamily: 'Inter-Regular', fontSize: 12.5, lineHeight: 18, color: money.muted, marginTop: 10, textAlign: 'center' },
+  err: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 18, color: '#B23B3B', marginTop: 10, textAlign: 'center' },
   free: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   freeText: { fontFamily: 'Inter-Medium', fontSize: 15, color: money.muted },
 });

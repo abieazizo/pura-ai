@@ -31,10 +31,12 @@ export interface YourRoutineScreenProps {
   recommendation: RecommendationSet;
   /** Onboarding goal for the header line, when known. */
   goalLine?: string;
+  /** The flow container hoists ONE persistent orb; we reserve its space. */
+  hideOrb?: boolean;
   onConfirm: (lines: SelectedLine[]) => void;
 }
 
-export function YourRoutineScreen({ recommendation, goalLine, onConfirm }: YourRoutineScreenProps) {
+export function YourRoutineScreen({ recommendation, goalLine, hideOrb = false, onConfirm }: YourRoutineScreenProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const [showFull, setShowFull] = useState(false);
@@ -91,9 +93,13 @@ export function YourRoutineScreen({ recommendation, goalLine, onConfirm }: YourR
       <StatusBar style="dark" />
       <ScrollView showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 18, paddingHorizontal: 24, paddingBottom: insets.bottom + 130 }}>
-        <Animated.View entering={enter(0)} style={styles.orbRow}>
-          <AssistantAuroraOrb state="responding" size={56} scanTone="balanced" />
-        </Animated.View>
+        {hideOrb ? (
+          <View style={styles.orbSpacer} />
+        ) : (
+          <Animated.View entering={enter(0)} style={styles.orbRow}>
+            <AssistantAuroraOrb state="responding" size={56} scanTone="balanced" />
+          </Animated.View>
+        )}
         <Animated.Text entering={enter(1)} style={styles.h1} accessibilityRole="header" maxFontSizeMultiplier={1.4}>
           Here’s your routine.
         </Animated.Text>
@@ -101,8 +107,17 @@ export function YourRoutineScreen({ recommendation, goalLine, onConfirm }: YourR
           {goalLine ?? 'Built from what your scan actually showed — each step is one real product, picked for fit.'}
         </Animated.Text>
 
-        <Animated.Text entering={enter(3)} style={styles.section} maxFontSizeMultiplier={1.4}>The essentials</Animated.Text>
-        {essentials.map((l, i) => renderCard(l, i))}
+        {buyable.length === 0 ? (
+          <Animated.Text entering={enter(3)} style={styles.covered} maxFontSizeMultiplier={1.6}>
+            You’re already covered — nothing to add. Your routine’s the steps you’ve got; just keep them going.
+          </Animated.Text>
+        ) : null}
+        {essentials.length > 0 ? (
+          <>
+            <Animated.Text entering={enter(3)} style={styles.section} maxFontSizeMultiplier={1.4}>The essentials</Animated.Text>
+            {essentials.map((l, i) => renderCard(l, i))}
+          </>
+        ) : null}
 
         {ownedSlots.length > 0 ? (
           <View style={{ marginTop: 8 }}>
@@ -133,9 +148,9 @@ export function YourRoutineScreen({ recommendation, goalLine, onConfirm }: YourR
           <Text style={styles.dockCount} maxFontSizeMultiplier={1.4}>{count} {count === 1 ? 'product' : 'products'}</Text>
           <Text style={styles.dockTotal} maxFontSizeMultiplier={1.3}>{fmt(total)}</Text>
         </View>
-        <Pressable onPress={() => onConfirm(lines)} accessibilityRole="button" accessibilityLabel="Review and confirm"
+        <Pressable onPress={() => onConfirm(lines)} accessibilityRole="button" accessibilityLabel={count > 0 ? 'Review and confirm' : 'Continue with what you have'}
           style={({ pressed }) => [styles.cta, { opacity: pressed ? 0.9 : 1 }]}>
-          <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>Review &amp; confirm</Text>
+          <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>{count > 0 ? 'Review & confirm' : 'Continue'}</Text>
         </Pressable>
       </View>
     </View>
@@ -145,9 +160,11 @@ export function YourRoutineScreen({ recommendation, goalLine, onConfirm }: YourR
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: money.bg },
   orbRow: { alignItems: 'flex-start', marginBottom: 14 },
+  orbSpacer: { height: 56, marginBottom: 14 },
   h1: { fontFamily: SERIF, fontSize: 42, lineHeight: 46, color: money.ink, letterSpacing: -0.6 },
   sub: { fontFamily: 'Inter-Regular', fontSize: 15, lineHeight: 22, color: money.muted, marginTop: 10 },
   section: { fontFamily: 'Inter-SemiBold', fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase', color: money.faint, marginTop: 30 },
+  covered: { fontFamily: 'Inter-Regular', fontSize: 16, lineHeight: 23, color: money.muted, marginTop: 28, maxWidth: 320 },
   more: { marginTop: 26, minHeight: 48, justifyContent: 'center' },
   moreText: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: money.blueDeep },
   dock: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 24, paddingTop: 12, backgroundColor: 'rgba(252,253,255,0.94)', borderTopWidth: 1, borderTopColor: money.hairline },

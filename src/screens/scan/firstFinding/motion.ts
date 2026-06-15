@@ -78,9 +78,11 @@ export const COPY = {
   tryBetterLight: 'Try in better light',
   showAnyway: 'Show me anyway',
   tryAgain: 'Try again',
-  /** Honest privacy line (the photo IS sent to an API). */
+  /** Honest privacy line. The photo IS sent to our AI provider to read the
+   *  skin (the app's own Privacy screen says so), so we must NOT claim "never
+   *  shared" — only that it isn't stored after the read. */
   privacy:
-    'Your photo is used to read your skin, then it’s never stored or shared.',
+    'Your photo is sent securely to read your skin, then it’s never stored.',
   errorTitle: 'I couldn’t quite finish that read — let’s try once more.',
 } as const;
 

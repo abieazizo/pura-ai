@@ -90,6 +90,12 @@ function rankSkus(skus: CommerceSku[], findings: EngineFinding[]): CommerceSku[]
     if (gentleness[a.activeStrength] !== gentleness[b.activeStrength]) {
       return gentleness[a.activeStrength] - gentleness[b.activeStrength];
     }
+    // Among genuinely equal-fit candidates, prefer one with a real packshot —
+    // the buy card lives or dies on the product photo. This is a TIE-BREAK only
+    // (fit already decided above), so ranking stays price-blind and fit-first.
+    const ia = a.image != null ? 0 : 1;
+    const ib = b.image != null ? 0 : 1;
+    if (ia !== ib) return ia - ib;
     return a.id < b.id ? -1 : 1;
   });
 }
