@@ -88,6 +88,21 @@ check("'full' adds a second treat 'essentials' does not (depths are not the same
 check("'choose' shows the COMPLETE set like 'full' — it is NOT a silent clone of 'essentials'", chooseTreats === fullTreats && chooseTreats > essTreats,
   `choose=${chooseTreats} full=${fullTreats} essentials=${essTreats}`);
 
+console.log('\n— No fit-0 treat for an unmatched / "neutral" finding —');
+// A located finding whose words match no concern regex becomes 'neutral'
+// (normalizeSkinRead). No catalog treat addresses 'neutral', so falling back to
+// ALL treats would pick a fit-0 product by tie-break and sell it as essential.
+const neutralSet = buildRecommendation({ findings: [f('n', 'neutral', 'some')], tailoring: T(), beginner: true });
+const neutralTreat = neutralSet.slots.find((s) => s.step === 'treat');
+check('a lone "neutral" hero produces NO treat slot (never sells a fit-0 product as essential)', !neutralTreat,
+  neutralTreat ? `pick=${neutralTreat.pick?.sku.id}` : '');
+check('the routine still stands (cleanse + protect present) when treat is skipped',
+  neutralSet.slots.some((s) => s.step === 'cleanse') && neutralSet.slots.some((s) => s.step === 'protect'));
+// A real matched concern STILL gets its treat (the guard didn't over-fire).
+const rednessTreat = buildRecommendation({ findings: [f('r', 'redness', 'a lot')], tailoring: T(), beginner: true }).slots.find((s) => s.step === 'treat');
+check('a matched concern (redness) STILL gets a real treat that addresses it',
+  !!rednessTreat?.pick && rednessTreat.pick.sku.concerns.includes('redness'));
+
 console.log('\n— R2: budget alternative always —');
 for (const set of [baseSet, buildRecommendation({ findings: [f('f1', 'dark_marks', 'some'), f('f2', 'dryness', 'a little')], tailoring: T('full') })]) {
   for (const slot of set.slots) {

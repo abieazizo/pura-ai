@@ -319,6 +319,12 @@ import { join as _joinFF } from 'node:path';
 const ffScreen = _readFF(_joinFF(__dirname, '../src/screens/scan/firstFinding/FirstFindingScreen.tsx'), 'utf8');
 ok('reveal column is a ScrollView (finding card + CTA never clip / become unreachable)',
   /<ScrollView[\s\S]*?style=\{styles\.revealCol\}/.test(ffScreen) && /revealColContent/.test(ffScreen));
+{
+  // ALL forward paths must scroll, not just reveal: bad-photo and error each
+  // render their ONLY recovery buttons, which must never clip below the fold.
+  const scrollPaths = (ffScreen.match(/style=\{styles\.revealCol\}/g) || []).length;
+  ok('bad-photo + error phases also scroll (recovery buttons never stranded)', scrollPaths >= 3, `revealCol ScrollViews=${scrollPaths}`);
+}
 
 console.log(`\n──────────────\nPASS ${pass} · FAIL ${fail}`);
 if (fail > 0) {

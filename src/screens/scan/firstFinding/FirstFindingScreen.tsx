@@ -529,13 +529,13 @@ export function FirstFindingScreen({
             )}
 
             {phase === 'error' && (
-              <View style={styles.center}>
+              <ScrollView style={styles.revealCol} contentContainerStyle={styles.revealColContent} showsVerticalScrollIndicator={false}>
                 <Text style={[TYPE.voice, { color: tokens.line, textAlign: 'center' }]} maxFontSizeMultiplier={1.6} accessibilityRole="header">
                   {outcome.status === 'service_error' ? outcome.message : COPY.errorTitle}
                 </Text>
                 <View style={{ height: 24 }} />
                 <OutlineButton label={COPY.tryAgain} tokens={tokens} onPress={onTryAgain} />
-              </View>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -652,7 +652,11 @@ function BadPhotoChoice({
   canShowAnyway: boolean;
 }) {
   return (
-    <View style={styles.center}>
+    // Scrollable like the reveal path — the recovery buttons ("Try in better
+    // light" / "Show me anyway") are the ONLY way forward, so on a short device
+    // or at large Dynamic Type they must never clip below the fold and strand
+    // the user on the honest-failure screen.
+    <ScrollView style={styles.revealCol} contentContainerStyle={styles.revealColContent} showsVerticalScrollIndicator={false}>
       <Text style={[TYPE.voice, { color: tokens.line, textAlign: 'center' }]} maxFontSizeMultiplier={1.6} accessibilityRole="header">
         {reason}
       </Text>
@@ -673,7 +677,7 @@ function BadPhotoChoice({
           </Text>
         </Pressable>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 

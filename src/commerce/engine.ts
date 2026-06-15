@@ -228,18 +228,26 @@ export function buildRecommendation(
   // CLEANSE — core, always essential.
   pushSlot('cleanse', null, 'good_match', true);
 
-  // TREAT — targets the hero finding; only candidates that actually address it.
+  // TREAT — targets the hero finding, but ONLY when a real product actually
+  // addresses it. A 'neutral'/unmatched finding (e.g. texture, pores, dullness)
+  // has no treatment in the catalog; falling back to ALL treats would pick a
+  // fit-0 product by tie-break and pre-select it as essential — breaking the
+  // screen's own promise ("one real product, picked for fit"). So we skip the
+  // treat slot entirely; cleanse + moisturize + protect still stand. (The
+  // second-treat path below is already pool-guarded the same way.)
   if (heroFinding) {
     const pool = byStep('treat').filter((s) =>
       s.concerns.includes(heroFinding.metric as never),
     );
-    pushSlot(
-      'treat',
-      heroFinding,
-      heroFinding.level === 'a little' ? 'optional' : 'good_match',
-      true,
-      pool.length ? pool : undefined,
-    );
+    if (pool.length > 0) {
+      pushSlot(
+        'treat',
+        heroFinding,
+        heroFinding.level === 'a little' ? 'optional' : 'good_match',
+        true,
+        pool,
+      );
+    }
   }
 
   // Second TREAT — the COMPLETE set, different concern, honest 'optional'.
