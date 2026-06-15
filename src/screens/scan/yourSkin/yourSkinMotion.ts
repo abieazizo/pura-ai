@@ -237,6 +237,8 @@ export const COPY2 = {
 
   moreOptions: 'View options',
 
-  /** Honest privacy line (the photo IS sent to an API). */
-  privacy: 'Your photo is used to read your skin, then it’s never stored or shared.',
+  /** Honest privacy line. The photo IS sent to our AI provider to read the
+   *  skin, so we must NOT promise it is never sent to anyone — only that it
+   *  isn't stored after the read. Mirrors the First-Finding privacy copy. */
+  privacy: 'Your photo is sent securely to read your skin, then it’s never stored.',
 } as const;

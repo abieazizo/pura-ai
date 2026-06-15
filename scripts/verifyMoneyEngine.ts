@@ -76,6 +76,18 @@ const rednessSkus = COMMERCE_CATALOG.filter((s) => s.step === 'treat' && s.conce
 check('treat pick is the max-fit candidate (not the priciest)',
   !!treatPick && rednessSkus.every((s) => fitScore(s, redness.findings) <= fitScore(treatPick.sku, redness.findings)));
 
+console.log('\n— Depth genuinely diverges (no inert choices) —');
+const twoConcern = (depth: 'essentials' | 'full' | 'choose') =>
+  buildRecommendation({ findings: [f('h', 'redness', 'a lot'), f('s', 'dark_marks', 'some')], tailoring: T(depth), beginner: false });
+const treatCount = (set: ReturnType<typeof buildRecommendation>) => set.slots.filter((s) => s.step === 'treat').length;
+const essTreats = treatCount(twoConcern('essentials'));
+const fullTreats = treatCount(twoConcern('full'));
+const chooseTreats = treatCount(twoConcern('choose'));
+check("'full' adds a second treat 'essentials' does not (depths are not the same output)", fullTreats > essTreats,
+  `essentials=${essTreats} full=${fullTreats}`);
+check("'choose' shows the COMPLETE set like 'full' — it is NOT a silent clone of 'essentials'", chooseTreats === fullTreats && chooseTreats > essTreats,
+  `choose=${chooseTreats} full=${fullTreats} essentials=${essTreats}`);
+
 console.log('\n— R2: budget alternative always —');
 for (const set of [baseSet, buildRecommendation({ findings: [f('f1', 'dark_marks', 'some'), f('f2', 'dryness', 'a little')], tailoring: T('full') })]) {
   for (const slot of set.slots) {

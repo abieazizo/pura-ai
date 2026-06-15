@@ -204,7 +204,9 @@ section('5 · Voice / honesty');
   check('no 0–100 score language', scoreHits === 0);
 
   const motionTxt = read(join(YS, 'yourSkinMotion.ts'));
-  check('honest privacy line present ("never stored or shared")', motionTxt.includes('never stored or shared'));
+  check('honest privacy line present ("sent securely … never stored")', motionTxt.includes('sent securely to read your skin'));
+  check('FALSE "never shared" claim absent (the photo IS sent to the AI provider)',
+    !/never\s+(stored\s+or\s+)?shared/i.test(motionTxt));
   check('forbidden privacy line absent ("leaves your device")', !motionTxt.toLowerCase().includes('leaves your device'));
 }
 

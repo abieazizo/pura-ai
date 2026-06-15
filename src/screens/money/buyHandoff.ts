@@ -16,6 +16,10 @@ export interface BuyItem {
 export interface BuyResult {
   ok: boolean;
   opened: number;
+  /** The sku ids that actually opened — lets the screen tell a PARTIAL handoff
+   *  (browsers block all but the first popup per gesture) from a full one and
+   *  retry only the ones that didn't open. */
+  openedIds: string[];
   message?: string;
 }
 
@@ -60,13 +64,13 @@ export const affiliateBuyBackend: BuyBackend = {
   disclosure:
     'These are affiliate links — Pura may earn a small commission if you buy, at no extra cost to you. It never changes which products we pick: we rank only by fit to your skin.',
   async checkout(items) {
-    if (items.length === 0) return { ok: false, opened: 0, message: 'Nothing selected.' };
-    let opened = 0;
+    if (items.length === 0) return { ok: false, opened: 0, openedIds: [], message: 'Nothing selected.' };
+    const openedIds: string[] = [];
     for (const { sku } of items) {
       // eslint-disable-next-line no-await-in-loop
-      if (await open(sku.affiliateUrl)) opened += 1;
+      if (await open(sku.affiliateUrl)) openedIds.push(sku.id);
     }
-    return { ok: opened > 0, opened };
+    return { ok: openedIds.length > 0, opened: openedIds.length, openedIds };
   },
 };
 
@@ -80,7 +84,7 @@ export const ownedCheckoutBackend: BuyBackend = {
   cta: 'Place your order',
   disclosure: null,
   async checkout() {
-    return { ok: false, opened: 0, message: 'Owned checkout is not live yet.' };
+    return { ok: false, opened: 0, openedIds: [], message: 'Owned checkout is not live yet.' };
   },
 };
 

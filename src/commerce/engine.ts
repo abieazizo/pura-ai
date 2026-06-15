@@ -242,8 +242,12 @@ export function buildRecommendation(
     );
   }
 
-  // Second TREAT — full routine only, different concern, honest 'optional'.
-  if (!owned.has('treat') && input.tailoring.depth === 'full' && secondFinding) {
+  // Second TREAT — the COMPLETE set, different concern, honest 'optional'.
+  // 'full' (pre-selected) and 'choose' (user picks everything) both show the
+  // whole routine; 'essentials' stays lean. So the three depths genuinely
+  // diverge — not three labels for the same output.
+  const fullSet = input.tailoring.depth === 'full' || input.tailoring.depth === 'choose';
+  if (!owned.has('treat') && fullSet && secondFinding) {
     const pool = byStep('treat').filter(
       (s) =>
         s.concerns.includes(secondFinding.metric as never) &&

@@ -144,6 +144,11 @@ export function RitualMode({
     setShowBenefit(false);
     setDrawing(false);
     setSkipLine(null);
+    // Every step begins un-paused: if the user paused and then tapped Done/Skip
+    // (instead of Resume), the pause UI + the orb's patient sweep must not bleed
+    // into the next step. Idempotent — a no-op when not paused.
+    setPaused(false);
+    orb.setPatient(false);
     benefitT.value = 0;
     settleScale.value = 1;
     settleOpacity.value = 1;
@@ -189,6 +194,9 @@ export function RitualMode({
   function onDone() {
     if (phase !== 'active' || guard.current || !step) return;
     guard.current = true;
+    // If they paused then committed, clear the pause now so the gold beat plays
+    // clean — not over a stuck "Paused" label and patient orb.
+    if (paused) { setPaused(false); orb.setPatient(false); }
     doneIds.current.push(step.id);
     // THE GOLD BEAT — on the tap itself, every step: the orb floods warm gold
     // (~240ms), the halo blooms, the eyes turn happy (joy arcs via the warm
@@ -254,6 +262,7 @@ export function RitualMode({
   function onSkip() {
     if (phase !== 'active' || guard.current || !step) return;
     guard.current = true;
+    if (paused) { setPaused(false); orb.setPatient(false); }
     setPhase('skipping');
     // THE MUTED BEAT — a skip is acknowledged, never celebrated and never
     // scolded: the orb goes quiet grey (temperature toward cool, halo dimmer

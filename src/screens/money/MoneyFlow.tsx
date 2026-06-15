@@ -121,6 +121,7 @@ export function MoneyFlow({ read, goal, beginner = true, hasAccount = true, onLo
         <YourRoutineScreen
           hideOrb
           recommendation={recommendation!}
+          depth={tailoring?.depth}
           goalLine={goal ? `Built from your scan, shaped to ${goal}. Each step is one real product, picked for fit.` : undefined}
           onConfirm={(l) => { setLines(l); setStage('confirm'); }}
         />

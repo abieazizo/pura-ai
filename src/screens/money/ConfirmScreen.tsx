@@ -16,7 +16,7 @@ import { AssistantAuroraOrb } from '@/screens/assistant/AssistantAuroraOrb';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import type { CommerceSku } from '@/commerce/types';
 import type { SelectedLine } from './YourRoutineScreen';
-import { activeBuyBackend, type BuyItem } from './buyHandoff';
+import { activeBuyBackend } from './buyHandoff';
 import { money, cardShadow, SERIF } from './theme';
 
 const fmt = (n: number) => `$${n % 1 === 0 ? n : n.toFixed(2)}`;
@@ -39,7 +39,9 @@ export function ConfirmScreen({ lines, hideOrb = false, onLock, onBought, onProd
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [openedIds, setOpenedIds] = useState<string[]>([]);
 
   const resolved: Resolved[] = useMemo(() => {
     return lines
@@ -58,24 +60,38 @@ export function ConfirmScreen({ lines, hideOrb = false, onLock, onBought, onProd
   const enter = (i: number) =>
     reduceMotion ? undefined : FadeInDown.delay(70 * i).springify().damping(18).stiffness(140);
 
+  // The routine is theirs whether or not any handoff opens — lock it ONCE.
+  const lockOnce = () => { if (!locked) { onLock(resolved); setLocked(true); } };
+
+  const opened = openedIds.length;
+  const remaining = resolved.length - opened;
+  const isPartial = opened > 0 && opened < resolved.length;
+
   const buy = async () => {
     if (busy) return;
     setBusy(true);
-    setErr(null);
-    onLock(resolved); // lock FIRST — the plan is theirs whether or not the handoff opens
-    const items: BuyItem[] = resolved.map((r) => ({ sku: r.sku }));
-    const res = await activeBuyBackend.checkout(items);
+    setAttempted(true);
+    lockOnce();
+    // Only try the ones not already open — a retry never re-opens a tab the
+    // browser already gave them. (Browsers block all but the FIRST window.open
+    // per gesture, so a multi-product basket often opens partially on the web.)
+    const pending = resolved.filter((r) => !openedIds.includes(r.sku.id));
+    if (pending.length === 0) { setBusy(false); onBought({ opened: resolved.length }); return; }
+    const res = await activeBuyBackend.checkout(pending.map((r) => ({ sku: r.sku })));
     setBusy(false);
-    // If NOTHING opened (popup blocked / handoff failed), don't pretend it
-    // worked — keep them here with an honest retry. The routine is still saved.
-    if (!res.ok || res.opened === 0) {
-      setErr('We couldn’t open the shop — your browser may have blocked it. Tap again, or continue with your routine saved.');
-      return;
-    }
-    onBought({ opened: res.opened });
+    const next = Array.from(new Set([...openedIds, ...res.openedIds]));
+    setOpenedIds(next);
+    // ALL open now → genuine success, advance. Otherwise we do NOT auto-advance:
+    // claiming the whole basket opened when most was blocked would be a fake
+    // success. The render surfaces the honest full-fail / partial state.
+    if (next.length >= resolved.length) onBought({ opened: resolved.length });
   };
 
-  const lockFree = () => { onLock(resolved); onProductFree(); };
+  // Continue after a PARTIAL with the TRUE opened count — Account reports it
+  // honestly ("your N products are opening"), never implying the rest opened.
+  const continuePartial = () => { lockOnce(); onBought({ opened }); };
+
+  const lockFree = () => { lockOnce(); onProductFree(); };
 
   const PlanColumn = ({ title, rows }: { title: string; rows: Resolved[] }) =>
     rows.length === 0 ? null : (
@@ -138,22 +154,41 @@ export function ConfirmScreen({ lines, hideOrb = false, onLock, onBought, onProd
         {resolved.length > 0 ? (
           <>
             <Pressable onPress={buy} disabled={busy} accessibilityRole="button"
-              accessibilityLabel={`${activeBuyBackend.cta}. ${resolved.length} products, total ${fmt(total)}.`}
+              accessibilityLabel={isPartial
+                ? `Open the remaining ${remaining} products`
+                : `${activeBuyBackend.cta}. ${resolved.length} products, total ${fmt(total)}.`}
               style={({ pressed }) => [styles.cta, { opacity: pressed || busy ? 0.9 : 1 }]}>
-              <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>{activeBuyBackend.cta} · {fmt(total)}</Text>
+              <Text style={styles.ctaText} maxFontSizeMultiplier={1.3}>
+                {isPartial ? `Open the remaining ${remaining}` : `${activeBuyBackend.cta} · ${fmt(total)}`}
+              </Text>
             </Pressable>
-            {err ? (
-              <Text style={styles.err} maxFontSizeMultiplier={1.6}>{err}</Text>
+            {/* Honest outcome: full-fail (red) vs partial (neutral note). */}
+            {attempted && opened === 0 ? (
+              <Text style={styles.err} maxFontSizeMultiplier={1.6}>
+                We couldn’t open the shop — your browser may have blocked it. Tap again, or continue with your routine saved.
+              </Text>
+            ) : null}
+            {isPartial ? (
+              <Text style={styles.note} maxFontSizeMultiplier={1.6}>
+                Opened {opened} of {resolved.length}. Your browser blocked the rest — tap to open the other {remaining}, or continue; your routine’s saved.
+              </Text>
             ) : null}
             {activeBuyBackend.disclosure ? (
               <Text style={styles.disclosure} maxFontSizeMultiplier={1.6}>{activeBuyBackend.disclosure}</Text>
             ) : null}
           </>
         ) : null}
-        <Pressable onPress={lockFree} accessibilityRole="button" accessibilityLabel="I'll do it with what I have"
-          style={styles.free}>
-          <Text style={styles.freeText} maxFontSizeMultiplier={1.4}>I’ll do it with what I have</Text>
-        </Pressable>
+        {isPartial ? (
+          <Pressable onPress={continuePartial} accessibilityRole="button" accessibilityLabel="Continue — my routine's saved"
+            style={styles.free}>
+            <Text style={styles.freeText} maxFontSizeMultiplier={1.4}>Continue — my routine’s saved</Text>
+          </Pressable>
+        ) : (
+          <Pressable onPress={lockFree} accessibilityRole="button" accessibilityLabel="I'll do it with what I have"
+            style={styles.free}>
+            <Text style={styles.freeText} maxFontSizeMultiplier={1.4}>I’ll do it with what I have</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -185,6 +220,7 @@ const styles = StyleSheet.create({
   ctaText: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: '#FFFFFF' },
   disclosure: { fontFamily: 'Inter-Regular', fontSize: 12.5, lineHeight: 18, color: money.muted, marginTop: 10, textAlign: 'center' },
   err: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 18, color: '#B23B3B', marginTop: 10, textAlign: 'center' },
+  note: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 18, color: money.ink, marginTop: 10, textAlign: 'center' },
   free: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   freeText: { fontFamily: 'Inter-Medium', fontSize: 15, color: money.muted },
 });

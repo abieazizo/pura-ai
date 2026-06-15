@@ -13,7 +13,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AssistantAuroraOrb } from '@/screens/assistant/AssistantAuroraOrb';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import type { RecommendationSet, RoutineSlot } from '@/commerce/types';
+import type { RecommendationSet, RoutineSlot, TailoringInput } from '@/commerce/types';
 import { RoutineCard } from './RoutineCard';
 import { money, SERIF } from './theme';
 
@@ -31,24 +31,37 @@ export interface YourRoutineScreenProps {
   recommendation: RecommendationSet;
   /** Onboarding goal for the header line, when known. */
   goalLine?: string;
+  /**
+   * How involved they chose to be (from Tailoring). 'choose' = "Show me
+   * everything — I'll pick": the full routine is shown expanded with NOTHING
+   * pre-selected, so the user genuinely picks each step. 'essentials'/'full'
+   * keep the lazy path (essentials pre-selected). Undefined → lazy path.
+   */
+  depth?: TailoringInput['depth'];
   /** The flow container hoists ONE persistent orb; we reserve its space. */
   hideOrb?: boolean;
   onConfirm: (lines: SelectedLine[]) => void;
 }
 
-export function YourRoutineScreen({ recommendation, goalLine, hideOrb = false, onConfirm }: YourRoutineScreenProps) {
+export function YourRoutineScreen({ recommendation, goalLine, depth, hideOrb = false, onConfirm }: YourRoutineScreenProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
-  const [showFull, setShowFull] = useState(false);
+  const userPicks = depth === 'choose';
+  // 'choose' shows the full routine up front (you can't pick what's hidden).
+  const [showFull, setShowFull] = useState(userPicks);
 
   // Selection — essentials start selected (zero-work path); chosen SKU starts
-  // as the fit pick, swappable to the budget alternative per card.
+  // as the fit pick, swappable to the budget alternative per card. EXCEPT when
+  // the user chose "let me pick": then nothing is pre-selected — the choice is
+  // genuinely theirs, so the label isn't an empty promise.
   const [lines, setLines] = useState<SelectedLine[]>(() =>
     recommendation.slots.map((slot, slotIndex) => ({
       slotIndex,
       slot,
       chosenId: slot.pick?.sku.id ?? '',
-      selected: !!slot.pick && slot.essential && !slot.skippedBecauseOwned,
+      selected: userPicks
+        ? false
+        : !!slot.pick && slot.essential && !slot.skippedBecauseOwned,
     })),
   );
 
@@ -82,7 +95,10 @@ export function YourRoutineScreen({ recommendation, goalLine, hideOrb = false, o
         chosenId={l.chosenId}
         selected={l.selected}
         onToggleSelected={() => setLine(l.slotIndex, { selected: !l.selected })}
-        onUseBudget={() => setLine(l.slotIndex, { chosenId: l.slot.budgetAlternative!.sku.id, selected: true })}
+        // Swapping to the budget variant must NOT change basket membership — the
+        // Add/Remove toggle is the only control that does. (Forcing selected:true
+        // here silently re-added a card the user had removed, bumping the total.)
+        onUseBudget={() => setLine(l.slotIndex, { chosenId: l.slot.budgetAlternative!.sku.id })}
         onUsePick={() => setLine(l.slotIndex, { chosenId: l.slot.pick!.sku.id })}
       />
     </Animated.View>
