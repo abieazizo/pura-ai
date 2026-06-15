@@ -14,14 +14,18 @@ import {
   defaultTimeOfDayForNow,
 } from '@/state/routine/routineStore';
 import { computeSkinScore } from '@/utils/skinScore';
-import type { SemanticFaceZone } from '@/types/scanResults';
 import { buildDailyHomeModel, type DailyHomeModel } from './dailyHomeModel';
 import type { CalmZoneWord } from './homeVoice';
 
-/** Plain words only for zones the greeting can name without sounding odd. */
-function zoneWord(zones: SemanticFaceZone[] | undefined): CalmZoneWord | null {
-  for (const z of zones ?? []) {
-    if (z === 'left_cheek' || z === 'right_cheek') return 'cheeks';
+/** Plain words only for zones the greeting can name without sounding odd.
+ *  Canonical state stores regions in SPACE form ('left cheek') — see
+ *  state/canonical.ts which does `r.replace(/_/g, ' ')` — while the raw enum is
+ *  underscore form ('left_cheek'). Accept BOTH so the cheeks callback (the most
+ *  common change zone) actually fires on the live AI path, not just dev forms. */
+function zoneWord(zones: ReadonlyArray<string> | undefined): CalmZoneWord | null {
+  for (const raw of zones ?? []) {
+    const z = raw.replace(/_/g, ' ');
+    if (z === 'left cheek' || z === 'right cheek') return 'cheeks';
     if (z === 'forehead') return 'forehead';
     if (z === 'chin') return 'chin';
   }
@@ -69,9 +73,7 @@ export function useDailyHome(): DailyHomeModel {
   // worsened while the overall score rose elsewhere). No improved zone → null,
   // and the greeting falls back to the honest generic "your skin reads calmer".
   const improvedConcern = skin?.topConcerns?.find((c) => c.direction === 'better');
-  const calmZone = zoneWord(
-    improvedConcern?.regions as SemanticFaceZone[] | undefined,
-  );
+  const calmZone = zoneWord(improvedConcern?.regions);
 
   return useMemo(
     () =>

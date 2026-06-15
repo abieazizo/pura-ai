@@ -208,6 +208,13 @@ section('5 · Voice / honesty');
   check('FALSE "never shared" claim absent (the photo IS sent to the AI provider)',
     !/never\s+(stored\s+or\s+)?shared/i.test(motionTxt));
   check('forbidden privacy line absent ("leaves your device")', !motionTxt.toLowerCase().includes('leaves your device'));
+
+  // Co-shape honesty: a chip may ONLY be offered for a finding some plan move
+  // actually addresses — else tapping it claims "I put that first" while the
+  // plan visibly doesn't move (false confirmation). Regression guard.
+  const screenTxt = read(join(YS, 'YourSkinScreen.tsx'));
+  check('co-shape chips are gated on a finding being addressed by a move (addressedIds)',
+    /addressedIds/.test(screenTxt) && /addressedIds\.has\(f\.id\)/.test(screenTxt));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

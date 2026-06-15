@@ -300,6 +300,11 @@ export function RitualMode({
     timers.current.forEach(clearTimeout);
     timers.current = [];
     voice.stop();
+    // Pause is the natural precursor to ending — clear it so the orb's infinite
+    // "patient" sweep doesn't drift through the goodbye and leak into Home (the
+    // orb is the shared persistent instance). Same reset as Done/Skip.
+    if (paused) { setPaused(false); }
+    orb.setPatient(false);
     setPhase('ending');
     orb.setGaze('forward');
     orb.setExpression('reassuring');

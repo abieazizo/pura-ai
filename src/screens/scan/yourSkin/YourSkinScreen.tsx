@@ -183,9 +183,20 @@ export function YourSkinScreen(props: YourSkinScreenProps) {
     return copy;
   }, [vm.moves, coShapePriorityId]);
 
+  // A co-shape chip MUST map to a real plan move — otherwise tapping it would
+  // claim "I put that first" while the plan visibly doesn't change (a false
+  // confirmation). So we only offer chips for findings some move addresses.
+  const addressedIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of vm.moves) for (const id of m.addressesIds) s.add(id);
+    return s;
+  }, [vm.moves]);
+
   const concernFindings = useMemo(
-    () => gRead.findings.filter((f) => f.metric !== 'positive' && f.spots.length > 0 && !downweighted.has(f.id)),
-    [gRead.findings, downweighted],
+    () => gRead.findings.filter(
+      (f) => f.metric !== 'positive' && f.spots.length > 0 && !downweighted.has(f.id) && addressedIds.has(f.id),
+    ),
+    [gRead.findings, downweighted, addressedIds],
   );
 
   // ── Warm orb beats — a single sticky instance, gently reactive. ─────────────

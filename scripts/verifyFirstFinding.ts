@@ -311,6 +311,15 @@ const capCen = regionGeometryFromLandmarks('left_cheek', cap!, FW, FH, false);
 const capOffG = regionGeometryFromLandmarks('left_cheek', capOff!, FW, FH, false);
 ok('off-center capture → glow tracks the real face (through the crop remap)', capOffG.centroid.x - capCen.centroid.x > 0.07 * FW, `Δx=${(capOffG.centroid.x - capCen.centroid.x).toFixed(0)}px`);
 
+// Source guard: the reveal column must be scrollable so the opening line +
+// finding card + "See everything" CTA can never clip off short / large-type
+// screens (the screen imports react-native, so we read it as text, not import).
+import { readFileSync as _readFF } from 'node:fs';
+import { join as _joinFF } from 'node:path';
+const ffScreen = _readFF(_joinFF(__dirname, '../src/screens/scan/firstFinding/FirstFindingScreen.tsx'), 'utf8');
+ok('reveal column is a ScrollView (finding card + CTA never clip / become unreachable)',
+  /<ScrollView[\s\S]*?style=\{styles\.revealCol\}/.test(ffScreen) && /revealColContent/.test(ffScreen));
+
 console.log(`\n──────────────\nPASS ${pass} · FAIL ${fail}`);
 if (fail > 0) {
   console.log('FAILED: ' + fails.join(', '));

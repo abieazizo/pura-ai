@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AccessibilityInfo,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -575,7 +576,15 @@ function RevealContent({
   onSeeEverything: () => void;
 }) {
   return (
-    <View style={styles.revealCol}>
+    // Scrollable so the opening line + finding card + "See everything" CTA can
+    // never clip off-screen on short devices or at large Dynamic Type — the
+    // trust climax must always be fully readable AND the CTA always reachable.
+    // (The shared-element photo is a sibling above, untouched by this scroll.)
+    <ScrollView
+      style={styles.revealCol}
+      contentContainerStyle={styles.revealColContent}
+      showsVerticalScrollIndicator={false}
+    >
       {showLine && (
         <OrbSpeech
           text={read.openingLine}
@@ -620,7 +629,7 @@ function RevealContent({
           </Text>
         </Pressable>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -746,7 +755,9 @@ const styles = StyleSheet.create({
   photoBox: { alignSelf: 'center' },
   below: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'flex-start' },
-  revealCol: { flex: 1, alignItems: 'center' },
+  revealCol: { flex: 1 },
+  // flexGrow keeps it centered-to-top when it fits; scrolls when it doesn't.
+  revealColContent: { alignItems: 'center', flexGrow: 1, paddingBottom: 24 },
   privacy: { marginTop: 14, textAlign: 'center', maxWidth: 280 },
   badTip: { marginTop: 12, marginBottom: 24, textAlign: 'center', maxWidth: 300 },
   cta: {

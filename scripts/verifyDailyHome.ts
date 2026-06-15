@@ -145,6 +145,19 @@ check('no guilt in the live progress lines',
   [m, allDone, buildDailyHomeModel(base(today, { completionDates: [] }))].every(
     (model) => !GUILT.test(model.progressLine) && !GUILT.test(model.restLine ?? '')));
 
+// Source guard: the zoneWord mapper must accept the SPACE region form the
+// canonical state actually stores ('left cheek'), not only the underscore enum
+// — otherwise the cheeks callback (the most common change zone) is dead on the
+// live AI path. Regression guard for the round-2 audit fix.
+import { readFileSync as _read } from 'node:fs';
+import { join as _join } from 'node:path';
+const hookSrc = _read(_join(__dirname, '../src/screens/assistant/home/useDailyHome.ts'), 'utf8');
+console.log('\n— calmZone region-form (cheeks callback alive on the live path) —');
+check("zoneWord matches the SPACE region form ('left cheek') the canonical store emits",
+  hookSrc.includes("'left cheek'") && hookSrc.includes("'right cheek'"));
+check('zoneWord normalises underscores so it also accepts the enum form',
+  /replace\(\/_\/g, ' '\)/.test(hookSrc));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) {
   console.log('FAILURES:\n  - ' + failures.join('\n  - '));

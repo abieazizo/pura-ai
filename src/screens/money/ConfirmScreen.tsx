@@ -42,6 +42,11 @@ export function ConfirmScreen({ lines, hideOrb = false, onLock, onBought, onProd
   const [attempted, setAttempted] = useState(false);
   const [locked, setLocked] = useState(false);
   const [openedIds, setOpenedIds] = useState<string[]>([]);
+  // The dock is absolute + opaque and its height varies (disclosure wraps to
+  // ~4 lines; partial/error states add a note + a second button). Measure it so
+  // the ScrollView reserves EXACTLY enough room — otherwise the Total (the price
+  // they're committing to) hides behind the dock with no way to scroll to it.
+  const [dockH, setDockH] = useState(0);
 
   const resolved: Resolved[] = useMemo(() => {
     return lines
@@ -110,7 +115,7 @@ export function ConfirmScreen({ lines, hideOrb = false, onLock, onBought, onProd
     <View style={styles.root}>
       <StatusBar style="dark" />
       <ScrollView showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + 18, paddingHorizontal: 24, paddingBottom: insets.bottom + 188 }}>
+        contentContainerStyle={{ paddingTop: insets.top + 18, paddingHorizontal: 24, paddingBottom: (dockH > 0 ? dockH : insets.bottom + 300) + 24 }}>
         {hideOrb ? (
           <View style={styles.orbSpacer} />
         ) : (
@@ -150,7 +155,8 @@ export function ConfirmScreen({ lines, hideOrb = false, onLock, onBought, onProd
         ) : null}
       </ScrollView>
 
-      <View style={[styles.dock, { paddingBottom: insets.bottom + 14 }]}>
+      <View style={[styles.dock, { paddingBottom: insets.bottom + 14 }]}
+        onLayout={(e) => setDockH(e.nativeEvent.layout.height)}>
         {resolved.length > 0 ? (
           <>
             <Pressable onPress={buy} disabled={busy} accessibilityRole="button"

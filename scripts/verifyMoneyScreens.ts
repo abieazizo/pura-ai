@@ -59,6 +59,8 @@ check('owned step renders as "skipped — you\'ve got this", never re-sold',
 const routine = src('YourRoutineScreen.tsx');
 check('essentials PRE-SELECTED in the lazy path; NOTHING pre-selected when the user chose to pick ("choose")',
   /slot\.essential/.test(routine) && /userPicks\s*\?\s*\n?\s*false/.test(routine) && /depth === 'choose'/.test(routine));
+check("'full' pre-selects the COMPLETE set — a third DISTINCT default basket, not a clone of essentials",
+  /completeSet/.test(routine) && /depth === 'full'/.test(routine) && /slot\.label !== 'skippable'/.test(routine));
 check('full routine is expandable ("See the full routine")', routine.includes('See the full routine') && routine.includes('showFull'));
 check('NOT a swipe deck (no Swiper/pan-deck)', !/swiper|swipe.?deck|panresponder/i.test(routine + card));
 check('running basket count + total in the dock', routine.includes('count') && routine.includes('total'));

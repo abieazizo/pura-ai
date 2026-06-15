@@ -47,13 +47,18 @@ export function YourRoutineScreen({ recommendation, goalLine, depth, hideOrb = f
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const userPicks = depth === 'choose';
-  // 'choose' shows the full routine up front (you can't pick what's hidden).
-  const [showFull, setShowFull] = useState(userPicks);
+  const completeSet = depth === 'full';
+  // 'choose' AND 'full' show the whole routine up front; 'essentials' tucks the
+  // extras behind "See the full routine".
+  const [showFull, setShowFull] = useState(userPicks || completeSet);
 
-  // Selection — essentials start selected (zero-work path); chosen SKU starts
-  // as the fit pick, swappable to the budget alternative per card. EXCEPT when
-  // the user chose "let me pick": then nothing is pre-selected — the choice is
-  // genuinely theirs, so the label isn't an empty promise.
+  // Selection diverges by depth so the three choices aren't three labels for the
+  // same basket:
+  //   • essentials → only the core essential steps pre-selected (the 2-min path)
+  //   • full       → the COMPLETE set pre-selected (every buyable step the engine
+  //                  kept, minus ones it honestly labelled "skippable")
+  //   • choose     → NOTHING pre-selected — the choice is genuinely the user's,
+  //                  so "Show me everything — I'll pick" isn't an empty promise.
   const [lines, setLines] = useState<SelectedLine[]>(() =>
     recommendation.slots.map((slot, slotIndex) => ({
       slotIndex,
@@ -61,7 +66,9 @@ export function YourRoutineScreen({ recommendation, goalLine, depth, hideOrb = f
       chosenId: slot.pick?.sku.id ?? '',
       selected: userPicks
         ? false
-        : !!slot.pick && slot.essential && !slot.skippedBecauseOwned,
+        : completeSet
+          ? !!slot.pick && !slot.skippedBecauseOwned && slot.label !== 'skippable'
+          : !!slot.pick && slot.essential && !slot.skippedBecauseOwned,
     })),
   );
 
